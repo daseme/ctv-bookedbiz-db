@@ -1,0 +1,1 @@
+# Pure data models (Spot, Customer, etc.)

@@ -1,0 +1,1 @@
+# Enums (SpotType, BillingType, etc.)
