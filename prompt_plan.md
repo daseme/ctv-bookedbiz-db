@@ -50,32 +50,41 @@ Ensure all files follow Python best practices and include appropriate docstrings
 
 ### Step 2: Database Schema Definition
 
-**Goal**: Define the SQLite database schema with all required tables.
+**Goal**: Define the SQLite database schema with all required tables including agency and sector support.
 
 ```text
-Create SQLite database schema definitions for the sales database tool.
+Create SQLite database schema definitions for the sales database tool with agency and sector support.
 
 Requirements:
 1. Create src/database/schema.py with SQL CREATE TABLE statements for:
-   - spots table (with all Excel columns plus normalized fields)
-   - customers table (customer_id, normalized_name, timestamps)
-   - customer_mappings table (original to normalized mapping)
+   - agencies table (agency_id, agency_name, timestamps)
+   - customers table (customer_id, normalized_name, sector, agency_id, timestamps)
+   - customer_mappings table (original to normalized mapping with confidence scores)
+   - spots table (all Excel columns plus normalized fields, agency/customer separation)
    - budget table (AE budgets by month/year)
-   - pipeline table (management expectations)
+   - pipeline table (management expectations with current flags)
    - markets table (market name to code mapping)
+   - sectors table (business sector categories)
+   - languages table (language code mappings)
 
 2. Include proper:
    - Primary keys and foreign keys
-   - Indexes on frequently queried columns (air_date, normalized_customer, ae_name, market_code)
+   - Indexes on frequently queried columns (air_date, normalized_customer, normalized_agency, ae_name, market_code, sector)
    - NOT NULL constraints where appropriate
    - Default values where sensible
+   - Unique constraints on agency_name and customer normalized_name
 
 3. Create src/database/models.py with:
    - Python dataclass definitions matching each table
    - Type hints for all fields
    - Validation methods for data integrity
+   - Sector enum (AUTO, CPG, INS, OUTR, etc.)
 
-4. Add comprehensive docstrings explaining each table's purpose and relationships
+4. Add comprehensive docstrings explaining:
+   - Agency-customer relationships
+   - Sector categorization system
+   - Bill code parsing requirements
+   - Language tracking for future use
 
 Use SQLite-specific syntax and ensure all date fields can handle the m/d/yy format from Excel.
 ```
@@ -116,12 +125,12 @@ Requirements:
 Include comprehensive error messages and recovery strategies.
 ```
 
-### Step 4: Excel File Reader
+### Step 4: Excel File Reader with Bill Code Parsing
 
-**Goal**: Build a robust Excel file reader that handles the booked business report format.
+**Goal**: Build a robust Excel file reader that handles the booked business report format and parses bill codes.
 
 ```text
-Create an Excel file reader for the booked business report.
+Create an Excel file reader for the booked business report with bill code parsing.
 
 Requirements:
 1. Create src/importers/excel_reader.py with:
@@ -129,30 +138,40 @@ Requirements:
    - Method to validate Excel file structure
    - Method to read all columns preserving original names
    - Iterator pattern for memory-efficient row processing
+   - Bill code parser to extract agency and customer from "Agency:Customer" format
 
 2. Handle data type conversions:
    - Air Date (m/d/yy format) to Python date
    - Currency fields (Gross Rate, Station Net) to Decimal
    - Text fields with proper encoding (UTF-8)
    - Empty cells to None
+   - Time fields (time_in, time_out) in HH:MM:SS format
 
-3. Create src/importers/data_validator.py with:
-   - Validation for required columns
+3. Create src/importers/bill_code_parser.py with:
+   - Function to parse "Agency:Customer" format
+   - Handle cases with just "Customer" (no agency)
+   - Return tuple of (agency, customer)
+   - Handle edge cases (multiple colons, empty values)
+
+4. Create src/importers/data_validator.py with:
+   - Validation for all required columns
    - Date format validation
    - Currency format validation
    - Revenue type checking (exclude "Trade")
    - Data completeness checks
+   - Bill code format validation
 
-4. Implement error handling for:
+5. Implement error handling for:
    - Missing columns
    - Invalid date formats
    - Malformed currency values
+   - Invalid bill code formats
    - File access issues
    - Corrupted Excel files
 
-5. Add progress reporting for large files
+6. Add progress reporting for large files
 
-Include unit tests for common data issues and edge cases.
+Include unit tests for bill code parsing and common data issues.
 ```
 
 ### Step 5: Basic Data Import
@@ -198,12 +217,12 @@ This establishes the foundation before adding normalization complexity.
 
 ## Phase 2: Customer Normalization (Steps 6-9)
 
-### Step 6: Customer Normalization Core
+### Step 6: Customer and Agency Normalization Core
 
-**Goal**: Build the string similarity matching system for customer names.
+**Goal**: Build the string similarity matching system for both customer and agency names.
 
 ```text
-Create a customer name normalization system with similarity matching.
+Create customer and agency name normalization system with similarity matching.
 
 Requirements:
 1. Create src/normalization/similarity.py with:
@@ -213,74 +232,102 @@ Requirements:
    - Levenshtein distance calculation
    - Fuzzy matching with configurable threshold
 
-2. Create src/normalization/customer_normalizer.py with:
-   - CustomerNormalizer class
-   - Method to find similar existing customers
+2. Create src/normalization/normalizer_base.py with:
+   - BaseNormalizer class for shared functionality
+   - Method to find similar existing names
    - Method to calculate similarity scores
    - Method to rank matches by similarity
    - Caching for performance
 
-3. Implement normalization rules:
-   - Remove common business suffixes
-   - Strip revenue type indicators
-   - Handle special characters consistently
-   - Preserve important distinctions
+3. Create src/normalization/agency_normalizer.py with:
+   - AgencyNormalizer class extending BaseNormalizer
+   - Agency-specific normalization rules
+   - Method to get or create agency
 
-4. Create src/database/customer_ops.py with:
+4. Create src/normalization/customer_normalizer.py with:
+   - CustomerNormalizer class extending BaseNormalizer
+   - Customer-specific normalization rules
+   - Sector assignment functionality
+   - Method to link customer to agency
+
+5. Create src/database/agency_ops.py with:
+   - Function to get all existing agencies
+   - Function to create new agency
+   - Function to find agency by name
+
+6. Create src/database/customer_ops.py with:
    - Function to get all existing customers
-   - Function to create new customer
+   - Function to create new customer with sector
    - Function to create mapping
    - Function to get existing mappings
+   - Function to update customer sector
 
-5. Add configuration in src/utils/config.py:
+7. Add configuration in src/utils/config.py:
    - Similarity threshold (default 70%)
    - List of removable suffixes
    - List of revenue type indicators
+   - Sector definitions
 
 Include unit tests with real-world examples from the specification.
 ```
 
-### Step 7: Interactive Customer Mapping CLI
+### Step 7: Interactive Customer and Agency Mapping CLI
 
-**Goal**: Create an interactive command-line interface for customer normalization.
+**Goal**: Create an interactive command-line interface for customer and agency normalization with sector assignment.
 
 ```text
-Create an interactive CLI for customer name normalization during import.
+Create an interactive CLI for customer/agency name normalization and sector assignment during import.
 
 Requirements:
 1. Enhance src/normalization/customer_normalizer.py with:
    - InteractiveNormalizer class
-   - Method to present choices to user
+   - Method to present agency choices
+   - Method to present customer choices
+   - Method to present sector choices
    - Method to remember user decisions
    - Method to apply mappings to data
 
 2. Create src/cli/interactive_mapper.py with:
-   - Function to display similarity matches
-   - Function to get user input
-   - Function to validate user choice
-   - Option to create new customer
+   - Function to display bill code parsing results
+   - Function to display similarity matches for agencies
+   - Function to display similarity matches for customers
+   - Function to display sector selection menu
+   - Function to get and validate user input
+   - Option to create new customer/agency
    - Option to skip/cancel
 
 3. Implement the interaction flow:
-   - Show new customer name
+   - Show parsed bill code (Agency:Customer)
+   - Handle agency normalization first
+   - Then handle customer normalization
+   - Prompt for sector assignment/confirmation
    - Display top 5 similar matches with percentages
    - Allow selection by number
    - Confirm mapping before saving
    - Remember for current session
 
-4. Create src/normalization/mapping_cache.py with:
-   - In-memory cache for session
-   - Method to apply cached mappings
-   - Method to export mappings
-   - Method to import previous mappings
+4. Create src/normalization/sector_manager.py with:
+   - Sector definitions (AUTO, CPG, INS, OUTR, etc.)
+   - Method to display sector menu
+   - Method to validate sector selection
+   - Method to suggest sector based on customer name
 
-5. Update import process to:
-   - Collect unique customer names first
+5. Create src/normalization/mapping_cache.py with:
+   - In-memory cache for session
+   - Cache for agency mappings
+   - Cache for customer mappings
+   - Cache for sector assignments
+   - Method to apply cached mappings
+   - Method to export/import mappings
+
+6. Update import process to:
+   - Parse bill codes first
+   - Collect unique agencies and customers
    - Process normalizations interactively
    - Apply mappings during import
    - Show mapping summary
 
-Format output clearly with colors/formatting for better UX.
+Format output clearly with colors/formatting for better UX. Handle both "Agency:Customer" and "Customer" only formats.
 ```
 
 ### Step 8: Historical Mapping Storage
@@ -328,30 +375,37 @@ Include validation to prevent circular or conflicting mappings.
 
 ### Step 9: Complete Import with Normalization
 
-**Goal**: Integrate normalization into the full import process.
+**Goal**: Integrate normalization into the full import process with agency, customer, and sector support.
 
 ```text
-Update the import process to include full customer normalization.
+Update the import process to include full normalization with agency parsing and sector assignment.
 
 Requirements:
 1. Create src/importers/normalized_importer.py with:
    - NormalizedDataImporter class extending DataImporter
-   - Pre-import customer extraction
-   - Interactive normalization phase
+   - Bill code parsing phase
+   - Agency extraction and normalization
+   - Customer extraction and normalization
+   - Sector assignment/confirmation
    - Normalized data import
    - Post-import verification
 
 2. Implement the complete workflow:
    - Read Excel file
-   - Extract unique customers
-   - Load existing mappings
+   - Parse all bill codes into agency/customer pairs
+   - Extract unique agencies and customers
+   - Load existing agency mappings
+   - Load existing customer mappings
+   - Interactive normalization for new agencies
    - Interactive normalization for new customers
+   - Sector assignment for new/updated customers
    - Apply all mappings
-   - Import with normalized_customer field
-   - Update customer and mapping tables
+   - Import with normalized_agency and normalized_customer fields
+   - Update agency, customer, and mapping tables
 
 3. Add transaction management:
-   - Atomic customer creation
+   - Atomic agency creation
+   - Atomic customer creation with sector
    - Atomic mapping creation
    - Rollback on any failure
    - Detailed error reporting
@@ -361,15 +415,24 @@ Requirements:
    - Options for automatic/interactive mode
    - Dry-run option
    - Verbose logging option
+   - Sector review option
 
 5. Add import statistics:
    - Total rows processed
+   - New agencies created
    - New customers created
+   - Sectors assigned/updated
    - Mappings applied
    - Errors encountered
    - Time elapsed
 
-Test with real data files and various edge cases.
+6. Handle special cases:
+   - Bill codes with only customer (no agency)
+   - Multiple colons in bill code
+   - Empty bill codes
+   - Duplicate detection
+
+Test with real data files including various bill code formats.
 ```
 
 ## Phase 3: Data Management (Steps 10-13)
@@ -584,12 +647,12 @@ Requirements:
 Use modern, clean design with good typography and spacing.
 ```
 
-### Step 15: Monthly Revenue Report
+### Step 15: Monthly Revenue Report with Sector Analysis
 
-**Goal**: Implement the monthly revenue dashboard report.
+**Goal**: Implement the monthly revenue dashboard report with agency and sector breakdowns.
 
 ```text
-Create a monthly revenue dashboard report.
+Create a monthly revenue dashboard report with sector and agency analysis.
 
 Requirements:
 1. Create src/reports/monthly_revenue.py with:
@@ -597,35 +660,51 @@ Requirements:
    - Query for revenue by customer
    - Query for revenue by AE
    - Query for revenue by market
+   - Query for revenue by sector
+   - Query for revenue by agency
    - Month-over-month calculations
 
 2. Implement report sections:
    - Executive summary box
-   - Top 10 customers table
+   - Top 10 customers table with sectors
+   - Agency performance ranking
+   - Sector breakdown with pie chart
    - AE performance ranking
    - Market breakdown
    - Revenue type analysis
+   - Agency vs direct client split
 
 3. Add data visualizations using HTML/CSS:
    - Revenue trend line (CSS bars)
-   - Market pie chart (CSS circles)
+   - Sector pie chart (CSS circles)
+   - Market pie chart
    - AE performance bars
    - YoY comparison indicators
+   - Agency contribution chart
 
 4. Create src/database/revenue_queries.py with:
    - Optimized revenue queries
    - Gross vs Net calculations
    - Period comparisons
-   - Aggregation functions
+   - Sector aggregation functions
+   - Agency aggregation functions
+   - Customer concentration analysis
 
 5. Add report parameters:
    - Month selection
    - Gross vs Net toggle
    - Market filter
+   - Sector filter
+   - Agency filter
    - AE filter
    - Export options
 
-Include drill-down links to detailed views.
+6. Implement drill-down features:
+   - Click sector to see customers
+   - Click agency to see clients
+   - Click market for details
+
+Include color coding for sectors and proper formatting for large numbers.
 ```
 
 ### Step 16: AE Performance Report
@@ -755,45 +834,67 @@ Requirements:
 Include user guide for non-technical users.
 ```
 
-### Step 19: Advanced Analytics
+### Step 19: Advanced Analytics with Sector Performance
 
-**Goal**: Add year-over-year analysis and sector performance tracking.
+**Goal**: Add year-over-year analysis, sector performance tracking, and language-based reporting.
 
 ```text
-Implement advanced analytics and comparison features.
+Implement advanced analytics with sector performance and language analysis features.
 
 Requirements:
 1. Create src/analytics/yoy_analysis.py with:
-   - Year-over-year calculations
-   - Growth rate analysis
+   - Year-over-year calculations by sector
+   - Growth rate analysis by market and sector
    - Seasonal adjustments
    - Trend identification
+   - Agency YoY comparisons
 
 2. Create src/analytics/sector_analysis.py with:
-   - Revenue by sector/type
-   - Market share calculations
+   - Revenue by sector breakdowns
+   - Sector market share calculations
    - Sector growth trends
-   - Competitive analysis
+   - Customer concentration by sector
+   - Competitive sector analysis
+   - Historical sector performance
 
-3. Create src/reports/analytics_dashboard.py with:
+3. Create src/analytics/language_analysis.py with:
+   - Revenue by language code
+   - Language trends over time
+   - Market-language correlations
+   - Language growth rates
+   - Multi-language customer analysis
+
+4. Create src/reports/analytics_dashboard.py with:
    - Comprehensive analytics view
+   - Sector performance heatmap
+   - Language revenue charts
+   - Agency performance matrix
    - Multiple time period comparisons
    - Predictive indicators
    - Exception reporting
 
-4. Add statistical functions:
-   - Moving averages
+5. Add statistical functions:
+   - Moving averages by sector
    - Standard deviations
    - Percentile rankings
    - Correlation analysis
+   - Sector volatility metrics
 
-5. Create visualization enhancements:
-   - Trend charts
-   - Heat maps
+6. Create visualization enhancements:
+   - Sector trend charts
+   - Language distribution maps
+   - Heat maps for market-sector performance
+   - Agency-client relationship diagrams
    - Comparison matrices
    - Performance scorecards
 
-Include interpretation guides for metrics.
+7. Implement sector-specific metrics:
+   - Automotive seasonality
+   - CPG consistency scores
+   - Insurance renewal patterns
+   - Outreach campaign effectiveness
+
+Include interpretation guides for metrics and sector-specific insights.
 ```
 
 ### Step 20: System Integration and Finalization

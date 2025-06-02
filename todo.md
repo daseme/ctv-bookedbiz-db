@@ -24,24 +24,30 @@
 - [x ] Create `pyproject.toml` with project configuration
 - [x ] Create `.gitignore` file
 - [x ] Create `README.md` with placeholders
-- [x ] Add `__init__.py` files to all packages
+- [ x] Add `__init__.py` files to all packages
 - [x ] Run `uv pip install -e .` to verify setup
-- [ ] Commit initial project structure
+- [x ] Commit initial project structure
 
 ### Step 2: Database Schema Definition
 - [ ] Create `src/database/schema.py`
-  - [ ] Define spots table schema
-  - [ ] Define customers table schema
-  - [ ] Define customer_mappings table schema
+  - [ ] Define agencies table schema
+  - [ ] Define customers table schema with sector field
+  - [ ] Define customer_mappings table schema with confidence scores
+  - [ ] Define spots table schema with all Excel columns
   - [ ] Define budget table schema
-  - [ ] Define pipeline table schema
+  - [ ] Define pipeline table schema with current flag
   - [ ] Define markets table schema
-  - [ ] Add proper indexes
+  - [ ] Define sectors table schema
+  - [ ] Define languages table schema
+  - [ ] Add proper indexes including sector and normalized_agency
+  - [ ] Add unique constraints on agency_name and normalized_name
 - [ ] Create `src/database/models.py`
   - [ ] Create dataclass for each table
+  - [ ] Add sector enum (AUTO, CPG, INS, OUTR, etc.)
   - [ ] Add type hints
   - [ ] Add validation methods
 - [ ] Write docstrings for all schemas
+- [ ] Document agency-customer relationships
 - [ ] Test schema creation in SQLite
 - [ ] Commit schema definitions
 
@@ -55,33 +61,45 @@
   - [ ] Function to create all tables
   - [ ] Function to verify database integrity
   - [ ] Function to create market mappings
+  - [ ] Function to populate sectors table
+  - [ ] Function to populate languages table
   - [ ] Function to set up indexes
 - [ ] Create `src/utils/config.py`
   - [ ] Database path configuration
   - [ ] Logging configuration
   - [ ] Environment settings
+  - [ ] Sector definitions
 - [ ] Add comprehensive error handling
 - [ ] Test database creation and connections
 - [ ] Commit connection management code
 
-### Step 4: Excel File Reader
+### Step 4: Excel File Reader with Bill Code Parsing
 - [ ] Install openpyxl dependency
 - [ ] Create `src/importers/excel_reader.py`
   - [ ] Implement ExcelReader class
   - [ ] Add file validation method
   - [ ] Add column reading method
   - [ ] Add row iterator
+  - [ ] Preserve all Excel columns
+- [ ] Create `src/importers/bill_code_parser.py`
+  - [ ] Parse "Agency:Customer" format
+  - [ ] Handle "Customer" only format
+  - [ ] Return (agency, customer) tuple
+  - [ ] Handle edge cases (multiple colons, empty)
 - [ ] Create `src/importers/data_validator.py`
-  - [ ] Add column validation
+  - [ ] Add all column validation
   - [ ] Add date format validation
   - [ ] Add currency validation
-  - [ ] Add revenue type checking
+  - [ ] Add time field validation (HH:MM:SS)
+  - [ ] Add revenue type checking (exclude "Trade")
+  - [ ] Add bill code format validation
 - [ ] Handle data type conversions
   - [ ] Date conversion (m/d/yy)
   - [ ] Currency to Decimal
   - [ ] Text encoding (UTF-8)
+  - [ ] Time fields (time_in, time_out)
 - [ ] Add error handling for corrupted files
-- [ ] Create unit tests for Excel reading
+- [ ] Create unit tests for bill code parsing
 - [ ] Test with sample Excel file
 - [ ] Commit Excel reader implementation
 
@@ -112,40 +130,64 @@
 
 ## Phase 2: Customer Normalization
 
-### Step 6: Customer Normalization Core
+### Step 6: Customer and Agency Normalization Core
 - [ ] Create `src/normalization/similarity.py`
   - [ ] Implement string preprocessing
   - [ ] Add suffix removal function
   - [ ] Add Levenshtein distance calculation
   - [ ] Add fuzzy matching algorithm
+- [ ] Create `src/normalization/normalizer_base.py`
+  - [ ] Implement BaseNormalizer class
+  - [ ] Add shared normalization methods
+  - [ ] Add similarity calculation
+  - [ ] Add caching mechanism
+- [ ] Create `src/normalization/agency_normalizer.py`
+  - [ ] Implement AgencyNormalizer class
+  - [ ] Add agency-specific rules
+  - [ ] Add get or create method
 - [ ] Create `src/normalization/customer_normalizer.py`
   - [ ] Implement CustomerNormalizer class
-  - [ ] Add similarity calculation
-  - [ ] Add match ranking
-  - [ ] Add caching mechanism
+  - [ ] Add customer-specific rules
+  - [ ] Add sector assignment
+  - [ ] Add agency linking
+- [ ] Create `src/database/agency_ops.py`
+  - [ ] Function to get existing agencies
+  - [ ] Function to create agency
+  - [ ] Function to find by name
 - [ ] Create `src/database/customer_ops.py`
   - [ ] Function to get existing customers
-  - [ ] Function to create customer
+  - [ ] Function to create customer with sector
   - [ ] Function to create mapping
-  - [ ] Function to get mappings
+  - [ ] Function to update sector
 - [ ] Add normalization configuration
 - [ ] Create unit tests with real examples
 - [ ] Test similarity matching accuracy
 - [ ] Commit normalization core
 
-### Step 7: Interactive Customer Mapping CLI
+### Step 7: Interactive Customer and Agency Mapping CLI
 - [ ] Enhance `src/normalization/customer_normalizer.py`
   - [ ] Add InteractiveNormalizer class
-  - [ ] Add choice presentation method
+  - [ ] Add agency choice presentation
+  - [ ] Add customer choice presentation
+  - [ ] Add sector choice presentation
   - [ ] Add decision memory
 - [ ] Create `src/cli/interactive_mapper.py`
-  - [ ] Display similarity matches
-  - [ ] Get user input
-  - [ ] Validate choices
+  - [ ] Display bill code parsing results
+  - [ ] Display agency similarity matches
+  - [ ] Display customer similarity matches
+  - [ ] Display sector selection menu
+  - [ ] Get and validate user input
   - [ ] Add create new option
+- [ ] Create `src/normalization/sector_manager.py`
+  - [ ] Define sectors (AUTO, CPG, INS, OUTR, etc.)
+  - [ ] Display sector menu method
+  - [ ] Validate sector selection
+  - [ ] Suggest sector based on name
 - [ ] Create `src/normalization/mapping_cache.py`
   - [ ] Implement session cache
-  - [ ] Add cache application
+  - [ ] Cache agency mappings
+  - [ ] Cache customer mappings
+  - [ ] Cache sector assignments
   - [ ] Add import/export methods
 - [ ] Update import process for normalization
 - [ ] Add colorized output for better UX
@@ -175,21 +217,36 @@
 ### Step 9: Complete Import with Normalization
 - [ ] Create `src/importers/normalized_importer.py`
   - [ ] Extend DataImporter class
+  - [ ] Add bill code parsing phase
+  - [ ] Add agency extraction
   - [ ] Add customer extraction
-  - [ ] Add normalization phase
-  - [ ] Add normalized import
+  - [ ] Add normalization phases
+  - [ ] Add sector assignment
 - [ ] Update import workflow
+  - [ ] Parse all bill codes
+  - [ ] Extract unique agencies
   - [ ] Extract unique customers
   - [ ] Load existing mappings
-  - [ ] Interactive normalization
-  - [ ] Apply mappings
+  - [ ] Interactive agency normalization
+  - [ ] Interactive customer normalization
+  - [ ] Sector assignment/confirmation
+  - [ ] Apply all mappings
   - [ ] Import normalized data
 - [ ] Create `src/cli/update_command.py`
   - [ ] Full update command
   - [ ] Auto/interactive modes
   - [ ] Dry-run option
   - [ ] Verbose logging
+  - [ ] Sector review option
 - [ ] Add comprehensive statistics
+  - [ ] Agencies created
+  - [ ] Customers created
+  - [ ] Sectors assigned
+  - [ ] Mappings applied
+- [ ] Handle special cases
+  - [ ] Customer-only bill codes
+  - [ ] Multiple colons
+  - [ ] Empty bill codes
 - [ ] Test with real data files
 - [ ] Verify normalized data
 - [ ] Commit complete normalization
@@ -235,10 +292,12 @@
   - [ ] Calendar month calculation
   - [ ] Month boundary detection
   - [ ] Current month identification
+  - [ ] Handle billing_type field
 - [ ] Update import for historical data
   - [ ] Check historical months
   - [ ] Skip historical updates
   - [ ] Preserve historical records
+  - [ ] Consider billing_type (Calendar/Broadcast)
 - [ ] Create `src/cli/finalize_command.py`
   - [ ] Finalize month command
   - [ ] List historical months
@@ -338,28 +397,41 @@
 - [ ] Verify responsive design
 - [ ] Commit report framework
 
-### Step 15: Monthly Revenue Report
+### Step 15: Monthly Revenue Report with Sector Analysis
 - [ ] Create `src/reports/monthly_revenue.py`
   - [ ] MonthlyRevenueReport class
-  - [ ] Customer queries
+  - [ ] Customer queries with sectors
+  - [ ] Agency performance queries
+  - [ ] Sector breakdown queries
   - [ ] AE queries
   - [ ] Market queries
   - [ ] MoM calculations
 - [ ] Implement report sections
   - [ ] Executive summary
-  - [ ] Top 10 customers
+  - [ ] Top 10 customers with sectors
+  - [ ] Agency performance ranking
+  - [ ] Sector breakdown pie chart
   - [ ] AE rankings
   - [ ] Market breakdown
   - [ ] Revenue types
+  - [ ] Agency vs direct split
 - [ ] Add visualizations
   - [ ] Revenue trends
+  - [ ] Sector pie chart
   - [ ] Market charts
+  - [ ] Agency contribution
   - [ ] AE performance
   - [ ] YoY indicators
 - [ ] Create `src/database/revenue_queries.py`
   - [ ] Optimized queries
-  - [ ] Aggregations
+  - [ ] Sector aggregations
+  - [ ] Agency aggregations
+  - [ ] Customer concentration
   - [ ] Comparisons
+- [ ] Add drill-down features
+  - [ ] Sector to customers
+  - [ ] Agency to clients
+  - [ ] Market details
 - [ ] Test report generation
 - [ ] Verify calculations
 - [ ] Commit monthly report
@@ -452,28 +524,50 @@
 - [ ] Test Datasette access
 - [ ] Commit Datasette integration
 
-### Step 19: Advanced Analytics
+### Step 19: Advanced Analytics with Sector Performance
 - [ ] Create `src/analytics/yoy_analysis.py`
-  - [ ] YoY calculations
-  - [ ] Growth analysis
+  - [ ] YoY calculations by sector
+  - [ ] Growth analysis by market/sector
   - [ ] Seasonal adjustments
   - [ ] Trend identification
+  - [ ] Agency YoY comparisons
 - [ ] Create `src/analytics/sector_analysis.py`
-  - [ ] Sector revenue
-  - [ ] Market share
-  - [ ] Growth trends
+  - [ ] Sector revenue breakdowns
+  - [ ] Market share calculations
+  - [ ] Growth trends by sector
+  - [ ] Customer concentration
   - [ ] Competitive analysis
+  - [ ] Historical performance
+- [ ] Create `src/analytics/language_analysis.py`
+  - [ ] Revenue by language code
+  - [ ] Language trends
+  - [ ] Market-language correlations
+  - [ ] Growth rates
+  - [ ] Multi-language customers
 - [ ] Create `src/reports/analytics_dashboard.py`
   - [ ] Analytics view
+  - [ ] Sector heatmap
+  - [ ] Language charts
+  - [ ] Agency matrix
   - [ ] Time comparisons
   - [ ] Predictive indicators
   - [ ] Exception reporting
 - [ ] Add statistical functions
-  - [ ] Moving averages
+  - [ ] Moving averages by sector
   - [ ] Standard deviations
   - [ ] Percentiles
   - [ ] Correlations
+  - [ ] Volatility metrics
 - [ ] Enhance visualizations
+  - [ ] Sector trends
+  - [ ] Language maps
+  - [ ] Market-sector heatmaps
+  - [ ] Agency diagrams
+- [ ] Sector-specific metrics
+  - [ ] AUTO seasonality
+  - [ ] CPG consistency
+  - [ ] INS patterns
+  - [ ] OUTR effectiveness
 - [ ] Test analytics
 - [ ] Commit advanced analytics
 
@@ -539,9 +633,13 @@
 
 ### Business Requirements
 - [ ] Weekly updates working
+- [ ] Agency:Customer parsing accurate
 - [ ] Customer normalization accurate
+- [ ] Sector assignment functional
 - [ ] Historical data protected
 - [ ] All reports generating
 - [ ] Budget/pipeline tracking functional
+- [ ] Language field preserved for future use
+- [ ] All Excel columns preserved in database
 
 ## Project Complete! 🎉
