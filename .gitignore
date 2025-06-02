@@ -1,0 +1,113 @@
+# =============================================
+# CTV Sales Database - Git Ignore File
+# Keeps proprietary data private while sharing code
+# =============================================
+
+# =============================================
+# PROPRIETARY DATA - NEVER COMMIT
+# =============================================
+
+# Database files (contain sensitive sales data)
+*.db
+*.sqlite
+*.sqlite3
+data/processed/
+data/backups/
+
+# Excel files (contain proprietary revenue data)
+*.xlsx
+*.xls
+*.xlsm
+data/raw/
+M:/
+
+# Customer name decisions (may contain sensitive company info)
+config/customer_name_decisions.json
+
+# Generated reports (may contain sensitive data)
+output/
+reports/generated/
+customer_name_mapping_report_*.txt
+
+# =============================================
+# PYTHON & DEVELOPMENT
+# =============================================
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments  
+.venv/
+venv/
+env/
+ENV/
+
+# UV lock files (can be regenerated)
+uv.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# =============================================
+# LOGS & TEMPORARY
+# =============================================
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Cache directories
+.cache/
+.pytest_cache/
+
+# =============================================
+# DATASETTE & WEB
+# =============================================
+
+# Datasette cache
+.datasette/
+
+# Web artifacts
+*.html.tmp
+.webassets-cache
+
+# =============================================
+# WINDOWS & SYSTEM
+# =============================================
+
+# Windows system files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Windows shortcuts
+*.lnk
+
+# Network drives (your M: drive references)
+*.network
+
+# =============================================
+# SAMPLE DATA STRUCTURE (COMMITTED)
+# Keep empty directories with .gitkeep
+# =============================================
+
+# These directories exist but contents are ignored:
+# data/raw/.gitkeep          - Excel files go here
+# data/processed/.gitkeep    - Generated databases go here  
+# output/reports/.gitkeep    - Generated reports go here

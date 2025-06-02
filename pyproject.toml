@@ -1,0 +1,11 @@
+[project]
+name = "bookedbiz-revenue-db"
+version = "0.1.0"
+description = "warehouse and analyze Booked Biz revenue data"
+readme = "README.md"
+authors = [{ name = "Kurt", email = "you@example.com" }]
+dependencies = []  # or leave empty if using requirements.txt
+requires-python = ">=3.10"
+
+[tool.uv]
+# Optional: pin UV-specific settings

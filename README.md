@@ -1,0 +1,69 @@
+# Sales Database Tool
+
+A structured, read-only sales database tool for a television network. Tracks booked revenue, budget, and pipeline across markets and revenue types using SQLite and Python.
+
+## Features
+
+- Excel import with validation  
+- Customer name normalization  
+- Market code standardization  
+- Budget & pipeline integration  
+- HTML dashboard reporting  
+- Datasette ad-hoc querying  
+
+## Project Structure
+
+sales-database-tool/
+├── src/
+│ ├── database/
+│ ├── importers/
+│ ├── normalization/
+│ ├── reports/
+│ ├── cli/
+│ └── utils/
+├── data/
+│ ├── raw/
+│ └── processed/
+├── tests/
+├── config/
+├── .venv/
+├── pyproject.toml
+├── requirements.txt
+└── README.md
+
+
+## Installation
+
+```bash
+uv venv .venv
+.venv\Scripts\activate
+uv pip install -r requirements.txt
+
+Usage
+
+python src/cli/import_command.py --file data/raw/latest.xlsx
+python src/cli/generate_report.py --type monthly --month 2025-01
+
+Requirements
+
+    Python ≥ 3.10
+
+    SQLite (built-in)
+
+    openpyxl
+
+    python-dateutil
+
+Development Philosophy
+
+    Incremental and test-driven
+
+    No orphaned code
+
+    Strong error handling and logging
+
+    Clean architecture and CLI tools
+
+License
+
+Proprietary – Internal Use Only
