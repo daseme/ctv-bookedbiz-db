@@ -96,49 +96,49 @@ def create_tables(conn):
     )
     """)
     
-    # 7. SPOTS TABLE
+    # 7. SPOTS TABLE (Core transactional data - fixed relationships)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS spots (
         spot_id INTEGER PRIMARY KEY AUTOINCREMENT,
         
-        -- Excel source fields
-        bill_code TEXT NOT NULL,
+        -- Excel source fields (preserved but cleaned up)
+        bill_code TEXT NOT NULL,  -- Original customer field from Excel
         air_date DATE NOT NULL,
         end_date DATE,
         day_of_week TEXT,
-        time_in TEXT,
-        time_out TEXT,
+        time_in TEXT,  -- HH:MM:SS format
+        time_out TEXT, -- HH:MM:SS format
         
         -- Spot details
         length_seconds TEXT,
         media TEXT,
         program TEXT,
-        language_code TEXT,
+        language_code TEXT,  -- More descriptive than 'lang'
         format TEXT,
-        sequence_number INTEGER,
+        sequence_number INTEGER,  -- More descriptive than 'number_field'
         line_number INTEGER,
         spot_type TEXT CHECK (spot_type IN ('AV', 'BB', 'BNS', 'COM', 'CRD', 'PKG', 'PRD', 'PRG', 'SVC', '')),
         estimate TEXT,
         
-        -- Financial fields
+        -- Financial fields (REMOVED negative value constraints)
         gross_rate DECIMAL(12, 2),
         make_good TEXT,
         spot_value DECIMAL(12, 2),
-        broadcast_month TEXT,
+        broadcast_month TEXT,  -- mmm-yy format, more descriptive than 'month'
         broker_fees DECIMAL(12, 2),
         priority INTEGER,
         station_net DECIMAL(12, 2),
         
         -- Business fields
-        sales_person TEXT,
+        sales_person TEXT,  -- AE name
         revenue_type TEXT,
         billing_type TEXT CHECK (billing_type IN ('Calendar', 'Broadcast', '')),
         agency_flag TEXT,
         affidavit_flag TEXT CHECK (affidavit_flag IN ('Y', 'N', '')),
         contract TEXT,
-        market_name TEXT,
+        market_name TEXT,  -- Original market name from Excel
         
-        -- Normalized relationships
+        -- Normalized relationships (using proper foreign keys)
         customer_id INTEGER,
         agency_id INTEGER,
         market_id INTEGER,
@@ -148,15 +148,12 @@ def create_tables(conn):
         load_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         source_file TEXT,
         is_historical BOOLEAN DEFAULT 0,
-        effective_date DATE,
+        effective_date DATE,  -- When this forward-looking data was loaded
         
-        -- Business rule constraints
-        CHECK (revenue_type != 'Trade' OR revenue_type IS NULL),
-        CHECK (gross_rate >= 0 OR gross_rate IS NULL),
-        CHECK (station_net >= 0 OR station_net IS NULL),
-        CHECK (broker_fees >= 0 OR broker_fees IS NULL),
+        -- Business rule constraints (UPDATED - removed financial >= 0 checks)
+        CHECK (revenue_type != 'Trade' OR revenue_type IS NULL),  -- Exclude Trade per business rules
         
-        -- Foreign key constraints
+        -- Foreign key constraints with proper cascading
         FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE RESTRICT,
         FOREIGN KEY (agency_id) REFERENCES agencies(agency_id) ON DELETE RESTRICT,
         FOREIGN KEY (market_id) REFERENCES markets(market_id) ON DELETE RESTRICT,

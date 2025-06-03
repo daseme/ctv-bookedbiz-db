@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS customer_mappings (
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE
 );
 
--- 7. SPOTS TABLE (Core transactional data - fixed relationships)
+# 7. SPOTS TABLE (Core transactional data - fixed relationships)
 CREATE TABLE IF NOT EXISTS spots (
     spot_id INTEGER PRIMARY KEY AUTOINCREMENT,
     
@@ -90,10 +90,10 @@ CREATE TABLE IF NOT EXISTS spots (
     format TEXT,
     sequence_number INTEGER,  -- More descriptive than 'number_field'
     line_number INTEGER,
-    spot_type TEXT CHECK (spot_type IN ('COM', 'BNS', '')),  -- COM or BNS
+    spot_type TEXT CHECK (spot_type IN ('AV', 'BB', 'BNS', 'COM', 'CRD', 'PKG', 'PRD', 'PRG', 'SVC', '')),
     estimate TEXT,
     
-    -- Financial fields
+    -- Financial fields (REMOVED negative value constraints)
     gross_rate DECIMAL(12, 2),
     make_good TEXT,
     spot_value DECIMAL(12, 2),
@@ -123,10 +123,8 @@ CREATE TABLE IF NOT EXISTS spots (
     is_historical BOOLEAN DEFAULT 0,
     effective_date DATE,  -- When this forward-looking data was loaded
     
-    -- Business rule constraints
+    -- Business rule constraints (UPDATED - removed financial >= 0 checks)
     CHECK (revenue_type != 'Trade' OR revenue_type IS NULL),  -- Exclude Trade per business rules
-    CHECK (station_net >= 0 OR station_net IS NULL),
-    CHECK (broker_fees >= 0 OR broker_fees IS NULL),
     
     -- Foreign key constraints with proper cascading
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE RESTRICT,
