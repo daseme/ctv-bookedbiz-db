@@ -125,7 +125,6 @@ CREATE TABLE IF NOT EXISTS spots (
     
     -- Business rule constraints
     CHECK (revenue_type != 'Trade' OR revenue_type IS NULL),  -- Exclude Trade per business rules
-    CHECK (gross_rate >= 0 OR gross_rate IS NULL),
     CHECK (station_net >= 0 OR station_net IS NULL),
     CHECK (broker_fees >= 0 OR broker_fees IS NULL),
     

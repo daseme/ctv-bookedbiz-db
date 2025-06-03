@@ -209,7 +209,9 @@ def test_import(excel_file: str, database_file: str, limit: int = 10):
         'spots_imported': 0,
         'new_agencies': 0,
         'new_customers': 0,
-        'customers_normalized': 0
+        'customers_normalized': 0,
+        'errors': [],  # Track detailed errors
+        'error_types': {}  # Count error types
     }
     
     try:
@@ -252,7 +254,7 @@ def test_import(excel_file: str, database_file: str, limit: int = 10):
                     if spot.market_id:
                         print(f"  Mapped market: {spot.market_name}")
                 
-                # Insert spot
+                # Insert spot (allow negative gross_rate for broker fees/adjustments)
                 db_conn.execute("""
                 INSERT INTO spots (
                     bill_code, air_date, gross_rate, sales_person, market_name, revenue_type,
@@ -269,8 +271,14 @@ def test_import(excel_file: str, database_file: str, limit: int = 10):
                 print(f"  ✓ Imported successfully")
                 
             except Exception as e:
+                error_msg = f"Row {i+1}: {str(e)}"
                 print(f"  ✗ Error: {e}")
                 stats['spots_processed'] += 1
+                stats['errors'].append(error_msg)
+                
+                # Count error types
+                error_type = type(e).__name__
+                stats['error_types'][error_type] = stats['error_types'].get(error_type, 0) + 1
         
         db_conn.commit()
         print(f"\n✅ Transaction committed successfully")
@@ -283,12 +291,38 @@ def test_import(excel_file: str, database_file: str, limit: int = 10):
         db_conn.close()
     
     # Print results
+    spots_skipped = stats['spots_processed'] - stats['spots_imported']
     print(f"\nImport Results:")
     print(f"  Spots processed: {stats['spots_processed']}")
     print(f"  Spots imported: {stats['spots_imported']}")
+    print(f"  Spots skipped: {spots_skipped}")
     print(f"  New agencies created: {stats['new_agencies']}")
     print(f"  New customers created: {stats['new_customers']}")
     print(f"  Customers normalized: {stats['customers_normalized']}")
+    
+    if spots_skipped > 0:
+        print(f"\n⚠️  Analysis of {spots_skipped} skipped spots:")
+        
+        # Show error type breakdown
+        if stats['error_types']:
+            print(f"  Error types:")
+            for error_type, count in sorted(stats['error_types'].items(), key=lambda x: x[1], reverse=True):
+                percentage = (count / spots_skipped) * 100
+                print(f"    {error_type}: {count} spots ({percentage:.1f}%)")
+        
+        # Show first few detailed errors as examples
+        print(f"\n  Sample errors:")
+        for i, error in enumerate(stats['errors'][:10]):  # Show first 10 errors
+            print(f"    {error}")
+        
+        if len(stats['errors']) > 10:
+            print(f"    ... and {len(stats['errors']) - 10} more errors")
+        
+        print(f"\n  💡 Common causes:")
+        print(f"    - Empty/invalid bill codes")
+        print(f"    - Missing air dates") 
+        print(f"    - Malformed data in Excel rows")
+        print(f"    - Date conversion issues")
     
     return stats['spots_imported'] > 0
 
