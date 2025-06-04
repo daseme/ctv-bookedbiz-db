@@ -107,13 +107,14 @@ class BroadcastMonthParser:
         
         # Try common date formats
         formats_to_try = [
-            '%m/%d/%Y',      # 11/15/2024
-            '%m/%d/%y',      # 11/15/24
-            '%Y-%m-%d',      # 2024-11-15
-            '%d/%m/%Y',      # 15/11/2024 (international)
-            '%Y/%m/%d',      # 2024/11/15
-            '%m-%d-%Y',      # 11-15-2024
-            '%m-%d-%y',      # 11-15-24
+            '%Y-%m-%d %H:%M:%S',  # NEW: Handle datetime strings like '2024-11-15 00:00:00'
+            '%Y-%m-%d',           # 2024-11-15
+            '%m/%d/%Y',           # 11/15/2024
+            '%m/%d/%y',           # 11/15/24
+            '%d/%m/%Y',           # 15/11/2024 (international)
+            '%Y/%m/%d',           # 2024/11/15
+            '%m-%d-%Y',           # 11-15-2024
+            '%m-%d-%y',           # 11-15-24
         ]
         
         for fmt in formats_to_try:
