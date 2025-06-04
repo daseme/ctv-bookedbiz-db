@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Database setup script - creates tables and populates reference data.
-Run this once to initialize the database.
+Enhanced database setup script - adds month closure and import batch tracking.
+Builds on existing schema while maintaining backward compatibility.
 """
 
 import sys
@@ -15,9 +15,9 @@ from database.reference_data import ReferenceDataManager
 
 
 def create_tables(conn):
-    """Create all database tables."""
+    """Create all database tables including new month closure and batch tracking."""
     
-    # 1. AGENCIES TABLE
+    # 1. AGENCIES TABLE (existing)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS agencies (
         agency_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +29,7 @@ def create_tables(conn):
     )
     """)
     
-    # 2. SECTORS TABLE
+    # 2. SECTORS TABLE (existing)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS sectors (
         sector_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +41,7 @@ def create_tables(conn):
     )
     """)
     
-    # 3. MARKETS TABLE
+    # 3. MARKETS TABLE (existing)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS markets (
         market_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +53,7 @@ def create_tables(conn):
     )
     """)
     
-    # 4. LANGUAGES TABLE
+    # 4. LANGUAGES TABLE (existing)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS languages (
         language_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +64,7 @@ def create_tables(conn):
     )
     """)
     
-    # 5. CUSTOMERS TABLE
+    # 5. CUSTOMERS TABLE (existing)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS customers (
         customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +82,7 @@ def create_tables(conn):
     )
     """)
     
-    # 6. CUSTOMER_MAPPINGS TABLE
+    # 6. CUSTOMER_MAPPINGS TABLE (existing)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS customer_mappings (
         mapping_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,7 +96,36 @@ def create_tables(conn):
     )
     """)
     
-    # 7. SPOTS TABLE (Core transactional data - fixed relationships)
+    # 7. NEW: MONTH CLOSURES TABLE for tracking closed broadcast months
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS month_closures (
+        broadcast_month TEXT PRIMARY KEY,  -- Format: 'Nov-24', 'Dec-24', etc.
+        closed_date DATE NOT NULL,
+        closed_by TEXT NOT NULL,
+        notes TEXT,
+        created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    
+    # 8. NEW: IMPORT BATCHES TABLE for audit trail
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS import_batches (
+        batch_id TEXT PRIMARY KEY,
+        import_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        import_mode TEXT NOT NULL CHECK (import_mode IN ('HISTORICAL', 'WEEKLY_UPDATE', 'MANUAL')),
+        source_file TEXT NOT NULL,
+        broadcast_months_affected TEXT,  -- JSON array of affected months
+        records_imported INTEGER DEFAULT 0,
+        records_deleted INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'RUNNING' CHECK (status IN ('RUNNING', 'COMPLETED', 'FAILED')),
+        started_by TEXT,
+        completed_at TIMESTAMP,
+        notes TEXT,
+        error_summary TEXT  -- JSON of any errors encountered
+    )
+    """)
+    
+    # 9. SPOTS TABLE (enhanced with batch tracking)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS spots (
         spot_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,24 +173,28 @@ def create_tables(conn):
         market_id INTEGER,
         language_id INTEGER,
         
-        -- Metadata
+        -- Metadata (existing)
         load_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         source_file TEXT,
         is_historical BOOLEAN DEFAULT 0,
         effective_date DATE,  -- When this forward-looking data was loaded
         
-        -- Business rule constraints (UPDATED - removed financial >= 0 checks)
-        CHECK (revenue_type != 'Trade' OR revenue_type IS NULL),  -- Exclude Trade per business rules
+        -- NEW: Import batch tracking
+        import_batch_id TEXT,
+        
+        -- Business rule constraints (excludes Trade revenue)
+        CHECK (revenue_type != 'Trade' OR revenue_type IS NULL),
         
         -- Foreign key constraints with proper cascading
         FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE RESTRICT,
         FOREIGN KEY (agency_id) REFERENCES agencies(agency_id) ON DELETE RESTRICT,
         FOREIGN KEY (market_id) REFERENCES markets(market_id) ON DELETE RESTRICT,
-        FOREIGN KEY (language_id) REFERENCES languages(language_id) ON DELETE RESTRICT
+        FOREIGN KEY (language_id) REFERENCES languages(language_id) ON DELETE RESTRICT,
+        FOREIGN KEY (import_batch_id) REFERENCES import_batches(batch_id) ON DELETE SET NULL
     )
     """)
     
-    # 8. BUDGET TABLE
+    # 10. BUDGET TABLE (existing)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS budget (
         budget_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,7 +210,7 @@ def create_tables(conn):
     )
     """)
     
-    # 9. PIPELINE TABLE
+    # 11. PIPELINE TABLE (existing)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS pipeline (
         pipeline_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,13 +228,19 @@ def create_tables(conn):
 
 
 def create_indexes(conn):
-    """Create performance indexes."""
+    """Create performance indexes including new month closure and batch indexes."""
     
-    # Spots table indexes
+    # Existing spots table indexes
     conn.execute("CREATE INDEX IF NOT EXISTS idx_spots_air_date ON spots(air_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_spots_customer_id ON spots(customer_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_spots_sales_person ON spots(sales_person)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_spots_historical ON spots(is_historical)")
+    
+    # NEW: Critical index for broadcast month operations
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_spots_broadcast_month_historical ON spots(broadcast_month, is_historical)")
+    
+    # NEW: Index for batch tracking and audit
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_spots_import_batch ON spots(import_batch_id)")
     
     # Composite indexes for common query patterns
     conn.execute("""
@@ -221,19 +260,24 @@ def create_indexes(conn):
     WHERE agency_id IS NOT NULL
     """)
     
-    # Reference table indexes
+    # Reference table indexes (existing)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_sector ON customers(sector_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_agency ON customers(agency_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_customer_mappings_original ON customer_mappings(original_name)")
     
-    # Budget and pipeline indexes
+    # Budget and pipeline indexes (existing)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_budget_ae_year_month ON budget(ae_name, year, month)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_ae_year_month ON pipeline(ae_name, year, month)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_current ON pipeline(is_current) WHERE is_current = 1")
+    
+    # NEW: Import batch indexes for audit and monitoring
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_import_batches_date ON import_batches(import_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_import_batches_mode ON import_batches(import_mode)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_import_batches_status ON import_batches(status)")
 
 
 def populate_reference_data(conn):
-    """Populate reference data tables."""
+    """Populate reference data tables (existing functionality)."""
     
     # Insert standard market mappings
     markets = [
@@ -304,7 +348,7 @@ def populate_reference_data(conn):
 
 
 def create_reporting_view(conn):
-    """Create the reporting view for fast queries."""
+    """Create the reporting view for fast queries (enhanced with batch info)."""
     conn.execute("""
     CREATE VIEW IF NOT EXISTS spots_reporting AS
     SELECT 
@@ -317,6 +361,7 @@ def create_reporting_view(conn):
         s.revenue_type,
         s.broadcast_month,
         s.is_historical,
+        s.import_batch_id,
         
         -- Customer information
         c.normalized_name as customer_name,
@@ -333,7 +378,16 @@ def create_reporting_view(conn):
         
         -- Language information
         l.language_code,
-        l.language_name
+        l.language_name,
+        
+        -- Import batch information
+        ib.import_mode,
+        ib.import_date,
+        ib.started_by,
+        
+        -- Month closure information
+        mc.closed_date,
+        mc.closed_by
         
     FROM spots s
     LEFT JOIN customers c ON s.customer_id = c.customer_id
@@ -341,13 +395,31 @@ def create_reporting_view(conn):
     LEFT JOIN agencies a ON s.agency_id = a.agency_id
     LEFT JOIN markets m ON s.market_id = m.market_id
     LEFT JOIN languages l ON s.language_id = l.language_id
+    LEFT JOIN import_batches ib ON s.import_batch_id = ib.batch_id
+    LEFT JOIN month_closures mc ON s.broadcast_month = mc.broadcast_month
     WHERE s.revenue_type != 'Trade' OR s.revenue_type IS NULL
     """)
 
 
+def add_import_batch_column_if_missing(conn):
+    """
+    Add import_batch_id column to existing spots table if it doesn't exist.
+    This handles migration for existing databases.
+    """
+    try:
+        # Check if column exists by trying to select it
+        conn.execute("SELECT import_batch_id FROM spots LIMIT 1")
+        print("  import_batch_id column already exists")
+    except Exception:
+        # Column doesn't exist, add it
+        print("  Adding import_batch_id column to spots table...")
+        conn.execute("ALTER TABLE spots ADD COLUMN import_batch_id TEXT")
+        print("  ✓ Added import_batch_id column")
+
+
 def setup_database(db_path: str):
     """Create database schema and populate reference data."""
-    print(f"Setting up database: {db_path}")
+    print(f"Setting up enhanced database: {db_path}")
     
     # Ensure directory exists
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -358,23 +430,26 @@ def setup_database(db_path: str):
         print("Creating tables...")
         create_tables(conn)
         
+        print("Checking for existing schema updates...")
+        add_import_batch_column_if_missing(conn)
+        
         print("Creating indexes...")
         create_indexes(conn)
         
         print("Populating reference data...")
         populate_reference_data(conn)
         
-        print("Creating reporting view...")
+        print("Creating enhanced reporting view...")
         create_reporting_view(conn)
         
-        print("Database setup complete!")
+        print("✅ Enhanced database setup complete!")
     
     db_conn.close()
 
 
 def verify_database(db_path: str):
-    """Verify database was created correctly."""
-    print(f"Verifying database: {db_path}")
+    """Verify database was created correctly including new tables."""
+    print(f"Verifying enhanced database: {db_path}")
     
     db_conn = DatabaseConnection(db_path)
     conn = db_conn.connect()
@@ -383,8 +458,12 @@ def verify_database(db_path: str):
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     tables = [row[0] for row in cursor.fetchall()]
     
-    expected_tables = ['agencies', 'sectors', 'markets', 'languages', 'customers', 
-                      'customer_mappings', 'spots', 'budget', 'pipeline']
+    expected_tables = [
+        'agencies', 'sectors', 'markets', 'languages', 'customers', 
+        'customer_mappings', 'spots', 'budget', 'pipeline',
+        'month_closures',  # NEW
+        'import_batches'   # NEW
+    ]
     
     print("Tables created:")
     for table in expected_tables:
@@ -393,32 +472,69 @@ def verify_database(db_path: str):
         else:
             print(f"  ✗ {table} (MISSING)")
     
-    # Check reference data
+    # Check new table structures
+    print("\nNew table verification:")
+    
+    # Check month_closures table
+    try:
+        cursor = conn.execute("SELECT * FROM month_closures LIMIT 0")
+        cols = [description[0] for description in cursor.description]
+        expected_cols = ['broadcast_month', 'closed_date', 'closed_by', 'notes', 'created_date']
+        missing_cols = set(expected_cols) - set(cols)
+        if not missing_cols:
+            print("  ✓ month_closures table structure correct")
+        else:
+            print(f"  ✗ month_closures missing columns: {missing_cols}")
+    except Exception as e:
+        print(f"  ✗ month_closures table error: {e}")
+    
+    # Check import_batches table
+    try:
+        cursor = conn.execute("SELECT * FROM import_batches LIMIT 0")
+        cols = [description[0] for description in cursor.description]
+        expected_cols = ['batch_id', 'import_date', 'import_mode', 'source_file', 'records_imported']
+        missing_cols = set(expected_cols) - set(cols)
+        if not missing_cols:
+            print("  ✓ import_batches table structure correct")
+        else:
+            print(f"  ✗ import_batches missing columns: {missing_cols}")
+    except Exception as e:
+        print(f"  ✗ import_batches table error: {e}")
+    
+    # Check spots table has new column
+    try:
+        cursor = conn.execute("SELECT import_batch_id FROM spots LIMIT 0")
+        print("  ✓ spots table has import_batch_id column")
+    except Exception as e:
+        print(f"  ✗ spots table missing import_batch_id: {e}")
+    
+    # Check reference data (existing functionality)
     cursor = conn.execute("SELECT COUNT(*) FROM markets")
     market_count = cursor.fetchone()[0]
-    print(f"Markets populated: {market_count}")
+    print(f"\nReference data:")
+    print(f"  Markets populated: {market_count}")
     
     cursor = conn.execute("SELECT COUNT(*) FROM sectors")
     sector_count = cursor.fetchone()[0]
-    print(f"Sectors populated: {sector_count}")
+    print(f"  Sectors populated: {sector_count}")
     
     cursor = conn.execute("SELECT COUNT(*) FROM languages")
     language_count = cursor.fetchone()[0]
-    print(f"Languages populated: {language_count}")
+    print(f"  Languages populated: {language_count}")
     
-    # Check view exists
+    # Check enhanced view exists
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='view' AND name='spots_reporting'")
     view_exists = cursor.fetchone() is not None
-    print(f"Reporting view: {'✓' if view_exists else '✗'}")
+    print(f"  Enhanced reporting view: {'✓' if view_exists else '✗'}")
     
     db_conn.close()
-    print("Verification complete!")
+    print("✅ Verification complete!")
 
 
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="Setup sales database")
+    parser = argparse.ArgumentParser(description="Setup enhanced sales database with month closure support")
     parser.add_argument("--db-path", default="data/database/production.db",
                        help="Database file path")
     parser.add_argument("--verify", action="store_true",
@@ -433,5 +549,5 @@ if __name__ == "__main__":
             verify_database(args.db_path)
             
     except Exception as e:
-        print(f"Database setup failed: {e}")
+        print(f"❌ Enhanced database setup failed: {e}")
         sys.exit(1)

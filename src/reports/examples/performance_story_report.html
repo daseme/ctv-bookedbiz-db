@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Quarterly Performance Story</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, 'Times New Roman', serif;
+            background-color: white;
+            margin: 0;
+            padding: 32px;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 24px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: normal;
+            color: #1a202c;
+            margin: 0 0 8px 0;
+        }
+        .header .subtitle {
+            font-size: 16px;
+            color: #718096;
+            font-style: italic;
+        }
+        
+        /* Story Sections */
+        .story-section {
+            margin: 48px 0;
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: normal;
+            color: #2d3748;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        
+        /* Enhanced Metrics Table */
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+            font-size: 13px;
+        }
+        .metrics-table th {
+            text-align: left;
+            padding: 10px 6px;
+            border-bottom: 2px solid #2d3748;
+            font-weight: normal;
+            color: #2d3748;
+            font-size: 12px;
+        }
+        .metrics-table td {
+            padding: 6px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 12px;
+        }
+        .metrics-table .number {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .positive { color: #2f855a; font-weight: 500; }
+        .negative { color: #c53030; font-weight: 500; }
+        .budget-good { color: #2f855a; font-weight: 500; }
+        .budget-warning { color: #d69e2e; font-weight: 500; }
+        .budget-poor { color: #c53030; font-weight: 500; }
+        .status-closed { 
+            background-color: #f0fff4; 
+            color: #2f855a;
+            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        .status-open { 
+            background-color: #fef5e7; 
+            color: #d69e2e;
+            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        
+        /* Chart Containers */
+        .chart-container {
+            margin: 32px 0;
+            background: #fafafa;
+            padding: 24px;
+            border-left: 3px solid #e2e8f0;
+        }
+        .chart-title {
+            font-size: 16px;
+            text-align: center;
+            margin-bottom: 16px;
+            color: #4a5568;
+        }
+        .chart {
+            position: relative;
+            height: 300px;
+        }
+        .chart.small {
+            height: 200px;
+        }
+        
+        /* Sparkline Table */
+        .sparkline-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }
+        .sparkline-table th {
+            text-align: left;
+            padding: 12px 8px;
+            border-bottom: 2px solid #2d3748;
+            font-weight: normal;
+        }
+        .sparkline-table td {
+            padding: 8px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: middle;
+        }
+        .sparkline-cell {
+            width: 120px;
+            height: 30px;
+        }
+        
+        /* Annotations */
+        .annotation {
+            font-size: 12px;
+            color: #718096;
+            font-style: italic;
+            text-align: center;
+            margin: 16px 0;
+        }
+        
+        /* Key Insight Box */
+        .insight-box {
+            background: #edf2f7;
+            border-left: 4px solid #4299e1;
+            padding: 16px;
+            margin: 24px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .insight-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+        .insight-text {
+            color: #4a5568;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Quarterly Performance Analysis</h1>
+            <div class="subtitle">The story of our revenue progression</div>
+        </div>
+
+        <!-- Key Insight -->
+        <div class="insight-box" id="keyInsight">
+            <!-- Populated by JavaScript -->
+        </div>
+
+        <!-- Current Year Status -->
+        <div class="story-section">
+            <div class="section-title">Current Year at a Glance</div>
+            <table class="metrics-table" id="currentYearTable">
+                <!-- Populated by JavaScript -->
+            </table>
+            <div class="annotation">
+                Closed quarters show final numbers; open quarters are preliminary
+            </div>
+        </div>
+
+        <!-- Year-over-Year Comparison -->
+        <div class="story-section">
+            <div class="section-title">This Year vs Last Year</div>
+            <div class="chart-container">
+                <div class="chart-title">Revenue Comparison by Quarter</div>
+                <div class="chart small">
+                    <canvas id="yoyChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Context -->
+        <div class="story-section">
+            <div class="section-title">Historical Context</div>
+            <div class="chart-container">
+                <div class="chart-title">Performance Within Historical Range</div>
+                <div class="chart">
+                    <canvas id="rangeChart"></canvas>
+                </div>
+                <div class="annotation">
+                    Gray bands show historical range (min-max) for each quarter
+                </div>
+            </div>
+        </div>
+
+        <!-- Individual AE Performance -->
+        <div class="story-section">
+            <div class="section-title">Individual Q1 Performance Trends</div>
+            <table class="sparkline-table" id="sparklineTable">
+                <!-- Populated by JavaScript -->
+            </table>
+            <div class="annotation">
+                Sparklines show Q1 progression over 6 years for each Account Executive
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const storyData = {
+  "current_year": 2025,
+  "previous_year": 2024,
+  "years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "current_quarters": [
+    {
+      "name": "Q1 2025",
+      "quarter": "Q1",
+      "revenue": 748336.07,
+      "customers": 47,
+      "previous_revenue": 634343.8605882353,
+      "previous_customers": 42,
+      "yoy_revenue_change": 17.97009737054256,
+      "yoy_customer_change": 5,
+      "revenue_per_customer_change": 5.420087011974208,
+      "budget": 718388.0,
+      "budget_performance": 104.16878761894685,
+      "budget_variance": 29948.06999999995,
+      "status": "closed"
+    },
+    {
+      "name": "Q2 2025",
+      "quarter": "Q2",
+      "revenue": 564052.12,
+      "customers": 42,
+      "previous_revenue": 683254.4770588236,
+      "previous_customers": 51,
+      "yoy_revenue_change": -17.446260662930285,
+      "yoy_customer_change": -9,
+      "revenue_per_customer_change": 0.24382633787036972,
+      "budget": 1064120.0,
+      "budget_performance": 53.006439123407134,
+      "budget_variance": -500067.88,
+      "status": "open"
+    },
+    {
+      "name": "Q3 2025",
+      "quarter": "Q3",
+      "revenue": 125843.21,
+      "customers": 9,
+      "previous_revenue": 702526.19,
+      "previous_customers": 43,
+      "yoy_revenue_change": -82.08704361612483,
+      "yoy_customer_change": -34,
+      "revenue_per_customer_change": -14.415875054818633,
+      "budget": 1327258.0,
+      "budget_performance": 9.48144294477788,
+      "budget_variance": -1201414.79,
+      "status": "open"
+    },
+    {
+      "name": "Q4 2025",
+      "quarter": "Q4",
+      "revenue": 66959.99,
+      "customers": 3,
+      "previous_revenue": 1207800.4329411765,
+      "previous_customers": 54,
+      "yoy_revenue_change": -94.45603858271997,
+      "yoy_customer_change": -51,
+      "revenue_per_customer_change": -0.20869448895943216,
+      "budget": 1235547.0,
+      "budget_performance": 5.419461177923625,
+      "budget_variance": -1168587.01,
+      "status": "open"
+    }
+  ],
+  "historical_ranges": {
+    "Q1": {
+      "min": 263879.62,
+      "max": 774548.8401470588,
+      "data": [
+        466107.651764706,
+        263879.62,
+        774548.8401470588,
+        673090.4272058823,
+        634343.8605882353,
+        748336.07
+      ]
+    },
+    "Q2": {
+      "min": 373203.4829411767,
+      "max": 683254.4770588236,
+      "data": [
+        373203.4829411767,
+        577230.6,
+        590377.3476470589,
+        521098.255,
+        683254.4770588236,
+        564052.12
+      ]
+    },
+    "Q3": {
+      "min": 125843.21,
+      "max": 702526.19,
+      "data": [
+        321548.34,
+        480252.6129411765,
+        589344.3876470588,
+        470653.21,
+        702526.19,
+        125843.21
+      ]
+    },
+    "Q4": {
+      "min": 66959.99,
+      "max": 1207800.4329411765,
+      "data": [
+        560970.0023529412,
+        590175.7664705883,
+        660322.9776470588,
+        547493.46,
+        1207800.4329411765,
+        66959.99
+      ]
+    }
+  },
+  "ae_trends": {
+    "Charmaine": {
+      "q1_data": [
+        463613.151764706,
+        262824.62,
+        727275.26,
+        610234.6935294117,
+        489966.37058823527,
+        524704.1399999999
+      ],
+      "current_q1": 524704.1399999999,
+      "yoy_change": 7.08982728142337
+    },
+    "WorldLink": {
+      "q1_data": [
+        0.0,
+        0.0,
+        22990.0,
+        38408.0,
+        120764.0,
+        95762.0
+      ],
+      "current_q1": 95762.0,
+      "yoy_change": -20.703189692292405
+    },
+    "House": {
+      "q1_data": [
+        2494.5,
+        1055.0,
+        24283.580147058823,
+        24447.73367647059,
+        23613.49,
+        127869.93000000001
+      ],
+      "current_q1": 127869.93000000001,
+      "yoy_change": 441.5122034057651
+    },
+    "National": {
+      "q1_data": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "current_q1": 0.0,
+      "yoy_change": null
+    }
+  },
+  "company_budgets": {
+    "Q1": 718388.0,
+    "Q2": 1064120.0,
+    "Q3": 1327258.0,
+    "Q4": 1235547.0
+  }
+};
+
+        // Utility functions
+        function formatCurrency(value) {
+            if (value >= 1000000) {
+                return `$${(value/1000000).toFixed(1)}M`;
+            } else if (value >= 1000) {
+                return `$${Math.round(value/1000)}K`;
+            }
+            return `$${Math.round(value)}`;
+        }
+
+        function formatPercent(value) {
+            if (value === null || value === undefined) return '--';
+            return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+        }
+
+        // Create key insight with budget context
+        function createKeyInsight() {
+            const container = document.getElementById('keyInsight');
+            
+            // Find best performing quarter YoY
+            const quarters = storyData.current_quarters.filter(q => q.yoy_revenue_change !== null);
+            if (quarters.length === 0) return;
+            
+            const bestQuarter = quarters.reduce((best, current) => 
+                current.yoy_revenue_change > best.yoy_revenue_change ? current : best
+            );
+            
+            // Find budget performance insights
+            const budgetQuarters = storyData.current_quarters.filter(q => q.budget > 0);
+            const avgBudgetPerformance = budgetQuarters.length > 0 ? 
+                budgetQuarters.reduce((sum, q) => sum + q.budget_performance, 0) / budgetQuarters.length : 0;
+            
+            let insightText = '';
+            
+            // Primary insight: YoY growth
+            if (bestQuarter.yoy_revenue_change > 15) {
+                insightText = `Strong growth momentum: ${bestQuarter.quarter} revenue up ${formatPercent(bestQuarter.yoy_revenue_change)} year-over-year.`;
+            } else if (bestQuarter.yoy_revenue_change > 5) {
+                insightText = `Solid growth: ${bestQuarter.quarter} revenue up ${formatPercent(bestQuarter.yoy_revenue_change)} year-over-year.`;
+            } else if (bestQuarter.yoy_revenue_change > 0) {
+                insightText = `Modest growth: Best quarter (${bestQuarter.quarter}) up ${formatPercent(bestQuarter.yoy_revenue_change)} year-over-year.`;
+            } else {
+                insightText = `Revenue challenges: ${bestQuarter.quarter} down ${formatPercent(Math.abs(bestQuarter.yoy_revenue_change))} year-over-year.`;
+            }
+            
+            // Secondary insight: Budget performance
+            if (avgBudgetPerformance > 0) {
+                if (avgBudgetPerformance >= 100) {
+                    insightText += ` Currently tracking ${avgBudgetPerformance.toFixed(0)}% to budget across quarters.`;
+                } else if (avgBudgetPerformance >= 85) {
+                    insightText += ` Tracking ${avgBudgetPerformance.toFixed(0)}% to budget - solid performance.`;
+                } else {
+                    insightText += ` Tracking ${avgBudgetPerformance.toFixed(0)}% to budget - needs attention.`;
+                }
+            }
+            
+            container.innerHTML = `
+                <div class="insight-title">Key Insights</div>
+                <div class="insight-text">${insightText}</div>
+            `;
+        }
+
+        // Create current year table with enhanced metrics
+        function createCurrentYearTable() {
+            const table = document.getElementById('currentYearTable');
+            
+            const headers = `
+                <tr>
+                    <th>Quarter</th>
+                    <th class="number">Revenue</th>
+                    <th class="number">vs Budget</th>
+                    <th class="number">vs ${storyData.previous_year}</th>
+                    <th class="number">Customers</th>
+                    <th class="number">Δ Customers</th>
+                    <th class="number">$/Customer Δ</th>
+                    <th>Status</th>
+                </tr>
+            `;
+            
+            const rows = storyData.current_quarters.map(q => {
+                // Budget performance styling
+                let budgetClass = '';
+                if (q.budget_performance >= 100) budgetClass = 'budget-good';
+                else if (q.budget_performance >= 75) budgetClass = 'budget-warning';
+                else budgetClass = 'budget-poor';
+                
+                const budgetText = q.budget > 0 ? `${q.budget_performance.toFixed(0)}%` : '--';
+                const customerChange = q.yoy_customer_change !== null ? 
+                    `${q.yoy_customer_change >= 0 ? '+' : ''}${q.yoy_customer_change}` : '--';
+                
+                return `
+                    <tr>
+                        <td><strong>${q.quarter} ${storyData.current_year}</strong></td>
+                        <td class="number">${formatCurrency(q.revenue)}</td>
+                        <td class="number ${budgetClass}">${budgetText}</td>
+                        <td class="number ${q.yoy_revenue_change > 0 ? 'positive' : q.yoy_revenue_change < 0 ? 'negative' : ''}">${formatPercent(q.yoy_revenue_change)}</td>
+                        <td class="number">${q.customers}</td>
+                        <td class="number ${q.yoy_customer_change > 0 ? 'positive' : q.yoy_customer_change < 0 ? 'negative' : ''}">${customerChange}</td>
+                        <td class="number ${q.revenue_per_customer_change > 0 ? 'positive' : q.revenue_per_customer_change < 0 ? 'negative' : ''}">${formatPercent(q.revenue_per_customer_change)}</td>
+                        <td><span class="status-${q.status}">${q.status.toUpperCase()}</span></td>
+                    </tr>
+                `;
+            }).join('');
+            
+            table.innerHTML = headers + rows;
+        }
+
+        // Create year-over-year chart
+        function createYoYChart() {
+            const ctx = document.getElementById('yoyChart').getContext('2d');
+            
+            const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+            const currentYear = storyData.current_year;
+            const previousYear = currentYear - 1;
+            
+            // Get data for both years
+            const currentData = quarters.map(q => {
+                const qData = storyData.historical_ranges[q];
+                return qData ? qData.data[qData.data.length - 1] : 0;
+            });
+            
+            const previousData = quarters.map(q => {
+                const qData = storyData.historical_ranges[q];
+                return qData && qData.data.length >= 2 ? qData.data[qData.data.length - 2] : 0;
+            });
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: quarters,
+                    datasets: [
+                        {
+                            label: previousYear.toString(),
+                            data: previousData,
+                            borderColor: '#a0aec0',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            pointRadius: 4
+                        },
+                        {
+                            label: currentYear.toString(),
+                            data: currentData,
+                            borderColor: '#2b6cb0',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            pointRadius: 5
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, padding: 20 }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: {
+                            grid: { color: '#f7fafc', lineWidth: 1 },
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    },
+                    elements: {
+                        line: { tension: 0 },
+                        point: { hoverRadius: 8 }
+                    }
+                }
+            });
+        }
+
+        // Create range chart with gray bands
+        function createRangeChart() {
+            const ctx = document.getElementById('rangeChart').getContext('2d');
+            
+            const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+            
+            // Get min/max data for each quarter
+            const minData = quarters.map(q => {
+                const range = storyData.historical_ranges[q];
+                return range ? range.min : 0;
+            });
+            
+            const maxData = quarters.map(q => {
+                const range = storyData.historical_ranges[q];
+                return range ? range.max : 0;
+            });
+            
+            // Get current performance data
+            const currentData = quarters.map(q => {
+                const range = storyData.historical_ranges[q];
+                return range ? range.data[range.data.length - 1] : 0;
+            });
+            
+            // Create datasets with proper fill configuration
+            const datasets = [
+                // Bottom boundary of gray band (invisible line)
+                {
+                    label: '',
+                    data: minData,
+                    backgroundColor: 'transparent',
+                    borderColor: 'transparent',
+                    pointRadius: 0,
+                    fill: false
+                },
+                // Top boundary of gray band (creates the fill)
+                {
+                    label: 'Historical Range',
+                    data: maxData,
+                    backgroundColor: 'rgba(160, 174, 192, 0.3)',
+                    borderColor: 'rgba(160, 174, 192, 0.5)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: '-1' // Fill between this dataset and the previous one
+                },
+                // Current performance line (on top)
+                {
+                    label: `${storyData.current_year} Performance`,
+                    data: currentData,
+                    borderColor: '#2b6cb0',
+                    backgroundColor: '#2b6cb0',
+                    borderWidth: 3,
+                    pointRadius: 6,
+                    pointBackgroundColor: '#2b6cb0',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    fill: false
+                }
+            ];
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: quarters,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { 
+                                usePointStyle: true, 
+                                padding: 20,
+                                filter: function(item) {
+                                    return item.text !== ''; // Hide empty labels
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    if (label === 'Historical Range') {
+                                        const quarter = context.label;
+                                        const range = storyData.historical_ranges[quarter];
+                                        return `${quarter} Range: ${formatCurrency(range.min)} - ${formatCurrency(range.max)}`;
+                                    }
+                                    return `${label}: ${formatCurrency(context.parsed.y)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            grid: { display: false },
+                            ticks: { font: { size: 12 } }
+                        },
+                        y: {
+                            grid: { color: '#f7fafc', lineWidth: 1 },
+                            ticks: {
+                                font: { size: 11 },
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    },
+                    elements: {
+                        line: { tension: 0.1 },
+                        point: { hoverRadius: 8 }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
+        }
+
+        // Create sparkline table
+        function createSparklineTable() {
+            const table = document.getElementById('sparklineTable');
+            
+            const headers = `
+                <tr>
+                    <th>Account Executive</th>
+                    <th>Q1 Trend</th>
+                    <th class="number">Current Q1</th>
+                    <th class="number">vs Prior Year</th>
+                </tr>
+            `;
+            
+            const rows = Object.entries(storyData.ae_trends).map(([aeName, aeData]) => {
+                return `
+                    <tr>
+                        <td>${aeName}</td>
+                        <td>
+                            <canvas class="sparkline-cell" id="spark_${aeName.replace(/\s+/g, '_')}"></canvas>
+                        </td>
+                        <td class="number">${formatCurrency(aeData.current_q1)}</td>
+                        <td class="number ${aeData.yoy_change > 0 ? 'positive' : aeData.yoy_change < 0 ? 'negative' : ''}">${formatPercent(aeData.yoy_change)}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            table.innerHTML = headers + rows;
+            
+            // Create sparklines
+            Object.entries(storyData.ae_trends).forEach(([aeName, aeData]) => {
+                const canvasId = `spark_${aeName.replace(/\s+/g, '_')}`;
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: storyData.years,
+                        datasets: [{
+                            data: aeData.q1_data,
+                            borderColor: '#3182ce',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            pointHoverRadius: 3,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { display: false },
+                            y: { display: false }
+                        },
+                        elements: { line: { tension: 0.1 } },
+                        interaction: { intersect: false }
+                    }
+                });
+            });
+        }
+
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', function() {
+            createKeyInsight();
+            createCurrentYearTable();
+            createYoYChart();
+            createRangeChart();
+            createSparklineTable();
+        });
+    </script>
+</body>
+</html>
