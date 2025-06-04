@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Management Expectation Tracking Report</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, 'Times New Roman', serif;
+            background-color: white;
+            margin: 0;
+            padding: 32px;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 24px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: normal;
+            color: #1a202c;
+            margin: 0 0 8px 0;
+        }
+        .header .subtitle {
+            font-size: 16px;
+            color: #718096;
+            font-style: italic;
+        }
+        
+        /* Story Sections */
+        .story-section {
+            margin: 48px 0;
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: normal;
+            color: #2d3748;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        
+        /* Enhanced Metrics Table */
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+            font-size: 12px;
+        }
+        .metrics-table th {
+            text-align: left;
+            padding: 8px 4px;
+            border-bottom: 2px solid #2d3748;
+            font-weight: normal;
+            color: #2d3748;
+            font-size: 11px;
+        }
+        .metrics-table td {
+            padding: 6px 4px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 11px;
+        }
+        .metrics-table .number {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .positive { color: #2f855a; font-weight: 500; }
+        .negative { color: #c53030; font-weight: 500; }
+        .neutral { color: #4a5568; }
+        .expectation-increased { background-color: #e6fffa; color: #2f855a; }
+        .expectation-decreased { background-color: #fed7d7; color: #c53030; }
+        .expectation-stable { background-color: #f7fafc; color: #4a5568; }
+        
+        /* Chart Containers */
+        .chart-container {
+            margin: 32px 0;
+            background: #fafafa;
+            padding: 24px;
+            border-left: 3px solid #e2e8f0;
+        }
+        .chart-title {
+            font-size: 16px;
+            text-align: center;
+            margin-bottom: 16px;
+            color: #4a5568;
+        }
+        .chart {
+            position: relative;
+            height: 300px;
+        }
+        .chart.small {
+            height: 200px;
+        }
+        
+        /* AE Expectation Cards */
+        .ae-expectations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 24px;
+            margin: 32px 0;
+        }
+        .ae-expectation-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .ae-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .ae-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        .expectation-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-above-budget { background: #c6f6d5; color: #2f855a; }
+        .badge-below-budget { background: #fed7d7; color: #c53030; }
+        .badge-on-budget { background: #bee3f8; color: #2b6cb0; }
+        
+        .expectation-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .expectation-metric {
+            text-align: center;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+        }
+        .expectation-metric-label {
+            font-size: 10px;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+        .expectation-metric-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        .expectation-metric-change {
+            font-size: 9px;
+            margin-top: 2px;
+        }
+        
+        /* Key Insight Box */
+        .insight-box {
+            background: #edf2f7;
+            border-left: 4px solid #4299e1;
+            padding: 16px;
+            margin: 24px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .insight-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+        .insight-text {
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+        
+        .annotation {
+            font-size: 12px;
+            color: #718096;
+            font-style: italic;
+            text-align: center;
+            margin: 16px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Management Expectation Tracking</h1>
+            <div class="subtitle">Budget vs Current Expectations vs Actual Performance</div>
+        </div>
+
+        <!-- Key Insights -->
+        <div class="insight-box" id="managementInsights">
+            <!-- Populated by JavaScript -->
+        </div>
+
+        <!-- Expectation Summary Table -->
+        <div class="story-section">
+            <div class="section-title">Quarterly Expectation Analysis</div>
+            <table class="metrics-table" id="expectationTable">
+                <!-- Populated by JavaScript -->
+            </table>
+            <div class="annotation">
+                Current Expectation = Assigned Revenue + Pipeline
+            </div>
+        </div>
+
+        <!-- Expectation vs Budget Chart -->
+        <div class="story-section">
+            <div class="chart-container">
+                <div class="chart-title">Budget vs Current Expectations vs Assigned Revenue</div>
+                <div class="chart">
+                    <canvas id="expectationChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Individual AE Expectation Tracking -->
+        <div class="story-section">
+            <div class="section-title">Individual AE Expectation Tracking</div>
+            <div class="ae-expectations-grid" id="aeExpectationsGrid">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const storyData = {
+  "current_year": 2025,
+  "previous_year": 2024,
+  "years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "current_quarters": [
+    {
+      "name": "Q1 2025",
+      "quarter": "Q1",
+      "assigned": 748336.07,
+      "pipeline": 0.0,
+      "budget": 718388.0,
+      "current_expectation": 748336.07,
+      "previous_expectation": 634343.8605882353,
+      "budget_variance": 29948.06999999995,
+      "budget_variance_pct": 4.168787618946857,
+      "expectation_vs_budget": 104.16878761894685,
+      "assigned_vs_expectation": 100.0,
+      "expectation_yoy": 17.97009737054256,
+      "status": "closed"
+    },
+    {
+      "name": "Q2 2025",
+      "quarter": "Q2",
+      "assigned": 564052.12,
+      "pipeline": 134696.71049402558,
+      "budget": 1064120.0,
+      "current_expectation": 698748.8304940256,
+      "previous_expectation": 683254.4770588236,
+      "budget_variance": -365371.1695059744,
+      "budget_variance_pct": -34.33552320283186,
+      "expectation_vs_budget": 65.66447679716813,
+      "assigned_vs_expectation": 80.72315764753509,
+      "expectation_yoy": 2.2677280508866797,
+      "status": "open"
+    },
+    {
+      "name": "Q3 2025",
+      "quarter": "Q3",
+      "assigned": 125843.21,
+      "pipeline": 831150.7605931874,
+      "budget": 1327258.0,
+      "current_expectation": 956993.9705931874,
+      "previous_expectation": 702526.19,
+      "budget_variance": -370264.0294068126,
+      "budget_variance_pct": -27.896914496413856,
+      "expectation_vs_budget": 72.10308550358614,
+      "assigned_vs_expectation": 13.149843558784053,
+      "expectation_yoy": 36.22182122394433,
+      "status": "open"
+    },
+    {
+      "name": "Q4 2025",
+      "quarter": "Q4",
+      "assigned": 66959.99,
+      "pipeline": 904820.1732507674,
+      "budget": 1235547.0,
+      "current_expectation": 971780.1632507674,
+      "previous_expectation": 1207800.4329411765,
+      "budget_variance": -263766.8367492326,
+      "budget_variance_pct": -21.348183173058782,
+      "expectation_vs_budget": 78.65181682694121,
+      "assigned_vs_expectation": 6.890446268835909,
+      "expectation_yoy": -19.541330111603294,
+      "status": "open"
+    }
+  ],
+  "ae_expectations": {
+    "Charmaine": {
+      "quarters": [
+        {
+          "quarter": "Q1",
+          "assigned": 524704.1399999999,
+          "pipeline": 0.0,
+          "budget": 400194.0,
+          "current_expectation": 524704.1399999999,
+          "expectation_change_from_budget": 124510.1399999999,
+          "expectation_change_pct": 31.112445463949957,
+          "assigned_completion_pct": 100.0
+        },
+        {
+          "quarter": "Q2",
+          "assigned": 355958.07999999996,
+          "pipeline": 103721.05882352949,
+          "budget": 513956.0,
+          "current_expectation": 459679.1388235295,
+          "expectation_change_from_budget": -54276.86117647053,
+          "expectation_change_pct": -10.56060463862092,
+          "assigned_completion_pct": 77.4362049387349
+        },
+        {
+          "quarter": "Q3",
+          "assigned": 103113.22,
+          "pipeline": 417072.14896051574,
+          "budget": 527185.0,
+          "current_expectation": 520185.3689605157,
+          "expectation_change_from_budget": -6999.631039484288,
+          "expectation_change_pct": -1.327737139615939,
+          "assigned_completion_pct": 19.82239912015417
+        },
+        {
+          "quarter": "Q4",
+          "assigned": 50285.0,
+          "pipeline": 531122.529500767,
+          "budget": 591908.0,
+          "current_expectation": 581407.529500767,
+          "expectation_change_from_budget": -10500.470499232993,
+          "expectation_change_pct": -1.7740038146524448,
+          "assigned_completion_pct": 8.64883880041558
+        }
+      ],
+      "totals": {
+        "assigned": 1034060.4399999998,
+        "pipeline": 1051915.7372848121,
+        "budget": 2033243.0,
+        "current_expectation": 2085976.177284812,
+        "expectation_vs_budget_pct": 102.59355017008849,
+        "assigned_vs_expectation_pct": 49.57201579099399
+      },
+      "expectation_changes": [
+        {
+          "ae": "Charmaine",
+          "quarter": "Q1",
+          "change_amount": 124510.1399999999,
+          "change_pct": 31.112445463949957,
+          "reason": "Pipeline adjusted"
+        },
+        {
+          "ae": "Charmaine",
+          "quarter": "Q2",
+          "change_amount": -54276.86117647053,
+          "change_pct": -10.56060463862092,
+          "reason": "Pipeline adjusted"
+        }
+      ]
+    },
+    "WorldLink": {
+      "quarters": [
+        {
+          "quarter": "Q1",
+          "assigned": 95762.0,
+          "pipeline": 0.0,
+          "budget": 115519.0,
+          "current_expectation": 95762.0,
+          "expectation_change_from_budget": -19757.0,
+          "expectation_change_pct": -17.10281425566357,
+          "assigned_completion_pct": 100.0
+        },
+        {
+          "quarter": "Q2",
+          "assigned": 60301.0,
+          "pipeline": 5147.794999999998,
+          "budget": 106278.0,
+          "current_expectation": 65448.795,
+          "expectation_change_from_budget": -40829.205,
+          "expectation_change_pct": -38.417362953762776,
+          "assigned_completion_pct": 92.13462218823128
+        },
+        {
+          "quarter": "Q3",
+          "assigned": 0.0,
+          "pipeline": 101664.735,
+          "budget": 101665.0,
+          "current_expectation": 101664.735,
+          "expectation_change_from_budget": -0.2649999999994179,
+          "expectation_change_pct": -0.00026066001081927697,
+          "assigned_completion_pct": 0.0
+        },
+        {
+          "quarter": "Q4",
+          "assigned": 0.0,
+          "pipeline": 138592.96125,
+          "budget": 152639.0,
+          "current_expectation": 138592.96125,
+          "expectation_change_from_budget": -14046.038750000007,
+          "expectation_change_pct": -9.20212969817675,
+          "assigned_completion_pct": 0.0
+        }
+      ],
+      "totals": {
+        "assigned": 156063.0,
+        "pipeline": 245405.49125,
+        "budget": 476101.0,
+        "current_expectation": 401468.49124999996,
+        "expectation_vs_budget_pct": 84.32422768488198,
+        "assigned_vs_expectation_pct": 38.873038208823566
+      },
+      "expectation_changes": [
+        {
+          "ae": "WorldLink",
+          "quarter": "Q1",
+          "change_amount": -19757.0,
+          "change_pct": -17.10281425566357,
+          "reason": "Pipeline adjusted"
+        },
+        {
+          "ae": "WorldLink",
+          "quarter": "Q2",
+          "change_amount": -40829.205,
+          "change_pct": -38.417362953762776,
+          "reason": "Pipeline adjusted"
+        }
+      ]
+    },
+    "House": {
+      "quarters": [
+        {
+          "quarter": "Q1",
+          "assigned": 127869.93000000001,
+          "pipeline": 0.0,
+          "budget": 202675.0,
+          "current_expectation": 127869.93000000001,
+          "expectation_change_from_budget": -74805.06999999999,
+          "expectation_change_pct": -36.908878746762056,
+          "assigned_completion_pct": 100.0
+        },
+        {
+          "quarter": "Q2",
+          "assigned": 147793.04,
+          "pipeline": 25827.856670496098,
+          "budget": 293886.0,
+          "current_expectation": 173620.8966704961,
+          "expectation_change_from_budget": -120265.10332950391,
+          "expectation_change_pct": -40.92236558716778,
+          "assigned_completion_pct": 85.1239930412794
+        },
+        {
+          "quarter": "Q3",
+          "assigned": 22729.99,
+          "pipeline": 312413.8766326717,
+          "budget": 346144.0,
+          "current_expectation": 335143.8666326717,
+          "expectation_change_from_budget": -11000.133367328322,
+          "expectation_change_pct": -3.177906699907646,
+          "assigned_completion_pct": 6.782159025727537
+        },
+        {
+          "quarter": "Q4",
+          "assigned": 16674.99,
+          "pipeline": 235104.6825000004,
+          "budget": 254280.0,
+          "current_expectation": 251779.6725000004,
+          "expectation_change_from_budget": -2500.3274999996065,
+          "expectation_change_pct": -0.9832969561112185,
+          "assigned_completion_pct": 6.622849984047054
+        }
+      ],
+      "totals": {
+        "assigned": 315067.95,
+        "pipeline": 573346.4158031682,
+        "budget": 1096985.0,
+        "current_expectation": 888414.3658031682,
+        "expectation_vs_budget_pct": 80.98692013137537,
+        "assigned_vs_expectation_pct": 35.46407646337009
+      },
+      "expectation_changes": [
+        {
+          "ae": "House",
+          "quarter": "Q1",
+          "change_amount": -74805.06999999999,
+          "change_pct": -36.908878746762056,
+          "reason": "Pipeline adjusted"
+        },
+        {
+          "ae": "House",
+          "quarter": "Q2",
+          "change_amount": -120265.10332950391,
+          "change_pct": -40.92236558716778,
+          "reason": "Pipeline adjusted"
+        }
+      ]
+    },
+    "National": {
+      "quarters": [
+        {
+          "quarter": "Q1",
+          "assigned": 0.0,
+          "pipeline": 0.0,
+          "budget": 0.0,
+          "current_expectation": 0.0,
+          "expectation_change_from_budget": 0.0,
+          "expectation_change_pct": 0,
+          "assigned_completion_pct": 0
+        },
+        {
+          "quarter": "Q2",
+          "assigned": 0.0,
+          "pipeline": 0.0,
+          "budget": 150000.0,
+          "current_expectation": 0.0,
+          "expectation_change_from_budget": -150000.0,
+          "expectation_change_pct": -100.0,
+          "assigned_completion_pct": 0
+        },
+        {
+          "quarter": "Q3",
+          "assigned": 0.0,
+          "pipeline": 0.0,
+          "budget": 352264.0,
+          "current_expectation": 0.0,
+          "expectation_change_from_budget": -352264.0,
+          "expectation_change_pct": -100.0,
+          "assigned_completion_pct": 0
+        },
+        {
+          "quarter": "Q4",
+          "assigned": 0.0,
+          "pipeline": 0.0,
+          "budget": 236720.0,
+          "current_expectation": 0.0,
+          "expectation_change_from_budget": -236720.0,
+          "expectation_change_pct": -100.0,
+          "assigned_completion_pct": 0
+        }
+      ],
+      "totals": {
+        "assigned": 0.0,
+        "pipeline": 0.0,
+        "budget": 738984.0,
+        "current_expectation": 0.0,
+        "expectation_vs_budget_pct": 0.0,
+        "assigned_vs_expectation_pct": 0
+      },
+      "expectation_changes": [
+        {
+          "ae": "National",
+          "quarter": "Q2",
+          "change_amount": -150000.0,
+          "change_pct": -100.0,
+          "reason": "Pipeline adjusted"
+        },
+        {
+          "ae": "National",
+          "quarter": "Q3",
+          "change_amount": -352264.0,
+          "change_pct": -100.0,
+          "reason": "Pipeline adjusted"
+        },
+        {
+          "ae": "National",
+          "quarter": "Q4",
+          "change_amount": -236720.0,
+          "change_pct": -100.0,
+          "reason": "Pipeline adjusted"
+        }
+      ]
+    }
+  },
+  "expectation_changes": [],
+  "management_insights": [
+    "\ud83d\udcc9 Management has reduced overall expectations by 22.3% below original budget",
+    "\ud83c\udfaf Significant expectation adjustments: WorldLink: decreased 16%, House: decreased 19%, National: decreased 100%",
+    "\u26a0\ufe0f Zero pipeline expectations: National - management expects no additional revenue"
+  ]
+};
+
+        // Utility functions
+        function formatCurrency(value) {
+            if (value === null || value === undefined || isNaN(value)) {
+                return '$0';
+            }
+            if (value >= 1000000) {
+                return `$${(value/1000000).toFixed(1)}M`;
+            } else if (value >= 1000) {
+                return `$${Math.round(value/1000)}K`;
+            }
+            return `$${Math.round(value)}`;
+        }
+
+        function formatPercent(value) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
+            return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+        }
+
+        function getExpectationBadge(expectationVsBudget) {
+            if (expectationVsBudget > 105) return { class: 'badge-above-budget', text: 'Above Budget' };
+            if (expectationVsBudget < 95) return { class: 'badge-below-budget', text: 'Below Budget' };
+            return { class: 'badge-on-budget', text: 'On Budget' };
+        }
+
+        // Create management insights
+        function createManagementInsights() {
+            const container = document.getElementById('managementInsights');
+            
+            const insights = storyData.management_insights || [];
+            
+            let insightHtml = '<div class="insight-title">Management Expectation Insights</div>';
+            
+            if (insights.length > 0) {
+                insights.forEach(insight => {
+                    insightHtml += `<div class="insight-text">${insight}</div>`;
+                });
+            } else {
+                insightHtml += '<div class="insight-text">No significant expectation changes detected from original budget.</div>';
+            }
+            
+            container.innerHTML = insightHtml;
+        }
+
+        // Create expectation table
+        function createExpectationTable() {
+            const table = document.getElementById('expectationTable');
+            
+            const headers = `
+                <tr>
+                    <th>Quarter</th>
+                    <th class="number">Original Budget</th>
+                    <th class="number">Current Expectation</th>
+                    <th class="number">Assigned Revenue</th>
+                    <th class="number">Pipeline</th>
+                    <th class="number">Expectation vs Budget</th>
+                    <th class="number">Completion %</th>
+                </tr>
+            `;
+            
+            const rows = storyData.current_quarters.map(q => {
+                const expectationClass = q.expectation_vs_budget > 105 ? 'expectation-increased' :
+                                      q.expectation_vs_budget < 95 ? 'expectation-decreased' : 'expectation-stable';
+                
+                return `
+                    <tr>
+                        <td><strong>${q.quarter} ${storyData.current_year}</strong></td>
+                        <td class="number">${formatCurrency(q.budget)}</td>
+                        <td class="number ${expectationClass}">${formatCurrency(q.current_expectation)}</td>
+                        <td class="number">${formatCurrency(q.assigned)}</td>
+                        <td class="number">${formatCurrency(q.pipeline)}</td>
+                        <td class="number ${q.budget_variance > 0 ? 'positive' : q.budget_variance < 0 ? 'negative' : 'neutral'}">${formatPercent(q.budget_variance_pct)}</td>
+                        <td class="number">${q.assigned_vs_expectation.toFixed(0)}%</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            table.innerHTML = headers + rows;
+        }
+
+        // Create expectation chart
+        function createExpectationChart() {
+            const ctx = document.getElementById('expectationChart').getContext('2d');
+            
+            const quarters = storyData.current_quarters.map(q => q.quarter);
+            const budgetData = storyData.current_quarters.map(q => q.budget);
+            const expectationData = storyData.current_quarters.map(q => q.current_expectation);
+            const assignedData = storyData.current_quarters.map(q => q.assigned);
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: quarters,
+                    datasets: [
+                        {
+                            label: 'Original Budget',
+                            data: budgetData,
+                            backgroundColor: 'rgba(160, 174, 192, 0.6)',
+                            borderColor: '#a0aec0',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Current Expectation',
+                            data: expectationData,
+                            backgroundColor: 'rgba(56, 178, 172, 0.6)',
+                            borderColor: '#38b2ac',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Assigned Revenue',
+                            data: assignedData,
+                            backgroundColor: 'rgba(49, 130, 206, 0.8)',
+                            borderColor: '#3182ce',
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, padding: 20 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            grid: { display: false },
+                            ticks: { font: { size: 12 } }
+                        },
+                        y: {
+                            grid: { color: '#f7fafc', lineWidth: 1 },
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create AE expectation cards
+        function createAEExpectationsGrid() {
+            const container = document.getElementById('aeExpectationsGrid');
+            
+            Object.entries(storyData.ae_expectations).forEach(([aeName, aeData]) => {
+                const totals = aeData.totals;
+                const badge = getExpectationBadge(totals.expectation_vs_budget_pct);
+                
+                const aeCard = document.createElement('div');
+                aeCard.className = 'ae-expectation-card';
+                aeCard.innerHTML = `
+                    <div class="ae-card-header">
+                        <div class="ae-name">${aeName}</div>
+                        <div class="expectation-badge ${badge.class}">${badge.text}</div>
+                    </div>
+                    <div class="expectation-metrics">
+                        <div class="expectation-metric">
+                            <div class="expectation-metric-label">Current Expectation</div>
+                            <div class="expectation-metric-value">${formatCurrency(totals.current_expectation)}</div>
+                            <div class="expectation-metric-change ${totals.expectation_vs_budget_pct > 100 ? 'positive' : totals.expectation_vs_budget_pct < 100 ? 'negative' : 'neutral'}">${formatPercent(totals.expectation_vs_budget_pct - 100)} vs budget</div>
+                        </div>
+                        <div class="expectation-metric">
+                            <div class="expectation-metric-label">Progress</div>
+                            <div class="expectation-metric-value">${totals.assigned_vs_expectation_pct.toFixed(0)}%</div>
+                            <div class="expectation-metric-change">${formatCurrency(totals.assigned)} assigned</div>
+                        </div>
+                        <div class="expectation-metric">
+                            <div class="expectation-metric-label">Original Budget</div>
+                            <div class="expectation-metric-value">${formatCurrency(totals.budget)}</div>
+                            <div class="expectation-metric-change">${formatCurrency(Math.abs(totals.current_expectation - totals.budget))} variance</div>
+                        </div>
+                        <div class="expectation-metric">
+                            <div class="expectation-metric-label">Pipeline</div>
+                            <div class="expectation-metric-value">${formatCurrency(totals.pipeline)}</div>
+                            <div class="expectation-metric-change ${totals.pipeline === 0 ? 'negative' : 'neutral'}">${totals.pipeline === 0 ? 'Zero expected' : 'Expected'}</div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(aeCard);
+            });
+        }
+
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', function() {
+            createManagementInsights();
+            createExpectationTable();
+            createExpectationChart();
+            createAEExpectationsGrid();
+        });
+    </script>
+</body>
+</html>

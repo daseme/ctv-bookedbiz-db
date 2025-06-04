@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Enhanced Quarterly Performance with Sector Analysis</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, 'Times New Roman', serif;
+            background-color: white;
+            margin: 0;
+            padding: 32px;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 24px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: normal;
+            color: #1a202c;
+            margin: 0 0 8px 0;
+        }
+        .header .subtitle {
+            font-size: 16px;
+            color: #718096;
+            font-style: italic;
+        }
+        
+        /* Story Sections */
+        .story-section {
+            margin: 48px 0;
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: normal;
+            color: #2d3748;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        
+        /* Enhanced Metrics Table */
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+            font-size: 13px;
+        }
+        .metrics-table th {
+            text-align: left;
+            padding: 10px 6px;
+            border-bottom: 2px solid #2d3748;
+            font-weight: normal;
+            color: #2d3748;
+            font-size: 12px;
+        }
+        .metrics-table td {
+            padding: 6px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 12px;
+        }
+        .metrics-table .number {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .positive { color: #2f855a; font-weight: 500; }
+        .negative { color: #c53030; font-weight: 500; }
+        .budget-good { color: #2f855a; font-weight: 500; }
+        .budget-warning { color: #d69e2e; font-weight: 500; }
+        .budget-poor { color: #c53030; font-weight: 500; }
+        .status-closed { 
+            background-color: #f0fff4; 
+            color: #2f855a;
+            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        .status-open { 
+            background-color: #fef5e7; 
+            color: #d69e2e;
+            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        
+        /* Chart Containers */
+        .chart-container {
+            margin: 32px 0;
+            background: #fafafa;
+            padding: 24px;
+            border-left: 3px solid #e2e8f0;
+        }
+        .chart-title {
+            font-size: 16px;
+            text-align: center;
+            margin-bottom: 16px;
+            color: #4a5568;
+        }
+        .chart {
+            position: relative;
+            height: 300px;
+        }
+        .chart.small {
+            height: 200px;
+        }
+        .chart.medium {
+            height: 250px;
+        }
+        
+        /* Sector Analysis */
+        .sector-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin: 24px 0;
+        }
+        
+        /* Concentration Risk Box */
+        .risk-box {
+            background: #fef5e7;
+            border: 1px solid #f6ad55;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+        }
+        .risk-box.high { background: #fed7d7; border-color: #fc8181; }
+        .risk-box.medium { background: #fef5e7; border-color: #f6ad55; }
+        .risk-box.low { background: #f0fff4; border-color: #68d391; }
+        
+        .risk-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .risk-text {
+            font-size: 14px;
+        }
+        
+        /* Enhanced AE Performance Grid */
+        .ae-performance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin: 32px 0;
+        }
+        .ae-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            position: relative;
+        }
+        .ae-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .ae-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        .ae-performance-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-excellent { background: #c6f6d5; color: #2f855a; }
+        .badge-good { background: #bee3f8; color: #2b6cb0; }
+        .badge-average { background: #faf089; color: #744210; }
+        .badge-needs-attention { background: #fed7d7; color: #c53030; }
+        
+        .ae-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .ae-metric {
+            text-align: center;
+        }
+        .ae-metric-label {
+            font-size: 11px;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+        .ae-metric-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        .ae-metric-change {
+            font-size: 10px;
+            margin-top: 2px;
+        }
+        
+        .ae-chart-container {
+            position: relative;
+            height: 120px;
+            margin-top: 12px;
+        }
+        
+        /* Annotations */
+        .annotation {
+            font-size: 12px;
+            color: #718096;
+            font-style: italic;
+            text-align: center;
+            margin: 16px 0;
+        }
+        
+        /* Key Insight Box */
+        .insight-box {
+            background: #edf2f7;
+            border-left: 4px solid #4299e1;
+            padding: 16px;
+            margin: 24px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .insight-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+        .insight-text {
+            color: #4a5568;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Enhanced Performance Story with Sector Analysis</h1>
+            <div class="subtitle">Revenue trends, sector insights, and performance analytics</div>
+        </div>
+
+        <!-- Key Insight -->
+        <div class="insight-box" id="keyInsight">
+            <!-- Populated by JavaScript -->
+        </div>
+
+        <!-- Current Year Status -->
+        <div class="story-section">
+            <div class="section-title">Current Year at a Glance</div>
+            <table class="metrics-table" id="currentYearTable">
+                <!-- Populated by JavaScript -->
+            </table>
+            <div class="annotation">
+                Closed quarters show final numbers; open quarters are preliminary
+            </div>
+        </div>
+
+        <!-- Comprehensive Sector Analysis -->
+        <div class="story-section" id="sectorSection">
+            <div class="section-title">Sector Performance Analysis</div>
+            
+            <!-- Concentration Risk Analysis -->
+            <div class="risk-box" id="concentrationRisk">
+                <!-- Populated by JavaScript -->
+            </div>
+            
+            <div class="sector-grid">
+                <div class="chart-container">
+                    <div class="chart-title">Revenue by Sector</div>
+                    <div class="chart medium">
+                        <canvas id="sectorChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">Sector Growth Trends</div>
+                    <div class="chart medium">
+                        <canvas id="sectorTrendsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <table class="metrics-table" id="sectorTable">
+                <!-- Populated by JavaScript -->
+            </table>
+        </div>
+
+        <!-- Year-over-Year Comparison -->
+        <div class="story-section">
+            <div class="section-title">This Year vs Last Year</div>
+            <div class="chart-container">
+                <div class="chart-title">Revenue Comparison by Quarter</div>
+                <div class="chart small">
+                    <canvas id="yoyChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Context -->
+        <div class="story-section">
+            <div class="section-title">Historical Context</div>
+            <div class="chart-container">
+                <div class="chart-title">Performance Within Historical Range</div>
+                <div class="chart">
+                    <canvas id="rangeChart"></canvas>
+                </div>
+                <div class="annotation">
+                    Gray bands show historical range (min-max) for each quarter
+                </div>
+            </div>
+        </div>
+
+        <!-- Enhanced Individual AE Performance -->
+        <div class="story-section">
+            <div class="section-title">Individual Account Executive Performance</div>
+            <div class="ae-performance-grid" id="aePerformanceGrid">
+                <!-- Populated by JavaScript -->
+            </div>
+            <div class="annotation">
+                Charts show quarterly revenue progression with trend analysis
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const storyData = {
+  "current_year": 2025,
+  "previous_year": 2024,
+  "years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "current_quarters": [
+    {
+      "name": "Q1 2025",
+      "quarter": "Q1",
+      "revenue": 748336.07,
+      "customers": 47,
+      "previous_revenue": 634343.8605882353,
+      "previous_customers": 42,
+      "yoy_revenue_change": 17.97009737054256,
+      "yoy_customer_change": 5,
+      "revenue_per_customer_change": 5.420087011974208,
+      "budget": 718388.0,
+      "budget_performance": 104.16878761894685,
+      "budget_variance": 29948.06999999995,
+      "status": "closed"
+    },
+    {
+      "name": "Q2 2025",
+      "quarter": "Q2",
+      "revenue": 596865.9400000001,
+      "customers": 43,
+      "previous_revenue": 683254.4770588236,
+      "previous_customers": 51,
+      "yoy_revenue_change": -12.6436840093162,
+      "yoy_customer_change": -8,
+      "revenue_per_customer_change": 3.608653849415669,
+      "budget": 1064120.0,
+      "budget_performance": 56.09009698154344,
+      "budget_variance": -467254.05999999994,
+      "status": "open"
+    },
+    {
+      "name": "Q3 2025",
+      "quarter": "Q3",
+      "revenue": 135623.21,
+      "customers": 9,
+      "previous_revenue": 702526.19,
+      "previous_customers": 43,
+      "yoy_revenue_change": -80.69492469739812,
+      "yoy_customer_change": -34,
+      "revenue_per_customer_change": -7.7646402209021,
+      "budget": 1327258.0,
+      "budget_performance": 10.218300435936344,
+      "budget_variance": -1191634.79,
+      "status": "open"
+    },
+    {
+      "name": "Q4 2025",
+      "quarter": "Q4",
+      "revenue": 76759.99,
+      "customers": 4,
+      "previous_revenue": 1207800.4329411765,
+      "previous_customers": 54,
+      "yoy_revenue_change": -93.64464625889578,
+      "yoy_customer_change": -50,
+      "revenue_per_customer_change": -14.202724495093058,
+      "budget": 1235547.0,
+      "budget_performance": 6.212632137830451,
+      "budget_variance": -1158787.01,
+      "status": "open"
+    }
+  ],
+  "historical_ranges": {
+    "Q1": {
+      "min": 263879.62,
+      "max": 774548.8401470588,
+      "data": [
+        466107.651764706,
+        263879.62,
+        774548.8401470588,
+        673090.4272058823,
+        634343.8605882353,
+        748336.07
+      ]
+    },
+    "Q2": {
+      "min": 373203.4829411766,
+      "max": 683254.4770588236,
+      "data": [
+        373203.4829411766,
+        577230.6,
+        590377.3476470589,
+        521098.255,
+        683254.4770588236,
+        596865.9400000001
+      ]
+    },
+    "Q3": {
+      "min": 135623.21,
+      "max": 702526.19,
+      "data": [
+        321548.34,
+        480252.6129411765,
+        589344.3876470588,
+        470653.21,
+        702526.19,
+        135623.21
+      ]
+    },
+    "Q4": {
+      "min": 76759.99,
+      "max": 1207800.4329411765,
+      "data": [
+        560970.0023529412,
+        590175.7664705883,
+        660322.9776470588,
+        547493.46,
+        1207800.4329411765,
+        76759.99
+      ]
+    }
+  },
+  "ae_trends": {
+    "Charmaine": {
+      "Q1": {
+        "data": [
+          463613.151764706,
+          262824.62,
+          727275.26,
+          610234.6935294117,
+          489966.37058823527,
+          524704.1399999999
+        ],
+        "current": 524704.1399999999,
+        "yoy_change": 7.08982728142337
+      },
+      "Q2": {
+        "data": [
+          369957.9829411766,
+          576580.6,
+          541701.17,
+          431161.76,
+          545859.2370588236,
+          376963.9
+        ],
+        "current": 376963.9,
+        "yoy_change": -30.94118878868085
+      },
+      "Q3": {
+        "data": [
+          316939.89,
+          473593.7929411765,
+          540018.53,
+          395996.14,
+          593447.2,
+          112893.22
+        ],
+        "current": 112893.22,
+        "yoy_change": -80.97670357194372
+      },
+      "Q4": {
+        "data": [
+          554705.0023529412,
+          585513.5864705882,
+          613227.1,
+          458331.09,
+          1078124.5629411766,
+          60085.0
+        ],
+        "current": 60085.0,
+        "yoy_change": -94.42689629145586
+      },
+      "totals": {
+        "current_total": 1074646.26,
+        "previous_total": 2707397.3705882356,
+        "total_budget": 2033243.0,
+        "budget_performance": 52.853803505040965,
+        "yoy_change": -60.307036134613966
+      }
+    },
+    "WorldLink": {
+      "Q1": {
+        "data": [
+          0.0,
+          0.0,
+          22990.0,
+          38408.0,
+          120764.0,
+          95762.0
+        ],
+        "current": 95762.0,
+        "yoy_change": -20.703189692292405
+      },
+      "Q2": {
+        "data": [
+          0.0,
+          0.0,
+          24030.0,
+          59480.0,
+          94157.0,
+          60301.0
+        ],
+        "current": 60301.0,
+        "yoy_change": -35.956965493802905
+      },
+      "Q3": {
+        "data": [
+          0.0,
+          0.0,
+          23150.0,
+          45525.0,
+          85259.0,
+          0.0
+        ],
+        "current": 0.0,
+        "yoy_change": -100.0
+      },
+      "Q4": {
+        "data": [
+          0.0,
+          0.0,
+          18501.0,
+          63675.0,
+          88567.0,
+          0.0
+        ],
+        "current": 0.0,
+        "yoy_change": -100.0
+      },
+      "totals": {
+        "current_total": 156063.0,
+        "previous_total": 388747.0,
+        "total_budget": 476101.0,
+        "budget_performance": 32.77938924723956,
+        "yoy_change": -59.85486704720551
+      }
+    },
+    "House": {
+      "Q1": {
+        "data": [
+          2494.5,
+          1055.0,
+          24283.580147058823,
+          24447.73367647059,
+          23613.49,
+          127869.93000000001
+        ],
+        "current": 127869.93000000001,
+        "yoy_change": 441.5122034057651
+      },
+      "Q2": {
+        "data": [
+          3245.5,
+          650.0,
+          24646.177647058823,
+          30456.495,
+          43238.240000000005,
+          159601.04
+        ],
+        "current": 159601.04,
+        "yoy_change": 269.12011219698115
+      },
+      "Q3": {
+        "data": [
+          4608.45,
+          6658.82,
+          26175.857647058823,
+          29132.07,
+          23819.99,
+          22729.99
+        ],
+        "current": 22729.99,
+        "yoy_change": -4.575988486980893
+      },
+      "Q4": {
+        "data": [
+          6265.0,
+          4662.179999999999,
+          28594.877647058827,
+          25487.370000000003,
+          41108.869999999995,
+          16674.99
+        ],
+        "current": 16674.99,
+        "yoy_change": -59.43700228198926
+      },
+      "totals": {
+        "current_total": 326875.95,
+        "previous_total": 131780.59,
+        "total_budget": 1096985.0,
+        "budget_performance": 29.797668154076856,
+        "yoy_change": 148.04559609271746
+      }
+    },
+    "National": {
+      "Q1": {
+        "data": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current": 0.0,
+        "yoy_change": null
+      },
+      "Q2": {
+        "data": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current": 0.0,
+        "yoy_change": null
+      },
+      "Q3": {
+        "data": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current": 0.0,
+        "yoy_change": null
+      },
+      "Q4": {
+        "data": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current": 0.0,
+        "yoy_change": null
+      },
+      "totals": {
+        "current_total": 0.0,
+        "previous_total": 0.0,
+        "total_budget": 738984.0,
+        "budget_performance": 0.0,
+        "yoy_change": null
+      }
+    }
+  },
+  "company_budgets": {
+    "Q1": 718388.0,
+    "Q2": 1064120.0,
+    "Q3": 1327258.0,
+    "Q4": 1235547.0
+  },
+  "sector_analysis": {
+    "current_year_sectors": [
+      {
+        "name": "Outreach",
+        "revenue": 566993.62,
+        "customers": 42,
+        "yoy_change": -65.6191879100812,
+        "percentage": 35.745738670706686
+      },
+      {
+        "name": "Auto",
+        "revenue": 351901.77999999997,
+        "customers": 14,
+        "yoy_change": -24.02271335864371,
+        "percentage": 22.185415535427918
+      },
+      {
+        "name": "Casino",
+        "revenue": 220449.12,
+        "customers": 20,
+        "yoy_change": -54.542623559086145,
+        "percentage": 13.89806931814728
+      },
+      {
+        "name": "Direct Response Sales",
+        "revenue": 156063.0,
+        "customers": 8,
+        "yoy_change": -59.85486704720551,
+        "percentage": 9.838888864686869
+      },
+      {
+        "name": "Banking",
+        "revenue": 138397.63999999998,
+        "customers": 2,
+        "yoy_change": 0,
+        "percentage": 8.725187899085252
+      },
+      {
+        "name": "Paid Programming",
+        "revenue": 101867.46,
+        "customers": 12,
+        "yoy_change": -12.037319833700021,
+        "percentage": 6.4221668035853146
+      },
+      {
+        "name": "Public Utilities",
+        "revenue": 25691.77,
+        "customers": 5,
+        "yoy_change": -67.56054421803064,
+        "percentage": 1.6197206882290878
+      },
+      {
+        "name": "Restaurant",
+        "revenue": 11522.000000000002,
+        "customers": 2,
+        "yoy_change": 60.13898540653234,
+        "percentage": 0.7263968877884066
+      },
+      {
+        "name": "Health Care",
+        "revenue": 10418.82,
+        "customers": 1,
+        "yoy_change": 0,
+        "percentage": 0.656847632566187
+      },
+      {
+        "name": "CPG",
+        "revenue": 2880.0,
+        "customers": 1,
+        "yoy_change": -77.77777777777779,
+        "percentage": 0.18156769977700146
+      }
+    ],
+    "sector_trends": {
+      "Auto": [
+        143071.59999999998,
+        128795.18,
+        40310.0,
+        39725.0
+      ],
+      "Banking": [
+        136326.99,
+        2070.6499999999996,
+        0,
+        0
+      ],
+      "CPG": [
+        2880.0,
+        0,
+        0,
+        0
+      ],
+      "Casino": [
+        127052.83,
+        83441.29,
+        9955.0,
+        0
+      ],
+      "Direct Response Sales": [
+        95762.0,
+        60301.0,
+        0,
+        0
+      ],
+      "Health Care": [
+        10418.82,
+        0,
+        0,
+        0
+      ],
+      "Outreach": [
+        201681.68,
+        276268.72000000003,
+        68683.22,
+        20360.0
+      ],
+      "Paid Programming": [
+        28948.74,
+        25268.74,
+        23824.99,
+        23824.99
+      ],
+      "Public Utilities": [
+        2679.41,
+        23012.36,
+        0,
+        0
+      ],
+      "Restaurant": [
+        6664.000000000002,
+        4858.0,
+        0,
+        0
+      ]
+    },
+    "concentration_analysis": {
+      "top_sector_pct": 35.745738670706686,
+      "top_3_pct": 71.82922352428189,
+      "risk_level": "Medium",
+      "risk_message": "Moderate concentration in top sectors (71.8%)",
+      "sector_count": 10
+    }
+  }
+};
+
+        // Utility functions
+        function formatCurrency(value) {
+            if (value >= 1000000) {
+                return `$${(value/1000000).toFixed(1)}M`;
+            } else if (value >= 1000) {
+                return `$${Math.round(value/1000)}K`;
+            }
+            return `$${Math.round(value)}`;
+        }
+
+        function formatPercent(value) {
+            if (value === null || value === undefined) return '--';
+            return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+        }
+
+        function getPerformanceBadge(budgetPerformance, yoyChange) {
+            if (budgetPerformance >= 90 && yoyChange > 10) return { class: 'badge-excellent', text: 'Excellent' };
+            if (budgetPerformance >= 75 && yoyChange > 0) return { class: 'badge-good', text: 'Good' };
+            if (budgetPerformance >= 60 || yoyChange > -10) return { class: 'badge-average', text: 'Average' };
+            return { class: 'badge-needs-attention', text: 'Needs Attention' };
+        }
+
+        // Create key insight with sector context
+        function createKeyInsight() {
+            const container = document.getElementById('keyInsight');
+            
+            // Find best performing quarter YoY
+            const quarters = storyData.current_quarters.filter(q => q.yoy_revenue_change !== null);
+            if (quarters.length === 0) return;
+            
+            const bestQuarter = quarters.reduce((best, current) => 
+                current.yoy_revenue_change > best.yoy_revenue_change ? current : best
+            );
+            
+            // Find budget performance insights
+            const budgetQuarters = storyData.current_quarters.filter(q => q.budget > 0);
+            const avgBudgetPerformance = budgetQuarters.length > 0 ? 
+                budgetQuarters.reduce((sum, q) => sum + q.budget_performance, 0) / budgetQuarters.length : 0;
+            
+            let insightText = '';
+            
+            // Primary insight: YoY growth
+            if (bestQuarter.yoy_revenue_change > 15) {
+                insightText = `Strong growth momentum: ${bestQuarter.quarter} revenue up ${formatPercent(bestQuarter.yoy_revenue_change)} year-over-year.`;
+            } else if (bestQuarter.yoy_revenue_change > 5) {
+                insightText = `Solid growth: ${bestQuarter.quarter} revenue up ${formatPercent(bestQuarter.yoy_revenue_change)} year-over-year.`;
+            } else if (bestQuarter.yoy_revenue_change > 0) {
+                insightText = `Modest growth: Best quarter (${bestQuarter.quarter}) up ${formatPercent(bestQuarter.yoy_revenue_change)} year-over-year.`;
+            } else {
+                insightText = `Revenue challenges: ${bestQuarter.quarter} down ${formatPercent(Math.abs(bestQuarter.yoy_revenue_change))} year-over-year.`;
+            }
+            
+            // Add sector insight if available
+            if (storyData.sector_analysis.current_year_sectors.length > 0) {
+                const topSector = storyData.sector_analysis.current_year_sectors[0];
+                const growingSectors = storyData.sector_analysis.current_year_sectors.filter(s => s.yoy_change > 0).length;
+                insightText += ` ${topSector.name} leads with ${formatCurrency(topSector.revenue)} revenue.`;
+                
+                if (growingSectors === storyData.sector_analysis.current_year_sectors.length) {
+                    insightText += ` All sectors showing growth.`;
+                } else if (growingSectors > storyData.sector_analysis.current_year_sectors.length / 2) {
+                    insightText += ` Most sectors growing.`;
+                } else if (growingSectors > 0) {
+                    insightText += ` Mixed sector performance.`;
+                } else {
+                    insightText += ` Sector headwinds across portfolio.`;
+                }
+            }
+            
+            // Secondary insight: Budget performance
+            if (avgBudgetPerformance > 0) {
+                if (avgBudgetPerformance >= 100) {
+                    insightText += ` Currently tracking ${avgBudgetPerformance.toFixed(0)}% to budget across quarters.`;
+                } else if (avgBudgetPerformance >= 85) {
+                    insightText += ` Tracking ${avgBudgetPerformance.toFixed(0)}% to budget - solid performance.`;
+                } else {
+                    insightText += ` Tracking ${avgBudgetPerformance.toFixed(0)}% to budget - needs attention.`;
+                }
+            }
+            
+            container.innerHTML = `
+                <div class="insight-title">Key Insights</div>
+                <div class="insight-text">${insightText}</div>
+            `;
+        }
+
+        // Create current year table (existing function)
+        function createCurrentYearTable() {
+            const table = document.getElementById('currentYearTable');
+            
+            const headers = `
+                <tr>
+                    <th>Quarter</th>
+                    <th class="number">Revenue</th>
+                    <th class="number">vs Budget</th>
+                    <th class="number">vs ${storyData.previous_year}</th>
+                    <th class="number">Customers</th>
+                    <th class="number">Δ Customers</th>
+                    <th class="number">$/Customer Δ</th>
+                    <th>Status</th>
+                </tr>
+            `;
+            
+            const rows = storyData.current_quarters.map(q => {
+                // Budget performance styling
+                let budgetClass = '';
+                if (q.budget_performance >= 100) budgetClass = 'budget-good';
+                else if (q.budget_performance >= 75) budgetClass = 'budget-warning';
+                else budgetClass = 'budget-poor';
+                
+                const budgetText = q.budget > 0 ? `${q.budget_performance.toFixed(0)}%` : '--';
+                const customerChange = q.yoy_customer_change !== null ? 
+                    `${q.yoy_customer_change >= 0 ? '+' : ''}${q.yoy_customer_change}` : '--';
+                
+                return `
+                    <tr>
+                        <td><strong>${q.quarter} ${storyData.current_year}</strong></td>
+                        <td class="number">${formatCurrency(q.revenue)}</td>
+                        <td class="number ${budgetClass}">${budgetText}</td>
+                        <td class="number ${q.yoy_revenue_change > 0 ? 'positive' : q.yoy_revenue_change < 0 ? 'negative' : ''}">${formatPercent(q.yoy_revenue_change)}</td>
+                        <td class="number">${q.customers}</td>
+                        <td class="number ${q.yoy_customer_change > 0 ? 'positive' : q.yoy_customer_change < 0 ? 'negative' : ''}">${customerChange}</td>
+                        <td class="number ${q.revenue_per_customer_change > 0 ? 'positive' : q.revenue_per_customer_change < 0 ? 'negative' : ''}">${formatPercent(q.revenue_per_customer_change)}</td>
+                        <td><span class="status-${q.status}">${q.status.toUpperCase()}</span></td>
+                    </tr>
+                `;
+            }).join('');
+            
+            table.innerHTML = headers + rows;
+        }
+
+        // Enhanced sector analysis with concentration risk
+        function createSectorAnalysis() {
+            if (!storyData.sector_analysis.current_year_sectors.length) {
+                document.getElementById('sectorSection').style.display = 'none';
+                return;
+            }
+
+            // Concentration risk box
+            const riskContainer = document.getElementById('concentrationRisk');
+            const concentration = storyData.sector_analysis.concentration_analysis;
+            
+            let riskClass = 'medium';
+            if (concentration.risk_level === 'High') riskClass = 'high';
+            else if (concentration.risk_level === 'Low') riskClass = 'low';
+            
+            riskContainer.className = `risk-box ${riskClass}`;
+            riskContainer.innerHTML = `
+                <div class="risk-title">Sector Concentration Risk: ${concentration.risk_level}</div>
+                <div class="risk-text">${concentration.risk_message}</div>
+            `;
+
+            // Sector pie chart
+            const sectorCtx = document.getElementById('sectorChart').getContext('2d');
+            const sectorData = storyData.sector_analysis.current_year_sectors;
+            
+            new Chart(sectorCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: sectorData.map(s => s.name),
+                    datasets: [{
+                        data: sectorData.map(s => s.revenue),
+                        backgroundColor: [
+                            '#3182ce', '#38a169', '#ed8936', '#805ad5', '#d69e2e', '#e53e3e', '#38b2ac'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, padding: 15 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const sector = sectorData[context.dataIndex];
+                                    const percentage = sector.percentage || ((sector.revenue / sectorData.reduce((sum, s) => sum + s.revenue, 0)) * 100);
+                                    return `${sector.name}: ${formatCurrency(sector.revenue)} (${percentage.toFixed(1)}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Sector trends chart
+            const trendsCtx = document.getElementById('sectorTrendsChart').getContext('2d');
+            const trendData = storyData.sector_analysis.sector_trends;
+            const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+            
+            const datasets = Object.entries(trendData).map(([sector, data], index) => ({
+                label: sector,
+                data: data,
+                borderColor: ['#3182ce', '#38a169', '#ed8936', '#805ad5', '#d69e2e', '#e53e3e', '#38b2ac'][index % 7],
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                pointRadius: 3
+            }));
+
+            new Chart(trendsCtx, {
+                type: 'line',
+                data: {
+                    labels: quarters,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, padding: 15 }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: {
+                            grid: { color: '#f7fafc', lineWidth: 1 },
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    },
+                    elements: {
+                        line: { tension: 0.1 },
+                        point: { hoverRadius: 6 }
+                    }
+                }
+            });
+
+            // Sector table
+            const sectorTable = document.getElementById('sectorTable');
+            const sectorHeaders = `
+                <tr>
+                    <th>Sector</th>
+                    <th class="number">Revenue</th>
+                    <th class="number">% of Total</th>
+                    <th class="number">Customers</th>
+                    <th class="number">Avg/Customer</th>
+                    <th class="number">YoY Change</th>
+                </tr>
+            `;
+            
+            const totalRevenue = sectorData.reduce((sum, s) => sum + s.revenue, 0);
+            const sectorRows = sectorData.map(sector => {
+                const percentage = (sector.revenue / totalRevenue * 100);
+                return `
+                    <tr>
+                        <td><strong>${sector.name}</strong></td>
+                        <td class="number">${formatCurrency(sector.revenue)}</td>
+                        <td class="number">${percentage.toFixed(1)}%</td>
+                        <td class="number">${sector.customers}</td>
+                        <td class="number">${formatCurrency(sector.revenue / sector.customers)}</td>
+                        <td class="number ${sector.yoy_change >= 0 ? 'positive' : 'negative'}">${formatPercent(sector.yoy_change)}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            sectorTable.innerHTML = sectorHeaders + sectorRows;
+        }
+
+        // Create year-over-year chart (existing function)
+        function createYoYChart() {
+            const ctx = document.getElementById('yoyChart').getContext('2d');
+            
+            const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+            const currentYear = storyData.current_year;
+            const previousYear = currentYear - 1;
+            
+            // Get data for both years
+            const currentData = quarters.map(q => {
+                const qData = storyData.historical_ranges[q];
+                return qData ? qData.data[qData.data.length - 1] : 0;
+            });
+            
+            const previousData = quarters.map(q => {
+                const qData = storyData.historical_ranges[q];
+                return qData && qData.data.length >= 2 ? qData.data[qData.data.length - 2] : 0;
+            });
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: quarters,
+                    datasets: [
+                        {
+                            label: previousYear.toString(),
+                            data: previousData,
+                            borderColor: '#a0aec0',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            pointRadius: 4
+                        },
+                        {
+                            label: currentYear.toString(),
+                            data: currentData,
+                            borderColor: '#2b6cb0',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            pointRadius: 5
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, padding: 20 }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: {
+                            grid: { color: '#f7fafc', lineWidth: 1 },
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    },
+                    elements: {
+                        line: { tension: 0 },
+                        point: { hoverRadius: 8 }
+                    }
+                }
+            });
+        }
+
+        // Create range chart (existing function)
+        function createRangeChart() {
+            const ctx = document.getElementById('rangeChart').getContext('2d');
+            
+            const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+            
+            // Get min/max data for each quarter
+            const minData = quarters.map(q => {
+                const range = storyData.historical_ranges[q];
+                return range ? range.min : 0;
+            });
+            
+            const maxData = quarters.map(q => {
+                const range = storyData.historical_ranges[q];
+                return range ? range.max : 0;
+            });
+            
+            // Get current performance data
+            const currentData = quarters.map(q => {
+                const range = storyData.historical_ranges[q];
+                return range ? range.data[range.data.length - 1] : 0;
+            });
+            
+            // Create datasets with proper fill configuration
+            const datasets = [
+                // Bottom boundary of gray band (invisible line)
+                {
+                    label: '',
+                    data: minData,
+                    backgroundColor: 'transparent',
+                    borderColor: 'transparent',
+                    pointRadius: 0,
+                    fill: false
+                },
+                // Top boundary of gray band (creates the fill)
+                {
+                    label: 'Historical Range',
+                    data: maxData,
+                    backgroundColor: 'rgba(160, 174, 192, 0.3)',
+                    borderColor: 'rgba(160, 174, 192, 0.5)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: '-1' // Fill between this dataset and the previous one
+                },
+                // Current performance line (on top)
+                {
+                    label: `${storyData.current_year} Performance`,
+                    data: currentData,
+                    borderColor: '#2b6cb0',
+                    backgroundColor: '#2b6cb0',
+                    borderWidth: 3,
+                    pointRadius: 6,
+                    pointBackgroundColor: '#2b6cb0',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    fill: false
+                }
+            ];
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: quarters,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { 
+                                usePointStyle: true, 
+                                padding: 20,
+                                filter: function(item) {
+                                    return item.text !== ''; // Hide empty labels
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    if (label === 'Historical Range') {
+                                        const quarter = context.label;
+                                        const range = storyData.historical_ranges[quarter];
+                                        return `${quarter} Range: ${formatCurrency(range.min)} - ${formatCurrency(range.max)}`;
+                                    }
+                                    return `${label}: ${formatCurrency(context.parsed.y)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            grid: { display: false },
+                            ticks: { font: { size: 12 } }
+                        },
+                        y: {
+                            grid: { color: '#f7fafc', lineWidth: 1 },
+                            ticks: {
+                                font: { size: 11 },
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    },
+                    elements: {
+                        line: { tension: 0.1 },
+                        point: { hoverRadius: 8 }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
+        }
+
+        // Enhanced AE Performance Grid
+        function createAEPerformanceGrid() {
+            const container = document.getElementById('aePerformanceGrid');
+            
+            Object.entries(storyData.ae_trends).forEach(([aeName, aeData]) => {
+                const totals = aeData.totals;
+                const badge = getPerformanceBadge(totals.budget_performance, totals.yoy_change || 0);
+                
+                const aeCard = document.createElement('div');
+                aeCard.className = 'ae-card';
+                aeCard.innerHTML = `
+                    <div class="ae-card-header">
+                        <div class="ae-name">${aeName}</div>
+                        <div class="ae-performance-badge ${badge.class}">${badge.text}</div>
+                    </div>
+                    <div class="ae-metrics">
+                        <div class="ae-metric">
+                            <div class="ae-metric-label">Total Revenue</div>
+                            <div class="ae-metric-value">${formatCurrency(totals.current_total)}</div>
+                            <div class="ae-metric-change ${totals.yoy_change >= 0 ? 'positive' : 'negative'}">${formatPercent(totals.yoy_change)}</div>
+                        </div>
+                        <div class="ae-metric">
+                            <div class="ae-metric-label">Budget Performance</div>
+                            <div class="ae-metric-value">${totals.budget_performance.toFixed(0)}%</div>
+                            <div class="ae-metric-change">${formatCurrency(totals.total_budget)} budget</div>
+                        </div>
+                    </div>
+                    <div class="ae-chart-container">
+                        <canvas id="ae_chart_${aeName.replace(/\s+/g, '_')}"></canvas>
+                    </div>
+                `;
+                container.appendChild(aeCard);
+                
+                // Create quarterly performance chart for this AE
+                const canvasId = `ae_chart_${aeName.replace(/\s+/g, '_')}`;
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                
+                const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+                const colors = ['#3182ce', '#38a169', '#ed8936', '#805ad5'];
+                
+                const datasets = quarters.map((quarter, index) => ({
+                    label: quarter,
+                    data: aeData[quarter] ? aeData[quarter].data : [],
+                    borderColor: colors[index],
+                    backgroundColor: colors[index] + '20',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    fill: false
+                }));
+
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: storyData.years,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'bottom',
+                                labels: { 
+                                    usePointStyle: true, 
+                                    padding: 10,
+                                    font: { size: 10 }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { 
+                                display: true,
+                                ticks: { font: { size: 9 } }
+                            },
+                            y: { 
+                                display: true,
+                                ticks: { 
+                                    font: { size: 9 },
+                                    callback: function(value) {
+                                        return formatCurrency(value);
+                                    }
+                                }
+                            }
+                        },
+                        elements: {
+                            line: { tension: 0.1 },
+                            point: { radius: 2 }
+                        },
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        }
+                    }
+                });
+            });
+        }
+
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', function() {
+            createKeyInsight();
+            createCurrentYearTable();
+            createSectorAnalysis();
+            createYoYChart();
+            createRangeChart();
+            createAEPerformanceGrid();
+        });
+    </script>
+</body>
+</html>
