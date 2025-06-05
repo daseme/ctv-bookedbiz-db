@@ -89,37 +89,74 @@ class ImportResults:
 class EnhancedProductionExcelImporter:
     """Enhanced production importer with batch support and month tracking."""
     
-    # Complete column mapping for all 29 Excel columns (unchanged)
+    # Complete flexible column mapping for both 2024 and 2025 Excel formats
     COLUMN_MAPPING = {
+        # ===================================================================
+        # CORE FIELDS - Same in both 2024 and 2025 formats
+        # ===================================================================
         'Bill Code': 'bill_code',
         'Start Date': 'air_date',
         'End Date': 'end_date',
-        'Day(s)': 'day_of_week',
         'Time In': 'time_in',
         'Time out': 'time_out',
         'Length': 'length_seconds',
-        'Media/Name/Program': 'media',
         'Comments': 'program',
         'Language': 'language_code',
-        'Format': 'format',
-        'Units-Spot count': 'sequence_number',
         'Line': 'line_number',
         'Type': 'spot_type',
-        'Agency/Episode# or cut number': 'estimate',
-        'Unit rate Gross': 'gross_rate',
         'Make Good': 'make_good',
         'Spot Value': 'spot_value',
         'Month': 'broadcast_month',
         'Broker Fees': 'broker_fees',
+        'Revenue Type': 'revenue_type',
+        'Billing Type': 'billing_type',
+        'Market': 'market_name',
+        
+        # ===================================================================
+        # 2024 FORMAT COLUMNS
+        # ===================================================================
+        'Day(s)': 'day_of_week',
+        'Media/Name/Program': 'media',
+        'Format': 'format',
+        'Units-Spot count': 'sequence_number',
+        'Agency/Episode# or cut number': 'estimate',
+        'Unit rate Gross': 'gross_rate',
         'Sales/rep com: revenue sharing': 'priority',
         'Station Net': 'station_net',
         'Sales Person': 'sales_person',
-        'Revenue Type': 'revenue_type',
-        'Billing Type': 'billing_type',
         'Agency?': 'agency_flag',
         'Affidavit?': 'affidavit_flag',
         'Notarize?': 'contract',
-        'Market': 'market_name'
+        
+        # ===================================================================
+        # 2025 FORMAT COLUMNS (Alternative mappings)
+        # ===================================================================
+        'Day': 'day_of_week',              # Alternative to 'Day(s)'
+        'Show Name': 'media',              # Alternative to 'Media/Name/Program'
+        'Show': 'format',                  # Alternative to 'Format'
+        'Spots': 'sequence_number',        # Alternative to 'Units-Spot count'
+        'Estimate': 'estimate',            # Alternative to 'Agency/Episode# or cut number'
+        'Gross': 'gross_rate',             # Alternative to 'Unit rate Gross'
+        ' Gross ': 'gross_rate',           # Handle potential spacing variations
+        'Priority': 'priority',            # Alternative to 'Sales/rep com: revenue sharing'
+        'Net': 'station_net',              # Alternative to 'Station Net'
+        ' Net ': 'station_net',            # Handle potential spacing variations
+        'AE': 'sales_person',              # Alternative to 'Sales Person'
+        'Agency': 'agency_flag',           # Alternative to 'Agency?'
+        'Affidavit': 'affidavit_flag',     # Alternative to 'Affidavit?'
+        'Notarize': 'contract',            # Alternative to 'Notarize?'
+        
+        # ===================================================================
+        # ADDITIONAL VARIATIONS (Common alternatives)
+        # ===================================================================
+        'Account Executive': 'sales_person',   # Another common variation
+        'Salesperson': 'sales_person',         # Another common variation
+        'Gross Rate': 'gross_rate',            # Another common variation
+        'Net Rate': 'station_net',             # Another common variation
+        'Air Date': 'air_date',                # Alternative to 'Start Date'
+        'Date': 'air_date',                    # Simple date column
+        'Program': 'media',                    # Alternative to show/media fields
+        'Episode': 'estimate',                 # Alternative to estimate field
     }
     
     def __init__(self, database_path: str):
@@ -134,6 +171,201 @@ class EnhancedProductionExcelImporter:
             'error_types': {},
             'broadcast_months_found': set()  # NEW: Track months
         }
+
+    def validate_and_confirm_column_mapping(self, worksheet, interactive=True):
+        """
+        Validate Excel columns against expected mappings and get user confirmation.
+        
+        Args:
+            worksheet: Excel worksheet object
+            interactive: If True, prompt user for confirmation/corrections
+            
+        Returns:
+            bool: True if mapping is acceptable, False to abort
+        """
+        print("🔍 Analyzing Excel Column Structure...")
+        
+        # Get actual headers from Excel
+        header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+        actual_headers = [str(header).strip() if header else '' for header in header_row]
+        actual_headers = [h for h in actual_headers if h]  # Remove empty headers
+        
+        print(f"📋 Found {len(actual_headers)} columns in Excel file")
+        
+        # Check which columns will be mapped
+        mapped_columns = []
+        unmapped_columns = []
+        missing_critical_columns = []
+        
+        for header in actual_headers:
+            if header in self.COLUMN_MAPPING:
+                mapped_columns.append(header)
+            else:
+                unmapped_columns.append(header)
+        
+        # Check for critical missing columns
+        critical_columns = ['Bill Code', 'Start Date', 'Month']  # Core required columns
+        alternative_mappings = {
+            'Start Date': ['Air Date', 'Date'],
+            'Month': ['Broadcast Month', 'Period'],
+            'Sales Person': ['AE', 'Account Executive', 'Salesperson'],
+            'Unit rate Gross': ['Gross', 'Gross Rate', 'Rate'],
+            'Station Net': ['Net', 'Net Rate']
+        }
+        
+        for critical in critical_columns:
+            if critical not in mapped_columns:
+                # Check for alternatives
+                found_alternative = False
+                if critical in alternative_mappings:
+                    for alt in alternative_mappings[critical]:
+                        if alt in actual_headers:
+                            found_alternative = True
+                            break
+                
+                if not found_alternative:
+                    missing_critical_columns.append(critical)
+        
+        # Display analysis
+        print(f"\n📊 Column Mapping Analysis:")
+        print(f"  ✅ Mapped columns: {len(mapped_columns)}")
+        print(f"  ❓ Unmapped columns: {len(unmapped_columns)}")
+        print(f"  ❌ Missing critical: {len(missing_critical_columns)}")
+        
+        if mapped_columns:
+            print(f"\n✅ Successfully Mapped Columns:")
+            for col in sorted(mapped_columns):
+                db_field = self.COLUMN_MAPPING[col]
+                print(f"  '{col}' → {db_field}")
+        
+        if unmapped_columns:
+            print(f"\n❓ Unmapped Columns (will be ignored):")
+            for col in sorted(unmapped_columns):
+                print(f"  '{col}'")
+                
+            # Suggest possible mappings
+            suggestions = self._suggest_column_mappings(unmapped_columns)
+            if suggestions:
+                print(f"\n💡 Suggested Mappings:")
+                for excel_col, suggested_mapping in suggestions.items():
+                    print(f"  '{excel_col}' might map to → {suggested_mapping}")
+        
+        if missing_critical_columns:
+            print(f"\n❌ Missing Critical Columns:")
+            for col in missing_critical_columns:
+                print(f"  '{col}' - Required for import")
+                if col in alternative_mappings:
+                    print(f"    Alternatives: {', '.join(alternative_mappings[col])}")
+        
+        # Interactive confirmation
+        if interactive:
+            print(f"\n🚨 COLUMN MAPPING CONFIRMATION")
+            print(f"Excel file structure analysis complete.")
+            
+            if missing_critical_columns:
+                print(f"❌ Cannot proceed: Missing critical columns {missing_critical_columns}")
+                print(f"Please ensure your Excel file contains the required columns.")
+                return False
+            
+            if unmapped_columns:
+                print(f"⚠️  Warning: {len(unmapped_columns)} columns will be ignored during import.")
+                print(f"This might indicate column naming differences between files.")
+            
+            print(f"\nProceed with import using current column mapping?")
+            print(f"  - {len(mapped_columns)} columns will be imported")
+            print(f"  - {len(unmapped_columns)} columns will be ignored")
+            
+            while True:
+                response = input(f"\nContinue with import? (yes/no/show): ").strip().lower()
+                if response in ['yes', 'y']:
+                    return True
+                elif response in ['no', 'n']:
+                    print(f"❌ Import cancelled by user")
+                    return False
+                elif response in ['show', 's']:
+                    self._show_detailed_mapping(actual_headers)
+                else:
+                    print("Please enter 'yes', 'no', or 'show' for detailed mapping")
+        
+        return len(missing_critical_columns) == 0
+
+    def _suggest_column_mappings(self, unmapped_columns):
+        """Suggest possible mappings for unmapped columns."""
+        suggestions = {}
+        
+        # Common alternative names
+        alternatives = {
+            'AE': 'sales_person',
+            'Account Executive': 'sales_person', 
+            'Salesperson': 'sales_person',
+            'Gross': 'gross_rate',
+            'Gross Rate': 'gross_rate',
+            'Net': 'station_net',
+            'Net Rate': 'station_net',
+            'Air Date': 'air_date',
+            'Date': 'air_date',
+            'Show Name': 'media',
+            'Program': 'media',
+            'Show': 'format',
+            'Spots': 'sequence_number',
+            'Day': 'day_of_week'
+        }
+        
+        for col in unmapped_columns:
+            if col in alternatives:
+                suggestions[col] = alternatives[col]
+            else:
+                # Fuzzy matching for close names
+                for mapped_col, db_field in self.COLUMN_MAPPING.items():
+                    if self._columns_similar(col, mapped_col):
+                        suggestions[col] = db_field
+                        break
+        
+        return suggestions
+
+    def _columns_similar(self, col1, col2):
+        """Check if two column names are similar (basic fuzzy matching)."""
+        col1_clean = col1.lower().replace(' ', '').replace('_', '').replace('/', '')
+        col2_clean = col2.lower().replace(' ', '').replace('_', '').replace('/', '')
+        
+        # Check if one contains the other
+        if col1_clean in col2_clean or col2_clean in col1_clean:
+            return True
+        
+        # Check for common abbreviations
+        abbrev_map = {
+            'ae': 'accountexecutive',
+            'salesperson': 'salesperson',
+            'gross': 'unitrategross',
+            'net': 'stationnet'
+        }
+        
+        col1_expanded = abbrev_map.get(col1_clean, col1_clean)
+        col2_expanded = abbrev_map.get(col2_clean, col2_clean) 
+        
+        return col1_expanded == col2_expanded
+
+    def _show_detailed_mapping(self, actual_headers):
+        """Show detailed column mapping information."""
+        print(f"\n📋 DETAILED COLUMN MAPPING")
+        print(f"{'='*60}")
+        print(f"{'Excel Column':<30} {'Database Field':<20} {'Status'}")
+        print(f"{'-'*30} {'-'*20} {'-'*10}")
+        
+        for header in actual_headers:
+            if header in self.COLUMN_MAPPING:
+                db_field = self.COLUMN_MAPPING[header]
+                status = "✅ Mapped"
+            else:
+                db_field = "N/A"
+                status = "❓ Ignored"
+            
+            print(f"{header:<30} {db_field:<20} {status}")
+        
+        print(f"\n💡 To fix unmapped columns:")
+        print(f"1. Update Excel file column names to match expected names")
+        print(f"2. Or update COLUMN_MAPPING in the importer code")
+        print(f"3. Contact support if you need help with column mapping")
     
     def import_excel_file(self, excel_file_path: str, limit: Optional[int] = None) -> ImportResults:
         """Import Excel file (original interface for backward compatibility)."""
@@ -243,8 +475,15 @@ class EnhancedProductionExcelImporter:
         except Exception as e:
             return self._create_error_result(f"Import failed: {str(e)}")
     
-    def _parse_headers(self, worksheet):
-        """Parse and validate Excel headers (unchanged)."""
+    # Update the _parse_headers method to use validation
+    def _parse_headers(self, worksheet, interactive=True):
+        """Parse and validate Excel headers with user confirmation."""
+        
+        # First run the validation
+        if not self.validate_and_confirm_column_mapping(worksheet, interactive):
+            raise ValueError("Column mapping validation failed or cancelled by user")
+        
+        # Original header parsing logic (now with validation passed)
         header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
         
         self.column_indexes = {}
@@ -257,7 +496,7 @@ class EnhancedProductionExcelImporter:
                     field_name = self.COLUMN_MAPPING[clean_header]
                     self.column_indexes[field_name] = col_idx
         
-        # Check for required columns
+        # Check for required columns after mapping
         required_fields = ['bill_code', 'air_date']
         for field in required_fields:
             if field not in self.column_indexes:
@@ -265,7 +504,10 @@ class EnhancedProductionExcelImporter:
                 missing_columns.append(original_name)
         
         if missing_columns:
-            raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+            raise ValueError(f"Missing required columns after mapping: {', '.join(missing_columns)}")
+        
+        print(f"✅ Column mapping validated and confirmed")
+        print(f"📋 Mapped {len(self.column_indexes)} columns for import")
     
     def _process_row(self, row: tuple, row_num: int, db_conn: sqlite3.Connection, batch_id: Optional[str] = None) -> bool:
         """

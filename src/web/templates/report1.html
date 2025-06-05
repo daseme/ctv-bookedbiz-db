@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Monthly breakdown with key performance indicators{% endblock %}
+
+{% block content %}
+<div class="insight-box">
+    <div class="insight-title">Monthly Revenue Overview</div>
+    <div class="insight-text">
+        This report shows monthly revenue summary with total spot counts, revenue totals, and average rates.
+        All figures exclude trade revenue to focus on actual monetary transactions.
+    </div>
+</div>
+
+<!-- Date Range Selector -->
+<div class="story-section">
+    <div class="section-title">Date Range Filter</div>
+    <form method="GET" style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: 600; color: #2d3748;">From:</label>
+            <select name="from_month" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white;">
+                <option value="">All</option>
+                {% for month_num, month_name in [('01', 'January'), ('02', 'February'), ('03', 'March'), ('04', 'April'), ('05', 'May'), ('06', 'June'), ('07', 'July'), ('08', 'August'), ('09', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')] %}
+                <option value="{{ month_num }}" {% if request.args.get('from_month') == month_num %}selected{% endif %}>{{ month_name }}</option>
+                {% endfor %}
+            </select>
+            <select name="from_year" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white;">
+                <option value="">All</option>
+                {% for year in data.available_years %}
+                <option value="{{ year }}" {% if request.args.get('from_year') == year|string %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: 600; color: #2d3748;">To:</label>
+            <select name="to_month" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white;">
+                <option value="">All</option>
+                {% for month_num, month_name in [('01', 'January'), ('02', 'February'), ('03', 'March'), ('04', 'April'), ('05', 'May'), ('06', 'June'), ('07', 'July'), ('08', 'August'), ('09', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')] %}
+                <option value="{{ month_num }}" {% if request.args.get('to_month') == month_num %}selected{% endif %}>{{ month_name }}</option>
+                {% endfor %}
+            </select>
+            <select name="to_year" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white;">
+                <option value="">All</option>
+                {% for year in data.available_years %}
+                <option value="{{ year }}" {% if request.args.get('to_year') == year|string %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <button type="submit" style="background: #4299e1; color: white; padding: 8px 16px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">
+            Apply Filter
+        </button>
+        
+        <a href="/report1" style="background: #e2e8f0; color: #4a5568; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: 600; transition: background-color 0.2s;">
+            Clear
+        </a>
+    </form>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Monthly Revenue Summary</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Month</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Average Rate</th>
+                <th class="number">Min Rate</th>
+                <th class="number">Max Rate</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.monthly_data %}
+            <tr{% if row.month_name == '*** TOTAL ***' %} style="background-color: #f7fafc; font-weight: 600; border-top: 2px solid #2d3748;"{% endif %}>
+                <td>{{ row.month_name }}</td>
+                <td class="number">{{ "{:,}".format(row.spot_count or 0) }}</td>
+                <td class="number {% if row.month_name != '*** TOTAL ***' %}positive{% else %}neutral{% endif %}">
+                    ${{ "{:,}".format(row.total_revenue or 0) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,}".format(row.avg_rate or 0) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,}".format(row.min_rate or 0) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,}".format(row.max_rate or 0) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="annotation">
+        Excludes trade revenue. Total row shows aggregate across all months with data.
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="chart-container">
+        <div class="chart-title">Monthly Revenue Trend</div>
+        <div class="chart">
+            <canvas id="monthlyChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="chart-container">
+        <div class="chart-title">Spot Count by Month</div>
+        <div class="chart small">
+            <canvas id="spotCountChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden data for JavaScript -->
+<script id="chart-data" type="application/json">
+{{ data.monthly_data | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Get data from the hidden script tag
+const dataScript = document.getElementById('chart-data');
+const monthlyData = JSON.parse(dataScript.textContent);
+const chartData = monthlyData.filter(row => row.month_name !== '*** TOTAL ***');
+
+// Monthly Revenue Chart
+const ctx1 = document.getElementById('monthlyChart').getContext('2d');
+new Chart(ctx1, {
+    type: 'bar',
+    data: {
+        labels: chartData.map(row => row.month_name),
+        datasets: [{
+            label: 'Total Revenue',
+            data: chartData.map(row => row.total_revenue || 0),
+            backgroundColor: 'rgba(66, 153, 225, 0.6)',
+            borderColor: 'rgba(66, 153, 225, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '$' + value.toLocaleString();
+                    }
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'Revenue: $' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Spot Count Chart
+const ctx2 = document.getElementById('spotCountChart').getContext('2d');
+new Chart(ctx2, {
+    type: 'line',
+    data: {
+        labels: chartData.map(row => row.month_name),
+        datasets: [{
+            label: 'Spot Count',
+            data: chartData.map(row => row.spot_count || 0),
+            backgroundColor: 'rgba(72, 187, 120, 0.2)',
+            borderColor: 'rgba(72, 187, 120, 1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'Spots: ' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %} 

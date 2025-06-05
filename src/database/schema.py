@@ -1,7 +1,7 @@
--- Fixed database schema addressing critical issues
--- Uses proper foreign keys, adds agency support, and improves indexing
+-- Enhanced database schema for Broadcast Month Import System
+-- Includes month closure protection, import batch tracking, and audit trail capabilities
 
--- 1. AGENCIES TABLE (Missing from original)
+-- 1. AGENCIES TABLE
 CREATE TABLE IF NOT EXISTS agencies (
     agency_id INTEGER PRIMARY KEY AUTOINCREMENT,
     agency_name TEXT NOT NULL UNIQUE,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS languages (
     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. CUSTOMERS TABLE (Fixed foreign key relationships)
+-- 5. CUSTOMERS TABLE (With proper foreign key relationships)
 CREATE TABLE IF NOT EXISTS customers (
     customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
     normalized_name TEXT NOT NULL UNIQUE,
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS customers (
     FOREIGN KEY (agency_id) REFERENCES agencies(agency_id) ON DELETE RESTRICT
 );
 
--- 6. CUSTOMER_MAPPINGS TABLE (Fixed foreign keys)
+-- 6. CUSTOMER_MAPPINGS TABLE (For name normalization tracking)
 CREATE TABLE IF NOT EXISTS customer_mappings (
     mapping_id INTEGER PRIMARY KEY AUTOINCREMENT,
     original_name TEXT NOT NULL UNIQUE,
@@ -70,7 +70,32 @@ CREATE TABLE IF NOT EXISTS customer_mappings (
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE
 );
 
-# 7. SPOTS TABLE (Core transactional data - fixed relationships)
+-- 7. MONTH CLOSURES TABLE (NEW: For broadcast month protection)
+CREATE TABLE IF NOT EXISTS month_closures (
+    broadcast_month TEXT PRIMARY KEY,  -- Format: 'Nov-24', 'Dec-24', etc.
+    closed_date DATE NOT NULL,
+    closed_by TEXT NOT NULL,
+    notes TEXT,
+    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 8. IMPORT BATCHES TABLE (NEW: For complete audit trail)
+CREATE TABLE IF NOT EXISTS import_batches (
+    batch_id TEXT PRIMARY KEY,
+    import_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    import_mode TEXT NOT NULL CHECK (import_mode IN ('HISTORICAL', 'WEEKLY_UPDATE', 'MANUAL')),
+    source_file TEXT NOT NULL,
+    broadcast_months_affected TEXT,  -- JSON array of affected months
+    records_imported INTEGER DEFAULT 0,
+    records_deleted INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'RUNNING' CHECK (status IN ('RUNNING', 'COMPLETED', 'FAILED')),
+    started_by TEXT,
+    completed_at TIMESTAMP,
+    notes TEXT,
+    error_summary TEXT  -- JSON of any errors encountered
+);
+
+-- 9. SPOTS TABLE (Core transactional data with batch tracking)
 CREATE TABLE IF NOT EXISTS spots (
     spot_id INTEGER PRIMARY KEY AUTOINCREMENT,
     
@@ -93,7 +118,7 @@ CREATE TABLE IF NOT EXISTS spots (
     spot_type TEXT CHECK (spot_type IN ('AV', 'BB', 'BNS', 'COM', 'CRD', 'PKG', 'PRD', 'PRG', 'SVC', '')),
     estimate TEXT,
     
-    -- Financial fields (REMOVED negative value constraints)
+    -- Financial fields (allows negative values for business accuracy)
     gross_rate DECIMAL(12, 2),
     make_good TEXT,
     spot_value DECIMAL(12, 2),
@@ -123,17 +148,21 @@ CREATE TABLE IF NOT EXISTS spots (
     is_historical BOOLEAN DEFAULT 0,
     effective_date DATE,  -- When this forward-looking data was loaded
     
-    -- Business rule constraints (UPDATED - removed financial >= 0 checks)
+    -- NEW: Import batch tracking for complete audit trail
+    import_batch_id TEXT,
+    
+    -- Business rule constraints
     CHECK (revenue_type != 'Trade' OR revenue_type IS NULL),  -- Exclude Trade per business rules
     
     -- Foreign key constraints with proper cascading
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE RESTRICT,
     FOREIGN KEY (agency_id) REFERENCES agencies(agency_id) ON DELETE RESTRICT,
     FOREIGN KEY (market_id) REFERENCES markets(market_id) ON DELETE RESTRICT,
-    FOREIGN KEY (language_id) REFERENCES languages(language_id) ON DELETE RESTRICT
+    FOREIGN KEY (language_id) REFERENCES languages(language_id) ON DELETE RESTRICT,
+    FOREIGN KEY (import_batch_id) REFERENCES import_batches(batch_id) ON DELETE SET NULL
 );
 
--- 8. BUDGET TABLE (Unchanged but added constraints)
+-- 10. BUDGET TABLE (With enhanced constraints)
 CREATE TABLE IF NOT EXISTS budget (
     budget_id INTEGER PRIMARY KEY AUTOINCREMENT,
     ae_name TEXT NOT NULL,
@@ -148,7 +177,7 @@ CREATE TABLE IF NOT EXISTS budget (
     UNIQUE(ae_name, year, month)
 );
 
--- 9. PIPELINE TABLE (Unchanged but added constraints)
+-- 11. PIPELINE TABLE (With enhanced constraints)
 CREATE TABLE IF NOT EXISTS pipeline (
     pipeline_id INTEGER PRIMARY KEY AUTOINCREMENT,
     ae_name TEXT NOT NULL,
@@ -163,39 +192,50 @@ CREATE TABLE IF NOT EXISTS pipeline (
 );
 
 -- ===================================================================
--- INDEXES - Optimized for actual query patterns
+-- INDEXES - Optimized for broadcast month operations and performance
 -- ===================================================================
 
--- Spots table indexes (performance-critical)
-CREATE INDEX idx_spots_air_date ON spots(air_date);
-CREATE INDEX idx_spots_customer_id ON spots(customer_id);
-CREATE INDEX idx_spots_sales_person ON spots(sales_person);
-CREATE INDEX idx_spots_historical ON spots(is_historical);
+-- Existing spots table indexes
+CREATE INDEX IF NOT EXISTS idx_spots_air_date ON spots(air_date);
+CREATE INDEX IF NOT EXISTS idx_spots_customer_id ON spots(customer_id);
+CREATE INDEX IF NOT EXISTS idx_spots_sales_person ON spots(sales_person);
+CREATE INDEX IF NOT EXISTS idx_spots_historical ON spots(is_historical);
+
+-- NEW: Critical index for broadcast month operations
+CREATE INDEX IF NOT EXISTS idx_spots_broadcast_month_historical ON spots(broadcast_month, is_historical);
+
+-- NEW: Index for batch tracking and audit
+CREATE INDEX IF NOT EXISTS idx_spots_import_batch ON spots(import_batch_id);
 
 -- Composite indexes for common query patterns
-CREATE INDEX idx_spots_performance_report ON spots(sales_person, air_date, market_id) 
+CREATE INDEX IF NOT EXISTS idx_spots_performance_report ON spots(sales_person, air_date, market_id) 
 WHERE is_historical = 0 AND revenue_type != 'Trade';
 
-CREATE INDEX idx_spots_customer_timeline ON spots(customer_id, air_date, revenue_type);
+CREATE INDEX IF NOT EXISTS idx_spots_customer_timeline ON spots(customer_id, air_date, revenue_type);
 
-CREATE INDEX idx_spots_monthly_rollup ON spots(broadcast_month, market_id, revenue_type) 
+CREATE INDEX IF NOT EXISTS idx_spots_monthly_rollup ON spots(broadcast_month, market_id, revenue_type) 
 WHERE revenue_type != 'Trade';
 
-CREATE INDEX idx_spots_agency_performance ON spots(agency_id, air_date, gross_rate)
+CREATE INDEX IF NOT EXISTS idx_spots_agency_performance ON spots(agency_id, air_date, gross_rate)
 WHERE agency_id IS NOT NULL;
 
 -- Reference table indexes
-CREATE INDEX idx_customers_sector ON customers(sector_id);
-CREATE INDEX idx_customers_agency ON customers(agency_id);
-CREATE INDEX idx_customer_mappings_original ON customer_mappings(original_name);
+CREATE INDEX IF NOT EXISTS idx_customers_sector ON customers(sector_id);
+CREATE INDEX IF NOT EXISTS idx_customers_agency ON customers(agency_id);
+CREATE INDEX IF NOT EXISTS idx_customer_mappings_original ON customer_mappings(original_name);
 
 -- Budget and pipeline indexes
-CREATE INDEX idx_budget_ae_year_month ON budget(ae_name, year, month);
-CREATE INDEX idx_pipeline_ae_year_month ON pipeline(ae_name, year, month);
-CREATE INDEX idx_pipeline_current ON pipeline(is_current) WHERE is_current = 1;
+CREATE INDEX IF NOT EXISTS idx_budget_ae_year_month ON budget(ae_name, year, month);
+CREATE INDEX IF NOT EXISTS idx_pipeline_ae_year_month ON pipeline(ae_name, year, month);
+CREATE INDEX IF NOT EXISTS idx_pipeline_current ON pipeline(is_current) WHERE is_current = 1;
+
+-- NEW: Import batch indexes for audit and monitoring
+CREATE INDEX IF NOT EXISTS idx_import_batches_date ON import_batches(import_date);
+CREATE INDEX IF NOT EXISTS idx_import_batches_mode ON import_batches(import_mode);
+CREATE INDEX IF NOT EXISTS idx_import_batches_status ON import_batches(status);
 
 -- ===================================================================
--- REFERENCE DATA INSERTS
+-- REFERENCE DATA INSERTS - Standard mappings for consistent data
 -- ===================================================================
 
 -- Insert standard market mappings
@@ -245,10 +285,10 @@ INSERT OR IGNORE INTO sectors (sector_code, sector_name, sector_group) VALUES
 ('OTHER', 'Other', 'Other');
 
 -- ===================================================================
--- VIEWS FOR REPORTING (Denormalized for performance)
+-- ENHANCED REPORTING VIEW - Includes batch and closure information
 -- ===================================================================
 
--- Main reporting view with all joins resolved
+-- Main reporting view with all joins resolved including new audit fields
 CREATE VIEW IF NOT EXISTS spots_reporting AS
 SELECT 
     s.spot_id,
@@ -260,6 +300,7 @@ SELECT
     s.revenue_type,
     s.broadcast_month,
     s.is_historical,
+    s.import_batch_id,
     
     -- Customer information
     c.normalized_name as customer_name,
@@ -276,7 +317,16 @@ SELECT
     
     -- Language information
     l.language_code,
-    l.language_name
+    l.language_name,
+    
+    -- NEW: Import batch information for audit trail
+    ib.import_mode,
+    ib.import_date,
+    ib.started_by,
+    
+    -- NEW: Month closure information for protection status
+    mc.closed_date,
+    mc.closed_by
     
 FROM spots s
 LEFT JOIN customers c ON s.customer_id = c.customer_id
@@ -284,4 +334,6 @@ LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
 LEFT JOIN agencies a ON s.agency_id = a.agency_id
 LEFT JOIN markets m ON s.market_id = m.market_id
 LEFT JOIN languages l ON s.language_id = l.language_id
+LEFT JOIN import_batches ib ON s.import_batch_id = ib.batch_id
+LEFT JOIN month_closures mc ON s.broadcast_month = mc.broadcast_month
 WHERE s.revenue_type != 'Trade' OR s.revenue_type IS NULL;
