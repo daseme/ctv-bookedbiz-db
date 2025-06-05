@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}CTV Booked Biz Reports - Home{% endblock %}
+
+{% block header_title %}CTV Booked Biz Reports{% endblock %}
+{% block header_subtitle %}Revenue Analysis and Performance Tracking Dashboard{% endblock %}
+
+{% block content %}
+<div class="story-section">
+    <div class="section-title">Available Reports</div>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin: 32px 0;">
+        
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Monthly Revenue Summary</h3>
+            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+                Comprehensive breakdown of revenue by month with key metrics including spot counts, averages, and totals.
+            </p>
+            <a href="/report1" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Report</a>
+        </div>
+        
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Expectation Tracking</h3>
+            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+                Management expectation tracking comparing budget vs current expectations vs actual performance by quarter and AE.
+            </p>
+            <a href="/report2" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Report</a>
+        </div>
+        
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Performance Story</h3>
+            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+                Quarterly performance analysis showing the story of revenue progression with year-over-year comparisons.
+            </p>
+            <a href="/report3" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Report</a>
+        </div>
+        
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Sector Analysis</h3>
+            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+                Enhanced quarterly performance with detailed sector analysis, concentration risk assessment, and AE performance tracking.
+            </p>
+            <a href="/report4" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Report</a>
+        </div>
+        
+        <div style="background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">📊 Monthly Revenue Dashboard</h3>
+            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+                <strong>NEW!</strong> Interactive customer-level monthly revenue breakdown with <strong>year selection</strong>, advanced filtering, search, export, and Account Executive tracking. Live data with drill-down capabilities.
+            </p>
+            <a href="/report5" style="display: inline-block; padding: 8px 16px; background: #38a169; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">View Dashboard</a>
+        </div>
+        
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Language Analysis</h3>
+            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+                Multi-language market analysis with revenue distribution, audience reach insights, market share analysis, and monthly trends across different languages and demographics.
+            </p>
+            <a href="/report6" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Analysis</a>
+        </div>
+        
+        <div style="background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">🌍 Market-Language Analysis</h3>
+            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+                <strong>NEW!</strong> Geographic and demographic breakdown showing how different languages perform across markets. Includes market share analysis, language diversity metrics, revenue heatmaps, and cross-market language penetration insights.
+            </p>
+            <a href="/report7" style="display: inline-block; padding: 8px 16px; background: #0284c7; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">View Market Analysis</a>
+        </div>
+        
+    </div>
+</div>
+
+<div class="insight-box">
+    <div class="insight-title">About These Reports</div>
+    <div class="insight-text">
+        These reports are generated from live data in the CTV Booked Biz database. All revenue figures exclude trade revenue 
+        and focus on actual monetary transactions. Reports are updated in real-time as new data is imported.
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">API Access</div>
+    <div style="background: #f7fafc; padding: 16px; border-radius: 4px; margin: 16px 0;">
+        <p style="margin: 0 0 8px 0; font-size: 14px;">Access report data programmatically via API endpoints:</p>
+        <ul style="margin: 8px 0; padding-left: 20px; font-size: 13px; color: #4a5568;">
+            <li><code>/api/data/monthly</code> - Monthly revenue summary data</li>
+            <li><code>/api/data/quarterly</code> - Quarterly performance data</li>
+            <li><code>/api/data/ae</code> - Account Executive performance data</li>
+            <li><code>/api/data/sectors</code> - Sector analysis data</li>
+            <li><code>/api/data/revenue_dashboard</code> - Customer monthly revenue breakdown data</li>
+        </ul>
+    </div>
+</div>
+{% endblock %} 

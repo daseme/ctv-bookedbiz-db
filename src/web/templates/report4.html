@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Quarterly performance with detailed sector analysis and concentration risk assessment{% endblock %}
+
+{% block extra_styles %}
+<style>
+/* Sector Analysis Specific Styles */
+.sector-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+}
+
+.risk-box {
+    background: #fef5e7;
+    border: 1px solid #f6ad55;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+}
+.risk-box.high { background: #fed7d7; border-color: #fc8181; }
+.risk-box.medium { background: #fef5e7; border-color: #f6ad55; }
+.risk-box.low { background: #f0fff4; border-color: #68d391; }
+
+.risk-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.risk-text {
+    font-size: 14px;
+}
+
+.ae-performance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin: 32px 0;
+}
+.ae-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    position: relative;
+}
+.ae-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.ae-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2d3748;
+}
+.ae-performance-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.badge-excellent { background: #c6f6d5; color: #2f855a; }
+.badge-good { background: #bee3f8; color: #2b6cb0; }
+.badge-average { background: #faf089; color: #744210; }
+.badge-needs-attention { background: #fed7d7; color: #c53030; }
+
+.ae-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.ae-metric {
+    text-align: center;
+}
+.ae-metric-label {
+    font-size: 11px;
+    color: #718096;
+    margin-bottom: 4px;
+}
+.ae-metric-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2d3748;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="insight-box">
+    <div class="insight-title">Enhanced Quarterly Performance with Sector Analysis</div>
+    <div class="insight-text">
+        This comprehensive report combines quarterly performance data with detailed sector analysis, 
+        concentration risk assessment, and Account Executive performance tracking to provide insights 
+        into revenue diversification and growth opportunities.
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Quarterly Performance Overview</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Quarter</th>
+                <th>Year</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Average Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.quarterly_data[:8] %}
+            <tr>
+                <td>{{ row.quarter }}</td>
+                <td>{{ row.year }}</td>
+                <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
+                <td class="number positive">
+                    ${{ "{:,}".format(row.total_revenue) if row.total_revenue else "0" }}
+                </td>
+                <td class="number">
+                    ${{ "{:,}".format(row.avg_rate) if row.avg_rate else "0" }}
+                </td>
+                <td>
+                    {% if row.status == 'CLOSED' %}
+                        <span class="status-closed">CLOSED</span>
+                    {% else %}
+                        <span class="status-open">{{ row.status }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Sector Performance Analysis</div>
+    
+    <div class="sector-grid">
+        <div>
+            <div class="chart-container">
+                <div class="chart-title">Revenue by Sector</div>
+                <div class="chart medium">
+                    <canvas id="sectorChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div>
+            <table class="metrics-table">
+                <thead>
+                    <tr>
+                        <th>Sector</th>
+                        <th class="number">Revenue</th>
+                        <th class="number">Spots</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sector in data.sectors[:8] %}
+                    <tr>
+                        <td>{{ sector.sector_name }}</td>
+                        <td class="number positive">
+                            ${{ "{:,}".format(sector.total_revenue) if sector.total_revenue else "0" }}
+                        </td>
+                        <td class="number">{{ "{:,}".format(sector.spot_count) if sector.spot_count else "0" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Concentration Risk Assessment -->
+    {% set top_sector_revenue = data.sectors[0].total_revenue if data.sectors else 0 %}
+    {% set total_revenue = data.sectors | sum(attribute='total_revenue') if data.sectors else 1 %}
+    {% set concentration_pct = (top_sector_revenue / total_revenue * 100) if total_revenue > 0 else 0 %}
+    
+    <div class="risk-box {% if concentration_pct > 50 %}high{% elif concentration_pct > 30 %}medium{% else %}low{% endif %}">
+        <div class="risk-title">Concentration Risk Assessment</div>
+        <div class="risk-text">
+            {% if concentration_pct > 50 %}
+                <strong>HIGH RISK:</strong> Top sector represents {{ "{:.1f}".format(concentration_pct) }}% of total revenue. 
+                Consider diversification strategies to reduce dependency.
+            {% elif concentration_pct > 30 %}
+                <strong>MEDIUM RISK:</strong> Top sector represents {{ "{:.1f}".format(concentration_pct) }}% of total revenue. 
+                Monitor concentration levels and explore growth in other sectors.
+            {% else %}
+                <strong>LOW RISK:</strong> Revenue is well-diversified across sectors with top sector at {{ "{:.1f}".format(concentration_pct) }}%. 
+                Maintain balanced portfolio approach.
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Enhanced Account Executive Performance</div>
+    
+    <div class="ae-performance-grid">
+        {% for ae in data.ae_performance[:6] %}
+        <div class="ae-card">
+            <div class="ae-card-header">
+                <div class="ae-name">{{ ae.ae_name }}</div>
+                {% if ae.total_revenue > 1000000 %}
+                    <span class="ae-performance-badge badge-excellent">EXCELLENT</span>
+                {% elif ae.total_revenue > 500000 %}
+                    <span class="ae-performance-badge badge-good">GOOD</span>
+                {% elif ae.total_revenue > 250000 %}
+                    <span class="ae-performance-badge badge-average">AVERAGE</span>
+                {% else %}
+                    <span class="ae-performance-badge badge-needs-attention">NEEDS ATTENTION</span>
+                {% endif %}
+            </div>
+            
+            <div class="ae-metrics">
+                <div class="ae-metric">
+                    <div class="ae-metric-label">Total Revenue</div>
+                    <div class="ae-metric-value">
+                        ${{ "{:,}".format(ae.total_revenue) if ae.total_revenue else "0" }}
+                    </div>
+                </div>
+                <div class="ae-metric">
+                    <div class="ae-metric-label">Spot Count</div>
+                    <div class="ae-metric-value">{{ "{:,}".format(ae.spot_count) if ae.spot_count else "0" }}</div>
+                </div>
+                <div class="ae-metric">
+                    <div class="ae-metric-label">Avg Rate</div>
+                    <div class="ae-metric-value">
+                        ${{ "{:,}".format(ae.avg_rate) if ae.avg_rate else "0" }}
+                    </div>
+                </div>
+                <div class="ae-metric">
+                    <div class="ae-metric-label">Active Period</div>
+                    <div class="ae-metric-value" style="font-size: 10px;">
+                        {% if ae.first_spot_date and ae.last_spot_date %}
+                            {{ ae.first_spot_date[:7] }} to {{ ae.last_spot_date[:7] }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="chart-container">
+        <div class="chart-title">Quarterly Revenue Progression</div>
+        <div class="chart">
+            <canvas id="quarterlyChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden data for JavaScript -->
+<script id="chart-data" type="application/json">
+{{ data | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Get data from the hidden script tag
+const dataScript = document.getElementById('chart-data');
+const reportData = JSON.parse(dataScript.textContent);
+
+// Sector Revenue Chart
+const ctx1 = document.getElementById('sectorChart').getContext('2d');
+const sectorData = reportData.sectors.slice(0, 6); // Top 6 sectors
+
+new Chart(ctx1, {
+    type: 'doughnut',
+    data: {
+        labels: sectorData.map(s => s.sector_name),
+        datasets: [{
+            data: sectorData.map(s => s.total_revenue || 0),
+            backgroundColor: [
+                'rgba(66, 153, 225, 0.8)',
+                'rgba(72, 187, 120, 0.8)',
+                'rgba(245, 101, 101, 0.8)',
+                'rgba(246, 173, 85, 0.8)',
+                'rgba(159, 122, 234, 0.8)',
+                'rgba(236, 72, 153, 0.8)'
+            ],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    boxWidth: 12,
+                    font: {
+                        size: 11
+                    }
+                }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        const value = context.parsed;
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = ((value / total) * 100).toFixed(1);
+                        return context.label + ': $' + value.toLocaleString() + ' (' + percentage + '%)';
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Quarterly Revenue Chart
+const ctx2 = document.getElementById('quarterlyChart').getContext('2d');
+
+// Group data by year
+const yearData = {};
+reportData.quarterly_data.forEach(row => {
+    if (!yearData[row.year]) {
+        yearData[row.year] = {};
+    }
+    yearData[row.year][row.quarter] = row.total_revenue || 0;
+});
+
+const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+const years = Object.keys(yearData).sort();
+const datasets = years.map((year, index) => {
+    const colors = ['rgba(66, 153, 225, 0.6)', 'rgba(72, 187, 120, 0.6)', 'rgba(245, 101, 101, 0.6)', 'rgba(246, 173, 85, 0.6)', 'rgba(159, 122, 234, 0.6)'];
+    return {
+        label: year,
+        data: quarters.map(q => yearData[year][q] || 0),
+        backgroundColor: colors[index % colors.length],
+        borderColor: colors[index % colors.length].replace('0.6', '1'),
+        borderWidth: 1
+    };
+});
+
+new Chart(ctx2, {
+    type: 'bar',
+    data: {
+        labels: quarters,
+        datasets: datasets
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '$' + (value / 1000).toFixed(0) + 'K';
+                    }
+                }
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %} 

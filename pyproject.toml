@@ -7,8 +7,35 @@ authors = [{ name = "Kurt", email = "you@example.com" }]
 dependencies = [
     "datasette>=0.65.1",
     "openpyxl>=3.1.5",
-]  # or leave empty if using requirements.txt
+    "flask>=2.3.0",
+    "pytest>=7.0.0",
+    "requests>=2.31.0",
+    "pandas>=2.0.0",
+]
 requires-python = ">=3.10"
+
+# Add CLI scripts for easier execution
+[project.scripts]
+weekly-update = "src.cli.weekly_update:main"
+historical-import = "src.cli.bulk_import_historical:main"
+close-month = "src.cli.close_month:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/cli",
+    "src/database", 
+    "src/importers",
+    "src/models",
+    "src/repositories",
+    "src/reports",
+    "src/services",
+    "src/utils",
+    "src/web"
+]
 
 [tool.uv]
 # Optional: pin UV-specific settings

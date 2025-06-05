@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}CTV Booked Biz Reports{% endblock %}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Georgia, 'Times New Roman', serif;
+            background-color: white;
+            margin: 0;
+            padding: 32px;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 24px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: normal;
+            color: #1a202c;
+            margin: 0 0 8px 0;
+        }
+        .header .subtitle {
+            font-size: 16px;
+            color: #718096;
+            font-style: italic;
+        }
+        
+        /* Navigation */
+        .nav {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .nav a {
+            display: inline-block;
+            margin: 0 8px;
+            padding: 8px 16px;
+            background: #f7fafc;
+            color: #4a5568;
+            text-decoration: none;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.2s;
+        }
+        .nav a:hover {
+            background: #edf2f7;
+            border-color: #cbd5e0;
+        }
+        .nav a.active {
+            background: #4299e1;
+            color: white;
+            border-color: #3182ce;
+        }
+        
+        /* Story Sections */
+        .story-section {
+            margin: 48px 0;
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: normal;
+            color: #2d3748;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        
+        /* Enhanced Metrics Table */
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+            font-size: 13px;
+        }
+        .metrics-table th {
+            text-align: left;
+            padding: 10px 6px;
+            border-bottom: 2px solid #2d3748;
+            font-weight: normal;
+            color: #2d3748;
+            font-size: 12px;
+        }
+        .metrics-table td {
+            padding: 6px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 12px;
+        }
+        .metrics-table .number {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .positive { color: #2f855a; font-weight: 500; }
+        .negative { color: #c53030; font-weight: 500; }
+        .neutral { color: #4a5568; }
+        .budget-good { color: #2f855a; font-weight: 500; }
+        .budget-warning { color: #d69e2e; font-weight: 500; }
+        .budget-poor { color: #c53030; font-weight: 500; }
+        .status-closed { 
+            background-color: #f0fff4; 
+            color: #2f855a;
+            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        .status-open { 
+            background-color: #fef5e7; 
+            color: #d69e2e;
+            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        
+        /* Chart Containers */
+        .chart-container {
+            margin: 32px 0;
+            background: #fafafa;
+            padding: 24px;
+            border-left: 3px solid #e2e8f0;
+        }
+        .chart-title {
+            font-size: 16px;
+            text-align: center;
+            margin-bottom: 16px;
+            color: #4a5568;
+        }
+        .chart {
+            position: relative;
+            height: 300px;
+        }
+        .chart.small {
+            height: 200px;
+        }
+        .chart.medium {
+            height: 250px;
+        }
+        
+        /* Key Insight Box */
+        .insight-box {
+            background: #edf2f7;
+            border-left: 4px solid #4299e1;
+            padding: 16px;
+            margin: 24px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .insight-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+        .insight-text {
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+        
+        /* Annotations */
+        .annotation {
+            font-size: 12px;
+            color: #718096;
+            font-style: italic;
+            text-align: center;
+            margin: 16px 0;
+        }
+        
+        /* Error styling */
+        .error {
+            background: #fed7d7;
+            border: 1px solid #fc8181;
+            color: #c53030;
+            padding: 16px;
+            border-radius: 4px;
+            margin: 16px 0;
+        }
+        
+        /* Loading state */
+        .loading {
+            text-align: center;
+            padding: 32px;
+            color: #718096;
+        }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{% block header_title %}CTV Booked Biz Reports{% endblock %}</h1>
+            <div class="subtitle">{% block header_subtitle %}Revenue Analysis and Performance Tracking{% endblock %}</div>
+        </div>
+        
+        <div class="nav">
+            <a href="/">Home</a>
+            <a href="/report1">Monthly Revenue</a>
+            <a href="/report2">Expectation Tracking</a>
+            <a href="/report3">Performance Story</a>
+            <a href="/report4">Sector Analysis</a>
+            <a href="/report5">Revenue Dashboard</a>
+            <a href="/report6">Language Analysis</a>
+            <a href="/report7">Market-Language</a>
+        </div>
+        
+        {% block content %}{% endblock %}
+    </div>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html> 

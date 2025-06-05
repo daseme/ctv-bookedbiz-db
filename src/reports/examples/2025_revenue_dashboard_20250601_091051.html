@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>2025 Monthly Revenue Dashboard</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 2rem;
+      background: #f7fafc;
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      margin-bottom: 1.5rem;
+      color: #555;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+    }
+    .control-group label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .control-group input,
+    .control-group select {
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+    .stats {
+      display: flex;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: #fff;
+      padding: 1rem;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      min-width: 150px;
+      text-align: center;
+    }
+    .stat-card .number {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .revenue-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    .revenue-table th, .revenue-table td {
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      text-align: right;
+    }
+    .revenue-table th {
+      background-color: #2d3748;
+      color: white;
+    }
+    .customer-name {
+      text-align: left;
+      font-weight: bold;
+    }
+    .revenue-amount.zero { color: #a0aec0; }
+    .revenue-amount.positive { color: #2f855a; }
+    .revenue-amount.negative { color: #c53030; }
+    .total-amount { font-weight: bold; color: #4c51bf; }
+    .month-totals td { font-weight: bold; background: #edf2f7; }
+    .no-data {
+      text-align: center;
+      padding: 1rem;
+      font-style: italic;
+    }
+    .export-btn {
+      padding: 0.5rem 1rem;
+      background: #4c51bf;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .ae-badge {
+      background: #edf2f7;
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 2025 Monthly Revenue Dashboard</h1>
+  <p class="subtitle">Live data from CTV Sales Database - Generated June 01, 2025 at 09:10 AM</p>
+  <p class="subtitle">
+    Total Customers: 73 |
+    Active Customers: 73 |
+    Total Revenue: $3,404,019.03
+  </p>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="customerSearch">Search Customers</label>
+      <input type="text" id="customerSearch" placeholder="Type to filter customers...">
+    </div>
+    <div class="control-group">
+      <label for="revenueFilter">Revenue Filter</label>
+      <select id="revenueFilter">
+        <option value="all">All Customers</option>
+        <option value="positive">With Revenue Only</option>
+        <option value="zero">Zero Revenue Only</option>
+        <option value="negative">Negative Revenue Only</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="revenueType">Revenue Type</label>
+      <select id="revenueType">
+        <option value="all">All Revenue Types</option>
+        <option value="Current Year Booked">Current Year Booked</option>
+<option value="New Accounts/Budget">New Accounts/Budget</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="aeFilter">Account Executive</label>
+      <select id="aeFilter">
+        <option value="all">All AEs</option>
+        <option value="Charmaine">Charmaine</option>
+<option value="House">House</option>
+<option value="White Horse International">White Horse International</option>
+<option value="WorldLink">WorldLink</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="sortBy">Sort By</label>
+      <select id="sortBy">
+        <option value="total_desc">Total Revenue (High to Low)</option>
+        <option value="customer">Customer Name</option>
+        <option value="total_asc">Total Revenue (Low to High)</option>
+        <option value="ae">Account Executive</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>&nbsp;</label>
+      <button id="exportCSV" class="export-btn">📥 Export CSV</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card"><div class="number" id="totalCustomers">73</div><div>Total Customers</div></div>
+    <div class="stat-card"><div class="number" id="activeCustomers">73</div><div>Active Customers</div></div>
+    <div class="stat-card"><div class="number" id="totalRevenue">$3,404,019</div><div>Total Revenue</div></div>
+    <div class="stat-card"><div class="number" id="avgMonthlyRevenue">$283,668</div><div>Avg Monthly Revenue</div></div>
+  </div>
+
+  <table class="revenue-table">
+    <thead>
+      <tr>
+        <th>Customer</th>
+        <th>AE</th>
+        <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
+        <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody id="revenueTableBody">
+      <tr><td colspan="15" class="no-data">Loading...</td></tr>
+    </tbody>
+  </table>
+
+  <script>
+    const revenueData = [{"customer": "New Accounts", "ae": "Charmaine", "revenue_type": "New Accounts/Budget", "primary_revenue_class": "Internal Ad Sales", "customer_id": 300, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 82275.23882352948, "month_7": 130874.47674740489, "month_8": 130142.64854671285, "month_9": 146275.02366639805, "month_10": 133394.7292747784, "month_11": 192703.59058823518, "month_12": 195224.20963775346, "total": 1010889.9172848123, "active_months": 7}, {"customer": "New Accounts", "ae": "House", "revenue_type": "New Accounts/Budget", "primary_revenue_class": "Internal Ad Sales", "customer_id": 300, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 14019.856670496098, "month_7": 77617.6276281467, "month_8": 105708.789819004, "month_9": 129087.45918552099, "month_10": 62283.9992307692, "month_11": 73794.6192307692, "month_12": 99026.06403846199, "total": 561538.4158031682, "active_months": 7}, {"customer": "New Accounts", "ae": "WorldLink", "revenue_type": "New Accounts/Budget", "primary_revenue_class": "Direct Response Sales", "customer_id": 300, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 5147.794999999998, "month_7": 31278.359999999997, "month_8": 39098.865000000005, "month_9": 31287.51, "month_10": 42644.014987125, "month_11": 53304.93127575, "month_12": 42644.014987125, "total": 245405.49125000002, "active_months": 7}, {"customer": "Cross Media:US Bank", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 98, "month_1": 0, "month_2": 29954.61, "month_3": 106372.38, "month_4": 2070.6499999999996, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 138397.64, "active_months": 3}, {"customer": "TCAA:Western Washington Toyota Dealers", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 433, "month_1": 6650.0, "month_2": 16863.0, "month_3": 13300.0, "month_4": 9975.0, "month_5": 15162.0, "month_6": 9975.0, "month_7": 9975.0, "month_8": 9975.0, "month_9": 9975.0, "month_10": 9975.0, "month_11": 9975.0, "month_12": 9975.0, "total": 131775.0, "active_months": 12}, {"customer": "Copacino Fujikado LLC:Sound Transit", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 78, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 8860.0, "month_6": 22250.0, "month_7": 17800.0, "month_8": 22250.0, "month_9": 17860.0, "month_10": 18160.0, "month_11": 2200.0, "month_12": 0, "total": 109380.0, "active_months": 7}, {"customer": "Sagent:CalTrans", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 386, "month_1": 0, "month_2": 0, "month_3": 51995.3, "month_4": 51995.3, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 103990.6, "active_months": 2}, {"customer": "IW Group:Lexus", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 199, "month_1": 8729.789999999999, "month_2": 13502.95, "month_3": 19567.86, "month_4": 12637.82, "month_5": 13043.66, "month_6": 14091.699999999999, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 81573.78, "active_months": 6}, {"customer": "Misfit:California Community Colleges", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 286, "month_1": 0, "month_2": 19081.08, "month_3": 0, "month_4": 18162.16, "month_5": 17945.95, "month_6": 23783.78, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 78972.97, "active_months": 4}, {"customer": "WorldLink:Direct Doner", "ae": "WorldLink", "revenue_type": "Current Year Booked", "primary_revenue_class": "Direct Response Sales", "customer_id": 480, "month_1": 11444.0, "month_2": 13049.0, "month_3": 22694.0, "month_4": 10328.0, "month_5": 8308.0, "month_6": 8250.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 74073.0, "active_months": 6}, {"customer": "NKB:Liquidation Channel", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Paid Programming", "customer_id": 298, "month_1": 5130.7699999999995, "month_2": 5130.7699999999995, "month_3": 6413.45, "month_4": 5130.7699999999995, "month_5": 5130.7699999999995, "month_6": 6413.45, "month_7": 5130.7699999999995, "month_8": 6413.45, "month_9": 5130.7699999999995, "month_10": 5130.7699999999995, "month_11": 6413.45, "month_12": 5130.7699999999995, "total": 66699.96, "active_months": 12}, {"customer": "Hoffman Lewis:Toyota", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 176, "month_1": 7300.0, "month_2": 7300.0, "month_3": 9600.0, "month_4": 6925.0, "month_5": 7290.0, "month_6": 7415.0, "month_7": 3685.0, "month_8": 3700.0, "month_9": 3000.0, "month_10": 2900.0, "month_11": 3800.0, "month_12": 3100.0, "total": 66015.0, "active_months": 12}, {"customer": "Daviselen:So Cal Toyota Dealers", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 105, "month_1": 10224.0, "month_2": 10224.0, "month_3": 9940.0, "month_4": 7900.0, "month_5": 7900.0, "month_6": 10020.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 56208.0, "active_months": 6}, {"customer": "Admeraisa:McDonalds", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 22, "month_1": 8605.0, "month_2": 11815.0, "month_3": 11250.0, "month_4": 5080.0, "month_5": 10865.0, "month_6": 5380.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 52995.0, "active_months": 6}, {"customer": "Media Solutions:OCHCA", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 272, "month_1": 3294.12, "month_2": 3294.12, "month_3": 4941.18, "month_4": 9882.35, "month_5": 12588.24, "month_6": 8470.59, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 42470.6, "active_months": 6}, {"customer": "Ocean Media LLC:BetMGM", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 316, "month_1": 6912.0, "month_2": 0, "month_3": 0, "month_4": 9318.0, "month_5": 9318.0, "month_6": 11622.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 37170.0, "active_months": 4}, {"customer": "WorldLink:Marketing Architects", "ae": "WorldLink", "revenue_type": "Current Year Booked", "primary_revenue_class": "Direct Response Sales", "customer_id": 467, "month_1": 5750.0, "month_2": 7624.0, "month_3": 7921.0, "month_4": 4548.0, "month_5": 4083.0, "month_6": 4228.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 34154.0, "active_months": 6}, {"customer": "Sacramento County Water Agency", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 371, "month_1": 0, "month_2": 0, "month_3": 4500.0, "month_4": 4500.0, "month_5": 9000.0, "month_6": 15998.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 33998.0, "active_months": 4}, {"customer": "Rodi Platcow Malin:Thunder Valley", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 344, "month_1": 8040.0, "month_2": 8000.0, "month_3": 8000.0, "month_4": 0, "month_5": 0, "month_6": 7880.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 31920.0, "active_months": 4}, {"customer": "WorldLink:Icon Media Direct", "ae": "WorldLink", "revenue_type": "Current Year Booked", "primary_revenue_class": "Direct Response Sales", "customer_id": 464, "month_1": 6921.0, "month_2": 7328.0, "month_3": 6871.0, "month_4": 2934.0, "month_5": 3472.0, "month_6": 2875.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 30401.0, "active_months": 6}, {"customer": "McHale Media:Kingdom of God", "ae": "White Horse International", "revenue_type": "Current Year Booked", "primary_revenue_class": "Paid Programming", "customer_id": 263, "month_1": 2200.0, "month_2": 2200.0, "month_3": 2750.0, "month_4": 2200.0, "month_5": 2200.0, "month_6": 2750.0, "month_7": 2200.0, "month_8": 2750.0, "month_9": 2200.0, "month_10": 2200.0, "month_11": 2750.0, "month_12": 2200.0, "total": 28600.0, "active_months": 12}, {"customer": "iGRAPHIX:Sky River Casino", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 191, "month_1": 5041.179999999999, "month_2": 6329.41, "month_3": 2858.8199999999997, "month_4": 5094.110000000001, "month_5": 2647.06, "month_6": 5094.119999999999, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 27064.7, "active_months": 6}, {"customer": "MJA:Muckleshoot Casino", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 284, "month_1": 2422.0, "month_2": 3633.0, "month_3": 3633.0, "month_4": 2422.0, "month_5": 2422.0, "month_6": 3633.0, "month_7": 2422.0, "month_8": 2422.0, "month_9": 1211.0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 24220.0, "active_months": 9}, {"customer": "Chukchansi Gold Resort & Casino", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 69, "month_1": 2580.0, "month_2": 10080.0, "month_3": 10080.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 22740.0, "active_months": 3}, {"customer": "Flowers Communications Group:Bally's Chicago Casino", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 145, "month_1": 2770.0, "month_2": 5540.0, "month_3": 6760.0, "month_4": 2545.0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 17615.0, "active_months": 4}, {"customer": "WorldLink:American Heart Association", "ae": "WorldLink", "revenue_type": "Current Year Booked", "primary_revenue_class": "Direct Response Sales", "customer_id": 477, "month_1": 2460.0, "month_2": 3700.0, "month_3": 0, "month_4": 3400.0, "month_5": 3500.0, "month_6": 4375.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 17435.0, "active_months": 5}, {"customer": "iGRAPHIX:Pechanga Resort Casino", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 184, "month_1": 2700.0, "month_2": 3292.94, "month_3": 2700.0, "month_4": 2700.0, "month_5": 2700.0, "month_6": 2700.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 16792.94, "active_months": 6}, {"customer": "PMX Agency LLC dba Assembly:Penn National Gaming Inc", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 347, "month_1": 0, "month_2": 0, "month_3": 5662.0, "month_4": 9446.0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 15108.0, "active_months": 2}, {"customer": "Wallrich:SMUD", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 456, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 3000.0, "month_5": 4500.0, "month_6": 6000.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 13500.0, "active_months": 3}, {"customer": "Saeshe:Cache Creek", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 368, "month_1": 12289.07, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 12289.07, "active_months": 1}, {"customer": "Sagent Marketing:Cal Fire", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 388, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 11808.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 11808.0, "active_months": 1}, {"customer": "TH Media:Emerald Queen", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 443, "month_1": 1300.0, "month_2": 1300.0, "month_3": 1300.0, "month_4": 1300.0, "month_5": 1300.0, "month_6": 1300.0, "month_7": 1300.0, "month_8": 1300.0, "month_9": 1300.0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 11700.0, "active_months": 9}, {"customer": "Daviselen:Western WA McDonalds", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 94, "month_1": 1482.0000000000007, "month_2": 2725.0000000000005, "month_3": 2457.0, "month_4": 2457.0, "month_5": 1808.0, "month_6": 593.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 11522.000000000002, "active_months": 6}, {"customer": "IW Group:CMS", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 216, "month_1": 10240.0, "month_2": 1275.0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 11515.0, "active_months": 2}, {"customer": "Flowers Communications Group:Illinois Lottery", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 147, "month_1": 3940.0, "month_2": 5184.0, "month_3": 1296.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 10420.0, "active_months": 3}, {"customer": "ES Advertising:Astiva Health", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 122, "month_1": 0, "month_2": 5082.35, "month_3": 5336.47, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 10418.82, "active_months": 2}, {"customer": "IW Group:CMS", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 216, "month_1": 0, "month_2": 0, "month_3": 10000.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 10000.0, "active_months": 1}, {"customer": "Impact Marketing:Big Valley Ford", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 197, "month_1": 1650.0, "month_2": 2760.0, "month_3": 2760.0, "month_4": 2760.0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 9930.0, "active_months": 4}, {"customer": "Sac-Yolo Counties Mosquito Control", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 375, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 2612.68, "month_7": 2186.12, "month_8": 2732.65, "month_9": 1826.21, "month_10": 0, "month_11": 0, "month_12": 0, "total": 9357.66, "active_months": 4}, {"customer": "IW Group:On Lock", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 223, "month_1": 0, "month_2": 960.0, "month_3": 2040.0, "month_4": 2160.0, "month_5": 2040.0, "month_6": 2040.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 9240.0, "active_months": 5}, {"customer": "Ntooitive:LA Care Health Plan", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 330, "month_1": 2400.0, "month_2": 600.0, "month_3": 2280.0, "month_4": 1500.0, "month_5": 2040.0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 8820.0, "active_months": 5}, {"customer": "Allison + Partners:Bay Area AQMD", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 27, "month_1": 4540.0, "month_2": 3520.0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 8060.0, "active_months": 2}, {"customer": "A Partnership:Covered California", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 12, "month_1": 7945.879999999999, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 7945.879999999999, "active_months": 1}, {"customer": "IW Group:On Lock", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 223, "month_1": 0, "month_2": 0, "month_3": 7800.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 7800.0, "active_months": 1}, {"customer": "San Joaquin County Public Works", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 389, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 2580.0, "month_5": 3440.0, "month_6": 1610.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 7630.0, "active_months": 3}, {"customer": "Intertrend Communications:California State Lottery", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 217, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 3811.76, "month_6": 2864.71, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 6676.47, "active_months": 2}, {"customer": "Hoffman Lewis:Toyota", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 176, "month_1": 900.0, "month_2": 900.0, "month_3": 900.0, "month_4": 2800.0, "month_5": 900.0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 6400.0, "active_months": 5}, {"customer": "FCI:Fujisankei", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Paid Programming", "customer_id": 126, "month_1": 2194.0, "month_2": 1193.75, "month_3": 1168.75, "month_4": 1443.75, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 6000.25, "active_months": 4}, {"customer": "Prosio Communications:AQMD", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 333, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 1760.0, "month_7": 1760.0, "month_8": 1680.0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 5200.0, "active_months": 3}, {"customer": "Loma Media:Valley Water", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 240, "month_1": 4960.0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 4960.0, "active_months": 1}, {"customer": "Imprenta:PG&E", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 189, "month_1": 235.29, "month_2": 1117.65, "month_3": 1176.47, "month_4": 470.59, "month_5": 470.59, "month_6": 941.18, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 4411.77, "active_months": 6}, {"customer": "Acento Advertising, Inc.:City Colleges of Chicago", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 23, "month_1": 4032.0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 4032.0, "active_months": 1}, {"customer": "LA County Department of Public Social Services:Department of Public Social Services (DPSS)", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 232, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 970.0, "month_6": 2840.0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 3810.0, "active_months": 2}, {"customer": "PMX Agency LLC dba Assembly:Penn National Gaming Inc", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 347, "month_1": 0, "month_2": 0, "month_3": 3529.41, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 3529.41, "active_months": 1}, {"customer": "The Vida Agency:WA Health Benefit Exchange Campaign", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 462, "month_1": 3434.52, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 3434.52, "active_months": 1}, {"customer": "SMUD", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 400, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 2925.0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 2925.0, "active_months": 1}, {"customer": "Innocean Worlwide Americas:UC Davis Health System", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 210, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 1440.24, "month_5": 960.16, "month_6": 480.08, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 2880.48, "active_months": 3}, {"customer": "Prince of Peace:KLO", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 334, "month_1": 0, "month_2": 1440.0, "month_3": 1440.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 2880.0, "active_months": 2}, {"customer": "Fraser Communications:CA Dept of Insurance", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 151, "month_1": 0, "month_2": 2864.0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 2864.0, "active_months": 1}, {"customer": "Sacramento Regional Community Foundation", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 373, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 1660.0, "month_5": 840.0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 2500.0, "active_months": 2}, {"customer": "HYPHEN:Marjaree Mason Center", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 188, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 588.24, "month_5": 588.24, "month_6": 588.24, "month_7": 588.24, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 2352.96, "active_months": 4}, {"customer": "Ideas Multicultural Communications:PGE", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Other", "customer_id": 183, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 2000.0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 2000.0, "active_months": 1}, {"customer": "opAD Media Solutions:NYS Dept of Health", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 324, "month_1": 1100.0, "month_2": 550.0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 1650.0, "active_months": 2}, {"customer": "LA County Department of Public Social Services:Department of Public Social Services (DPSS)", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 232, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 1190.0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 1190.0, "active_months": 1}, {"customer": "Latino Media Collaborative", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 238, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 1000.0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 1000.0, "active_months": 1}, {"customer": "3fold:Los Rios Community College (LRCC)", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 9, "month_1": 894.48, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 894.48, "active_months": 1}, {"customer": "Prosio Communications:AQMD", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 333, "month_1": 0, "month_2": 0, "month_3": 0, "month_4": 0, "month_5": 800.0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 800.0, "active_months": 1}, {"customer": "Sacramento County DHHS DBHS", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Internal Ad Sales", "customer_id": 364, "month_1": 0, "month_2": 0, "month_3": 750.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 750.0, "active_months": 1}, {"customer": "iGRAPHIX:Sky River Casino", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 191, "month_1": 0, "month_2": 0, "month_3": 300.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 300.0, "active_months": 1}, {"customer": "Ntooitive:LA Care Health Plan", "ae": "Charmaine", "revenue_type": "Current Year Booked", "primary_revenue_class": "Branded Content", "customer_id": 330, "month_1": 0, "month_2": 0, "month_3": 300.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 300.0, "active_months": 1}, {"customer": "Desert Media Partners", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Paid Programming", "customer_id": 106, "month_1": 18.75, "month_2": 55.5, "month_3": 213.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 287.25, "active_months": 3}, {"customer": "Cornerstone", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Paid Programming", "customer_id": 82, "month_1": 0, "month_2": 280.0, "month_3": 0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 280.0, "active_months": 1}, {"customer": "San Joaquin Valley Air Pollution Control District", "ae": "House", "revenue_type": "Current Year Booked", "primary_revenue_class": "Other", "customer_id": 398, "month_1": 0, "month_2": 0, "month_3": 150.0, "month_4": 0, "month_5": 0, "month_6": 0, "month_7": 0, "month_8": 0, "month_9": 0, "month_10": 0, "month_11": 0, "month_12": 0, "total": 150.0, "active_months": 1}];
+
+    class MonthlyRevenueReport {
+      constructor() {
+        this.allData = revenueData;
+        this.filteredData = [...this.allData];
+        this.init();
+      }
+
+      init() {
+        this.sortData();
+        this.setupEventListeners();
+        this.renderTable();
+        this.updateStats();
+      }
+
+      setupEventListeners() {
+        document.getElementById('customerSearch').addEventListener('input', () => this.filterData());
+        document.getElementById('revenueFilter').addEventListener('change', () => this.filterData());
+        document.getElementById('revenueType').addEventListener('change', () => this.filterData());
+        document.getElementById('aeFilter').addEventListener('change', () => this.filterData());
+        document.getElementById('sortBy').addEventListener('change', () => this.sortData());
+        document.getElementById('exportCSV').addEventListener('click', () => this.exportToCSV());
+      }
+
+      filterData() {
+        const search = document.getElementById('customerSearch').value.toLowerCase();
+        const filter = document.getElementById('revenueFilter').value;
+        const type = document.getElementById('revenueType').value;
+        const ae = document.getElementById('aeFilter').value;
+
+        this.filteredData = this.allData.filter(row => {
+          const matchSearch = row.customer.toLowerCase().includes(search);
+          const matchType = type === 'all' || row.revenue_type === type;
+          const matchAE = ae === 'all' || row.ae === ae;
+          let matchRev = true;
+          if (filter === 'positive') matchRev = row.total > 0;
+          if (filter === 'zero') matchRev = row.total === 0;
+          if (filter === 'negative') matchRev = row.total < 0;
+          return matchSearch && matchType && matchAE && matchRev;
+        });
+
+        this.sortData();
+      }
+
+      sortData() {
+        const sortBy = document.getElementById('sortBy').value;
+        this.filteredData.sort((a, b) => {
+          if (sortBy === 'customer') return a.customer.localeCompare(b.customer);
+          if (sortBy === 'total_asc') return a.total - b.total;
+          if (sortBy === 'ae') return a.ae.localeCompare(b.ae);
+          return b.total - a.total;
+        });
+        this.renderTable();
+        this.updateStats();
+      }
+
+      formatCurrency(val) {
+        if (val === 0) return '-';
+        return (val < 0 ? '-$' : '$') + Math.abs(val).toLocaleString(undefined, {minimumFractionDigits: 2});
+      }
+
+      renderTable() {
+        const tbody = document.getElementById('revenueTableBody');
+        if (!this.filteredData.length) {
+          tbody.innerHTML = '<tr><td colspan="15" class="no-data">No data</td></tr>';
+          return;
+        }
+
+        let html = '';
+        this.filteredData.forEach(row => {
+          html += `<tr><td class="customer-name">${row.customer}</td>`;
+          html += `<td><span class="ae-badge">${row.ae}</span></td>`;
+          for (let m = 1; m <= 12; m++) {
+            const val = row[`month_${m}`];
+            const cls = val === 0 ? 'zero' : val > 0 ? 'positive' : 'negative';
+            html += `<td class="revenue-amount ${cls}">${this.formatCurrency(val)}</td>`;
+          }
+          html += `<td class="total-amount">${this.formatCurrency(row.total)}</td></tr>`;
+        });
+
+        html += '<tr class="month-totals"><td><strong>Monthly Totals</strong></td><td></td>';
+        for (let m = 1; m <= 12; m++) {
+          const sum = this.filteredData.reduce((t, r) => t + (r[`month_${m}`] || 0), 0);
+          html += `<td>${this.formatCurrency(sum)}</td>`;
+        }
+        const grand = this.filteredData.reduce((t, r) => t + r.total, 0);
+        html += `<td>${this.formatCurrency(grand)}</td></tr>`;
+
+        tbody.innerHTML = html;
+      }
+
+      updateStats() {
+        document.getElementById('totalCustomers').textContent = this.allData.length;
+        document.getElementById('activeCustomers').textContent = this.filteredData.filter(r => r.total > 0).length;
+        const total = this.filteredData.reduce((sum, r) => sum + r.total, 0);
+        document.getElementById('totalRevenue').textContent = this.formatCurrency(total);
+        document.getElementById('avgMonthlyRevenue').textContent = this.formatCurrency(total / 12);
+      }
+
+      exportToCSV() {
+        const headers = ['Customer','AE','Revenue Type','Revenue Class','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Total','Active Months'];
+        let rows = this.filteredData.map(row => [
+          `"${row.customer}"`,
+          `"${row.ae}"`,
+          `"${row.revenue_type}"`,
+          `"${row.primary_revenue_class}"`,
+          ...Array.from({length: 12}, (_, i) => row[`month_${i+1}`] || 0),
+          row.total,
+          row.active_months
+        ]);
+        const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = '2025_revenue_dashboard.csv';
+        a.click();
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => new MonthlyRevenueReport());
+  </script>
+</body>
+</html>
