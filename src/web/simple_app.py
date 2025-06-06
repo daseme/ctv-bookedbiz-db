@@ -19,6 +19,52 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def get_quarter_status(year, quarter_num):
+    """
+    Determine if a quarter is CLOSED or OPEN based on actual month closures
+    
+    Args:
+        year: Year (int)
+        quarter_num: Quarter number 1-4 (int)
+    
+    Returns:
+        'CLOSED' if all months in quarter are closed, 'OPEN' otherwise
+    """
+    import sqlite3
+    
+    # Define quarter months based on database format (Mmm-YY)
+    quarter_months = {
+        1: [f'Jan-{str(year)[2:]}', f'Feb-{str(year)[2:]}', f'Mar-{str(year)[2:]}'],
+        2: [f'Apr-{str(year)[2:]}', f'May-{str(year)[2:]}', f'Jun-{str(year)[2:]}'],
+        3: [f'Jul-{str(year)[2:]}', f'Aug-{str(year)[2:]}', f'Sep-{str(year)[2:]}'],
+        4: [f'Oct-{str(year)[2:]}', f'Nov-{str(year)[2:]}', f'Dec-{str(year)[2:]}']
+    }
+    
+    months_in_quarter = quarter_months.get(quarter_num, [])
+    if not months_in_quarter:
+        return 'OPEN'
+    
+    try:
+        # Query database for closed months
+        db_path = os.path.join(os.path.dirname(__file__), DB_PATH)
+        conn = sqlite3.connect(db_path)
+        placeholders = ','.join('?' * len(months_in_quarter))
+        cursor = conn.execute(f"""
+            SELECT broadcast_month 
+            FROM month_closures 
+            WHERE broadcast_month IN ({placeholders})
+        """, months_in_quarter)
+        
+        closed_months = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        # Quarter is CLOSED if ALL months are closed
+        return 'CLOSED' if len(closed_months) == len(months_in_quarter) else 'OPEN'
+        
+    except Exception as e:
+        print(f"Error checking quarter status: {e}")
+        return 'OPEN'  # Default to OPEN on error
+
 @app.route('/')
 def index():
     """Landing page."""
@@ -118,15 +164,83 @@ def report1():
         
         cursor = conn.execute(query)
         results = cursor.fetchall()
+        
+        # Add quarterly data for report1
+        quarterly_query = """
+        SELECT 
+            CASE 
+                WHEN strftime('%m', broadcast_month) IN ('01', '02', '03') THEN 'Q1'
+                WHEN strftime('%m', broadcast_month) IN ('04', '05', '06') THEN 'Q2'
+                WHEN strftime('%m', broadcast_month) IN ('07', '08', '09') THEN 'Q3'
+                WHEN strftime('%m', broadcast_month) IN ('10', '11', '12') THEN 'Q4'
+            END as quarter,
+            strftime('%Y', broadcast_month) as year,
+            COUNT(*) as spot_count,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        GROUP BY quarter, year
+        ORDER BY year DESC, quarter DESC
+        LIMIT 8
+        """
+        
+        cursor = conn.execute(quarterly_query)
+        quarterly_data = [dict(row) for row in cursor.fetchall()]
+        
+        # Add status to quarterly data based on actual month closures
+        for quarter_row in quarterly_data:
+            year = int(quarter_row['year'])
+            quarter = quarter_row['quarter']
+            
+            # Extract quarter number from quarter string (Q1, Q2, Q3, Q4)
+            quarter_num = int(quarter[1:])
+            
+            # Determine quarter status based on actual month closures
+            quarter_row['status'] = get_quarter_status(year, quarter_num)
+        
         conn.close()
         
         # Convert to list of dictionaries
         columns = ['month', 'formatted_month', 'spot_count', 'total_revenue', 'avg_rate', 'min_rate', 'max_rate']
         monthly_data = [dict(zip(columns, row)) for row in results]
         
+        # Add month closure status to each monthly row
+        for month_row in monthly_data:
+            year_month = month_row['month']  # Format: 'YYYY-MM'
+            if year_month:
+                # Convert to database month format (e.g., 'Jan-24')
+                year, month = year_month.split('-')
+                month_names = {
+                    '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
+                    '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+                    '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
+                }
+                month_display = f"{month_names[month]}-{year[2:]}"
+                
+                # Check if month is closed
+                try:
+                    conn_check = get_db_connection()
+                    cursor = conn_check.execute("""
+                        SELECT 1 FROM month_closures 
+                        WHERE broadcast_month = ?
+                    """, (month_display,))
+                    is_closed = cursor.fetchone() is not None
+                    conn_check.close()
+                    
+                    month_row['status'] = 'CLOSED' if is_closed else 'OPEN'
+                except Exception as e:
+                    print(f"Error checking month closure status: {e}")
+                    month_row['status'] = 'UNKNOWN'
+            else:
+                month_row['status'] = 'UNKNOWN'
+        
         # Prepare data for template
         data = {
             'monthly_data': monthly_data,
+            'quarterly_data': quarterly_data,
             'available_years': available_years,
             'filters': {
                 'from_month': from_month,
@@ -262,23 +376,16 @@ def report2():
             }
             return all(month in available_months for month in quarter_months[quarter])
         
-        # Add status to quarterly data based on completion
+        # Add status to quarterly data based on actual month closures
         for quarter_row in quarterly_data:
             year = int(quarter_row['year'])
             quarter = quarter_row['quarter']
-            current_year = datetime.now().year
             
-            if year < current_year:
-                # Past years are always closed
-                quarter_row['status'] = 'CLOSED'
-            elif year == current_year:
-                if is_quarter_complete(year, quarter):
-                    quarter_row['status'] = 'CLOSED'
-                else:
-                    quarter_row['status'] = 'OPEN'
-            else:
-                # Future years are open
-                quarter_row['status'] = 'OPEN'
+            # Extract quarter number from quarter string (Q1, Q2, Q3, Q4)
+            quarter_num = int(quarter[1:])
+            
+            # Determine quarter status based on actual month closures
+            quarter_row['status'] = get_quarter_status(year, quarter_num)
         
         # Convert monthly results to list of dictionaries
         columns = ['month', 'formatted_month', 'actual_revenue', 'expected_revenue', 'performance_pct']
@@ -562,23 +669,16 @@ def report4():
             }
             return all(month in available_months for month in quarter_months[quarter])
         
-        # Add status to quarterly data based on completion
+        # Add status to quarterly data based on actual month closures
         for quarter_row in quarterly_data:
             year = int(quarter_row['year'])
             quarter = quarter_row['quarter']
-            current_year = datetime.now().year
             
-            if year < current_year:
-                # Past years are always closed
-                quarter_row['status'] = 'CLOSED'
-            elif year == current_year:
-                if is_quarter_complete(year, quarter):
-                    quarter_row['status'] = 'CLOSED'
-                else:
-                    quarter_row['status'] = 'OPEN'
-            else:
-                # Future years are open
-                quarter_row['status'] = 'OPEN'
+            # Extract quarter number from quarter string (Q1, Q2, Q3, Q4)
+            quarter_num = int(quarter[1:])
+            
+            # Determine quarter status based on actual month closures
+            quarter_row['status'] = get_quarter_status(year, quarter_num)
         
         data = {
             'sector_breakdown': sector_breakdown,
@@ -672,6 +772,33 @@ def report5():
         cursor = conn.execute(dashboard_query, (selected_year,))
         revenue_data = [dict(row) for row in cursor.fetchall()]
         
+        # Get month closure status for the selected year
+        month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        year_suffix = str(selected_year)[2:]  # Get last 2 digits
+        
+        month_status = []
+        for i, month_name in enumerate(month_names, 1):
+            month_display = f"{month_name}-{year_suffix}"
+            try:
+                cursor = conn.execute("""
+                    SELECT 1 FROM month_closures 
+                    WHERE broadcast_month = ?
+                """, (month_display,))
+                is_closed = cursor.fetchone() is not None
+                month_status.append({
+                    'month_num': i,
+                    'month_name': month_name,
+                    'status': 'CLOSED' if is_closed else 'OPEN'
+                })
+            except Exception as e:
+                print(f"Error checking closure status for {month_display}: {e}")
+                month_status.append({
+                    'month_num': i,
+                    'month_name': month_name,
+                    'status': 'UNKNOWN'
+                })
+        
         conn.close()
         
         # Calculate totals for dashboard
@@ -690,7 +817,8 @@ def report5():
             'active_customers': active_customers,
             'total_revenue': total_revenue,
             'avg_monthly_revenue': avg_monthly_revenue,
-            'current_year': datetime.now().year
+            'current_year': datetime.now().year,
+            'month_status': month_status
         }
         
         return render_template('report5.html', title="Monthly Revenue Dashboard", data=data)

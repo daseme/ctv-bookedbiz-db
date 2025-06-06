@@ -86,6 +86,10 @@
     font-weight: normal;
     color: #2d3748;
     font-size: 10px;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
 }
 
 .revenue-table th:first-child {
@@ -158,6 +162,70 @@
     padding: 32px;
     font-style: italic;
     color: #718096;
+}
+
+/* Month status styling */
+.month-closed {
+    background-color: #f0fff4 !important;
+    color: #2f855a !important;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 11;
+}
+
+.month-open {
+    background-color: #fef5e7 !important;
+    color: #d69e2e !important;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 11;
+}
+
+.month-unknown {
+    background-color: #f7fafc !important;
+    color: #4a5568 !important;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 11;
+}
+
+/* Status legend styling */
+.status-legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin: 16px 0;
+    padding: 12px;
+    background: #f7fafc;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.legend-badge {
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+    font-size: 10px;
+}
+
+.legend-closed {
+    background-color: #f0fff4;
+    color: #2f855a;
+}
+
+.legend-open {
+    background-color: #fef5e7;
+    color: #d69e2e;
 }
 </style>
 {% endblock %}
@@ -245,8 +313,14 @@
                 <tr>
                     <th>Customer</th>
                     <th>AE</th>
-                    <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
-                    <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+                    {% for month in data.month_status %}
+                    <th class="
+                        {% if month.status == 'CLOSED' %}month-closed
+                        {% elif month.status == 'OPEN' %}month-open
+                        {% else %}month-unknown
+                        {% endif %}
+                    ">{{ month.month_name }}</th>
+                    {% endfor %}
                     <th>Total</th>
                 </tr>
             </thead>
@@ -258,6 +332,18 @@
     
     <div class="annotation">
         Revenue excludes trade transactions. Use controls above to filter data by year, customer, AE, or revenue type.
+    </div>
+    
+    <!-- Month Status Legend -->
+    <div class="status-legend">
+        <div class="legend-item">
+            <span class="legend-badge legend-closed">CLOSED</span>
+            <span>Month is officially closed and protected from changes</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-badge legend-open">OPEN</span>
+            <span>Month is open for updates and modifications</span>
+        </div>
     </div>
 </div>
 
