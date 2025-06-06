@@ -16,10 +16,11 @@ from dataclasses import dataclass
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database.connection import DatabaseConnection
-from services.month_closure_service import MonthClosureService, ValidationResult
+from services.month_closure_service import MonthClosureService, ValidationResult, MonthClosureError
 from services.import_integration_utilities import extract_display_months_from_excel, validate_excel_for_import
 from utils.broadcast_month_utils import BroadcastMonthParser, extract_broadcast_months_from_excel
 from services.base_service import BaseService
+
 
 logger = logging.getLogger(__name__)
 
@@ -288,37 +289,74 @@ class BroadcastMonthImportService(BaseService):
             # Step 2: Parse headers to understand column structure
             header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
             
-            # Create column mapping (simplified version of the enhanced importer's logic)
+            # Complete comprehensive column mapping from enhanced importer
             column_mapping = {
+                # ===================================================================
+                # CORE FIELDS - Same in both 2024 and 2025 formats
+                # ===================================================================
                 'Bill Code': 'bill_code',
-                'Start Date': 'air_date', 
+                'Start Date': 'air_date',
                 'End Date': 'end_date',
-                'Day(s)': 'day_of_week',
                 'Time In': 'time_in',
                 'Time out': 'time_out',
                 'Length': 'length_seconds',
-                'Media/Name/Program': 'media',
                 'Comments': 'program',
                 'Language': 'language_code',
-                'Format': 'format',
-                'Units-Spot count': 'sequence_number',
                 'Line': 'line_number',
                 'Type': 'spot_type',
-                'Agency/Episode# or cut number': 'estimate',
-                'Unit rate Gross': 'gross_rate',
                 'Make Good': 'make_good',
                 'Spot Value': 'spot_value',
                 'Month': 'broadcast_month',
                 'Broker Fees': 'broker_fees',
+                'Revenue Type': 'revenue_type',
+                'Billing Type': 'billing_type',
+                'Market': 'market_name',
+                
+                # ===================================================================
+                # 2024 FORMAT COLUMNS
+                # ===================================================================
+                'Day(s)': 'day_of_week',
+                'Media/Name/Program': 'media',
+                'Format': 'format',
+                'Units-Spot count': 'sequence_number',
+                'Agency/Episode# or cut number': 'estimate',
+                'Unit rate Gross': 'gross_rate',
                 'Sales/rep com: revenue sharing': 'priority',
                 'Station Net': 'station_net',
                 'Sales Person': 'sales_person',
-                'Revenue Type': 'revenue_type',
-                'Billing Type': 'billing_type',
                 'Agency?': 'agency_flag',
                 'Affidavit?': 'affidavit_flag',
                 'Notarize?': 'contract',
-                'Market': 'market_name'
+                
+                # ===================================================================
+                # 2025 FORMAT COLUMNS (Alternative mappings)
+                # ===================================================================
+                'Day': 'day_of_week',              # Alternative to 'Day(s)'
+                'Show Name': 'media',              # Alternative to 'Media/Name/Program'
+                'Show': 'format',                  # Alternative to 'Format'
+                'Spots': 'sequence_number',        # Alternative to 'Units-Spot count'
+                'Estimate': 'estimate',            # Alternative to 'Agency/Episode# or cut number'
+                'Gross': 'gross_rate',             # Alternative to 'Unit rate Gross'
+                ' Gross ': 'gross_rate',           # Handle potential spacing variations
+                'Priority': 'priority',            # Alternative to 'Sales/rep com: revenue sharing'
+                'Net': 'station_net',              # Alternative to 'Station Net'
+                ' Net ': 'station_net',            # Handle potential spacing variations
+                'AE': 'sales_person',              # Alternative to 'Sales Person'
+                'Agency': 'agency_flag',           # Alternative to 'Agency?'
+                'Affidavit': 'affidavit_flag',     # Alternative to 'Affidavit?'
+                'Notarize': 'contract',            # Alternative to 'Notarize?'
+                
+                # ===================================================================
+                # ADDITIONAL VARIATIONS (Common alternatives)
+                # ===================================================================
+                'Account Executive': 'sales_person',   # Another common variation
+                'Salesperson': 'sales_person',         # Another common variation
+                'Gross Rate': 'gross_rate',            # Another common variation
+                'Net Rate': 'station_net',             # Another common variation
+                'Air Date': 'air_date',                # Alternative to 'Start Date'
+                'Date': 'air_date',                    # Simple date column
+                'Program': 'media',                    # Alternative to show/media fields
+                'Episode': 'estimate',                 # Alternative to estimate field
             }
             
             # Find column indexes

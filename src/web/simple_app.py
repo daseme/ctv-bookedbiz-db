@@ -77,14 +77,14 @@ def report1():
         SELECT DISTINCT strftime('%Y', broadcast_month) as year 
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
-        AND (gross_rate > 0 OR spot_value > 0)
+        AND gross_rate IS NOT NULL
         ORDER BY year DESC
         """
         
         cursor = conn.execute(years_query)
         available_years = [row[0] for row in cursor.fetchall()]
         
-        # Modified query to use only gross_rate and add filtering for gross_rate IS NOT NULL
+        # Modified query to use gross_rate OR spot_value to include 2025 data
         query = """
         SELECT 
             strftime('%Y-%m', broadcast_month) as month,
@@ -104,14 +104,16 @@ def report1():
             END || ' ' || strftime('%Y', broadcast_month) as formatted_month,
             COUNT(*) as spot_count,
             ROUND(SUM(gross_rate), 2) as total_revenue,
-            ROUND(AVG(gross_rate), 2) as avg_rate
+            ROUND(AVG(gross_rate), 2) as avg_rate,
+            ROUND(MIN(gross_rate), 2) as min_rate,
+            ROUND(MAX(gross_rate), 2) as max_rate
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
         AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         GROUP BY strftime('%Y-%m', broadcast_month)
         ORDER BY month DESC
-        LIMIT 12
+        LIMIT 24
         """
         
         cursor = conn.execute(query)
@@ -119,7 +121,7 @@ def report1():
         conn.close()
         
         # Convert to list of dictionaries
-        columns = ['month', 'formatted_month', 'spot_count', 'total_revenue', 'avg_rate']
+        columns = ['month', 'formatted_month', 'spot_count', 'total_revenue', 'avg_rate', 'min_rate', 'max_rate']
         monthly_data = [dict(zip(columns, row)) for row in results]
         
         # Prepare data for template
@@ -144,7 +146,7 @@ def report2():
     try:
         conn = get_db_connection()
         
-        # Modified query to use only gross_rate and add filtering for gross_rate IS NOT NULL
+        # Modified query to use gross_rate OR spot_value to include 2025 data
         expectation_query = """
         SELECT 
             strftime('%Y-%m', broadcast_month) as month,
@@ -185,7 +187,7 @@ def report2():
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         
         ORDER BY month DESC
-        LIMIT 13
+        LIMIT 25
         """
         
         # Quarterly data for report2 template
@@ -210,7 +212,7 @@ def report2():
         LIMIT 8
         """
         
-        # AE Performance Analysis - Modified to use only gross_rate
+        # AE Performance Analysis - Modified to use gross_rate OR spot_value
         ae_query = """
         SELECT 
             sales_person,
@@ -727,7 +729,7 @@ def report6():
             ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
             ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate,
             ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)) * 100.0 / 
-                (SELECT SUM(COALESCE(gross_rate, spot_value, 0)) FROM spots 
+                (SELECT SUM(gross_rate) FROM spots 
                  WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
                  AND strftime('%Y', broadcast_month) = ?), 2) as market_share_pct
         FROM spots s
@@ -844,13 +846,13 @@ def report7():
             ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate,
             -- Market share within language
             ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)) * 100.0 / 
-                (SELECT SUM(COALESCE(gross_rate, spot_value, 0)) FROM spots 
+                (SELECT SUM(gross_rate) FROM spots 
                  WHERE language_code = s.language_code 
                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                  AND strftime('%Y', broadcast_month) = ?), 2) as market_share_within_language,
             -- Language share within market
             ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)) * 100.0 / 
-                (SELECT SUM(COALESCE(gross_rate, spot_value, 0)) FROM spots 
+                (SELECT SUM(gross_rate) FROM spots 
                  WHERE market_name = s.market_name 
                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                  AND strftime('%Y', broadcast_month) = ?), 2) as language_share_within_market
@@ -966,7 +968,7 @@ def api_data(report_type):
             query = """
             SELECT 
                 strftime('%Y-%m', broadcast_month) as month,
-                ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 2) as revenue
+                ROUND(SUM(gross_rate), 2) as revenue
             FROM spots 
             WHERE broadcast_month IS NOT NULL 
             AND (revenue_type != 'Trade' OR revenue_type IS NULL)
@@ -986,7 +988,7 @@ def api_data(report_type):
                     WHEN strftime('%m', broadcast_month) IN ('10', '11', '12') THEN 'Q4'
                 END as quarter,
                 strftime('%Y', broadcast_month) as year,
-                ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 2) as revenue
+                ROUND(SUM(gross_rate), 2) as revenue
             FROM spots 
             WHERE broadcast_month IS NOT NULL 
             AND (revenue_type != 'Trade' OR revenue_type IS NULL)
@@ -1015,7 +1017,7 @@ def api_data(report_type):
                 ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '10' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_10,
                 ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '11' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_11,
                 ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '12' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_12,
-                ROUND(SUM(COALESCE(sp.gross_rate, sp.spot_value, 0)), 2) as total
+                ROUND(SUM(sp.gross_rate), 2) as total
             FROM spots sp
             LEFT JOIN customers c ON sp.customer_id = c.customer_id
             WHERE sp.broadcast_month IS NOT NULL 

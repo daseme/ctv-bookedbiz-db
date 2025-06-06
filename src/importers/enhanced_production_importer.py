@@ -916,7 +916,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="FIXED Enhanced Production Excel Importer")
     parser.add_argument("excel_file", help="Path to Excel file")
-    parser.add_argument("--database", default="data/database/test.db", help="Database path")
+    parser.add_argument("--database", default="data/database/production.db", help="Database path")
     parser.add_argument("--batch-id", help="Optional batch ID for tracking")
     parser.add_argument("--limit", type=int, help="Limit number of records (for testing)")
     
