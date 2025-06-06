@@ -8,7 +8,7 @@ from datetime import datetime
 app = Flask(__name__)
 
 # Database path
-DB_PATH = '../../data/database/test.db'
+DB_PATH = '../../data/database/production.db'
 
 def get_db_connection():
     """Get database connection."""

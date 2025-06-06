@@ -19,6 +19,7 @@ from database.connection import DatabaseConnection
 from services.month_closure_service import MonthClosureService, ValidationResult
 from services.import_integration_utilities import extract_display_months_from_excel, validate_excel_for_import
 from utils.broadcast_month_utils import BroadcastMonthParser, extract_broadcast_months_from_excel
+from services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +50,9 @@ class BroadcastMonthImportError(Exception):
     pass
 
 
-class BroadcastMonthImportService:
-    """Service for managing month-based data imports with validation and safety."""
-    
+class BroadcastMonthImportService(BaseService):
     def __init__(self, db_connection: DatabaseConnection):
-        """
-        Initialize the broadcast month import service.
-        
-        Args:
-            db_connection: Database connection instance
-        """
-        self.db = db_connection
+        super().__init__(db_connection)  # ADD THIS LINE
         self.closure_service = MonthClosureService(db_connection)
         self.parser = BroadcastMonthParser()
     
@@ -160,7 +153,7 @@ class BroadcastMonthImportService:
             batch_record_id = self._create_import_batch(batch_id, import_mode, excel_file, result.broadcast_months_affected)
             
             # Step 4: Execute the import in transaction
-            with self.db.transaction() as conn:
+            with self.safe_transaction() as conn:
                 # Delete existing data for affected months
                 deleted_count = self._delete_broadcast_month_data(result.broadcast_months_affected, conn)
                 result.records_deleted = deleted_count
@@ -176,34 +169,20 @@ class BroadcastMonthImportService:
                 # Step 5: Handle HISTORICAL mode - close all months
                 if import_mode == 'HISTORICAL':
                     for month in result.broadcast_months_affected:
-                        if not self.closure_service.is_month_closed(month):
-                            # CRITICAL FIX: Use the new transaction-aware method
-                            try:
-                                # Insert closure record directly within existing transaction
-                                conn.execute("""
-                                    INSERT INTO month_closures (broadcast_month, closed_date, closed_by, notes)
-                                    VALUES (?, ?, ?, ?)
-                                """, (month, date.today(), closed_by, f"Auto-closed by historical import {batch_id}"))
-                                
-                                # Get datetime values for this month
-                                datetime_values = self.closure_service._get_datetime_values_for_month(month)
-                                
-                                # Mark all spots as historical
-                                updated_count = 0
-                                for datetime_value in datetime_values:
-                                    cursor = conn.execute("""
-                                        UPDATE spots 
-                                        SET is_historical = 1 
-                                        WHERE broadcast_month = ?
-                                    """, (datetime_value,))
-                                    updated_count += cursor.rowcount
-                                
-                                result.closed_months.append(month)
-                                logger.info(f"Closed month {month} as part of historical import - {updated_count} spots marked historical")
-                                
-                            except Exception as e:
+                        try:
+                            # Skip the is_month_closed check since we're in a transaction
+                            # Just try to close it and handle the error if already closed
+                            self.closure_service.close_broadcast_month_with_connection(
+                                month, closed_by, conn, f"Auto-closed by historical import {batch_id}"
+                            )
+                            result.closed_months.append(month)
+                            logger.info(f"Closed month {month} as part of historical import")
+                            
+                        except MonthClosureError as e:
+                            if "already closed" in str(e):
+                                logger.info(f"Month {month} already closed, skipping")
+                            else:
                                 logger.error(f"Failed to close month {month}: {e}")
-                                # Don't fail the entire import if month closure fails
                                 result.error_messages.append(f"Failed to close month {month}: {e}")
                 
                 # Step 6: Update batch record as completed
@@ -232,24 +211,29 @@ class BroadcastMonthImportService:
             return result
     
     def _create_import_batch(self, batch_id: str, import_mode: str, source_file: str, months: List[str]) -> str:
-        """Create import batch record for audit trail - FIXED to avoid nested transactions."""
+        """FIXED: Create import batch record without nested transaction."""
         try:
-            # CRITICAL FIX: Use direct connection instead of creating a transaction
-            conn = self.db.connect()
-            try:
+            # Use existing connection if in transaction, otherwise create safe transaction
+            if self.in_transaction:
+                conn = self.get_connection()
                 conn.execute("""
                     INSERT INTO import_batches (
                         batch_id, import_mode, source_file, broadcast_months_affected,
                         status, started_by
                     ) VALUES (?, ?, ?, ?, 'RUNNING', ?)
                 """, (batch_id, import_mode, source_file, str(months), 'system'))
-                
-                conn.commit()
-                logger.info(f"Created import batch record: {batch_id}")
-                return batch_id
-            finally:
-                conn.close()
-                
+            else:
+                with self.safe_transaction() as conn:
+                    conn.execute("""
+                        INSERT INTO import_batches (
+                            batch_id, import_mode, source_file, broadcast_months_affected,
+                            status, started_by
+                        ) VALUES (?, ?, ?, ?, 'RUNNING', ?)
+                    """, (batch_id, import_mode, source_file, str(months), 'system'))
+            
+            logger.info(f"Created import batch record: {batch_id}")
+            return batch_id
+            
         except Exception as e:
             logger.error(f"Failed to create import batch record: {e}")
             raise BroadcastMonthImportError(f"Failed to create import batch: {e}")
@@ -497,11 +481,11 @@ class BroadcastMonthImportService:
             logger.error(f"Failed to update batch completion: {e}")
     
     def _fail_import_batch(self, batch_id: str, error_message: str):
-        """Mark import batch as failed - FIXED to avoid nested transactions."""
+        """FIXED: Mark import batch as failed without nested transaction."""
         try:
-            # CRITICAL FIX: Use direct connection instead of creating a transaction
-            conn = self.db.connect()
-            try:
+            # Use existing connection if in transaction, otherwise create safe transaction
+            if self.in_transaction:
+                conn = self.get_connection()
                 conn.execute("""
                     UPDATE import_batches 
                     SET status = 'FAILED',
@@ -509,42 +493,48 @@ class BroadcastMonthImportService:
                         error_summary = ?
                     WHERE batch_id = ?
                 """, (error_message, batch_id))
-                
-                conn.commit()
-                logger.info(f"Marked batch {batch_id} as failed")
-            finally:
-                conn.close()
-                
+            else:
+                with self.safe_transaction() as conn:
+                    conn.execute("""
+                        UPDATE import_batches 
+                        SET status = 'FAILED',
+                            completed_at = CURRENT_TIMESTAMP,
+                            error_summary = ?
+                        WHERE batch_id = ?
+                    """, (error_message, batch_id))
+            
+            logger.info(f"Marked batch {batch_id} as failed")
+            
         except Exception as e:
             logger.error(f"Failed to mark batch as failed: {e}")
     
     def get_import_history(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent import history."""
         try:
-            conn = self.db.connect()
-            cursor = conn.execute("""
-                SELECT batch_id, import_mode, source_file, import_date, status,
-                       records_imported, records_deleted, broadcast_months_affected
-                FROM import_batches 
-                ORDER BY import_date DESC 
-                LIMIT ?
-            """, (limit,))
-            
-            history = []
-            for row in cursor.fetchall():
-                history.append({
-                    'batch_id': row[0],
-                    'import_mode': row[1],
-                    'source_file': row[2],
-                    'import_date': row[3],
-                    'status': row[4],
-                    'records_imported': row[5] or 0,
-                    'records_deleted': row[6] or 0,
-                    'months_affected': eval(row[7]) if row[7] else []  # Convert string back to list
-                })
-            
-            return history
-            
+            with self.safe_connection() as conn:  # ✅ BaseService connection management
+                cursor = conn.execute("""
+                    SELECT batch_id, import_mode, source_file, import_date, status,
+                        records_imported, records_deleted, broadcast_months_affected
+                    FROM import_batches 
+                    ORDER BY import_date DESC 
+                    LIMIT ?
+                """, (limit,))
+                
+                history = []
+                for row in cursor.fetchall():
+                    history.append({
+                        'batch_id': row[0],
+                        'import_mode': row[1],
+                        'source_file': row[2],
+                        'import_date': row[3],
+                        'status': row[4],
+                        'records_imported': row[5] or 0,
+                        'records_deleted': row[6] or 0,
+                        'months_affected': eval(row[7]) if row[7] else []
+                    })
+                
+                return history
+                
         except Exception as e:
             logger.error(f"Failed to get import history: {e}")
             return []
@@ -552,7 +542,7 @@ class BroadcastMonthImportService:
     def cleanup_failed_imports(self) -> int:
         """Clean up any failed or stuck import batches."""
         try:
-            with self.db.transaction() as conn:
+            with self.safe_transaction() as conn:
                 # Mark old running batches as failed (older than 1 hour)
                 cursor = conn.execute("""
                     UPDATE import_batches 
@@ -597,7 +587,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Test broadcast month import service")
     parser.add_argument("excel_file", help="Excel file to import")
-    parser.add_argument("--db-path", default="data/database/test.db", help="Database path")
+    parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
     parser.add_argument("--mode", choices=['WEEKLY_UPDATE', 'HISTORICAL', 'MANUAL'],
                        default='WEEKLY_UPDATE', help="Import mode")
     parser.add_argument("--closed-by", help="Required for HISTORICAL mode")

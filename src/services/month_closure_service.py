@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database.connection import DatabaseConnection
 from utils.broadcast_month_utils import BroadcastMonthParser, BroadcastMonthParseError
+from services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class MonthClosureError(Exception):
     pass
 
 
-class MonthClosureService:
+class MonthClosureService(BaseService):
     """Service for managing broadcast month closures and validation."""
     
     def __init__(self, db_connection: DatabaseConnection):
@@ -53,22 +54,12 @@ class MonthClosureService:
         Args:
             db_connection: Database connection instance
         """
-        self.db = db_connection
+        super().__init__(db_connection)  # BaseService stores the connection as self.db
+        # Remove this line: self.db = db_connection  ❌
         self.parser = BroadcastMonthParser()
     
     def _get_datetime_values_for_month(self, broadcast_month_display: str) -> List[str]:
-        """
-        Get all datetime values in database that match a display format month.
-        
-        Args:
-            broadcast_month_display: Display format like 'Nov-24'
-            
-        Returns:
-            List of actual datetime strings from database for that month
-            
-        Example:
-            'Nov-24' -> ['2024-11-01 00:00:00', '2024-11-15 00:00:00', ...]
-        """
+        """Get all datetime values in database that match a display format month."""
         if not self.parser.validate_broadcast_month_format(broadcast_month_display):
             return []
         
@@ -79,84 +70,71 @@ class MonthClosureService:
             month_num = self.parser.MONTH_NAME_TO_NUM[month_name]
             
             # Find all datetime values in database for this year/month
-            conn = self.db.connect()
-            cursor = conn.execute("""
-                SELECT DISTINCT broadcast_month 
-                FROM spots 
-                WHERE broadcast_month IS NOT NULL
-                  AND strftime('%Y', broadcast_month) = ?
-                  AND strftime('%m', broadcast_month) = ?
-            """, (str(year), f"{month_num:02d}"))
-            
-            datetime_values = [row[0] for row in cursor.fetchall()]
-            logger.debug(f"Found {len(datetime_values)} datetime values for {broadcast_month_display}")
-            return datetime_values
-            
+            with self.safe_connection() as conn:  # ✅ Fixed
+                cursor = conn.execute("""
+                    SELECT DISTINCT broadcast_month 
+                    FROM spots 
+                    WHERE broadcast_month IS NOT NULL
+                    AND strftime('%Y', broadcast_month) = ?
+                    AND strftime('%m', broadcast_month) = ?
+                """, (str(year), f"{month_num:02d}"))
+                
+                datetime_values = [row[0] for row in cursor.fetchall()]
+                logger.debug(f"Found {len(datetime_values)} datetime values for {broadcast_month_display}")
+                return datetime_values
+                
         except Exception as e:
             logger.error(f"Error finding datetime values for {broadcast_month_display}: {e}")
             return []
-    
-    # CRITICAL FIX: Add this method to MonthClosureService class in month_closure_service.py
 
-    def close_broadcast_month_with_connection(self, broadcast_month_display: str, closed_by: str, conn, notes: str = None) -> bool:
-        """
-        CRITICAL FIX: Mark a broadcast month as permanently closed using existing connection.
-        This version works within an existing transaction.
+    def close_broadcast_month_with_connection(self, broadcast_month_display: str, closed_by: str, conn: sqlite3.Connection, notes: str = None) -> bool:
+        """Close broadcast month using existing connection within transaction."""
+        logger.info(f"Closing broadcast month within existing transaction: {broadcast_month_display}")
         
-        Args:
-            broadcast_month_display: Month to close in 'Mmm-YY' format (e.g., 'Nov-24')
-            closed_by: Name/ID of person closing the month
-            conn: Existing database connection with active transaction
-            notes: Optional notes about the closure
-            
-        Returns:
-            True if month was successfully closed
-            
-        Raises:
-            MonthClosureError: If month cannot be closed
-        """
-        logger.info(f"Attempting to close broadcast month: {broadcast_month_display}")
-        
-        # Validate broadcast month format
+        # Validation (format only, no database checks)
         if not self.parser.validate_broadcast_month_format(broadcast_month_display):
-            raise MonthClosureError(f"Invalid broadcast month format: '{broadcast_month_display}'. Expected format: 'Mmm-YY'")
+            raise MonthClosureError(f"Invalid broadcast month format: '{broadcast_month_display}'")
         
-        # Check if month already closed
-        if self.is_month_closed(broadcast_month_display):
+        # Check if already closed using provided connection
+        cursor = conn.execute("SELECT 1 FROM month_closures WHERE broadcast_month = ?", (broadcast_month_display,))
+        if cursor.fetchone():
             raise MonthClosureError(f"Month '{broadcast_month_display}' is already closed")
         
-        # Get all datetime values for this display month
-        datetime_values = self._get_datetime_values_for_month(broadcast_month_display)
-        if not datetime_values:
-            raise MonthClosureError(f"Cannot close '{broadcast_month_display}': No data exists for this month. Import data first, then close the month.")
+        # Get datetime values using provided connection
+        year = self.parser.extract_year_from_broadcast_month(broadcast_month_display)
+        month_name = broadcast_month_display.split('-')[0]
+        month_num = self.parser.MONTH_NAME_TO_NUM[month_name]
         
-        try:
-            # CRITICAL FIX: Use the existing connection instead of creating a new transaction
-            
-            # Insert closure record (using display format for user interface)
-            conn.execute("""
-                INSERT INTO month_closures (broadcast_month, closed_date, closed_by, notes)
-                VALUES (?, ?, ?, ?)
-            """, (broadcast_month_display, date.today(), closed_by, notes))
-            
-            # Mark all spots for this month as historical (using actual datetime values)
-            updated_count = 0
-            for datetime_value in datetime_values:
-                cursor = conn.execute("""
-                    UPDATE spots 
-                    SET is_historical = 1 
-                    WHERE broadcast_month = ?
-                """, (datetime_value,))
-                updated_count += cursor.rowcount
-            
-            logger.info(f"Successfully closed '{broadcast_month_display}': {updated_count} spots marked as historical from {len(datetime_values)} datetime values")
-            
-            return True
-            
-        except Exception as e:
-            error_msg = f"Failed to close month '{broadcast_month_display}': {str(e)}"
-            logger.error(error_msg)
-            raise MonthClosureError(error_msg)
+        cursor = conn.execute("""
+            SELECT DISTINCT broadcast_month 
+            FROM spots 
+            WHERE broadcast_month IS NOT NULL
+            AND strftime('%Y', broadcast_month) = ?
+            AND strftime('%m', broadcast_month) = ?
+        """, (str(year), f"{month_num:02d}"))
+        
+        datetime_values = [row[0] for row in cursor.fetchall()]
+        if not datetime_values:
+            raise MonthClosureError(f"Cannot close '{broadcast_month_display}': No data exists for this month")
+        
+        # Insert closure record using provided connection
+        conn.execute("""
+            INSERT INTO month_closures (broadcast_month, closed_date, closed_by, notes)
+            VALUES (?, ?, ?, ?)
+        """, (broadcast_month_display, date.today(), closed_by, notes))
+        
+        # Mark spots as historical
+        updated_count = 0
+        for datetime_value in datetime_values:
+            cursor = conn.execute("""
+                UPDATE spots 
+                SET is_historical = 1 
+                WHERE broadcast_month = ?
+            """, (datetime_value,))
+            updated_count += cursor.rowcount
+        
+        logger.info(f"Closed '{broadcast_month_display}' within transaction: {updated_count} spots marked historical")
+        return True
 
     def _get_display_format_for_datetime(self, datetime_value: str) -> str:
         """
@@ -175,21 +153,7 @@ class MonthClosureService:
             return datetime_value  # Return as-is if conversion fails
     
     def close_broadcast_month(self, broadcast_month_display: str, closed_by: str, notes: str = None) -> bool:
-        """
-        UPDATED: Mark a broadcast month as permanently closed.
-        This version handles both standalone and within-transaction usage.
-        
-        Args:
-            broadcast_month_display: Month to close in 'Mmm-YY' format (e.g., 'Nov-24')
-            closed_by: Name/ID of person closing the month
-            notes: Optional notes about the closure
-            
-        Returns:
-            True if month was successfully closed
-            
-        Raises:
-            MonthClosureError: If month cannot be closed
-        """
+        """FIXED: Mark a broadcast month as permanently closed using BaseService."""
         logger.info(f"Attempting to close broadcast month: {broadcast_month_display}")
         
         # Validate broadcast month format
@@ -206,28 +170,14 @@ class MonthClosureService:
             raise MonthClosureError(f"Cannot close '{broadcast_month_display}': No data exists for this month. Import data first, then close the month.")
         
         try:
-            # CRITICAL FIX: Check if we're already in a transaction
-            # If so, don't create a new one
-            conn = self.db.connect()
-            
-            # Try to detect if we're already in a transaction
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                in_transaction = False
-            except sqlite3.OperationalError as e:
-                if "cannot start a transaction within a transaction" in str(e):
-                    in_transaction = True
-                else:
-                    raise
-            
-            try:
-                # Insert closure record (using display format for user interface)
+            with self.safe_transaction() as conn:
+                # Insert closure record
                 conn.execute("""
                     INSERT INTO month_closures (broadcast_month, closed_date, closed_by, notes)
                     VALUES (?, ?, ?, ?)
                 """, (broadcast_month_display, date.today(), closed_by, notes))
                 
-                # Mark all spots for this month as historical (using actual datetime values)
+                # Mark all spots for this month as historical
                 updated_count = 0
                 for datetime_value in datetime_values:
                     cursor = conn.execute("""
@@ -237,29 +187,14 @@ class MonthClosureService:
                     """, (datetime_value,))
                     updated_count += cursor.rowcount
                 
-                # Only commit if we started the transaction
-                if not in_transaction:
-                    conn.commit()
-                
                 logger.info(f"Successfully closed '{broadcast_month_display}': {updated_count} spots marked as historical from {len(datetime_values)} datetime values")
-                
                 return True
                 
-            except Exception as e:
-                # Only rollback if we started the transaction
-                if not in_transaction:
-                    conn.rollback()
-                raise
-            finally:
-                if not in_transaction:
-                    conn.close()
-                    
         except Exception as e:
             error_msg = f"Failed to close month '{broadcast_month_display}': {str(e)}"
             logger.error(error_msg)
             raise MonthClosureError(error_msg)
     
-
     
     def is_month_closed(self, broadcast_month_display: str) -> bool:
         """
@@ -272,12 +207,12 @@ class MonthClosureService:
             True if month is closed, False otherwise
         """
         try:
-            conn = self.db.connect()
-            cursor = conn.execute(
-                "SELECT 1 FROM month_closures WHERE broadcast_month = ?",
-                (broadcast_month_display,)
-            )
-            return cursor.fetchone() is not None
+            with self.safe_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT 1 FROM month_closures WHERE broadcast_month = ?",
+                    (broadcast_month_display,)
+                )
+                return cursor.fetchone() is not None
         except Exception as e:
             logger.error(f"Error checking if month '{broadcast_month_display}' is closed: {e}")
             return False
@@ -296,16 +231,16 @@ class MonthClosureService:
             return []
         
         try:
-            conn = self.db.connect()
-            placeholders = ', '.join(['?' for _ in broadcast_months_display])
-            cursor = conn.execute(
-                f"SELECT broadcast_month FROM month_closures WHERE broadcast_month IN ({placeholders})",
-                broadcast_months_display
-            )
-            
-            closed_months = [row[0] for row in cursor.fetchall()]
-            logger.debug(f"Found {len(closed_months)} closed months out of {len(broadcast_months_display)} checked")
-            return closed_months
+            with self.safe_connection() as conn:
+                placeholders = ', '.join(['?' for _ in broadcast_months_display])
+                cursor = conn.execute(
+                    f"SELECT broadcast_month FROM month_closures WHERE broadcast_month IN ({placeholders})",
+                    broadcast_months_display
+                )
+                
+                closed_months = [row[0] for row in cursor.fetchall()]
+                logger.debug(f"Found {len(closed_months)} closed months out of {len(broadcast_months_display)} checked")
+                return closed_months
             
         except Exception as e:
             logger.error(f"Error getting closed months: {e}")
@@ -319,23 +254,23 @@ class MonthClosureService:
             List of all closed months, sorted chronologically
         """
         try:
-            conn = self.db.connect()
-            cursor = conn.execute("""
-                SELECT broadcast_month, closed_date, closed_by, notes
-                FROM month_closures 
-                ORDER BY broadcast_month
-            """)
-            
-            closed_months = []
-            for row in cursor.fetchall():
-                closed_months.append({
-                    'broadcast_month': row[0],
-                    'closed_date': row[1],
-                    'closed_by': row[2],
-                    'notes': row[3]
-                })
-            
-            return closed_months
+            with self.safe_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT broadcast_month, closed_date, closed_by, notes
+                    FROM month_closures 
+                    ORDER BY broadcast_month
+                """)
+                
+                closed_months = []
+                for row in cursor.fetchall():
+                    closed_months.append({
+                        'broadcast_month': row[0],
+                        'closed_date': row[1],
+                        'closed_by': row[2],
+                        'notes': row[3]
+                    })
+                
+                return closed_months
             
         except Exception as e:
             logger.error(f"Error getting all closed months: {e}")
@@ -352,23 +287,23 @@ class MonthClosureService:
             Dictionary with closure info, or None if not closed
         """
         try:
-            conn = self.db.connect()
-            cursor = conn.execute("""
-                SELECT broadcast_month, closed_date, closed_by, notes, created_date
-                FROM month_closures 
-                WHERE broadcast_month = ?
-            """, (broadcast_month,))
-            
-            row = cursor.fetchone()
-            if row:
-                return {
-                    'broadcast_month': row[0],
-                    'closed_date': row[1],
-                    'closed_by': row[2],
-                    'notes': row[3],
-                    'created_date': row[4]
-                }
-            return None
+            with self.safe_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT broadcast_month, closed_date, closed_by, notes, created_date
+                    FROM month_closures 
+                    WHERE broadcast_month = ?
+                """, (broadcast_month,))
+                
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'broadcast_month': row[0],
+                        'closed_date': row[1],
+                        'closed_by': row[2],
+                        'notes': row[3],
+                        'created_date': row[4]
+                    }
+                return None
             
         except Exception as e:
             logger.error(f"Error getting closure info for '{broadcast_month}': {e}")
@@ -470,12 +405,12 @@ class MonthClosureService:
     def _get_spots_count_for_month(self, broadcast_month: str) -> int:
         """Get count of spots for a specific broadcast month."""
         try:
-            conn = self.db.connect()
-            cursor = conn.execute(
-                "SELECT COUNT(*) FROM spots WHERE broadcast_month = ?",
-                (broadcast_month,)
-            )
-            return cursor.fetchone()[0]
+            with self.safe_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT COUNT(*) FROM spots WHERE broadcast_month = ?",
+                    (broadcast_month,)
+                )
+                return cursor.fetchone()[0]
         except Exception as e:
             logger.error(f"Error counting spots for '{broadcast_month}': {e}")
             return 0
@@ -508,38 +443,37 @@ class MonthClosureService:
                     'closure_info': self.get_month_closure_info(broadcast_month_display)
                 }
             
-            conn = self.db.connect()
-            
-            # Basic spot count for all datetime values in this month
-            placeholders = ', '.join(['?' for _ in datetime_values])
-            cursor = conn.execute(
-                f"SELECT COUNT(*) FROM spots WHERE broadcast_month IN ({placeholders})",
-                datetime_values
-            )
-            total_spots = cursor.fetchone()[0]
-            
-            # Revenue statistics
-            cursor = conn.execute(f"""
-                SELECT 
-                    COUNT(*) as spots_with_revenue,
-                    SUM(gross_rate) as total_revenue,
-                    AVG(gross_rate) as avg_revenue,
-                    MIN(gross_rate) as min_revenue,
-                    MAX(gross_rate) as max_revenue
-                FROM spots 
-                WHERE broadcast_month IN ({placeholders}) AND gross_rate IS NOT NULL
-            """, datetime_values)
-            
-            revenue_row = cursor.fetchone()
-            
-            # Customer count
-            cursor = conn.execute(f"""
-                SELECT COUNT(DISTINCT customer_id) 
-                FROM spots 
-                WHERE broadcast_month IN ({placeholders}) AND customer_id IS NOT NULL
-            """, datetime_values)
-            
-            unique_customers = cursor.fetchone()[0]
+            with self.safe_connection() as conn:       
+                # Basic spot count for all datetime values in this month
+                placeholders = ', '.join(['?' for _ in datetime_values])
+                cursor = conn.execute(
+                    f"SELECT COUNT(*) FROM spots WHERE broadcast_month IN ({placeholders})",
+                    datetime_values
+                )
+                total_spots = cursor.fetchone()[0]
+                
+                # Revenue statistics
+                cursor = conn.execute(f"""
+                    SELECT 
+                        COUNT(*) as spots_with_revenue,
+                        SUM(gross_rate) as total_revenue,
+                        AVG(gross_rate) as avg_revenue,
+                        MIN(gross_rate) as min_revenue,
+                        MAX(gross_rate) as max_revenue
+                    FROM spots 
+                    WHERE broadcast_month IN ({placeholders}) AND gross_rate IS NOT NULL
+                """, datetime_values)
+                
+                revenue_row = cursor.fetchone()
+                
+                # Customer count
+                cursor = conn.execute(f"""
+                    SELECT COUNT(DISTINCT customer_id) 
+                    FROM spots 
+                    WHERE broadcast_month IN ({placeholders}) AND customer_id IS NOT NULL
+                """, datetime_values)
+                
+                unique_customers = cursor.fetchone()[0]
             
             # Closure info
             closure_info = self.get_month_closure_info(broadcast_month_display)
@@ -579,17 +513,6 @@ def close_month(db_path: str, broadcast_month: str, closed_by: str, notes: str =
         db_connection.close()
 
 
-def is_month_closed(db_path: str, broadcast_month: str) -> bool:
-    """Simple function to check if a month is closed."""
-    db_connection = DatabaseConnection(db_path)
-    service = MonthClosureService(db_connection)
-    
-    try:
-        return service.is_month_closed(broadcast_month)
-    finally:
-        db_connection.close()
-
-
 def get_all_closed_months(db_path: str) -> List[str]:
     """Simple function to get all closed months."""
     db_connection = DatabaseConnection(db_path)
@@ -606,7 +529,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Test month closure service")
-    parser.add_argument("--db-path", default="data/database/test.db", help="Database path")
+    parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
     parser.add_argument("--close-month", help="Close a specific month (e.g., 'Nov-24')")
     parser.add_argument("--closed-by", help="Name of person closing the month")
     parser.add_argument("--notes", help="Optional notes for closure")

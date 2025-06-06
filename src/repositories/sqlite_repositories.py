@@ -10,18 +10,19 @@ from dataclasses import asdict
 from .interfaces import SpotRepository, CustomerRepository
 from ..models.entities import Spot, Customer, Agency, Market, Language, Sector
 from ..database.connection import DatabaseConnection
+from services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
-class SQLiteSpotRepository(SpotRepository):
+class SQLiteSpotRepository(SpotRepository, BaseService):
     """SQLite implementation of spot repository."""
     
     def __init__(self, db_connection: DatabaseConnection):
-        self.db = db_connection
+        sBaseService.__init__(self, db_connection)
     
     def save(self, spot: Spot) -> Spot:
         """Save a spot and return it with assigned ID."""
-        with self.db.transaction() as conn:
+        with self.safe_transaction() as conn:
             if spot.spot_id is None:
                 # Insert new spot
                 spot_dict = self._spot_to_dict(spot)
@@ -97,7 +98,7 @@ class SQLiteSpotRepository(SpotRepository):
     
     def delete_future_data(self, cutoff_date: date) -> int:
         """Delete non-historical data after cutoff date."""
-        with self.db.transaction() as conn:
+        with self.safe_transaction() as conn:
             query = """
             DELETE FROM spots 
             WHERE air_date > ? AND is_historical = 0
@@ -182,15 +183,15 @@ class SQLiteSpotRepository(SpotRepository):
             effective_date=date.fromisoformat(row['effective_date']) if row['effective_date'] else None
         )
 
-class SQLiteCustomerRepository(CustomerRepository):
+class SQLiteCustomerRepository(CustomerRepository, BaseService):
     """SQLite implementation of customer repository."""
     
     def __init__(self, db_connection: DatabaseConnection):
-        self.db = db_connection
+        BaseService.__init__(self, db_connection)
     
     def save(self, customer: Customer) -> Customer:
         """Save a customer and return it with assigned ID."""
-        with self.db.transaction() as conn:
+        with self.safe_transaction() as conn:
             if customer.customer_id is None:
                 # Insert new customer
                 query = """
@@ -328,11 +329,11 @@ class SQLiteCustomerRepository(CustomerRepository):
             notes=row['notes']
         )
 
-class ReferenceDataRepository:
+class ReferenceDataRepository(BaseService):
     """Repository for reference data (markets, sectors, languages, agencies)."""
     
     def __init__(self, db_connection: DatabaseConnection):
-        self.db = db_connection
+        super().__init__(db_connection)
     
     # ===================================================================
     # AGENCY OPERATIONS
@@ -340,7 +341,7 @@ class ReferenceDataRepository:
     
     def get_or_create_agency(self, agency_name: str) -> Agency:
         """Get existing agency or create new one."""
-        with self.db.transaction() as conn:
+        with self.safe_transaction() as conn:
             # Try to find existing
             cursor = conn.execute("SELECT * FROM agencies WHERE agency_name = ?", (agency_name,))
             row = cursor.fetchone()

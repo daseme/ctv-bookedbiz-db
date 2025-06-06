@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Database connection setup
-DB_PATH = os.path.join(os.path.dirname(__file__), '../../data/database/test.db')
+DB_PATH = os.path.join(os.path.dirname(__file__), '../../data/database/production.db')
 db_connection = DatabaseConnection(DB_PATH)
 
 # Repository instances
