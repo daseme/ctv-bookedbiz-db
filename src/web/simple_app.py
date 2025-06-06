@@ -84,8 +84,8 @@ def report1():
         cursor = conn.execute(years_query)
         available_years = [row[0] for row in cursor.fetchall()]
         
-        # Modified query to use COALESCE for revenue and updated filtering, with date range support
-        query = f"""
+        # Modified query to use only gross_rate and add filtering for gross_rate IS NOT NULL
+        query = """
         SELECT 
             strftime('%Y-%m', broadcast_month) as month,
             CASE strftime('%m', broadcast_month)
@@ -101,35 +101,17 @@ def report1():
                 WHEN '10' THEN 'October'
                 WHEN '11' THEN 'November'
                 WHEN '12' THEN 'December'
-            END || ' ' || strftime('%Y', broadcast_month) as month_name,
+            END || ' ' || strftime('%Y', broadcast_month) as formatted_month,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate,
-            ROUND(MIN(COALESCE(gross_rate, spot_value, 0)), 0) as min_rate,
-            ROUND(MAX(COALESCE(gross_rate, spot_value, 0)), 0) as max_rate
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-        {date_filter}
         GROUP BY strftime('%Y-%m', broadcast_month)
-        
-        UNION ALL
-        
-        SELECT 
-            'ZZZZZ-99' as month,
-            '*** TOTAL ***' as month_name,
-            COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate,
-            ROUND(MIN(COALESCE(gross_rate, spot_value, 0)), 0) as min_rate,
-            ROUND(MAX(COALESCE(gross_rate, spot_value, 0)), 0) as max_rate
-        FROM spots 
-        WHERE broadcast_month IS NOT NULL 
-        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-        {date_filter}
-        
         ORDER BY month DESC
-        LIMIT 25
+        LIMIT 12
         """
         
         cursor = conn.execute(query)
@@ -137,7 +119,7 @@ def report1():
         conn.close()
         
         # Convert to list of dictionaries
-        columns = ['month', 'month_name', 'spot_count', 'total_revenue', 'avg_rate', 'min_rate', 'max_rate']
+        columns = ['month', 'formatted_month', 'spot_count', 'total_revenue', 'avg_rate']
         monthly_data = [dict(zip(columns, row)) for row in results]
         
         # Prepare data for template
@@ -162,8 +144,8 @@ def report2():
     try:
         conn = get_db_connection()
         
-        # Modified query to use COALESCE for revenue and updated filtering
-        query = """
+        # Modified query to use only gross_rate and add filtering for gross_rate IS NOT NULL
+        expectation_query = """
         SELECT 
             strftime('%Y-%m', broadcast_month) as month,
             CASE strftime('%m', broadcast_month)
@@ -180,26 +162,26 @@ def report2():
                 WHEN '11' THEN 'November'
                 WHEN '12' THEN 'December'
             END || ' ' || strftime('%Y', broadcast_month) as formatted_month,
-            COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as actual_revenue,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)) * 1.1, 0) as expected_revenue,
-            ROUND((SUM(COALESCE(gross_rate, spot_value, 0)) / (SUM(COALESCE(gross_rate, spot_value, 0)) * 1.1)) * 100, 1) as performance_pct
+            ROUND(SUM(gross_rate), 2) as actual_revenue,
+            ROUND(SUM(gross_rate) * 1.1, 2) as expected_revenue,
+            ROUND((SUM(gross_rate) / (SUM(gross_rate) * 1.1)) * 100, 1) as performance_pct
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         GROUP BY strftime('%Y-%m', broadcast_month)
         
         UNION ALL
         
         SELECT 
-            'TOTAL' as month,
-            'Total Performance' as formatted_month,
-            COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as actual_revenue,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)) * 1.1, 0) as expected_revenue,
-            ROUND((SUM(COALESCE(gross_rate, spot_value, 0)) / (SUM(COALESCE(gross_rate, spot_value, 0)) * 1.1)) * 100, 1) as performance_pct
+            '9999' as month,
+            'TOTAL' as formatted_month,
+            ROUND(SUM(gross_rate), 2) as actual_revenue,
+            ROUND(SUM(gross_rate) * 1.1, 2) as expected_revenue,
+            ROUND((SUM(gross_rate) / (SUM(gross_rate) * 1.1)) * 100, 1) as performance_pct
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         
         ORDER BY month DESC
@@ -217,35 +199,36 @@ def report2():
             END as quarter,
             strftime('%Y', broadcast_month) as year,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         GROUP BY quarter, year
         ORDER BY year DESC, quarter DESC
         LIMIT 8
         """
         
-        # AE performance data
+        # AE Performance Analysis - Modified to use only gross_rate
         ae_query = """
         SELECT 
-            COALESCE(sales_person, 'Unassigned') as ae_name,
+            sales_person,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate,
-            MIN(air_date) as first_spot_date,
-            MAX(air_date) as last_spot_date
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
         FROM spots 
-        WHERE sales_person IS NOT NULL 
-        AND sales_person != ''
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        AND sales_person IS NOT NULL 
+        AND sales_person != ''
         GROUP BY sales_person
         ORDER BY total_revenue DESC
-        LIMIT 10
+        LIMIT 5
         """
         
-        cursor = conn.execute(query)
+        cursor = conn.execute(expectation_query)
         monthly_results = cursor.fetchall()
         
         cursor = conn.execute(quarterly_query)
@@ -256,7 +239,7 @@ def report2():
         SELECT DISTINCT strftime('%Y-%m', broadcast_month) as month
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
-        AND (gross_rate > 0 OR spot_value > 0)
+        AND gross_rate IS NOT NULL
         ORDER BY month
         """
         cursor = conn.execute(months_query)
@@ -296,7 +279,7 @@ def report2():
                 quarter_row['status'] = 'OPEN'
         
         # Convert monthly results to list of dictionaries
-        columns = ['month', 'formatted_month', 'spot_count', 'actual_revenue', 'expected_revenue', 'performance_pct']
+        columns = ['month', 'formatted_month', 'actual_revenue', 'expected_revenue', 'performance_pct']
         monthly_data = [dict(zip(columns, row)) for row in monthly_results]
         
         data = {
@@ -316,7 +299,7 @@ def report3():
     try:
         conn = get_db_connection()
         
-        # Modified query to use COALESCE for revenue and updated filtering
+        # Modified query to use only gross_rate and add filtering for gross_rate IS NOT NULL
         query = """
         SELECT 
             strftime('%Y-%m', broadcast_month) as month,
@@ -335,16 +318,17 @@ def report3():
                 WHEN '12' THEN 'December'
             END || ' ' || strftime('%Y', broadcast_month) as formatted_month,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_spot_value,
-            LAG(ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0)) OVER (ORDER BY strftime('%Y-%m', broadcast_month)) as prev_month_revenue,
+            ROUND(SUM(gross_rate), 2) as revenue,
+            ROUND(AVG(gross_rate), 2) as avg_spot_value,
+            LAG(ROUND(SUM(gross_rate), 2)) OVER (ORDER BY strftime('%Y-%m', broadcast_month)) as prev_month_revenue,
             ROUND(
-                (ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) - 
-                 LAG(ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0)) OVER (ORDER BY strftime('%Y-%m', broadcast_month))) / 
-                NULLIF(LAG(ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0)) OVER (ORDER BY strftime('%Y-%m', broadcast_month)), 0) * 100, 1
+                (ROUND(SUM(gross_rate), 2) - 
+                 LAG(ROUND(SUM(gross_rate), 2)) OVER (ORDER BY strftime('%Y-%m', broadcast_month))) / 
+                NULLIF(LAG(ROUND(SUM(gross_rate), 2)) OVER (ORDER BY strftime('%Y-%m', broadcast_month)), 0) * 100, 1
             ) as growth_pct
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         GROUP BY strftime('%Y-%m', broadcast_month)
         
@@ -354,12 +338,13 @@ def report3():
             'TOTAL' as month,
             'Performance Summary' as formatted_month,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_spot_value,
+            ROUND(SUM(gross_rate), 2) as revenue,
+            ROUND(AVG(gross_rate), 2) as avg_spot_value,
             NULL as prev_month_revenue,
             NULL as growth_pct
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         
         ORDER BY month DESC
@@ -377,10 +362,11 @@ def report3():
             END as quarter,
             strftime('%Y', broadcast_month) as year,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         GROUP BY quarter, year
         ORDER BY year DESC, quarter DESC
@@ -392,13 +378,14 @@ def report3():
         SELECT 
             COALESCE(sales_person, 'Unassigned') as ae_name,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate,
             MIN(air_date) as first_spot_date,
             MAX(air_date) as last_spot_date
         FROM spots 
         WHERE sales_person IS NOT NULL 
         AND sales_person != ''
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         GROUP BY sales_person
         ORDER BY total_revenue DESC
@@ -437,7 +424,7 @@ def report4():
     try:
         conn = get_db_connection()
         
-        # Modified query to use COALESCE for revenue and updated filtering
+        # Modified query to use only gross_rate and add filtering for gross_rate IS NOT NULL
         query = """
         SELECT 
             CASE 
@@ -449,10 +436,11 @@ def report4():
             strftime('%Y', sp.broadcast_month) as year,
             COALESCE(sp.billing_type, 'Unknown') as sector,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(sp.gross_rate, sp.spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(sp.gross_rate, sp.spot_value, 0)), 0) as avg_rate
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate
         FROM spots sp
         WHERE sp.broadcast_month IS NOT NULL 
+        AND sp.gross_rate IS NOT NULL
         AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
         GROUP BY quarter, year, sp.billing_type
         
@@ -463,10 +451,11 @@ def report4():
             'ALL' as year,
             'All Sectors' as sector,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         
         ORDER BY year DESC, quarter DESC, total_revenue DESC
@@ -484,10 +473,11 @@ def report4():
             END as quarter,
             strftime('%Y', broadcast_month) as year,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         GROUP BY quarter, year
         ORDER BY year DESC, quarter DESC
@@ -499,6 +489,7 @@ def report4():
         SELECT DISTINCT strftime('%Y-%m', broadcast_month) as month
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         ORDER BY month
         """
         
@@ -507,11 +498,12 @@ def report4():
         SELECT 
             COALESCE(c.normalized_name, 'Unknown Customer') as sector_name,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(sp.gross_rate, sp.spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(sp.gross_rate, sp.spot_value, 0)), 0) as avg_rate
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate
         FROM spots sp
         LEFT JOIN customers c ON sp.customer_id = c.customer_id
-        WHERE (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        WHERE sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
         GROUP BY c.customer_id, c.normalized_name
         ORDER BY total_revenue DESC
         LIMIT 10
@@ -522,13 +514,14 @@ def report4():
         SELECT 
             COALESCE(sales_person, 'Unassigned') as ae_name,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(gross_rate, spot_value, 0)), 0) as avg_rate,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate,
             MIN(air_date) as first_spot_date,
             MAX(air_date) as last_spot_date
         FROM spots 
         WHERE sales_person IS NOT NULL 
         AND sales_person != ''
+        AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         GROUP BY sales_person
         ORDER BY total_revenue DESC
@@ -606,11 +599,12 @@ def report5():
         # Get selected year from query parameter, default to 2024
         selected_year = request.args.get('year', '2024')
         
-        # Get available years - Modified to include both gross_rate and spot_value data
+        # Get available years - Modified to use only gross_rate data
         years_query = """
         SELECT DISTINCT substr(broadcast_month, 1, 4) as year 
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
         ORDER BY year DESC
         """
         
@@ -620,6 +614,7 @@ def report5():
         FROM spots sp
         WHERE sp.sales_person IS NOT NULL 
         AND sp.sales_person != ''
+        AND sp.gross_rate IS NOT NULL
         AND strftime('%Y', sp.broadcast_month) = ?
         ORDER BY sp.sales_person
         """
@@ -629,33 +624,34 @@ def report5():
         SELECT DISTINCT revenue_type 
         FROM spots 
         WHERE revenue_type IS NOT NULL 
-        AND revenue_type != ''
+        AND gross_rate IS NOT NULL
         AND strftime('%Y', broadcast_month) = ?
         ORDER BY revenue_type
         """
         
-        # Main dashboard query - Modified to use COALESCE for revenue
+        # Main dashboard query - Modified to use only gross_rate
         dashboard_query = """
         SELECT 
             c.normalized_name as customer,
             COALESCE(sp.sales_person, 'Unassigned') as ae,
             sp.revenue_type,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '01' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_1,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '02' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_2,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '03' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_3,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '04' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_4,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '05' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_5,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '06' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_6,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '07' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_7,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '08' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_8,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '09' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_9,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '10' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_10,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '11' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_11,
-            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '12' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_12,
-            ROUND(SUM(COALESCE(sp.gross_rate, sp.spot_value, 0)), 0) as total
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '01' THEN sp.gross_rate ELSE 0 END), 2) as month_1,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '02' THEN sp.gross_rate ELSE 0 END), 2) as month_2,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '03' THEN sp.gross_rate ELSE 0 END), 2) as month_3,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '04' THEN sp.gross_rate ELSE 0 END), 2) as month_4,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '05' THEN sp.gross_rate ELSE 0 END), 2) as month_5,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '06' THEN sp.gross_rate ELSE 0 END), 2) as month_6,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '07' THEN sp.gross_rate ELSE 0 END), 2) as month_7,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '08' THEN sp.gross_rate ELSE 0 END), 2) as month_8,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '09' THEN sp.gross_rate ELSE 0 END), 2) as month_9,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '10' THEN sp.gross_rate ELSE 0 END), 2) as month_10,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '11' THEN sp.gross_rate ELSE 0 END), 2) as month_11,
+            ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '12' THEN sp.gross_rate ELSE 0 END), 2) as month_12,
+            ROUND(SUM(sp.gross_rate), 2) as total
         FROM spots sp
         LEFT JOIN customers c ON sp.customer_id = c.customer_id
         WHERE sp.broadcast_month IS NOT NULL 
+        AND sp.gross_rate IS NOT NULL
         AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
         AND strftime('%Y', sp.broadcast_month) = ?
         GROUP BY c.normalized_name, sp.sales_person, sp.revenue_type
@@ -728,8 +724,8 @@ def report6():
             END as language_name,
             s.language_code,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as avg_rate,
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
+            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate,
             ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)) * 100.0 / 
                 (SELECT SUM(COALESCE(gross_rate, spot_value, 0)) FROM spots 
                  WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
@@ -761,7 +757,7 @@ def report6():
                 WHEN 'K' THEN 'Korean'
                 ELSE 'Other'
             END as language_name,
-            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as monthly_revenue
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as monthly_revenue
         FROM spots s
         WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND s.language_code IN ('E', 'V', 'T', 'SA', 'C', 'K')
@@ -844,8 +840,8 @@ def report7():
             END as language_name,
             s.language_code,
             COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as total_revenue,
-            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as avg_rate,
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
+            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate,
             -- Market share within language
             ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)) * 100.0 / 
                 (SELECT SUM(COALESCE(gross_rate, spot_value, 0)) FROM spots 
@@ -872,9 +868,9 @@ def report7():
         SELECT 
             s.market_name,
             COUNT(*) as total_spots,
-            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as total_revenue,
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
             COUNT(DISTINCT s.language_code) as language_count,
-            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as avg_rate
+            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate
         FROM spots s
         WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND s.market_name IS NOT NULL
@@ -903,9 +899,9 @@ def report7():
             END as language_name,
             s.language_code,
             COUNT(*) as total_spots,
-            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as total_revenue,
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
             COUNT(DISTINCT s.market_name) as market_reach,
-            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 0) as avg_rate
+            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate
         FROM spots s
         WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND s.language_code IS NOT NULL
@@ -970,7 +966,7 @@ def api_data(report_type):
             query = """
             SELECT 
                 strftime('%Y-%m', broadcast_month) as month,
-                ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as revenue
+                ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 2) as revenue
             FROM spots 
             WHERE broadcast_month IS NOT NULL 
             AND (revenue_type != 'Trade' OR revenue_type IS NULL)
@@ -990,7 +986,7 @@ def api_data(report_type):
                     WHEN strftime('%m', broadcast_month) IN ('10', '11', '12') THEN 'Q4'
                 END as quarter,
                 strftime('%Y', broadcast_month) as year,
-                ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 0) as revenue
+                ROUND(SUM(COALESCE(gross_rate, spot_value, 0)), 2) as revenue
             FROM spots 
             WHERE broadcast_month IS NOT NULL 
             AND (revenue_type != 'Trade' OR revenue_type IS NULL)
@@ -1007,19 +1003,19 @@ def api_data(report_type):
                 c.normalized_name as customer,
                 COALESCE(sp.sales_person, 'Unassigned') as ae,
                 sp.revenue_type,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '01' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_1,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '02' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_2,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '03' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_3,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '04' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_4,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '05' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_5,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '06' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_6,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '07' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_7,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '08' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_8,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '09' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_9,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '10' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_10,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '11' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_11,
-                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '12' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 0) as month_12,
-                ROUND(SUM(COALESCE(sp.gross_rate, sp.spot_value, 0)), 0) as total
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '01' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_1,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '02' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_2,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '03' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_3,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '04' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_4,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '05' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_5,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '06' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_6,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '07' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_7,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '08' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_8,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '09' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_9,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '10' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_10,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '11' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_11,
+                ROUND(SUM(CASE WHEN strftime('%m', sp.broadcast_month) = '12' THEN COALESCE(sp.gross_rate, sp.spot_value, 0) ELSE 0 END), 2) as month_12,
+                ROUND(SUM(COALESCE(sp.gross_rate, sp.spot_value, 0)), 2) as total
             FROM spots sp
             LEFT JOIN customers c ON sp.customer_id = c.customer_id
             WHERE sp.broadcast_month IS NOT NULL 

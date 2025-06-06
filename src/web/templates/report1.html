@@ -79,16 +79,16 @@
                 <td>{{ row.month_name }}</td>
                 <td class="number">{{ "{:,}".format(row.spot_count or 0) }}</td>
                 <td class="number {% if row.month_name != '*** TOTAL ***' %}positive{% else %}neutral{% endif %}">
-                    ${{ "{:,}".format(row.total_revenue or 0) }}
+                    ${{ "{:,.0f}".format(row.total_revenue or 0) }}
                 </td>
                 <td class="number">
-                    ${{ "{:,}".format(row.avg_rate or 0) }}
+                    ${{ "{:,.0f}".format(row.avg_rate or 0) }}
                 </td>
                 <td class="number">
-                    ${{ "{:,}".format(row.min_rate or 0) }}
+                    ${{ "{:,.0f}".format(row.min_rate or 0) }}
                 </td>
                 <td class="number">
-                    ${{ "{:,}".format(row.max_rate or 0) }}
+                    ${{ "{:,.0f}".format(row.max_rate or 0) }}
                 </td>
             </tr>
             {% endfor %}

@@ -34,10 +34,10 @@
                 <td>{{ row.year }}</td>
                 <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
                 <td class="number positive">
-                    ${{ "{:,}".format(row.total_revenue) if row.total_revenue else "0" }}
+                    ${{ "{:,.0f}".format(row.total_revenue) if row.total_revenue else "0" }}
                 </td>
                 <td class="number">
-                    ${{ "{:,}".format(row.avg_rate) if row.avg_rate else "0" }}
+                    ${{ "{:,.0f}".format(row.avg_rate) if row.avg_rate else "0" }}
                 </td>
                 <td>
                     {% if row.status == 'CLOSED' %}
@@ -85,7 +85,7 @@
                 <div style="text-align: center; padding: 8px; background: white; border-radius: 4px;">
                     <div style="font-size: 10px; color: #718096; margin-bottom: 4px;">Total Revenue</div>
                     <div style="font-size: 14px; font-weight: 600; color: #2d3748;">
-                        ${{ "{:,}".format(ae.total_revenue) if ae.total_revenue else "0" }}
+                        ${{ "{:,.0f}".format(ae.total_revenue) if ae.total_revenue else "0" }}
                     </div>
                 </div>
                 <div style="text-align: center; padding: 8px; background: white; border-radius: 4px;">
@@ -95,7 +95,7 @@
                 <div style="text-align: center; padding: 8px; background: white; border-radius: 4px;">
                     <div style="font-size: 10px; color: #718096; margin-bottom: 4px;">Avg Rate</div>
                     <div style="font-size: 14px; font-weight: 600; color: #2d3748;">
-                        ${{ "{:,}".format(ae.avg_rate) if ae.avg_rate else "0" }}
+                        ${{ "{:,.0f}".format(ae.avg_rate) if ae.avg_rate else "0" }}
                     </div>
                 </div>
                 <div style="text-align: center; padding: 8px; background: white; border-radius: 4px;">

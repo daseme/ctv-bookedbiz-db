@@ -179,10 +179,11 @@
     <div class="insight-title">Market-Language Revenue Analysis - {{ data.selected_year }}</div>
     <div class="insight-text">
         Geographic and demographic analysis across {{ data.market_count }} markets and {{ data.language_count }} languages.
-        Total revenue: ${{ "{:,}".format(data.total_revenue) }} | 
-        Total spots: {{ "{:,}".format(data.total_spots) }} |
+        Total revenue: ${{ "{:,.0f}".format(data.total_revenue) }} |
+        {{ data.total_customers }} customers |
+        {{ data.total_markets }} markets |
         {% if data.top_combination %}
-        Top combination: {{ data.top_combination.market_name }} - {{ data.top_combination.language_name }} (${{ "{:,}".format(data.top_combination.total_revenue) }})
+        Top combination: {{ data.top_combination.market_name }} - {{ data.top_combination.language_name }} (${{ "{:,.0f}".format(data.top_combination.total_revenue) }})
         {% endif %}
     </div>
 </div>
@@ -208,7 +209,7 @@
         <div class="stat-description">Languages</div>
     </div>
     <div class="market-stat">
-        <div class="stat-value">${{ "{:,}".format(data.total_revenue) }}</div>
+        <div class="stat-value">${{ "{:,.0f}".format(data.total_revenue) }}</div>
         <div class="stat-description">Total Revenue</div>
     </div>
     <div class="market-stat">
@@ -260,10 +261,10 @@
                 {% for market in data.market_summary %}
                 <tr>
                     <td class="market-name">{{ market.market_name }}</td>
-                    <td class="number positive">${{ "{:,}".format(market.total_revenue) }}</td>
+                    <td class="number positive">${{ "{:,.0f}".format(market.total_revenue) }}</td>
                     <td class="number">{{ market.language_count }}</td>
                     <td class="number">{{ "{:,}".format(market.total_spots) }}</td>
-                    <td class="number">${{ "{:,}".format(market.avg_rate) }}</td>
+                    <td class="number">${{ "{:,.0f}".format(market.avg_rate) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -290,10 +291,10 @@
                         <span class="language-flag lang-{{ lang.language_name.lower() }}"></span>
                         <span class="language-name">{{ lang.language_name }}</span>
                     </td>
-                    <td class="number positive">${{ "{:,}".format(lang.total_revenue) }}</td>
+                    <td class="number positive">${{ "{:,.0f}".format(lang.total_revenue) }}</td>
                     <td class="number">{{ lang.market_count }}</td>
                     <td class="number">{{ "{:,}".format(lang.total_spots) }}</td>
-                    <td class="number">${{ "{:,}".format(lang.avg_rate) }}</td>
+                    <td class="number">${{ "{:,.0f}".format(lang.avg_rate) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -335,15 +336,15 @@
                     <span class="language-name">{{ ml.language_name }}</span>
                     <small style="color: #718096;">({{ ml.language_code }})</small>
                 </td>
-                <td class="number positive">${{ "{:,}".format(ml.total_revenue) }}</td>
-                <td class="number language-share {% if ml.market_share_within_language >= 40 %}share-dominant{% elif ml.market_share_within_language >= 20 %}share-significant{% elif ml.market_share_within_language >= 10 %}share-moderate{% else %}share-minor{% endif %}">
-                    {{ ml.market_share_within_language }}%
+                <td class="number positive">${{ "{:,.0f}".format(ml.total_revenue) }}</td>
+                <td class="number language-share share-{% if ml.language_share_pct >= 30 %}dominant{% elif ml.language_share_pct >= 15 %}significant{% elif ml.language_share_pct >= 5 %}moderate{% else %}minor{% endif %}">
+                    {{ ml.language_share_pct }}%
                 </td>
-                <td class="number language-share {% if ml.language_share_within_market >= 40 %}share-dominant{% elif ml.language_share_within_market >= 20 %}share-significant{% elif ml.language_share_within_market >= 10 %}share-moderate{% else %}share-minor{% endif %}">
-                    {{ ml.language_share_within_market }}%
+                <td class="number market-share share-{% if ml.market_share_pct >= 30 %}dominant{% elif ml.market_share_pct >= 15 %}significant{% elif ml.market_share_pct >= 5 %}moderate{% else %}minor{% endif %}">
+                    {{ ml.market_share_pct }}%
                 </td>
                 <td class="number">{{ "{:,}".format(ml.spot_count) }}</td>
-                <td class="number">${{ "{:,}".format(ml.avg_rate) }}</td>
+                <td class="number">${{ "{:,.0f}".format(ml.avg_rate) }}</td>
             </tr>
             {% endfor %}
         </tbody>

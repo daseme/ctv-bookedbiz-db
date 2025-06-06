@@ -227,11 +227,11 @@
         <div class="stat-label">Active</div>
     </div>
     <div class="stat-card">
-        <div class="stat-number" id="displayRevenue">${{ "{:,}".format(data.total_revenue) }}</div>
+        <div class="stat-number" id="displayRevenue">${{ "{:,.0f}".format(data.total_revenue) }}</div>
         <div class="stat-label">Total Revenue</div>
     </div>
     <div class="stat-card">
-        <div class="stat-number" id="displayAvg">${{ "{:,}".format(data.avg_monthly_revenue) }}</div>
+        <div class="stat-number" id="displayAvg">${{ "{:,.0f}".format(data.avg_monthly_revenue) }}</div>
         <div class="stat-label">Avg Monthly</div>
     </div>
 </div>

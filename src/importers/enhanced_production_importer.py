@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Enhanced production-grade Excel importer with batch tracking support.
-Integrates with the broadcast month import service while preserving all existing functionality.
+Enhanced production-grade Excel importer with batch tracking support and memory optimization.
+Handles large files efficiently while maintaining all existing functionality.
 """
 
 import sys
 import sqlite3
 import logging
 import time
+import gc
+import psutil
+import os
 from pathlib import Path
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Tuple
@@ -35,6 +38,15 @@ class ProgressTracker:
         self.skipped = 0
         self.last_update = 0
         self.start_time = time.time()
+        
+        # Memory monitoring
+        try:
+            self.process = psutil.Process(os.getpid())
+            self.initial_memory = self.process.memory_info().rss / 1024 / 1024
+            self.peak_memory = self.initial_memory
+            self.memory_monitoring = True
+        except:
+            self.memory_monitoring = False
     
     def update(self, imported: bool = True):
         """Update progress counters."""
@@ -43,6 +55,19 @@ class ProgressTracker:
             self.imported += 1
         else:
             self.skipped += 1
+        
+        # Track peak memory if available
+        if self.memory_monitoring:
+            try:
+                current_memory = self.process.memory_info().rss / 1024 / 1024
+                if current_memory > self.peak_memory:
+                    self.peak_memory = current_memory
+                
+                # Force garbage collection for large files
+                if current_memory - self.initial_memory > 500 and self.processed % 10000 == 0:
+                    gc.collect()
+            except:
+                pass
         
         # Update display at intervals
         if self.processed - self.last_update >= self.update_interval or self.processed == self.total_records:
@@ -55,9 +80,20 @@ class ProgressTracker:
         rate = self.processed / elapsed if elapsed > 0 else 0
         percent = (self.processed / self.total_records) * 100 if self.total_records > 0 else 0
         
-        print(f"\rProgress: {self.processed:,}/{self.total_records:,} ({percent:.1f}%) "
-              f"| Imported: {self.imported:,} | Skipped: {self.skipped:,} "
-              f"| Rate: {rate:.0f} records/sec", end='', flush=True)
+        progress_text = f"\rProgress: {self.processed:,}/{self.total_records:,} ({percent:.1f}%) " \
+                       f"| Imported: {self.imported:,} | Skipped: {self.skipped:,} " \
+                       f"| Rate: {rate:.0f} records/sec"
+        
+        # Add memory info if available
+        if self.memory_monitoring:
+            try:
+                current_memory = self.process.memory_info().rss / 1024 / 1024
+                memory_used = current_memory - self.initial_memory
+                progress_text += f" | Memory: {current_memory:.0f}MB (+{memory_used:.0f}MB)"
+            except:
+                pass
+        
+        print(progress_text, end='', flush=True)
         
         if self.processed == self.total_records:
             print()  # New line at completion
@@ -65,7 +101,7 @@ class ProgressTracker:
 
 @dataclass
 class ImportResults:
-    """Enhanced import results with batch tracking."""
+    """Comprehensive import results."""
     success: bool
     total_records: int
     records_processed: int
@@ -78,8 +114,8 @@ class ImportResults:
     records_per_second: float
     errors: List[str]
     error_summary: Dict[str, int]
-    batch_id: Optional[str] = None  # NEW: Batch tracking
-    broadcast_months_processed: List[str] = None  # NEW: Month tracking
+    batch_id: Optional[str] = None
+    broadcast_months_processed: List[str] = None
     
     def __post_init__(self):
         if self.broadcast_months_processed is None:
@@ -87,7 +123,7 @@ class ImportResults:
 
 
 class EnhancedProductionExcelImporter:
-    """Enhanced production importer with batch support and month tracking."""
+    """Production-grade Excel importer with comprehensive column handling and memory optimization."""
     
     # Complete flexible column mapping for both 2024 and 2025 Excel formats
     COLUMN_MAPPING = {
@@ -159,9 +195,10 @@ class EnhancedProductionExcelImporter:
         'Episode': 'estimate',                 # Alternative to estimate field
     }
     
-    def __init__(self, database_path: str):
+    def __init__(self, database_path: str, use_memory_optimization: bool = True):
         """Initialize the enhanced production importer."""
         self.database_path = database_path
+        self.use_memory_optimization = use_memory_optimization
         self.column_indexes = {}
         self.stats = {
             'agencies_created': 0,
@@ -169,7 +206,7 @@ class EnhancedProductionExcelImporter:
             'customers_normalized': 0,
             'errors': [],
             'error_types': {},
-            'broadcast_months_found': set()  # NEW: Track months
+            'broadcast_months_found': set()
         }
 
     def validate_and_confirm_column_mapping(self, worksheet, interactive=True):
@@ -242,13 +279,6 @@ class EnhancedProductionExcelImporter:
             print(f"\n❓ Unmapped Columns (will be ignored):")
             for col in sorted(unmapped_columns):
                 print(f"  '{col}'")
-                
-            # Suggest possible mappings
-            suggestions = self._suggest_column_mappings(unmapped_columns)
-            if suggestions:
-                print(f"\n💡 Suggested Mappings:")
-                for excel_col, suggested_mapping in suggestions.items():
-                    print(f"  '{excel_col}' might map to → {suggested_mapping}")
         
         if missing_critical_columns:
             print(f"\n❌ Missing Critical Columns:")
@@ -276,96 +306,16 @@ class EnhancedProductionExcelImporter:
             print(f"  - {len(unmapped_columns)} columns will be ignored")
             
             while True:
-                response = input(f"\nContinue with import? (yes/no/show): ").strip().lower()
+                response = input(f"\nContinue with import? (yes/no): ").strip().lower()
                 if response in ['yes', 'y']:
                     return True
                 elif response in ['no', 'n']:
                     print(f"❌ Import cancelled by user")
                     return False
-                elif response in ['show', 's']:
-                    self._show_detailed_mapping(actual_headers)
                 else:
-                    print("Please enter 'yes', 'no', or 'show' for detailed mapping")
+                    print("Please enter 'yes' or 'no'")
         
         return len(missing_critical_columns) == 0
-
-    def _suggest_column_mappings(self, unmapped_columns):
-        """Suggest possible mappings for unmapped columns."""
-        suggestions = {}
-        
-        # Common alternative names
-        alternatives = {
-            'AE': 'sales_person',
-            'Account Executive': 'sales_person', 
-            'Salesperson': 'sales_person',
-            'Gross': 'gross_rate',
-            'Gross Rate': 'gross_rate',
-            'Net': 'station_net',
-            'Net Rate': 'station_net',
-            'Air Date': 'air_date',
-            'Date': 'air_date',
-            'Show Name': 'media',
-            'Program': 'media',
-            'Show': 'format',
-            'Spots': 'sequence_number',
-            'Day': 'day_of_week'
-        }
-        
-        for col in unmapped_columns:
-            if col in alternatives:
-                suggestions[col] = alternatives[col]
-            else:
-                # Fuzzy matching for close names
-                for mapped_col, db_field in self.COLUMN_MAPPING.items():
-                    if self._columns_similar(col, mapped_col):
-                        suggestions[col] = db_field
-                        break
-        
-        return suggestions
-
-    def _columns_similar(self, col1, col2):
-        """Check if two column names are similar (basic fuzzy matching)."""
-        col1_clean = col1.lower().replace(' ', '').replace('_', '').replace('/', '')
-        col2_clean = col2.lower().replace(' ', '').replace('_', '').replace('/', '')
-        
-        # Check if one contains the other
-        if col1_clean in col2_clean or col2_clean in col1_clean:
-            return True
-        
-        # Check for common abbreviations
-        abbrev_map = {
-            'ae': 'accountexecutive',
-            'salesperson': 'salesperson',
-            'gross': 'unitrategross',
-            'net': 'stationnet'
-        }
-        
-        col1_expanded = abbrev_map.get(col1_clean, col1_clean)
-        col2_expanded = abbrev_map.get(col2_clean, col2_clean) 
-        
-        return col1_expanded == col2_expanded
-
-    def _show_detailed_mapping(self, actual_headers):
-        """Show detailed column mapping information."""
-        print(f"\n📋 DETAILED COLUMN MAPPING")
-        print(f"{'='*60}")
-        print(f"{'Excel Column':<30} {'Database Field':<20} {'Status'}")
-        print(f"{'-'*30} {'-'*20} {'-'*10}")
-        
-        for header in actual_headers:
-            if header in self.COLUMN_MAPPING:
-                db_field = self.COLUMN_MAPPING[header]
-                status = "✅ Mapped"
-            else:
-                db_field = "N/A"
-                status = "❓ Ignored"
-            
-            print(f"{header:<30} {db_field:<20} {status}")
-        
-        print(f"\n💡 To fix unmapped columns:")
-        print(f"1. Update Excel file column names to match expected names")
-        print(f"2. Or update COLUMN_MAPPING in the importer code")
-        print(f"3. Contact support if you need help with column mapping")
     
     def import_excel_file(self, excel_file_path: str, limit: Optional[int] = None) -> ImportResults:
         """Import Excel file (original interface for backward compatibility)."""
@@ -402,7 +352,17 @@ class EnhancedProductionExcelImporter:
         try:
             # Step 1: Load and analyze Excel file
             print("📊 Loading Excel file...")
-            workbook = load_workbook(excel_file_path, read_only=True, data_only=True)
+            
+            # Use memory-optimized loading for large files
+            file_size_mb = Path(excel_file_path).stat().st_size / (1024 * 1024)
+            use_read_only = self.use_memory_optimization and file_size_mb > 20
+            
+            if use_read_only:
+                print(f"📁 Large file detected ({file_size_mb:.1f} MB), using memory-optimized loading...")
+                workbook = load_workbook(excel_file_path, read_only=True, data_only=True)
+            else:
+                workbook = load_workbook(excel_file_path, data_only=True)
+            
             worksheet = workbook.active
             
             # Parse headers
@@ -419,34 +379,14 @@ class EnhancedProductionExcelImporter:
             # Step 2: Process with progress tracking
             progress = ProgressTracker(total_rows)
             
-            db_conn = sqlite3.connect(self.database_path)
-            db_conn.execute("PRAGMA foreign_keys = ON")
+            # Use chunked processing for large files
+            if self.use_memory_optimization and total_rows > 50000:
+                print(f"🔧 Using chunked processing for large dataset...")
+                records_imported = self._process_in_chunks(worksheet, total_rows, batch_id, progress, limit)
+            else:
+                records_imported = self._process_sequential(worksheet, total_rows, batch_id, progress, limit)
             
-            try:
-                db_conn.execute("BEGIN")
-                
-                row_count = 0
-                for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
-                    if limit and row_count >= limit:
-                        break
-                    
-                    if not any(cell for cell in row):
-                        continue
-                    
-                    success = self._process_row(row, row_num, db_conn, batch_id)
-                    progress.update(imported=success)
-                    row_count += 1
-                
-                db_conn.commit()
-                print("✅ Transaction committed successfully")
-                
-            except Exception as e:
-                db_conn.rollback()
-                print(f"\n❌ Transaction rolled back: {e}")
-                raise
-            finally:
-                db_conn.close()
-                workbook.close()
+            workbook.close()
             
             # Step 3: Generate results
             end_time = time.time()
@@ -465,8 +405,8 @@ class EnhancedProductionExcelImporter:
                 records_per_second=progress.processed / duration if duration > 0 else 0,
                 errors=self.stats['errors'][:10],  # First 10 errors
                 error_summary=self.stats['error_types'],
-                batch_id=batch_id,  # NEW: Include batch ID
-                broadcast_months_processed=sorted(list(self.stats['broadcast_months_found']))  # NEW: Months
+                batch_id=batch_id,
+                broadcast_months_processed=sorted(list(self.stats['broadcast_months_found']))
             )
             
             self._print_final_results(results)
@@ -475,9 +415,8 @@ class EnhancedProductionExcelImporter:
         except Exception as e:
             return self._create_error_result(f"Import failed: {str(e)}")
     
-    # Update the _parse_headers method to use validation
-    def _parse_headers(self, worksheet, interactive=True):
-        """Parse and validate Excel headers with user confirmation."""
+    def _parse_headers(self, worksheet, interactive=False):
+        """Parse and validate Excel headers."""
         
         # First run the validation
         if not self.validate_and_confirm_column_mapping(worksheet, interactive):
@@ -509,6 +448,95 @@ class EnhancedProductionExcelImporter:
         print(f"✅ Column mapping validated and confirmed")
         print(f"📋 Mapped {len(self.column_indexes)} columns for import")
     
+    def _process_sequential(self, worksheet, total_rows: int, batch_id: Optional[str], progress: ProgressTracker, limit: Optional[int]) -> int:
+        """Process rows sequentially in a single transaction."""
+        db_conn = sqlite3.connect(self.database_path)
+        db_conn.execute("PRAGMA foreign_keys = ON")
+        
+        try:
+            db_conn.execute("BEGIN")
+            
+            row_count = 0
+            for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
+                if limit and row_count >= limit:
+                    break
+                
+                if not any(cell for cell in row):
+                    continue
+                
+                success = self._process_row(row, row_num, db_conn, batch_id)
+                progress.update(imported=success)
+                row_count += 1
+            
+            db_conn.commit()
+            print("✅ Transaction committed successfully")
+            
+        except Exception as e:
+            db_conn.rollback()
+            print(f"\n❌ Transaction rolled back: {e}")
+            raise
+        finally:
+            db_conn.close()
+        
+        return progress.imported
+    
+    def _process_in_chunks(self, worksheet, total_rows: int, batch_id: Optional[str], progress: ProgressTracker, limit: Optional[int]) -> int:
+        """Process rows in chunks for memory efficiency."""
+        chunk_size = 10000
+        total_imported = 0
+        
+        for chunk_start in range(0, total_rows, chunk_size):
+            chunk_end = min(chunk_start + chunk_size, total_rows)
+            if limit and chunk_start >= limit:
+                break
+            
+            chunk_limit = min(chunk_end - chunk_start, limit - chunk_start if limit else chunk_end - chunk_start)
+            
+            print(f"\n📦 Processing chunk: rows {chunk_start+1:,} to {chunk_end:,}")
+            
+            # Process this chunk in its own transaction
+            chunk_imported = self._process_chunk(worksheet, chunk_start + 2, chunk_end + 2, batch_id, progress, chunk_limit)
+            total_imported += chunk_imported
+            
+            # Force garbage collection
+            gc.collect()
+        
+        return total_imported
+    
+    def _process_chunk(self, worksheet, start_row: int, end_row: int, batch_id: Optional[str], progress: ProgressTracker, limit: Optional[int]) -> int:
+        """Process a chunk of rows within a single transaction."""
+        db_conn = sqlite3.connect(self.database_path)
+        db_conn.execute("PRAGMA foreign_keys = ON")
+        chunk_imported = 0
+        
+        try:
+            db_conn.execute("BEGIN")
+            
+            row_count = 0
+            for row_num, row in enumerate(worksheet.iter_rows(min_row=start_row, max_row=end_row, values_only=True), start=start_row):
+                if limit and row_count >= limit:
+                    break
+                
+                if not any(cell for cell in row):
+                    continue
+                
+                success = self._process_row(row, row_num, db_conn, batch_id)
+                if success:
+                    chunk_imported += 1
+                progress.update(imported=success)
+                row_count += 1
+            
+            db_conn.commit()
+            
+        except Exception as e:
+            db_conn.rollback()
+            print(f"❌ Chunk transaction rolled back: {e}")
+            raise
+        finally:
+            db_conn.close()
+        
+        return chunk_imported
+    
     def _process_row(self, row: tuple, row_num: int, db_conn: sqlite3.Connection, batch_id: Optional[str] = None) -> bool:
         """
         Process a single row with enhanced batch tracking.
@@ -536,17 +564,15 @@ class EnhancedProductionExcelImporter:
             if not spot_data.get('bill_code') or not spot_data.get('air_date'):
                 return False
             
-            # NEW: Track broadcast months found
+            # Track broadcast months found
             if spot_data.get('broadcast_month'):
-                # Convert to display format for tracking
                 try:
                     from utils.broadcast_month_utils import BroadcastMonthParser
                     parser = BroadcastMonthParser()
                     display_month = parser.parse_excel_date_to_broadcast_month(spot_data['broadcast_month'])
                     self.stats['broadcast_months_found'].add(display_month)
                 except:
-                    # If conversion fails, just track as-is
-                    self.stats['broadcast_months_found'].add(str(spot_data['broadcast_month']))
+                    pass  # Don't fail import on month parsing
             
             # Parse bill code for agency/customer
             agency_name, customer_name = self._parse_bill_code(spot_data['bill_code'])
@@ -562,7 +588,7 @@ class EnhancedProductionExcelImporter:
             if spot_data.get('market_name'):
                 spot_data['market_id'] = self._get_market_id(db_conn, spot_data['market_name'])
             
-            # NEW: Add batch tracking
+            # Add batch tracking
             if batch_id:
                 spot_data['import_batch_id'] = batch_id
             
@@ -576,7 +602,7 @@ class EnhancedProductionExcelImporter:
             return False
     
     def _convert_value(self, field_name: str, raw_value: Any) -> Any:
-        """Convert values with proper type handling for SQLite (unchanged)."""
+        """Convert values with proper type handling for SQLite."""
         if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
             return None
         
@@ -601,7 +627,7 @@ class EnhancedProductionExcelImporter:
             return None
     
     def _convert_date(self, value: Any) -> Optional[date]:
-        """Convert date values (unchanged)."""
+        """Convert date values."""
         if isinstance(value, date):
             return value
         if isinstance(value, datetime):
@@ -621,7 +647,7 @@ class EnhancedProductionExcelImporter:
         return None
     
     def _convert_float(self, value: Any) -> Optional[float]:
-        """Convert to float, allowing negative values (unchanged)."""
+        """Convert to float, allowing negative values."""
         if isinstance(value, (int, float)):
             return float(value)
         
@@ -638,7 +664,7 @@ class EnhancedProductionExcelImporter:
         return None
     
     def _convert_integer(self, value: Any) -> Optional[int]:
-        """Convert to integer (unchanged)."""
+        """Convert to integer."""
         if isinstance(value, int):
             return value
         if isinstance(value, float):
@@ -651,14 +677,14 @@ class EnhancedProductionExcelImporter:
         return None
     
     def _convert_string(self, value: Any) -> Optional[str]:
-        """Convert to clean string (unchanged)."""
+        """Convert to clean string."""
         if isinstance(value, str):
             cleaned = value.strip()
             return cleaned if cleaned else None
         return str(value) if value is not None else None
     
     def _parse_bill_code(self, bill_code: str) -> Tuple[Optional[str], str]:
-        """Parse bill code into agency and customer (unchanged)."""
+        """Parse bill code into agency and customer."""
         if ':' in bill_code:
             parts = bill_code.split(':', 1)
             agency = parts[0].strip()
@@ -683,7 +709,7 @@ class EnhancedProductionExcelImporter:
             return (None, customer)
     
     def _get_or_create_agency(self, conn: sqlite3.Connection, agency_name: str) -> int:
-        """Get or create agency (unchanged)."""
+        """Get or create agency."""
         cursor = conn.execute("SELECT agency_id FROM agencies WHERE agency_name = ?", (agency_name,))
         row = cursor.fetchone()
         
@@ -695,7 +721,7 @@ class EnhancedProductionExcelImporter:
         return cursor.lastrowid
     
     def _get_or_create_customer(self, conn: sqlite3.Connection, customer_name: str) -> int:
-        """Get or create customer (unchanged)."""
+        """Get or create customer."""
         cursor = conn.execute("SELECT customer_id FROM customers WHERE normalized_name = ?", (customer_name,))
         row = cursor.fetchone()
         
@@ -707,7 +733,7 @@ class EnhancedProductionExcelImporter:
         return cursor.lastrowid
     
     def _get_market_id(self, conn: sqlite3.Connection, market_name: str) -> Optional[int]:
-        """Get market ID (unchanged)."""
+        """Get market ID."""
         cursor = conn.execute("SELECT market_id FROM markets WHERE LOWER(market_name) = LOWER(?)", (market_name,))
         row = cursor.fetchone()
         return row[0] if row else None
@@ -728,7 +754,7 @@ class EnhancedProductionExcelImporter:
         conn.execute(query, values)
     
     def _record_error(self, context: str, error: str):
-        """Record error with categorization (unchanged)."""
+        """Record error with categorization."""
         full_error = f"{context}: {error}"
         self.stats['errors'].append(full_error)
         
@@ -737,7 +763,7 @@ class EnhancedProductionExcelImporter:
         self.stats['error_types'][error_type] = self.stats['error_types'].get(error_type, 0) + 1
     
     def _create_error_result(self, error_message: str) -> ImportResults:
-        """Create error result (enhanced with batch fields)."""
+        """Create error result."""
         return ImportResults(
             success=False,
             total_records=0,
@@ -756,7 +782,7 @@ class EnhancedProductionExcelImporter:
         )
     
     def _print_final_results(self, results: ImportResults):
-        """Print comprehensive final results (enhanced)."""
+        """Print comprehensive final results."""
         print(f"\n{'='*60}")
         print(f"🎉 PRODUCTION IMPORT COMPLETED")
         print(f"{'='*60}")
@@ -779,7 +805,7 @@ class EnhancedProductionExcelImporter:
         print(f"  New Customers: {results.new_customers_created}")
         print(f"  Customer Names Normalized: {results.customers_normalized}")
         
-        # NEW: Show broadcast months processed
+        # Show broadcast months processed
         if results.broadcast_months_processed:
             print(f"")
             print(f"📅 Broadcast Months Processed:")
@@ -802,10 +828,10 @@ class EnhancedProductionExcelImporter:
                     print(f"    • {error}")
 
 
-# NEW: Integration function for import service
+# Integration function for import service
 def import_excel_with_batch(excel_file_path: str, database_path: str, batch_id: str) -> int:
     """
-    Simplified function for integration with import service.
+    Integration function for import service.
     
     Args:
         excel_file_path: Path to Excel file
@@ -837,10 +863,20 @@ def main():
     parser.add_argument("--database", default="data/database/test.db", help="Database path")
     parser.add_argument("--batch-id", help="Optional batch ID for tracking")
     parser.add_argument("--limit", type=int, help="Limit number of records (for testing)")
+    parser.add_argument("--no-memory-optimization", action="store_true", help="Disable memory optimization")
     
     args = parser.parse_args()
     
-    importer = EnhancedProductionExcelImporter(args.database)
+    # Check system memory
+    try:
+        import psutil
+        available_memory_gb = psutil.virtual_memory().available / (1024**3)
+        print(f"💾 Available system memory: {available_memory_gb:.1f} GB")
+    except:
+        print("💾 Memory monitoring not available (psutil not installed)")
+    
+    use_optimization = not args.no_memory_optimization
+    importer = EnhancedProductionExcelImporter(args.database, use_optimization)
     results = importer.import_with_batch_id(args.excel_file, args.batch_id, args.limit)
     
     if results.success:

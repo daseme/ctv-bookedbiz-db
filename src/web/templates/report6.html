@@ -172,7 +172,7 @@
         <div class="stat-description">Languages</div>
     </div>
     <div class="language-stat">
-        <div class="stat-value">${{ "{:,}".format(data.total_revenue) }}</div>
+        <div class="stat-value">${{ "{:,.0f}".format(data.total_revenue) }}</div>
         <div class="stat-description">Total Revenue</div>
     </div>
     <div class="language-stat">
@@ -225,13 +225,13 @@
                     <span class="language-name">{{ lang.language_name }}</span>
                     <small style="color: #718096;">({{ lang.language_code }})</small>
                 </td>
-                <td class="number positive">${{ "{:,}".format(lang.total_revenue) }}</td>
+                <td class="number positive">${{ "{:,.0f}".format(lang.total_revenue) }}</td>
                 <td class="number market-share {% if lang.market_share_pct >= 30 %}dominant{% elif lang.market_share_pct >= 15 %}significant{% elif lang.market_share_pct >= 5 %}moderate{% else %}minor{% endif %}">
                     {{ lang.market_share_pct }}%
                 </td>
                 <td class="number">{{ "{:,}".format(lang.spot_count) }}</td>
-                <td class="number">${{ "{:,}".format(lang.avg_rate) }}</td>
-                <td class="number">${{ "{:,}".format(lang.total_revenue / lang.spot_count if lang.spot_count > 0 else 0) }}</td>
+                <td class="number">${{ "{:,.0f}".format(lang.avg_rate) }}</td>
+                <td class="number">${{ "{:,.0f}".format(lang.total_revenue / lang.spot_count if lang.spot_count > 0 else 0) }}</td>
             </tr>
             {% endfor %}
         </tbody>
