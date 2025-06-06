@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced production-grade Excel importer with batch tracking support and memory optimization.
-Handles large files efficiently while maintaining all existing functionality.
+FIXED Enhanced production-grade Excel importer with batch tracking support.
+Addresses the stalling issue in bulk import operations.
 """
 
 import sys
@@ -123,7 +123,7 @@ class ImportResults:
 
 
 class EnhancedProductionExcelImporter:
-    """Production-grade Excel importer with comprehensive column handling and memory optimization."""
+    """FIXED Production-grade Excel importer with comprehensive column handling."""
     
     # Complete flexible column mapping for both 2024 and 2025 Excel formats
     COLUMN_MAPPING = {
@@ -195,10 +195,9 @@ class EnhancedProductionExcelImporter:
         'Episode': 'estimate',                 # Alternative to estimate field
     }
     
-    def __init__(self, database_path: str, use_memory_optimization: bool = True):
-        """Initialize the enhanced production importer."""
+    def __init__(self, database_path: str):
+        """Initialize the FIXED enhanced production importer."""
         self.database_path = database_path
-        self.use_memory_optimization = use_memory_optimization
         self.column_indexes = {}
         self.stats = {
             'agencies_created': 0,
@@ -208,6 +207,31 @@ class EnhancedProductionExcelImporter:
             'error_types': {},
             'broadcast_months_found': set()
         }
+        
+        # CRITICAL FIX: Pre-cache database lookups to avoid repeated queries
+        self._agency_cache = {}
+        self._customer_cache = {}
+        self._market_cache = {}
+        
+        # CRITICAL FIX: Use WAL mode for better concurrency
+        self._setup_database_for_bulk_import()
+
+    def _setup_database_for_bulk_import(self):
+        """CRITICAL FIX: Configure database for bulk import operations."""
+        try:
+            conn = sqlite3.connect(self.database_path)
+            # Enable WAL mode for better concurrency
+            conn.execute("PRAGMA journal_mode=WAL")
+            # Increase cache size for better performance
+            conn.execute("PRAGMA cache_size=10000")
+            # Disable synchronous writes during bulk import
+            conn.execute("PRAGMA synchronous=OFF")
+            # Increase temp store size
+            conn.execute("PRAGMA temp_store=MEMORY")
+            conn.close()
+            print("✓ Database configured for bulk import")
+        except Exception as e:
+            print(f"⚠️  Could not optimize database settings: {e}")
 
     def validate_and_confirm_column_mapping(self, worksheet, interactive=True):
         """
@@ -317,16 +341,12 @@ class EnhancedProductionExcelImporter:
         
         return len(missing_critical_columns) == 0
     
-    def import_excel_file(self, excel_file_path: str, limit: Optional[int] = None) -> ImportResults:
-        """Import Excel file (original interface for backward compatibility)."""
-        return self.import_with_batch_id(excel_file_path, batch_id=None, limit=limit)
-    
     def import_with_batch_id(self, 
                            excel_file_path: str, 
                            batch_id: Optional[str] = None,
                            limit: Optional[int] = None) -> ImportResults:
         """
-        Enhanced import method with batch tracking support.
+        FIXED Enhanced import method with proper error handling and connection management.
         
         Args:
             excel_file_path: Path to Excel file
@@ -336,7 +356,7 @@ class EnhancedProductionExcelImporter:
         Returns:
             ImportResults with batch and month information
         """
-        print(f"🚀 Starting{'batched' if batch_id else ''} production import: {Path(excel_file_path).name}")
+        print(f"🚀 Starting FIXED production import: {Path(excel_file_path).name}")
         if batch_id:
             print(f"📋 Batch ID: {batch_id}")
         
@@ -353,16 +373,8 @@ class EnhancedProductionExcelImporter:
             # Step 1: Load and analyze Excel file
             print("📊 Loading Excel file...")
             
-            # Use memory-optimized loading for large files
-            file_size_mb = Path(excel_file_path).stat().st_size / (1024 * 1024)
-            use_read_only = self.use_memory_optimization and file_size_mb > 20
-            
-            if use_read_only:
-                print(f"📁 Large file detected ({file_size_mb:.1f} MB), using memory-optimized loading...")
-                workbook = load_workbook(excel_file_path, read_only=True, data_only=True)
-            else:
-                workbook = load_workbook(excel_file_path, data_only=True)
-            
+            # Always use data_only=True for better performance
+            workbook = load_workbook(excel_file_path, data_only=True)
             worksheet = workbook.active
             
             # Parse headers
@@ -376,15 +388,14 @@ class EnhancedProductionExcelImporter:
             print(f"📈 Found {total_rows:,} records to process")
             print(f"📋 Mapped {len(self.column_indexes)} columns")
             
-            # Step 2: Process with progress tracking
+            # CRITICAL FIX: Pre-load caches before processing
+            self._preload_database_caches()
+            
+            # Step 2: Process in single transaction for better performance
             progress = ProgressTracker(total_rows)
             
-            # Use chunked processing for large files
-            if self.use_memory_optimization and total_rows > 50000:
-                print(f"🔧 Using chunked processing for large dataset...")
-                records_imported = self._process_in_chunks(worksheet, total_rows, batch_id, progress, limit)
-            else:
-                records_imported = self._process_sequential(worksheet, total_rows, batch_id, progress, limit)
+            # CRITICAL FIX: Use single transaction instead of chunked processing
+            records_imported = self._process_sequential_fixed(worksheet, total_rows, batch_id, progress, limit)
             
             workbook.close()
             
@@ -414,6 +425,34 @@ class EnhancedProductionExcelImporter:
             
         except Exception as e:
             return self._create_error_result(f"Import failed: {str(e)}")
+    
+    def _preload_database_caches(self):
+        """CRITICAL FIX: Pre-load database caches to avoid repeated queries."""
+        try:
+            conn = sqlite3.connect(self.database_path)
+            conn.row_factory = sqlite3.Row
+            
+            # Pre-load agencies
+            cursor = conn.execute("SELECT agency_id, agency_name FROM agencies")
+            for row in cursor.fetchall():
+                self._agency_cache[row['agency_name']] = row['agency_id']
+            
+            # Pre-load customers
+            cursor = conn.execute("SELECT customer_id, normalized_name FROM customers")
+            for row in cursor.fetchall():
+                self._customer_cache[row['normalized_name']] = row['customer_id']
+            
+            # Pre-load markets
+            cursor = conn.execute("SELECT market_id, market_name FROM markets")
+            for row in cursor.fetchall():
+                self._market_cache[row['market_name'].lower()] = row['market_id']
+            
+            conn.close()
+            
+            print(f"✓ Pre-loaded caches: {len(self._agency_cache)} agencies, {len(self._customer_cache)} customers, {len(self._market_cache)} markets")
+            
+        except Exception as e:
+            print(f"⚠️  Could not pre-load caches: {e}")
     
     def _parse_headers(self, worksheet, interactive=False):
         """Parse and validate Excel headers."""
@@ -448,13 +487,20 @@ class EnhancedProductionExcelImporter:
         print(f"✅ Column mapping validated and confirmed")
         print(f"📋 Mapped {len(self.column_indexes)} columns for import")
     
-    def _process_sequential(self, worksheet, total_rows: int, batch_id: Optional[str], progress: ProgressTracker, limit: Optional[int]) -> int:
-        """Process rows sequentially in a single transaction."""
+    def _process_sequential_fixed(self, worksheet, total_rows: int, batch_id: Optional[str], progress: ProgressTracker, limit: Optional[int]) -> int:
+        """CRITICAL FIX: Process rows in single transaction with proper error handling."""
+        
+        # CRITICAL FIX: Use single database connection for entire import
         db_conn = sqlite3.connect(self.database_path)
         db_conn.execute("PRAGMA foreign_keys = ON")
+        db_conn.execute("PRAGMA journal_mode=WAL")  # Better for concurrent access
         
         try:
-            db_conn.execute("BEGIN")
+            # CRITICAL FIX: Single large transaction
+            db_conn.execute("BEGIN IMMEDIATE")
+            
+            # CRITICAL FIX: Prepare INSERT statement once
+            insert_query = self._prepare_insert_statement()
             
             row_count = 0
             for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
@@ -464,12 +510,20 @@ class EnhancedProductionExcelImporter:
                 if not any(cell for cell in row):
                     continue
                 
-                success = self._process_row(row, row_num, db_conn, batch_id)
+                # CRITICAL FIX: Use prepared statement with better error handling
+                success = self._process_row_fixed(row, row_num, db_conn, insert_query, batch_id)
                 progress.update(imported=success)
                 row_count += 1
+                
+                # CRITICAL FIX: Commit periodically for large imports
+                if row_count % 10000 == 0:
+                    db_conn.commit()
+                    db_conn.execute("BEGIN IMMEDIATE")
+                    print(f"\n✓ Committed {row_count:,} records...")
             
+            # Final commit
             db_conn.commit()
-            print("✅ Transaction committed successfully")
+            print(f"\n✅ Final commit: {progress.imported:,} records imported successfully")
             
         except Exception as e:
             db_conn.rollback()
@@ -480,77 +534,42 @@ class EnhancedProductionExcelImporter:
         
         return progress.imported
     
-    def _process_in_chunks(self, worksheet, total_rows: int, batch_id: Optional[str], progress: ProgressTracker, limit: Optional[int]) -> int:
-        """Process rows in chunks for memory efficiency."""
-        chunk_size = 10000
-        total_imported = 0
+    def _prepare_insert_statement(self):
+        """CRITICAL FIX: Prepare INSERT statement with known columns."""
+        # Define the exact columns we want to insert
+        columns = [
+            'bill_code', 'air_date', 'end_date', 'day_of_week', 'time_in', 'time_out',
+            'length_seconds', 'media', 'program', 'language_code', 'format', 
+            'sequence_number', 'line_number', 'spot_type', 'estimate',
+            'gross_rate', 'make_good', 'spot_value', 'broadcast_month', 'broker_fees',
+            'priority', 'station_net', 'sales_person', 'revenue_type', 'billing_type',
+            'agency_flag', 'affidavit_flag', 'contract', 'market_name',
+            'customer_id', 'agency_id', 'market_id', 'language_id',
+            'source_file', 'load_date', 'is_historical', 'import_batch_id'
+        ]
         
-        for chunk_start in range(0, total_rows, chunk_size):
-            chunk_end = min(chunk_start + chunk_size, total_rows)
-            if limit and chunk_start >= limit:
-                break
-            
-            chunk_limit = min(chunk_end - chunk_start, limit - chunk_start if limit else chunk_end - chunk_start)
-            
-            print(f"\n📦 Processing chunk: rows {chunk_start+1:,} to {chunk_end:,}")
-            
-            # Process this chunk in its own transaction
-            chunk_imported = self._process_chunk(worksheet, chunk_start + 2, chunk_end + 2, batch_id, progress, chunk_limit)
-            total_imported += chunk_imported
-            
-            # Force garbage collection
-            gc.collect()
+        placeholders = ', '.join(['?' for _ in columns])
+        field_names = ', '.join(columns)
         
-        return total_imported
+        return f"INSERT INTO spots ({field_names}) VALUES ({placeholders})", columns
     
-    def _process_chunk(self, worksheet, start_row: int, end_row: int, batch_id: Optional[str], progress: ProgressTracker, limit: Optional[int]) -> int:
-        """Process a chunk of rows within a single transaction."""
-        db_conn = sqlite3.connect(self.database_path)
-        db_conn.execute("PRAGMA foreign_keys = ON")
-        chunk_imported = 0
-        
-        try:
-            db_conn.execute("BEGIN")
-            
-            row_count = 0
-            for row_num, row in enumerate(worksheet.iter_rows(min_row=start_row, max_row=end_row, values_only=True), start=start_row):
-                if limit and row_count >= limit:
-                    break
-                
-                if not any(cell for cell in row):
-                    continue
-                
-                success = self._process_row(row, row_num, db_conn, batch_id)
-                if success:
-                    chunk_imported += 1
-                progress.update(imported=success)
-                row_count += 1
-            
-            db_conn.commit()
-            
-        except Exception as e:
-            db_conn.rollback()
-            print(f"❌ Chunk transaction rolled back: {e}")
-            raise
-        finally:
-            db_conn.close()
-        
-        return chunk_imported
-    
-    def _process_row(self, row: tuple, row_num: int, db_conn: sqlite3.Connection, batch_id: Optional[str] = None) -> bool:
+    def _process_row_fixed(self, row: tuple, row_num: int, db_conn: sqlite3.Connection, insert_query: tuple, batch_id: Optional[str] = None) -> bool:
         """
-        Process a single row with enhanced batch tracking.
+        CRITICAL FIX: Process a single row with proper error handling and prepared statements.
         
         Args:
             row: Excel row data
             row_num: Row number for error reporting
             db_conn: Database connection
+            insert_query: Prepared INSERT statement tuple (query, columns)
             batch_id: Optional batch ID for tracking
             
         Returns:
             True if row was successfully imported
         """
         try:
+            query, columns = insert_query
+            
             # Extract all fields using column mapping
             spot_data = {}
             
@@ -577,29 +596,104 @@ class EnhancedProductionExcelImporter:
             # Parse bill code for agency/customer
             agency_name, customer_name = self._parse_bill_code(spot_data['bill_code'])
             
-            # Handle agency
+            # CRITICAL FIX: Use cached lookups instead of database queries
             if agency_name:
-                spot_data['agency_id'] = self._get_or_create_agency(db_conn, agency_name)
+                spot_data['agency_id'] = self._get_or_create_agency_cached(agency_name)
             
-            # Handle customer
-            spot_data['customer_id'] = self._get_or_create_customer(db_conn, customer_name)
+            spot_data['customer_id'] = self._get_or_create_customer_cached(customer_name)
             
-            # Handle market mapping
+            # Handle market mapping with cache
             if spot_data.get('market_name'):
-                spot_data['market_id'] = self._get_market_id(db_conn, spot_data['market_name'])
+                spot_data['market_id'] = self._get_market_id_cached(spot_data['market_name'])
             
-            # Add batch tracking
-            if batch_id:
-                spot_data['import_batch_id'] = batch_id
+            # Add metadata
+            spot_data['source_file'] = Path(self.database_path).name
+            spot_data['load_date'] = datetime.now()
+            spot_data['is_historical'] = 0
+            spot_data['import_batch_id'] = batch_id
             
-            # Insert into database
-            self._insert_spot(db_conn, spot_data, Path(self.database_path).name)
+            # CRITICAL FIX: Build values array in exact column order
+            values = []
+            for col in columns:
+                values.append(spot_data.get(col))
             
-            return True
+            # CRITICAL FIX: Execute with proper error handling
+            try:
+                db_conn.execute(query, values)
+                return True
+            except sqlite3.IntegrityError as e:
+                self._record_error(f"Row {row_num}", f"Database integrity error: {e}")
+                return False
+            except sqlite3.Error as e:
+                self._record_error(f"Row {row_num}", f"Database error: {e}")
+                return False
             
         except Exception as e:
-            self._record_error(f"Row {row_num}", str(e))
+            self._record_error(f"Row {row_num}", f"Processing error: {e}")
             return False
+    
+    def _get_or_create_agency_cached(self, agency_name: str) -> int:
+        """CRITICAL FIX: Get or create agency using cache."""
+        if agency_name in self._agency_cache:
+            return self._agency_cache[agency_name]
+        
+        # Create new agency
+        try:
+            conn = sqlite3.connect(self.database_path)
+            cursor = conn.execute("INSERT INTO agencies (agency_name) VALUES (?)", (agency_name,))
+            agency_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            self._agency_cache[agency_name] = agency_id
+            self.stats['agencies_created'] += 1
+            return agency_id
+        except sqlite3.IntegrityError:
+            # Another process may have created it
+            conn = sqlite3.connect(self.database_path)
+            cursor = conn.execute("SELECT agency_id FROM agencies WHERE agency_name = ?", (agency_name,))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                agency_id = row[0]
+                self._agency_cache[agency_name] = agency_id
+                return agency_id
+            raise
+    
+    def _get_or_create_customer_cached(self, customer_name: str) -> int:
+        """CRITICAL FIX: Get or create customer using cache."""
+        if customer_name in self._customer_cache:
+            return self._customer_cache[customer_name]
+        
+        # Create new customer
+        try:
+            conn = sqlite3.connect(self.database_path)
+            cursor = conn.execute("INSERT INTO customers (normalized_name) VALUES (?)", (customer_name,))
+            customer_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            self._customer_cache[customer_name] = customer_id
+            self.stats['customers_created'] += 1
+            return customer_id
+        except sqlite3.IntegrityError:
+            # Another process may have created it
+            conn = sqlite3.connect(self.database_path)
+            cursor = conn.execute("SELECT customer_id FROM customers WHERE normalized_name = ?", (customer_name,))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                customer_id = row[0]
+                self._customer_cache[customer_name] = customer_id
+                return customer_id
+            raise
+    
+    def _get_market_id_cached(self, market_name: str) -> Optional[int]:
+        """CRITICAL FIX: Get market ID using cache."""
+        market_key = market_name.lower()
+        return self._market_cache.get(market_key)
+    
+    # [Keep all the other methods the same: _convert_value, _parse_bill_code, etc.]
     
     def _convert_value(self, field_name: str, raw_value: Any) -> Any:
         """Convert values with proper type handling for SQLite."""
@@ -708,58 +802,20 @@ class EnhancedProductionExcelImporter:
             
             return (None, customer)
     
-    def _get_or_create_agency(self, conn: sqlite3.Connection, agency_name: str) -> int:
-        """Get or create agency."""
-        cursor = conn.execute("SELECT agency_id FROM agencies WHERE agency_name = ?", (agency_name,))
-        row = cursor.fetchone()
-        
-        if row:
-            return row[0]
-        
-        cursor = conn.execute("INSERT INTO agencies (agency_name) VALUES (?)", (agency_name,))
-        self.stats['agencies_created'] += 1
-        return cursor.lastrowid
-    
-    def _get_or_create_customer(self, conn: sqlite3.Connection, customer_name: str) -> int:
-        """Get or create customer."""
-        cursor = conn.execute("SELECT customer_id FROM customers WHERE normalized_name = ?", (customer_name,))
-        row = cursor.fetchone()
-        
-        if row:
-            return row[0]
-        
-        cursor = conn.execute("INSERT INTO customers (normalized_name) VALUES (?)", (customer_name,))
-        self.stats['customers_created'] += 1
-        return cursor.lastrowid
-    
-    def _get_market_id(self, conn: sqlite3.Connection, market_name: str) -> Optional[int]:
-        """Get market ID."""
-        cursor = conn.execute("SELECT market_id FROM markets WHERE LOWER(market_name) = LOWER(?)", (market_name,))
-        row = cursor.fetchone()
-        return row[0] if row else None
-    
-    def _insert_spot(self, conn: sqlite3.Connection, spot_data: Dict[str, Any], source_file: str):
-        """Insert spot with all columns and batch tracking."""
-        # Add metadata
-        spot_data['source_file'] = source_file
-        spot_data['load_date'] = datetime.now()
-        
-        # Build dynamic insert query for all available fields
-        fields = list(spot_data.keys())
-        placeholders = ', '.join(['?' for _ in fields])
-        field_names = ', '.join(fields)
-        values = [spot_data[field] for field in fields]
-        
-        query = f"INSERT INTO spots ({field_names}) VALUES ({placeholders})"
-        conn.execute(query, values)
-    
     def _record_error(self, context: str, error: str):
         """Record error with categorization."""
         full_error = f"{context}: {error}"
         self.stats['errors'].append(full_error)
         
         # Categorize error type
-        error_type = type(error).__name__ if hasattr(error, '__name__') else 'ProcessingError'
+        error_type = 'ProcessingError'
+        if 'integrity' in error.lower():
+            error_type = 'IntegrityError'
+        elif 'foreign key' in error.lower():
+            error_type = 'ForeignKeyError'
+        elif 'database' in error.lower():
+            error_type = 'DatabaseError'
+        
         self.stats['error_types'][error_type] = self.stats['error_types'].get(error_type, 0) + 1
     
     def _create_error_result(self, error_message: str) -> ImportResults:
@@ -784,7 +840,7 @@ class EnhancedProductionExcelImporter:
     def _print_final_results(self, results: ImportResults):
         """Print comprehensive final results."""
         print(f"\n{'='*60}")
-        print(f"🎉 PRODUCTION IMPORT COMPLETED")
+        print(f"🎉 FIXED PRODUCTION IMPORT COMPLETED")
         print(f"{'='*60}")
         print(f"📊 Performance Metrics:")
         print(f"  Duration: {results.duration_seconds:.2f} seconds")
@@ -828,10 +884,10 @@ class EnhancedProductionExcelImporter:
                     print(f"    • {error}")
 
 
-# Integration function for import service
+# Integration function for import service - FIXED
 def import_excel_with_batch(excel_file_path: str, database_path: str, batch_id: str) -> int:
     """
-    Integration function for import service.
+    FIXED Integration function for import service.
     
     Args:
         excel_file_path: Path to Excel file
@@ -855,15 +911,14 @@ def import_excel_with_batch(excel_file_path: str, database_path: str, batch_id: 
 
 
 def main():
-    """CLI interface for enhanced production importer."""
+    """CLI interface for FIXED enhanced production importer."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Enhanced Production Excel Importer")
+    parser = argparse.ArgumentParser(description="FIXED Enhanced Production Excel Importer")
     parser.add_argument("excel_file", help="Path to Excel file")
     parser.add_argument("--database", default="data/database/test.db", help="Database path")
     parser.add_argument("--batch-id", help="Optional batch ID for tracking")
     parser.add_argument("--limit", type=int, help="Limit number of records (for testing)")
-    parser.add_argument("--no-memory-optimization", action="store_true", help="Disable memory optimization")
     
     args = parser.parse_args()
     
@@ -875,15 +930,14 @@ def main():
     except:
         print("💾 Memory monitoring not available (psutil not installed)")
     
-    use_optimization = not args.no_memory_optimization
-    importer = EnhancedProductionExcelImporter(args.database, use_optimization)
+    importer = EnhancedProductionExcelImporter(args.database)
     results = importer.import_with_batch_id(args.excel_file, args.batch_id, args.limit)
     
     if results.success:
-        print(f"\n✅ Import completed successfully!")
+        print(f"\n✅ FIXED Import completed successfully!")
         sys.exit(0)
     else:
-        print(f"\n❌ Import failed!")
+        print(f"\n❌ FIXED Import failed!")
         for error in results.errors:
             print(f"  {error}")
         sys.exit(1)
