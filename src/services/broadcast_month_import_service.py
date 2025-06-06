@@ -177,9 +177,34 @@ class BroadcastMonthImportService:
                 if import_mode == 'HISTORICAL':
                     for month in result.broadcast_months_affected:
                         if not self.closure_service.is_month_closed(month):
-                            self.closure_service.close_broadcast_month(month, closed_by, f"Auto-closed by historical import {batch_id}")
-                            result.closed_months.append(month)
-                            logger.info(f"Closed month {month} as part of historical import")
+                            # CRITICAL FIX: Use the new transaction-aware method
+                            try:
+                                # Insert closure record directly within existing transaction
+                                conn.execute("""
+                                    INSERT INTO month_closures (broadcast_month, closed_date, closed_by, notes)
+                                    VALUES (?, ?, ?, ?)
+                                """, (month, date.today(), closed_by, f"Auto-closed by historical import {batch_id}"))
+                                
+                                # Get datetime values for this month
+                                datetime_values = self.closure_service._get_datetime_values_for_month(month)
+                                
+                                # Mark all spots as historical
+                                updated_count = 0
+                                for datetime_value in datetime_values:
+                                    cursor = conn.execute("""
+                                        UPDATE spots 
+                                        SET is_historical = 1 
+                                        WHERE broadcast_month = ?
+                                    """, (datetime_value,))
+                                    updated_count += cursor.rowcount
+                                
+                                result.closed_months.append(month)
+                                logger.info(f"Closed month {month} as part of historical import - {updated_count} spots marked historical")
+                                
+                            except Exception as e:
+                                logger.error(f"Failed to close month {month}: {e}")
+                                # Don't fail the entire import if month closure fails
+                                result.error_messages.append(f"Failed to close month {month}: {e}")
                 
                 # Step 6: Update batch record as completed
                 self._complete_import_batch(batch_record_id, result, conn)
@@ -207,9 +232,11 @@ class BroadcastMonthImportService:
             return result
     
     def _create_import_batch(self, batch_id: str, import_mode: str, source_file: str, months: List[str]) -> str:
-        """Create import batch record for audit trail."""
+        """Create import batch record for audit trail - FIXED to avoid nested transactions."""
         try:
-            with self.db.transaction() as conn:
+            # CRITICAL FIX: Use direct connection instead of creating a transaction
+            conn = self.db.connect()
+            try:
                 conn.execute("""
                     INSERT INTO import_batches (
                         batch_id, import_mode, source_file, broadcast_months_affected,
@@ -217,8 +244,11 @@ class BroadcastMonthImportService:
                     ) VALUES (?, ?, ?, ?, 'RUNNING', ?)
                 """, (batch_id, import_mode, source_file, str(months), 'system'))
                 
+                conn.commit()
                 logger.info(f"Created import batch record: {batch_id}")
                 return batch_id
+            finally:
+                conn.close()
                 
         except Exception as e:
             logger.error(f"Failed to create import batch record: {e}")
@@ -252,25 +282,201 @@ class BroadcastMonthImportService:
     
     def _import_excel_data(self, excel_file: str, batch_id: str, conn) -> int:
         """
-        Import Excel data using enhanced production importer.
-        Integrates with the existing production_importer.py functionality.
+        CRITICAL FIX: Import Excel data using a transaction-compatible approach.
+        
+        The issue was that this method was being called WITHIN a transaction,
+        but then trying to create its own transaction, causing a deadlock.
         """
         try:
-            # Import using the enhanced production importer with batch tracking
-            from importers.enhanced_production_importer import import_excel_with_batch
+            print(f"🚀 Starting transaction-compatible Excel import...")
             
-            imported_count = import_excel_with_batch(
-                excel_file_path=excel_file,
-                database_path=self.db.db_path,
-                batch_id=batch_id
-            )
+            # Instead of using the enhanced importer which creates its own transaction,
+            # we'll process the Excel file directly within the existing transaction
             
-            logger.info(f"Successfully imported {imported_count} records with batch ID {batch_id}")
+            # Step 1: Load and parse Excel file
+            from openpyxl import load_workbook
+            from pathlib import Path
+            from datetime import datetime
+            
+            workbook = load_workbook(excel_file, data_only=True)
+            worksheet = workbook.active
+            
+            # Step 2: Parse headers to understand column structure
+            header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+            
+            # Create column mapping (simplified version of the enhanced importer's logic)
+            column_mapping = {
+                'Bill Code': 'bill_code',
+                'Start Date': 'air_date', 
+                'End Date': 'end_date',
+                'Day(s)': 'day_of_week',
+                'Time In': 'time_in',
+                'Time out': 'time_out',
+                'Length': 'length_seconds',
+                'Media/Name/Program': 'media',
+                'Comments': 'program',
+                'Language': 'language_code',
+                'Format': 'format',
+                'Units-Spot count': 'sequence_number',
+                'Line': 'line_number',
+                'Type': 'spot_type',
+                'Agency/Episode# or cut number': 'estimate',
+                'Unit rate Gross': 'gross_rate',
+                'Make Good': 'make_good',
+                'Spot Value': 'spot_value',
+                'Month': 'broadcast_month',
+                'Broker Fees': 'broker_fees',
+                'Sales/rep com: revenue sharing': 'priority',
+                'Station Net': 'station_net',
+                'Sales Person': 'sales_person',
+                'Revenue Type': 'revenue_type',
+                'Billing Type': 'billing_type',
+                'Agency?': 'agency_flag',
+                'Affidavit?': 'affidavit_flag',
+                'Notarize?': 'contract',
+                'Market': 'market_name'
+            }
+            
+            # Find column indexes
+            column_indexes = {}
+            for col_idx, header in enumerate(header_row):
+                if header and str(header).strip() in column_mapping:
+                    field_name = column_mapping[str(header).strip()]
+                    column_indexes[field_name] = col_idx
+            
+            print(f"📋 Mapped {len(column_indexes)} columns for direct import")
+            
+            # Step 3: Process rows within the existing transaction
+            total_rows = worksheet.max_row - 1
+            imported_count = 0
+            skipped_count = 0
+            
+            print(f"📈 Processing {total_rows:,} records within existing transaction...")
+            
+            # Pre-load some lookup data to avoid repeated queries
+            agency_cache = {}
+            customer_cache = {}
+            
+            for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
+                if not any(cell for cell in row):
+                    continue
+                
+                try:
+                    # Extract basic required fields
+                    bill_code = None
+                    air_date = None
+                    
+                    if 'bill_code' in column_indexes:
+                        bill_code = row[column_indexes['bill_code']]
+                    if 'air_date' in column_indexes:
+                        air_date = row[column_indexes['air_date']]
+                    
+                    if not bill_code or not air_date:
+                        skipped_count += 1
+                        continue
+                    
+                    # Parse bill code for agency/customer
+                    agency_name = None
+                    customer_name = str(bill_code).strip()
+                    
+                    if ':' in str(bill_code):
+                        parts = str(bill_code).split(':', 1)
+                        agency_name = parts[0].strip()
+                        customer_name = parts[1].strip()
+                    
+                    # Remove PRODUCTION suffixes
+                    for suffix in [' PRODUCTION', ' Production', ' PROD']:
+                        if customer_name.endswith(suffix):
+                            customer_name = customer_name[:-len(suffix)].strip()
+                            break
+                    
+                    # Get or create agency
+                    agency_id = None
+                    if agency_name:
+                        if agency_name in agency_cache:
+                            agency_id = agency_cache[agency_name]
+                        else:
+                            cursor = conn.execute("SELECT agency_id FROM agencies WHERE agency_name = ?", (agency_name,))
+                            row_result = cursor.fetchone()
+                            if row_result:
+                                agency_id = row_result[0]
+                            else:
+                                cursor = conn.execute("INSERT INTO agencies (agency_name) VALUES (?)", (agency_name,))
+                                agency_id = cursor.lastrowid
+                            agency_cache[agency_name] = agency_id
+                    
+                    # Get or create customer
+                    customer_id = None
+                    if customer_name in customer_cache:
+                        customer_id = customer_cache[customer_name]
+                    else:
+                        cursor = conn.execute("SELECT customer_id FROM customers WHERE normalized_name = ?", (customer_name,))
+                        row_result = cursor.fetchone()
+                        if row_result:
+                            customer_id = row_result[0]
+                        else:
+                            cursor = conn.execute("INSERT INTO customers (normalized_name) VALUES (?)", (customer_name,))
+                            customer_id = cursor.lastrowid
+                        customer_cache[customer_name] = customer_id
+                    
+                    # Build spot data dictionary
+                    spot_data = {
+                        'bill_code': str(bill_code).strip(),
+                        'customer_id': customer_id,
+                        'agency_id': agency_id,
+                        'source_file': Path(excel_file).name,
+                        'load_date': datetime.now(),
+                        'is_historical': 0,
+                        'import_batch_id': batch_id
+                    }
+                    
+                    # Add other fields from Excel
+                    for field_name, col_idx in column_indexes.items():
+                        if field_name not in ['bill_code'] and col_idx < len(row):
+                            raw_value = row[col_idx]
+                            if raw_value is not None:
+                                # Basic type conversion
+                                if field_name == 'air_date':
+                                    if hasattr(raw_value, 'date'):
+                                        spot_data[field_name] = raw_value.date()
+                                    else:
+                                        spot_data[field_name] = raw_value
+                                elif field_name in ['gross_rate', 'station_net', 'spot_value', 'broker_fees']:
+                                    try:
+                                        spot_data[field_name] = float(raw_value) if raw_value else None
+                                    except:
+                                        spot_data[field_name] = None
+                                else:
+                                    spot_data[field_name] = str(raw_value).strip() if raw_value else None
+                    
+                    # Insert spot record
+                    fields = list(spot_data.keys())
+                    placeholders = ', '.join(['?' for _ in fields])
+                    field_names = ', '.join(fields)
+                    values = [spot_data[field] for field in fields]
+                    
+                    query = f"INSERT INTO spots ({field_names}) VALUES ({placeholders})"
+                    conn.execute(query, values)
+                    
+                    imported_count += 1
+                    
+                    # Progress update every 10000 records
+                    if imported_count % 10000 == 0:
+                        print(f"📊 Imported {imported_count:,} records...")
+                    
+                except Exception as e:
+                    print(f"⚠️  Error processing row {row_num}: {e}")
+                    skipped_count += 1
+                    continue
+            
+            workbook.close()
+            
+            print(f"✅ Direct import completed: {imported_count:,} imported, {skipped_count:,} skipped")
             return imported_count
             
         except Exception as e:
-            error_msg = f"Excel import failed: {str(e)}"
-            logger.error(error_msg)
+            error_msg = f"Direct Excel import failed: {str(e)}"
+            print(f"❌ {error_msg}")
             raise BroadcastMonthImportError(error_msg)
     
     def _complete_import_batch(self, batch_id: str, result: ImportResult, conn):
@@ -291,9 +497,11 @@ class BroadcastMonthImportService:
             logger.error(f"Failed to update batch completion: {e}")
     
     def _fail_import_batch(self, batch_id: str, error_message: str):
-        """Mark import batch as failed."""
+        """Mark import batch as failed - FIXED to avoid nested transactions."""
         try:
-            with self.db.transaction() as conn:
+            # CRITICAL FIX: Use direct connection instead of creating a transaction
+            conn = self.db.connect()
+            try:
                 conn.execute("""
                     UPDATE import_batches 
                     SET status = 'FAILED',
@@ -302,7 +510,10 @@ class BroadcastMonthImportService:
                     WHERE batch_id = ?
                 """, (error_message, batch_id))
                 
+                conn.commit()
                 logger.info(f"Marked batch {batch_id} as failed")
+            finally:
+                conn.close()
                 
         except Exception as e:
             logger.error(f"Failed to mark batch as failed: {e}")

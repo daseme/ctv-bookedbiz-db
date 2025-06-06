@@ -5,6 +5,7 @@ Provides the core logic for protecting historical data from modification.
 """
 
 import sys
+import sqlite3
 import logging
 from pathlib import Path
 from datetime import datetime, date
@@ -95,6 +96,68 @@ class MonthClosureService:
             logger.error(f"Error finding datetime values for {broadcast_month_display}: {e}")
             return []
     
+    # CRITICAL FIX: Add this method to MonthClosureService class in month_closure_service.py
+
+    def close_broadcast_month_with_connection(self, broadcast_month_display: str, closed_by: str, conn, notes: str = None) -> bool:
+        """
+        CRITICAL FIX: Mark a broadcast month as permanently closed using existing connection.
+        This version works within an existing transaction.
+        
+        Args:
+            broadcast_month_display: Month to close in 'Mmm-YY' format (e.g., 'Nov-24')
+            closed_by: Name/ID of person closing the month
+            conn: Existing database connection with active transaction
+            notes: Optional notes about the closure
+            
+        Returns:
+            True if month was successfully closed
+            
+        Raises:
+            MonthClosureError: If month cannot be closed
+        """
+        logger.info(f"Attempting to close broadcast month: {broadcast_month_display}")
+        
+        # Validate broadcast month format
+        if not self.parser.validate_broadcast_month_format(broadcast_month_display):
+            raise MonthClosureError(f"Invalid broadcast month format: '{broadcast_month_display}'. Expected format: 'Mmm-YY'")
+        
+        # Check if month already closed
+        if self.is_month_closed(broadcast_month_display):
+            raise MonthClosureError(f"Month '{broadcast_month_display}' is already closed")
+        
+        # Get all datetime values for this display month
+        datetime_values = self._get_datetime_values_for_month(broadcast_month_display)
+        if not datetime_values:
+            raise MonthClosureError(f"Cannot close '{broadcast_month_display}': No data exists for this month. Import data first, then close the month.")
+        
+        try:
+            # CRITICAL FIX: Use the existing connection instead of creating a new transaction
+            
+            # Insert closure record (using display format for user interface)
+            conn.execute("""
+                INSERT INTO month_closures (broadcast_month, closed_date, closed_by, notes)
+                VALUES (?, ?, ?, ?)
+            """, (broadcast_month_display, date.today(), closed_by, notes))
+            
+            # Mark all spots for this month as historical (using actual datetime values)
+            updated_count = 0
+            for datetime_value in datetime_values:
+                cursor = conn.execute("""
+                    UPDATE spots 
+                    SET is_historical = 1 
+                    WHERE broadcast_month = ?
+                """, (datetime_value,))
+                updated_count += cursor.rowcount
+            
+            logger.info(f"Successfully closed '{broadcast_month_display}': {updated_count} spots marked as historical from {len(datetime_values)} datetime values")
+            
+            return True
+            
+        except Exception as e:
+            error_msg = f"Failed to close month '{broadcast_month_display}': {str(e)}"
+            logger.error(error_msg)
+            raise MonthClosureError(error_msg)
+
     def _get_display_format_for_datetime(self, datetime_value: str) -> str:
         """
         Convert database datetime value to display format.
@@ -113,7 +176,8 @@ class MonthClosureService:
     
     def close_broadcast_month(self, broadcast_month_display: str, closed_by: str, notes: str = None) -> bool:
         """
-        Mark a broadcast month as permanently closed.
+        UPDATED: Mark a broadcast month as permanently closed.
+        This version handles both standalone and within-transaction usage.
         
         Args:
             broadcast_month_display: Month to close in 'Mmm-YY' format (e.g., 'Nov-24')
@@ -142,7 +206,21 @@ class MonthClosureService:
             raise MonthClosureError(f"Cannot close '{broadcast_month_display}': No data exists for this month. Import data first, then close the month.")
         
         try:
-            with self.db.transaction() as conn:
+            # CRITICAL FIX: Check if we're already in a transaction
+            # If so, don't create a new one
+            conn = self.db.connect()
+            
+            # Try to detect if we're already in a transaction
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                in_transaction = False
+            except sqlite3.OperationalError as e:
+                if "cannot start a transaction within a transaction" in str(e):
+                    in_transaction = True
+                else:
+                    raise
+            
+            try:
                 # Insert closure record (using display format for user interface)
                 conn.execute("""
                     INSERT INTO month_closures (broadcast_month, closed_date, closed_by, notes)
@@ -159,14 +237,29 @@ class MonthClosureService:
                     """, (datetime_value,))
                     updated_count += cursor.rowcount
                 
+                # Only commit if we started the transaction
+                if not in_transaction:
+                    conn.commit()
+                
                 logger.info(f"Successfully closed '{broadcast_month_display}': {updated_count} spots marked as historical from {len(datetime_values)} datetime values")
                 
                 return True
                 
+            except Exception as e:
+                # Only rollback if we started the transaction
+                if not in_transaction:
+                    conn.rollback()
+                raise
+            finally:
+                if not in_transaction:
+                    conn.close()
+                    
         except Exception as e:
             error_msg = f"Failed to close month '{broadcast_month_display}': {str(e)}"
             logger.error(error_msg)
             raise MonthClosureError(error_msg)
+    
+
     
     def is_month_closed(self, broadcast_month_display: str) -> bool:
         """

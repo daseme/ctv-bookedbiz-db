@@ -225,38 +225,35 @@ class OptimizedBroadcastMonthImportService(BroadcastMonthImportService):
         self.process = psutil.Process(os.getpid())
     
     def _import_excel_data_optimized(self, excel_file: str, batch_id: str, conn) -> int:
-        """Memory-optimized Excel import with streaming."""
+        """Memory-optimized Excel import WITHOUT chunking to avoid transaction conflicts."""
         try:
-            print(f"🚀 Starting optimized Excel import...")
+            print(f"🚀 Starting simplified Excel import...")
             initial_memory = self.process.memory_info().rss / 1024 / 1024
             print(f"💾 Initial memory usage: {initial_memory:.1f} MB")
             
-            # Use the enhanced production importer but with memory monitoring
-            from importers.enhanced_production_importer import EnhancedProductionExcelImporter
+            # CRITICAL FIX: Use the basic importer without transaction conflicts
+            from importers.basic_excel_importer import BasicExcelImporter
             
-            importer = EnhancedProductionExcelImporter(self.db.db_path)
+            importer = BasicExcelImporter(self.db.db_path)
             
-            # Configure for memory efficiency
-            print("⚙️  Configuring for large file processing...")
+            # Import directly without separate transactions
+            result = importer.import_excel_simple(excel_file, batch_id)
             
-            # Import with batch tracking
-            result = importer.import_with_batch_id(excel_file, batch_id)
-            
-            if not result.success:
-                error_msg = "; ".join(result.errors) if result.errors else "Import failed"
+            if not result['success']:
+                error_msg = result.get('error', 'Import failed')
                 raise Exception(f"Excel import failed: {error_msg}")
             
             final_memory = self.process.memory_info().rss / 1024 / 1024
             memory_used = final_memory - initial_memory
             
-            print(f"✅ Successfully imported {result.records_imported:,} records")
+            records_imported = result.get('records_imported', 0)
+            print(f"✅ Successfully imported {records_imported:,} records")
             print(f"💾 Final memory usage: {final_memory:.1f} MB (+{memory_used:.1f} MB)")
-            print(f"⚡ Import rate: {result.records_per_second:.0f} records/second")
             
-            return result.records_imported
+            return records_imported
             
         except Exception as e:
-            error_msg = f"Optimized Excel import failed: {str(e)}"
+            error_msg = f"Simplified Excel import failed: {str(e)}"
             print(f"❌ {error_msg}")
             raise RuntimeError(error_msg)
     
