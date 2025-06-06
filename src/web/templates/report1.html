@@ -75,10 +75,10 @@
         </thead>
         <tbody>
             {% for row in data.monthly_data %}
-            <tr{% if row.month_name == '*** TOTAL ***' %} style="background-color: #f7fafc; font-weight: 600; border-top: 2px solid #2d3748;"{% endif %}>
-                <td>{{ row.month_name }}</td>
+            <tr{% if row.formatted_month == '*** TOTAL ***' %} style="background-color: #f7fafc; font-weight: 600; border-top: 2px solid #2d3748;"{% endif %}>
+                <td>{{ row.formatted_month }}</td>
                 <td class="number">{{ "{:,}".format(row.spot_count or 0) }}</td>
-                <td class="number {% if row.month_name != '*** TOTAL ***' %}positive{% else %}neutral{% endif %}">
+                <td class="number {% if row.formatted_month != '*** TOTAL ***' %}positive{% else %}neutral{% endif %}">
                     ${{ "{:,.0f}".format(row.total_revenue or 0) }}
                 </td>
                 <td class="number">
@@ -128,14 +128,14 @@
 // Get data from the hidden script tag
 const dataScript = document.getElementById('chart-data');
 const monthlyData = JSON.parse(dataScript.textContent);
-const chartData = monthlyData.filter(row => row.month_name !== '*** TOTAL ***');
+const chartData = monthlyData.filter(row => row.formatted_month !== '*** TOTAL ***');
 
 // Monthly Revenue Chart
 const ctx1 = document.getElementById('monthlyChart').getContext('2d');
 new Chart(ctx1, {
     type: 'bar',
     data: {
-        labels: chartData.map(row => row.month_name),
+        labels: chartData.map(row => row.formatted_month),
         datasets: [{
             label: 'Total Revenue',
             data: chartData.map(row => row.total_revenue || 0),
@@ -177,7 +177,7 @@ const ctx2 = document.getElementById('spotCountChart').getContext('2d');
 new Chart(ctx2, {
     type: 'line',
     data: {
-        labels: chartData.map(row => row.month_name),
+        labels: chartData.map(row => row.formatted_month),
         datasets: [{
             label: 'Spot Count',
             data: chartData.map(row => row.spot_count || 0),

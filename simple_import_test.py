@@ -331,7 +331,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Simple import test")
     parser.add_argument("excel_file", help="Path to Excel file")
-    parser.add_argument("--database", default="data/database/test.db", help="Database path")
+    parser.add_argument("--database", default="data/database/production.db", help="Database path")
     parser.add_argument("--limit", type=int, default=None, help="Number of spots to import (default: import all)")
     
     args = parser.parse_args()
