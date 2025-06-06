@@ -235,7 +235,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Test import integration utilities")
     parser.add_argument("excel_file", help="Excel file to analyze")
-    parser.add_argument("--db-path", default="data/database/test.db", help="Database path")
+    parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
     parser.add_argument("--mode", choices=['WEEKLY_UPDATE', 'HISTORICAL', 'MANUAL'], 
                        default='WEEKLY_UPDATE', help="Import mode to test")
     parser.add_argument("--limit", type=int, help="Limit rows processed (for testing)")

@@ -29,6 +29,7 @@ except ImportError:
     from database.connection import DatabaseConnection
     from models.entities import Spot, Customer
     from models.validators import SpotValidator, CustomerValidator
+    from services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +53,14 @@ class ImportResult:
             self.errors = []
 
 
-class BasicImportService:
+class BasicImportService(BaseService):
     """
     Basic import service that handles the complete flow:
     Excel → Bill Code Parsing → Validation → Database Storage
     """
     
     def __init__(self, db_connection: DatabaseConnection):
-        """Initialize the import service with database connection."""
-        self.db_connection = db_connection
+        super().__init__(db_connection)  # ADD THIS LINE
         
         # Initialize repositories
         self.spot_repo = SQLiteSpotRepository(db_connection)
@@ -209,10 +209,10 @@ class BasicImportService:
         return processed_spots
     
     def _import_spots_to_database(self, spots: List[Spot], result: ImportResult):
-        """Import processed spots to database."""
+        """FIXED: Import processed spots to database using BaseService."""
         logger.info(f"Importing {len(spots)} spots to database...")
         
-        with self.db_connection.transaction():
+        with self.safe_transaction() as conn:
             for spot in spots:
                 try:
                     self.spot_repo.save(spot)
@@ -266,7 +266,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Test basic import service")
     parser.add_argument("excel_file", help="Path to Excel file")
-    parser.add_argument("--database", default="data/database/test.db", help="Database path")
+    parser.add_argument("--database", default="data/database/production.db", help="Database path")
     parser.add_argument("--limit", type=int, help="Limit number of spots to import (for testing)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     
