@@ -35,10 +35,10 @@
                 <td>{{ row.year }}</td>
                 <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
                 <td class="number positive">
-                    ${{ "{:,}".format(row.total_revenue) if row.total_revenue else "0" }}
+                    ${{ "{:,.0f}".format(row.total_revenue) if row.total_revenue else "0" }}
                 </td>
                 <td class="number">
-                    ${{ "{:,}".format(row.avg_rate) if row.avg_rate else "0" }}
+                    ${{ "{:,.0f}".format(row.avg_rate) if row.avg_rate else "0" }}
                 </td>
                 <td>
                     <span class="status-open">CURRENT</span>
@@ -91,11 +91,11 @@
             <tr>
                 <td>{{ ae.ae_name }}</td>
                 <td class="number positive">
-                    ${{ "{:,}".format(ae.total_revenue) if ae.total_revenue else "0" }}
+                    ${{ "{:,.0f}".format(ae.total_revenue) if ae.total_revenue else "0" }}
                 </td>
                 <td class="number">{{ "{:,}".format(ae.spot_count) if ae.spot_count else "0" }}</td>
                 <td class="number">
-                    ${{ "{:,}".format(ae.avg_rate) if ae.avg_rate else "0" }}
+                    ${{ "{:,.0f}".format(ae.avg_rate) if ae.avg_rate else "0" }}
                 </td>
                 <td>
                     {% if ae.total_revenue > 1000000 %}

@@ -123,8 +123,10 @@ For complete year-end data loading:
 # Preview historical import
 uv run python src/cli/bulk_import_historical.py "data/2024_complete.xlsx" --year 2024 --closed-by "Kurt" --dry-run
 
+
 # Execute historical import (imports and closes all months)
 uv run python src/cli/bulk_import_historical.py "data/2024_complete.xlsx" --year 2024 --closed-by "Kurt"
+uv run python src/cli/bulk_import_historical.py data/raw/2024.xlsx --year 2024 --closed-by "Kurt" --db-path data/database/production.db
 ```
 
 **What it does:**
