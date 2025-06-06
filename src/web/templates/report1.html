@@ -71,6 +71,7 @@
                 <th class="number">Average Rate</th>
                 <th class="number">Min Rate</th>
                 <th class="number">Max Rate</th>
+                <th>Status</th>
             </tr>
         </thead>
         <tbody>
@@ -90,12 +91,62 @@
                 <td class="number">
                     ${{ "{:,.0f}".format(row.max_rate or 0) }}
                 </td>
+                <td>
+                    {% if row.status == 'CLOSED' %}
+                        <span class="status-closed">CLOSED</span>
+                    {% elif row.status == 'OPEN' %}
+                        <span class="status-open">OPEN</span>
+                    {% else %}
+                        <span class="status-unknown">{{ row.status }}</span>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     <div class="annotation">
         Excludes trade revenue. Total row shows aggregate across all months with data.
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Quarterly Overview</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Quarter</th>
+                <th>Year</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Average Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.quarterly_data %}
+            <tr>
+                <td>{{ row.quarter }}</td>
+                <td>{{ row.year }}</td>
+                <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(row.total_revenue) if row.total_revenue else "0" }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.avg_rate) if row.avg_rate else "0" }}
+                </td>
+                <td>
+                    {% if row.status == 'CLOSED' %}
+                        <span class="status-closed">CLOSED</span>
+                    {% else %}
+                        <span class="status-open">{{ row.status }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="annotation">
+        Quarter status indicates whether all months in the quarter are officially closed.
     </div>
 </div>
 
