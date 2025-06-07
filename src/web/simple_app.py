@@ -529,49 +529,141 @@ def report3():
 
 @app.route('/report4')
 def report4():
-    """Sector Analysis Report."""
+    """Enhanced Sector Analysis Report - Two-Tiered Structure (Outreach/Commercial/Political)."""
     try:
         conn = get_db_connection()
         
-        # Modified query to use only gross_rate and add filtering for gross_rate IS NOT NULL
-        query = """
-        SELECT 
-            CASE 
-                WHEN strftime('%m', sp.broadcast_month) IN ('01', '02', '03') THEN 'Q1'
-                WHEN strftime('%m', sp.broadcast_month) IN ('04', '05', '06') THEN 'Q2'
-                WHEN strftime('%m', sp.broadcast_month) IN ('07', '08', '09') THEN 'Q3'
-                WHEN strftime('%m', sp.broadcast_month) IN ('10', '11', '12') THEN 'Q4'
-            END as quarter,
-            strftime('%Y', sp.broadcast_month) as year,
-            COALESCE(sp.billing_type, 'Unknown') as sector,
-            COUNT(*) as spot_count,
-            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
-            ROUND(AVG(sp.gross_rate), 2) as avg_rate
-        FROM spots sp
-        WHERE sp.broadcast_month IS NOT NULL 
-        AND sp.gross_rate IS NOT NULL
-        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
-        GROUP BY quarter, year, sp.billing_type
+        # Get selected year from query parameter, default to 2024
+        selected_year = request.args.get('year', '2024')
         
-        UNION ALL
-        
-        SELECT 
-            'TOTAL' as quarter,
-            'ALL' as year,
-            'All Sectors' as sector,
-            COUNT(*) as spot_count,
-            ROUND(SUM(gross_rate), 2) as total_revenue,
-            ROUND(AVG(gross_rate), 2) as avg_rate
+        # Get available years
+        years_query = """
+        SELECT DISTINCT strftime('%Y', broadcast_month) as year 
         FROM spots 
         WHERE broadcast_month IS NOT NULL 
         AND gross_rate IS NOT NULL
-        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-        
-        ORDER BY year DESC, quarter DESC, total_revenue DESC
-        LIMIT 21
+        ORDER BY year DESC
         """
         
-        # Quarterly data for template
+        # Sector Group Overview - Primary tier (with year filter)
+        sector_group_query = """
+        SELECT 
+            COALESCE(s.sector_group, 'UNASSIGNED') as sector_group,
+            COUNT(DISTINCT c.customer_id) as customer_count,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate,
+            ROUND(SUM(sp.gross_rate) * 100.0 / (
+                SELECT SUM(gross_rate) 
+                FROM spots 
+                WHERE gross_rate IS NOT NULL 
+                AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                AND strftime('%Y', broadcast_month) = ?
+            ), 2) as revenue_percentage
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND strftime('%Y', sp.broadcast_month) = ?
+        GROUP BY s.sector_group
+        ORDER BY total_revenue DESC
+        """
+        
+        # Detailed sector breakdown - Secondary tier (with year filter)
+        detailed_sector_query = """
+        SELECT 
+            COALESCE(s.sector_group, 'UNASSIGNED') as sector_group,
+            COALESCE(s.sector_code, 'UNASSIGNED') as sector_code,
+            COALESCE(s.sector_name, 'Unassigned') as sector_name,
+            COUNT(DISTINCT c.customer_id) as customer_count,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate,
+            ROUND(SUM(sp.gross_rate) * 100.0 / (
+                SELECT SUM(gross_rate) 
+                FROM spots 
+                WHERE gross_rate IS NOT NULL 
+                AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                AND strftime('%Y', broadcast_month) = ?
+            ), 2) as revenue_percentage
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND strftime('%Y', sp.broadcast_month) = ?
+        GROUP BY s.sector_group, s.sector_id, s.sector_code, s.sector_name
+        ORDER BY s.sector_group, total_revenue DESC
+        """
+        
+        # Top customers by sector group (with year filter)
+        top_customers_by_group_query = """
+        SELECT 
+            COALESCE(s.sector_group, 'UNASSIGNED') as sector_group,
+            COALESCE(s.sector_name, 'Unassigned') as sector_name,
+            c.normalized_name,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND strftime('%Y', sp.broadcast_month) = ?
+        GROUP BY s.sector_group, s.sector_name, c.customer_id, c.normalized_name
+        ORDER BY s.sector_group, total_revenue DESC
+        """
+        
+        # Sector assignment status (with year filter)
+        sector_status_query = """
+        WITH customer_revenue AS (
+            SELECT 
+                c.customer_id,
+                c.sector_id,
+                ROUND(SUM(COALESCE(sp.gross_rate, 0)), 2) as customer_revenue
+            FROM customers c
+            LEFT JOIN spots sp ON c.customer_id = sp.customer_id
+                AND sp.gross_rate IS NOT NULL
+                AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+                AND strftime('%Y', sp.broadcast_month) = ?
+            GROUP BY c.customer_id, c.sector_id
+        )
+        SELECT 
+            COUNT(CASE WHEN sector_id IS NOT NULL THEN 1 END) as assigned_customers,
+            COUNT(*) as total_customers,
+            ROUND(COUNT(CASE WHEN sector_id IS NOT NULL THEN 1 END) * 100.0 / COUNT(*), 1) as assignment_percentage,
+            ROUND(SUM(CASE WHEN sector_id IS NOT NULL THEN customer_revenue ELSE 0 END), 2) as assigned_revenue,
+            ROUND(SUM(customer_revenue), 2) as total_revenue,
+            ROUND(SUM(CASE WHEN sector_id IS NOT NULL THEN customer_revenue ELSE 0 END) * 100.0 / 
+                  NULLIF(SUM(customer_revenue), 0), 1) as revenue_assignment_percentage
+        FROM customer_revenue
+        WHERE customer_revenue > 0
+        """
+        
+        # Top unassigned customers (candidates for sector assignment, with year filter)
+        unassigned_customers_query = """
+        SELECT 
+            c.normalized_name,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate,
+            MIN(sp.air_date) as first_spot_date,
+            MAX(sp.air_date) as last_spot_date
+        FROM customers c
+        LEFT JOIN spots sp ON c.customer_id = sp.customer_id
+            AND sp.gross_rate IS NOT NULL
+            AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+            AND strftime('%Y', sp.broadcast_month) = ?
+        WHERE c.sector_id IS NULL
+        AND sp.spot_id IS NOT NULL
+        GROUP BY c.customer_id, c.normalized_name
+        ORDER BY total_revenue DESC
+        LIMIT 15
+        """
+        
+        # Quarterly data for template (with year filter)
         quarterly_query = """
         SELECT 
             CASE 
@@ -588,37 +680,12 @@ def report4():
         WHERE broadcast_month IS NOT NULL 
         AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        AND strftime('%Y', broadcast_month) = ?
         GROUP BY quarter, year
         ORDER BY year DESC, quarter DESC
-        LIMIT 8
         """
         
-        # Get months present in database to determine quarter completion status
-        months_query = """
-        SELECT DISTINCT strftime('%Y-%m', broadcast_month) as month
-        FROM spots 
-        WHERE broadcast_month IS NOT NULL 
-        AND gross_rate IS NOT NULL
-        ORDER BY month
-        """
-        
-        # Sector summary data using customers as sectors
-        sector_query = """
-        SELECT 
-            COALESCE(c.normalized_name, 'Unknown Customer') as sector_name,
-            COUNT(*) as spot_count,
-            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
-            ROUND(AVG(sp.gross_rate), 2) as avg_rate
-        FROM spots sp
-        LEFT JOIN customers c ON sp.customer_id = c.customer_id
-        WHERE sp.gross_rate IS NOT NULL
-        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
-        GROUP BY c.customer_id, c.normalized_name
-        ORDER BY total_revenue DESC
-        LIMIT 10
-        """
-        
-        # AE performance data
+        # AE performance data (with year filter)
         ae_query = """
         SELECT 
             COALESCE(sales_person, 'Unassigned') as ae_name,
@@ -632,42 +699,47 @@ def report4():
         AND sales_person != ''
         AND gross_rate IS NOT NULL
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        AND strftime('%Y', broadcast_month) = ?
         GROUP BY sales_person
         ORDER BY total_revenue DESC
         LIMIT 10
         """
         
-        cursor = conn.execute(query)
-        sector_results = cursor.fetchall()
+        # Execute queries
+        cursor = conn.execute(years_query)
+        available_years = [row[0] for row in cursor.fetchall()]
         
-        cursor = conn.execute(quarterly_query)
+        cursor = conn.execute(sector_group_query, (selected_year, selected_year))
+        sector_groups = [dict(row) for row in cursor.fetchall()]
+        
+        cursor = conn.execute(detailed_sector_query, (selected_year, selected_year))
+        detailed_sectors = [dict(row) for row in cursor.fetchall()]
+        
+        cursor = conn.execute(top_customers_by_group_query, (selected_year,))
+        all_customers_by_group = [dict(row) for row in cursor.fetchall()]
+        
+        cursor = conn.execute(sector_status_query, (selected_year,))
+        sector_status = dict(cursor.fetchone())
+        
+        cursor = conn.execute(unassigned_customers_query, (selected_year,))
+        unassigned_customers = [dict(zip(['customer_name', 'spot_count', 'total_revenue', 'avg_rate', 'first_spot_date', 'last_spot_date'], row)) for row in cursor.fetchall()]
+        
+        cursor = conn.execute(quarterly_query, (selected_year,))
         quarterly_data = [dict(row) for row in cursor.fetchall()]
         
-        # Get available months to determine quarter completion
-        cursor = conn.execute(months_query)
-        available_months = {row[0] for row in cursor.fetchall()}
-        
-        cursor = conn.execute(sector_query)
-        sectors = [dict(row) for row in cursor.fetchall()]
-        
-        cursor = conn.execute(ae_query)
+        cursor = conn.execute(ae_query, (selected_year,))
         ae_performance = [dict(row) for row in cursor.fetchall()]
         
         conn.close()
         
-        # Convert sector results to list of dictionaries
-        columns = ['quarter', 'year', 'sector', 'spot_count', 'total_revenue', 'avg_rate']
-        sector_breakdown = [dict(zip(columns, row)) for row in sector_results]
-        
-        # Function to check if quarter is complete
-        def is_quarter_complete(year, quarter):
-            quarter_months = {
-                'Q1': [f'{year}-01', f'{year}-02', f'{year}-03'],
-                'Q2': [f'{year}-04', f'{year}-05', f'{year}-06'],
-                'Q3': [f'{year}-07', f'{year}-08', f'{year}-09'],
-                'Q4': [f'{year}-10', f'{year}-11', f'{year}-12']
-            }
-            return all(month in available_months for month in quarter_months[quarter])
+        # Organize top customers by sector group (limit top 5 per group for display)
+        customers_by_group = {}
+        for customer in all_customers_by_group:
+            group = customer['sector_group']
+            if group not in customers_by_group:
+                customers_by_group[group] = []
+            if len(customers_by_group[group]) < 5:  # Limit to top 5 per group
+                customers_by_group[group].append(customer)
         
         # Add status to quarterly data based on actual month closures
         for quarter_row in quarterly_data:
@@ -681,10 +753,15 @@ def report4():
             quarter_row['status'] = get_quarter_status(year, quarter_num)
         
         data = {
-            'sector_breakdown': sector_breakdown,
+            'sector_groups': sector_groups,
+            'detailed_sectors': detailed_sectors,
+            'customers_by_group': customers_by_group,
+            'sector_status': sector_status,
+            'unassigned_customers': unassigned_customers,
             'quarterly_data': quarterly_data,
-            'sectors': sectors,
             'ae_performance': ae_performance,
+            'available_years': available_years,
+            'selected_year': selected_year,
             'current_year': datetime.now().year
         }
         
