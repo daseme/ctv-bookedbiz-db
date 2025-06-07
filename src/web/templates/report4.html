@@ -3,51 +3,63 @@
 {% block title %}{{ title }} - CTV Reports{% endblock %}
 
 {% block header_title %}{{ title }}{% endblock %}
-{% block header_subtitle %}Quarterly performance with detailed sector analysis and concentration risk assessment{% endblock %}
+{% block header_subtitle %}Enhanced Two-Tiered Sector Analysis: Outreach (Public Service) / Commercial (Business) / Political (Campaign){% endblock %}
 
 {% block extra_styles %}
 <style>
-/* Sector Analysis Specific Styles */
-.sector-grid {
+/* Enhanced Sector Analysis Styles */
+.sector-groups-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 24px;
     margin: 24px 0;
 }
 
-.risk-box {
-    background: #fef5e7;
-    border: 1px solid #f6ad55;
-    border-radius: 8px;
-    padding: 16px;
-    margin: 16px 0;
-}
-.risk-box.high { background: #fed7d7; border-color: #fc8181; }
-.risk-box.medium { background: #fef5e7; border-color: #f6ad55; }
-.risk-box.low { background: #f0fff4; border-color: #68d391; }
-
-.risk-title {
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-.risk-text {
-    font-size: 14px;
-}
-
-.ae-performance-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 24px;
-    margin: 32px 0;
-}
-.ae-card {
+.sector-group-card {
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
     padding: 20px;
     position: relative;
+    transition: all 0.3s ease;
 }
-.ae-card-header {
+
+.sector-group-card:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.sector-group-card.outreach {
+    border-color: #4299e1;
+    background: linear-gradient(135deg, #ebf8ff 0%, #f7fafc 100%);
+}
+
+.sector-group-card.commercial {
+    border-color: #38a169;
+    background: linear-gradient(135deg, #f0fff4 0%, #f7fafc 100%);
+}
+
+.sector-group-card.political {
+    border-color: #ed8936;
+    background: linear-gradient(135deg, #fffaf0 0%, #f7fafc 100%);
+}
+
+.sector-group-card.unassigned {
+    border-color: #e53e3e;
+    background: linear-gradient(135deg, #fed7d7 0%, #f7fafc 100%);
+}
+
+.sector-group-card.healthcare {
+    border-color: #805ad5;
+    background: linear-gradient(135deg, #faf5ff 0%, #f7fafc 100%);
+}
+
+.sector-group-card.financial {
+    border-color: #d69e2e;
+    background: linear-gradient(135deg, #fffff0 0%, #f7fafc 100%);
+}
+
+.sector-group-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -55,86 +67,434 @@
     padding-bottom: 12px;
     border-bottom: 1px solid #e2e8f0;
 }
-.ae-name {
-    font-size: 16px;
-    font-weight: 600;
+
+.sector-group-name {
+    font-size: 18px;
+    font-weight: 700;
     color: #2d3748;
 }
-.ae-performance-badge {
-    padding: 4px 8px;
-    border-radius: 12px;
-    font-size: 11px;
+
+.sector-group-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
+    color: white;
 }
-.badge-excellent { background: #c6f6d5; color: #2f855a; }
-.badge-good { background: #bee3f8; color: #2b6cb0; }
-.badge-average { background: #faf089; color: #744210; }
-.badge-needs-attention { background: #fed7d7; color: #c53030; }
 
-.ae-metrics {
+.badge-outreach { background: #4299e1; }
+.badge-commercial { background: #38a169; }
+.badge-political { background: #ed8936; }
+.badge-unassigned { background: #e53e3e; }
+.badge-healthcare { background: #805ad5; }
+.badge-financial { background: #d69e2e; }
+
+.sector-group-metrics {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin-bottom: 16px;
 }
-.ae-metric {
+
+.sector-metric {
     text-align: center;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
 }
-.ae-metric-label {
+
+.sector-metric-label {
     font-size: 11px;
     color: #718096;
     margin-bottom: 4px;
+    text-transform: uppercase;
 }
-.ae-metric-value {
-    font-size: 14px;
+
+.sector-metric-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.sector-revenue {
+    font-size: 20px !important;
+    color: #38a169 !important;
+}
+
+.customers-preview {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.customers-preview-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4a5568;
+    margin-bottom: 8px;
+}
+
+.customer-item {
+    font-size: 12px;
+    color: #718096;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.customer-revenue {
+    font-weight: 600;
+    color: #38a169;
+}
+
+.detailed-sectors-section {
+    margin: 32px 0;
+    background: #f7fafc;
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.sector-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.sector-detail-item {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.sector-detail-header {
     font-weight: 600;
     color: #2d3748;
+    margin-bottom: 8px;
+}
+
+.sector-detail-group {
+    font-size: 12px;
+    color: #718096;
+    margin-bottom: 4px;
+}
+
+.assignment-status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+}
+
+.status-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.status-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 16px;
+}
+
+.status-metric {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.status-label {
+    color: #718096;
+}
+
+.status-value {
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.status-value.positive {
+    color: #38a169;
+}
+
+/* Year Selection Controls */
+.controls-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+.controls-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.control-group label {
+    font-weight: 600;
+    color: #4a5568;
+    margin: 0;
+}
+
+.control-group select {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    color: #374151;
+    cursor: pointer;
+}
+
+.control-group select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.control-info {
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.current-year {
+    font-weight: 500;
+    color: #374151;
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="insight-box">
-    <div class="insight-title">Enhanced Quarterly Performance with Sector Analysis</div>
-    <div class="insight-text">
-        This comprehensive report combines quarterly performance data with detailed sector analysis, 
-        concentration risk assessment, and Account Executive performance tracking to provide insights 
-        into revenue diversification and growth opportunities.
+<!-- Year Selection Controls -->
+<div class="controls-section">
+    <div class="controls-row">
+        <div class="control-group">
+            <label for="year-select">Year:</label>
+            <select id="year-select" onchange="changeYear()">
+                {% for year in data.available_years %}
+                <option value="{{ year }}" {% if year == data.selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="control-info">
+            <span class="current-year">Viewing data for {{ data.selected_year }}</span>
+        </div>
     </div>
 </div>
 
+<div class="insight-box">
+    <div class="insight-title">Enhanced Sector Analysis Dashboard - {{ data.selected_year }}</div>
+    <div class="insight-text">
+        Two-tiered sector organization showing Outreach (public service), Commercial (business), and Political (campaign) messaging. 
+        Revenue assignment status: {{ "{:.1f}".format(data.sector_status.revenue_assignment_percentage) }}% of revenue 
+        (${{ "{:,.0f}".format(data.sector_status.assigned_revenue) }} of ${{ "{:,.0f}".format(data.sector_status.total_revenue) }}) 
+        is properly categorized across {{ data.sector_status.assigned_customers }} customers.
+    </div>
+</div>
+
+<!-- Sector Group Overview -->
 <div class="story-section">
-    <div class="section-title">Quarterly Performance Overview</div>
+    <div class="section-title">Primary Sector Groups Overview</div>
+    
+    <div class="sector-groups-grid">
+        {% for group in data.sector_groups %}
+        <div class="sector-group-card {{ group.sector_group.lower() }}">
+            <div class="sector-group-header">
+                <div class="sector-group-name">{{ group.sector_group }}</div>
+                <div class="sector-group-badge badge-{{ group.sector_group.lower() }}">
+                    {{ "{:.1f}".format(group.revenue_percentage) }}%
+                </div>
+            </div>
+            
+            <div class="sector-group-metrics">
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Revenue</div>
+                    <div class="sector-metric-value sector-revenue">
+                        ${{ "{:,.0f}".format(group.total_revenue) }}
+                    </div>
+                </div>
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Customers</div>
+                    <div class="sector-metric-value">
+                        {{ "{:,}".format(group.customer_count) }}
+                    </div>
+                </div>
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Spots</div>
+                    <div class="sector-metric-value">
+                        {{ "{:,}".format(group.spot_count) }}
+                    </div>
+                </div>
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Avg Rate</div>
+                    <div class="sector-metric-value">
+                        ${{ "{:,.0f}".format(group.avg_rate) }}
+                    </div>
+                </div>
+            </div>
+            
+            {% if data.customers_by_group[group.sector_group] %}
+            <div class="customers-preview">
+                <div class="customers-preview-title">Top Customers:</div>
+                {% for customer in data.customers_by_group[group.sector_group][:3] %}
+                <div class="customer-item">
+                    <span>{{ customer.normalized_name[:25] }}{% if customer.normalized_name|length > 25 %}...{% endif %}</span>
+                    <span class="customer-revenue">${{ "{:,.0f}".format(customer.total_revenue) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Assignment Status Overview -->
+<div class="story-section">
+    <div class="section-title">Assignment Progress</div>
+    
+    <div class="assignment-status-grid">
+        <div class="status-card">
+            <div class="status-title">Customer Assignment Status</div>
+            <div class="status-metric">
+                <span class="status-label">Assigned Customers:</span>
+                <span class="status-value positive">{{ "{:,}".format(data.sector_status.assigned_customers) }}</span>
+            </div>
+            <div class="status-metric">
+                <span class="status-label">Total Customers:</span>
+                <span class="status-value">{{ "{:,}".format(data.sector_status.total_customers) }}</span>
+            </div>
+            <div class="status-metric">
+                <span class="status-label">Assignment Rate:</span>
+                <span class="status-value positive">{{ "{:.1f}".format(data.sector_status.assignment_percentage) }}%</span>
+            </div>
+        </div>
+        
+        <div class="status-card">
+            <div class="status-title">Revenue Assignment Status</div>
+            <div class="status-metric">
+                <span class="status-label">Assigned Revenue:</span>
+                <span class="status-value positive">${{ "{:,.0f}".format(data.sector_status.assigned_revenue) }}</span>
+            </div>
+            <div class="status-metric">
+                <span class="status-label">Total Revenue:</span>
+                <span class="status-value">${{ "{:,.0f}".format(data.sector_status.total_revenue) }}</span>
+            </div>
+            <div class="status-metric">
+                <span class="status-label">Coverage Rate:</span>
+                <span class="status-value positive">{{ "{:.1f}".format(data.sector_status.revenue_assignment_percentage) }}%</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Sector Breakdown -->
+<div class="story-section">
+    <div class="section-title">Detailed Sector Breakdown</div>
+    
+    <div class="detailed-sectors-section">
+        <div class="sector-details-grid">
+            {% for sector in data.detailed_sectors %}
+            <div class="sector-detail-item">
+                <div class="sector-detail-header">{{ sector.sector_name }}</div>
+                <div class="sector-detail-group">{{ sector.sector_group }} Group</div>
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Revenue</div>
+                    <div class="sector-metric-value">${{ "{:,.0f}".format(sector.total_revenue) }}</div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                    <div style="font-size: 11px; color: #718096;">
+                        {{ "{:,}".format(sector.customer_count) }} customers
+                    </div>
+                    <div style="font-size: 11px; color: #718096;">
+                        {{ "{:,}".format(sector.spot_count) }} spots
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Top Unassigned Customers -->
+{% if data.unassigned_customers %}
+<div class="story-section">
+    <div class="section-title">Top Unassigned Customers (Candidates for Sector Assignment)</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Customer</th>
+                <th class="number">Spots</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Avg Rate</th>
+                <th>First Spot</th>
+                <th>Last Spot</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in data.unassigned_customers %}
+            <tr>
+                <td><strong>{{ customer.customer_name }}</strong></td>
+                <td class="number">{{ "{:,}".format(customer.spot_count) }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(customer.total_revenue) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(customer.avg_rate) }}
+                </td>
+                <td>{{ customer.first_spot_date }}</td>
+                <td>{{ customer.last_spot_date }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="annotation">
+        Priority customers for sector assignment based on revenue impact.
+    </div>
+</div>
+{% endif %}
+
+<!-- Quarterly Performance Context -->
+<div class="story-section">
+    <div class="section-title">Quarterly Context</div>
     <table class="metrics-table">
         <thead>
             <tr>
                 <th>Quarter</th>
                 <th>Year</th>
-                <th class="number">Spot Count</th>
-                <th class="number">Total Revenue</th>
-                <th class="number">Average Rate</th>
+                <th class="number">Spots</th>
+                <th class="number">Revenue</th>
+                <th class="number">Avg Rate</th>
                 <th>Status</th>
             </tr>
         </thead>
         <tbody>
-            {% for row in data.quarterly_data[:8] %}
+            {% for quarter in data.quarterly_data %}
             <tr>
-                <td>{{ row.quarter }}</td>
-                <td>{{ row.year }}</td>
-                <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
+                <td><strong>{{ quarter.quarter }}</strong></td>
+                <td>{{ quarter.year }}</td>
+                <td class="number">{{ "{:,}".format(quarter.spot_count) }}</td>
                 <td class="number positive">
-                    ${{ "{:,.0f}".format(row.total_revenue) if row.total_revenue else "0" }}
+                    ${{ "{:,.0f}".format(quarter.total_revenue) }}
                 </td>
                 <td class="number">
-                    ${{ "{:,.0f}".format(row.avg_rate) if row.avg_rate else "0" }}
+                    ${{ "{:,.0f}".format(quarter.avg_rate) }}
                 </td>
                 <td>
-                    {% if row.status == 'CLOSED' %}
-                        <span class="status-closed">CLOSED</span>
-                    {% else %}
-                        <span class="status-open">{{ row.status }}</span>
-                    {% endif %}
+                    <span class="status-badge {{ quarter.status.lower() }}">
+                        {{ quarter.status }}
+                    </span>
                 </td>
             </tr>
             {% endfor %}
@@ -142,241 +502,79 @@
     </table>
 </div>
 
+<!-- Account Executive Performance -->
 <div class="story-section">
-    <div class="section-title">Sector Performance Analysis</div>
-    
-    <div class="sector-grid">
-        <div>
-            <div class="chart-container">
-                <div class="chart-title">Revenue by Sector</div>
-                <div class="chart medium">
-                    <canvas id="sectorChart"></canvas>
-                </div>
-            </div>
-        </div>
-        
-        <div>
-            <table class="metrics-table">
-                <thead>
-                    <tr>
-                        <th>Sector</th>
-                        <th class="number">Revenue</th>
-                        <th class="number">Spots</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for sector in data.sectors[:8] %}
-                    <tr>
-                        <td>{{ sector.sector_name }}</td>
-                        <td class="number positive">
-                            ${{ "{:,.0f}".format(sector.total_revenue) if sector.total_revenue else "0" }}
-                        </td>
-                        <td class="number">{{ "{:,}".format(sector.spot_count) if sector.spot_count else "0" }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    
-    <!-- Concentration Risk Assessment -->
-    {% set top_sector_revenue = data.sectors[0].total_revenue if data.sectors else 0 %}
-    {% set total_revenue = data.sectors | sum(attribute='total_revenue') if data.sectors else 1 %}
-    {% set concentration_pct = (top_sector_revenue / total_revenue * 100) if total_revenue > 0 else 0 %}
-    
-    <div class="risk-box {% if concentration_pct > 50 %}high{% elif concentration_pct > 30 %}medium{% else %}low{% endif %}">
-        <div class="risk-title">Concentration Risk Assessment</div>
-        <div class="risk-text">
-            {% if concentration_pct > 50 %}
-                <strong>HIGH RISK:</strong> Top sector represents {{ "{:.1f}".format(concentration_pct) }}% of total revenue. 
-                Consider diversification strategies to reduce dependency.
-            {% elif concentration_pct > 30 %}
-                <strong>MEDIUM RISK:</strong> Top sector represents {{ "{:.1f}".format(concentration_pct) }}% of total revenue. 
-                Monitor concentration levels and explore growth in other sectors.
-            {% else %}
-                <strong>LOW RISK:</strong> Revenue is well-diversified across sectors with top sector at {{ "{:.1f}".format(concentration_pct) }}%. 
-                Maintain balanced portfolio approach.
-            {% endif %}
-        </div>
-    </div>
+    <div class="section-title">Account Executive Performance</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Account Executive</th>
+                <th class="number">Spots</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Avg Rate</th>
+                <th>Period Active</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ae in data.ae_performance %}
+            <tr>
+                <td><strong>{{ ae.ae_name }}</strong></td>
+                <td class="number">{{ "{:,}".format(ae.spot_count) }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(ae.total_revenue) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(ae.avg_rate) }}
+                </td>
+                <td>{{ ae.first_spot_date }} to {{ ae.last_spot_date }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
-
-<div class="story-section">
-    <div class="section-title">Enhanced Account Executive Performance</div>
-    
-    <div class="ae-performance-grid">
-        {% for ae in data.ae_performance[:6] %}
-        <div class="ae-card">
-            <div class="ae-card-header">
-                <div class="ae-name">{{ ae.ae_name }}</div>
-                {% if ae.total_revenue > 1000000 %}
-                    <span class="ae-performance-badge badge-excellent">EXCELLENT</span>
-                {% elif ae.total_revenue > 500000 %}
-                    <span class="ae-performance-badge badge-good">GOOD</span>
-                {% elif ae.total_revenue > 250000 %}
-                    <span class="ae-performance-badge badge-average">AVERAGE</span>
-                {% else %}
-                    <span class="ae-performance-badge badge-needs-attention">NEEDS ATTENTION</span>
-                {% endif %}
-            </div>
-            
-            <div class="ae-metrics">
-                <div class="ae-metric">
-                    <div class="ae-metric-label">Total Revenue</div>
-                    <div class="ae-metric-value">
-                        ${{ "{:,.0f}".format(ae.total_revenue) if ae.total_revenue else "0" }}
-                    </div>
-                </div>
-                <div class="ae-metric">
-                    <div class="ae-metric-label">Spot Count</div>
-                    <div class="ae-metric-value">{{ "{:,}".format(ae.spot_count) if ae.spot_count else "0" }}</div>
-                </div>
-                <div class="ae-metric">
-                    <div class="ae-metric-label">Avg Rate</div>
-                    <div class="ae-metric-value">
-                        ${{ "{:,.0f}".format(ae.avg_rate) if ae.avg_rate else "0" }}
-                    </div>
-                </div>
-                <div class="ae-metric">
-                    <div class="ae-metric-label">Active Period</div>
-                    <div class="ae-metric-value" style="font-size: 10px;">
-                        {% if ae.first_spot_date and ae.last_spot_date %}
-                            {{ ae.first_spot_date[:7] }} to {{ ae.last_spot_date[:7] }}
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-
-<div class="story-section">
-    <div class="chart-container">
-        <div class="chart-title">Quarterly Revenue Progression</div>
-        <div class="chart">
-            <canvas id="quarterlyChart"></canvas>
-        </div>
-    </div>
-</div>
-
-<!-- Hidden data for JavaScript -->
-<script id="chart-data" type="application/json">
-{{ data | tojson | safe }}
-</script>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Get data from the hidden script tag
-const dataScript = document.getElementById('chart-data');
-const reportData = JSON.parse(dataScript.textContent);
+console.log('Report4 JavaScript loading...');
 
-// Sector Revenue Chart
-const ctx1 = document.getElementById('sectorChart').getContext('2d');
-const sectorData = reportData.sectors.slice(0, 6); // Top 6 sectors
+// Primary function for onchange attribute
+function changeYear() {
+    console.log('changeYear() called');
+    const yearSelect = document.getElementById('year-select');
+    console.log('yearSelect element:', yearSelect);
+    
+    if (yearSelect) {
+        const selectedYear = yearSelect.value;
+        console.log('Selected year:', selectedYear);
+        const newUrl = window.location.pathname + '?year=' + selectedYear;
+        console.log('Navigating to:', newUrl);
+        window.location.href = newUrl;
+    } else {
+        console.error('year-select element not found!');
+    }
+}
 
-new Chart(ctx1, {
-    type: 'doughnut',
-    data: {
-        labels: sectorData.map(s => s.sector_name),
-        datasets: [{
-            data: sectorData.map(s => s.total_revenue || 0),
-            backgroundColor: [
-                'rgba(66, 153, 225, 0.8)',
-                'rgba(72, 187, 120, 0.8)',
-                'rgba(245, 101, 101, 0.8)',
-                'rgba(246, 173, 85, 0.8)',
-                'rgba(159, 122, 234, 0.8)',
-                'rgba(236, 72, 153, 0.8)'
-            ],
-            borderWidth: 2,
-            borderColor: '#fff'
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: {
-                    boxWidth: 12,
-                    font: {
-                        size: 11
-                    }
-                }
-            },
-            tooltip: {
-                callbacks: {
-                    label: function(context) {
-                        const value = context.parsed;
-                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                        const percentage = ((value / total) * 100).toFixed(1);
-                        return context.label + ': $' + value.toLocaleString() + ' (' + percentage + '%)';
-                    }
-                }
-            }
-        }
+// DOM ready handler as backup
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM ready, setting up year handler...');
+    const yearSelect = document.getElementById('year-select');
+    
+    if (yearSelect) {
+        console.log('Found year-select element, current value:', yearSelect.value);
+        
+        // Add event listener as backup to onchange attribute
+        yearSelect.addEventListener('change', function() {
+            console.log('Event listener triggered');
+            changeYear();
+        });
+        
+        console.log('Year selection setup complete');
+    } else {
+        console.error('year-select element not found in DOM ready!');
     }
 });
 
-// Quarterly Revenue Chart
-const ctx2 = document.getElementById('quarterlyChart').getContext('2d');
-
-// Group data by year
-const yearData = {};
-reportData.quarterly_data.forEach(row => {
-    if (!yearData[row.year]) {
-        yearData[row.year] = {};
-    }
-    yearData[row.year][row.quarter] = row.total_revenue || 0;
-});
-
-const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
-const years = Object.keys(yearData).sort();
-const datasets = years.map((year, index) => {
-    const colors = ['rgba(66, 153, 225, 0.6)', 'rgba(72, 187, 120, 0.6)', 'rgba(245, 101, 101, 0.6)', 'rgba(246, 173, 85, 0.6)', 'rgba(159, 122, 234, 0.6)'];
-    return {
-        label: year,
-        data: quarters.map(q => yearData[year][q] || 0),
-        backgroundColor: colors[index % colors.length],
-        borderColor: colors[index % colors.length].replace('0.6', '1'),
-        borderWidth: 1
-    };
-});
-
-new Chart(ctx2, {
-    type: 'bar',
-    data: {
-        labels: quarters,
-        datasets: datasets
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    callback: function(value) {
-                        return '$' + (value / 1000).toFixed(0) + 'K';
-                    }
-                }
-            }
-        },
-        plugins: {
-            tooltip: {
-                callbacks: {
-                    label: function(context) {
-                        return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
-                    }
-                }
-            }
-        }
-    }
-});
+console.log('Report4 JavaScript loaded');
 </script>
 {% endblock %} 
