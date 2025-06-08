@@ -1,0 +1,235 @@
+{
+  "data": {
+    "ae_name": "Charmaine Lane",
+    "customers": [
+      {
+        "avg_rate": 84.94,
+        "customer_name": "CA Community Colleges",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 280,
+        "total_revenue": 23783.78
+      },
+      {
+        "avg_rate": 50.0,
+        "customer_name": "Sound Transit",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 445,
+        "total_revenue": 22250.0
+      },
+      {
+        "avg_rate": 62.14,
+        "customer_name": "Lexus Dealer Association",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 222,
+        "total_revenue": 13794.66
+      },
+      {
+        "avg_rate": 27.19,
+        "customer_name": "Toyota",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 400,
+        "total_revenue": 10875.0
+      },
+      {
+        "avg_rate": 131.84,
+        "customer_name": "Southern California Toyota Dealer Association",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 76,
+        "total_revenue": 10020.0
+      },
+      {
+        "avg_rate": 117.65,
+        "customer_name": "OCHCA",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 72,
+        "total_revenue": 8470.59
+      },
+      {
+        "avg_rate": 75.0,
+        "customer_name": "Northern California Toyota Dealer's Assocation",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 108,
+        "total_revenue": 8100.0
+      },
+      {
+        "avg_rate": 50.0,
+        "customer_name": "SMUD",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 120,
+        "total_revenue": 6000.0
+      },
+      {
+        "avg_rate": 47.26,
+        "customer_name": "McDonald's",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-29 00:00:00",
+        "spot_count": 126,
+        "total_revenue": 5955.0
+      },
+      {
+        "avg_rate": 138.5,
+        "customer_name": "Thunder Valley",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 40,
+        "total_revenue": 5540.0
+      },
+      {
+        "avg_rate": 86.34,
+        "customer_name": "Sky River Casino",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-30 00:00:00",
+        "spot_count": 59,
+        "total_revenue": 5094.18
+      },
+      {
+        "avg_rate": 109.63,
+        "customer_name": "Bay Area Air Quality Management District",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 27,
+        "total_revenue": 2960.0
+      },
+      {
+        "avg_rate": 95.49,
+        "customer_name": "California State Lottery (I)",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 30,
+        "total_revenue": 2864.71
+      },
+      {
+        "avg_rate": 88.75,
+        "customer_name": "LA County Department of Public Social Services (DPSS)",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 32,
+        "total_revenue": 2840.0
+      },
+      {
+        "avg_rate": 15.0,
+        "customer_name": "Big Valley Ford Lincoln",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 184,
+        "total_revenue": 2760.0
+      },
+      {
+        "avg_rate": 90.0,
+        "customer_name": "Pechanga Resort Casino",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-28 00:00:00",
+        "spot_count": 30,
+        "total_revenue": 2700.0
+      },
+      {
+        "avg_rate": 13.33,
+        "customer_name": "Sacramento Yolo Mosquito Vector Control District",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 196,
+        "total_revenue": 2612.68
+      },
+      {
+        "avg_rate": 46.8,
+        "customer_name": "Thunder Valley Casino",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 50,
+        "total_revenue": 2340.0
+      },
+      {
+        "avg_rate": 60.0,
+        "customer_name": "On Lok",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-29 00:00:00",
+        "spot_count": 34,
+        "total_revenue": 2040.0
+      },
+      {
+        "avg_rate": 40.0,
+        "customer_name": "Sacramento Air Quality Management District",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 44,
+        "total_revenue": 1760.0
+      },
+      {
+        "avg_rate": 28.75,
+        "customer_name": "San Joaquin County Public Works",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 56,
+        "total_revenue": 1610.0
+      },
+      {
+        "avg_rate": 46.43,
+        "customer_name": "Emerald Queen Casino",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 28,
+        "total_revenue": 1300.0
+      },
+      {
+        "avg_rate": 29.41,
+        "customer_name": "PG&E",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 32,
+        "total_revenue": 941.18
+      },
+      {
+        "avg_rate": 28.24,
+        "customer_name": "Western WA Operator Association (McD)",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 21,
+        "total_revenue": 593.0
+      },
+      {
+        "avg_rate": 58.82,
+        "customer_name": "MMC",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 10,
+        "total_revenue": 588.24
+      },
+      {
+        "avg_rate": 14.12,
+        "customer_name": "UC Davis Health System",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 34,
+        "total_revenue": 480.08
+      },
+      {
+        "avg_rate": 100.0,
+        "customer_name": "LA Care Health Plan",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 3,
+        "total_revenue": 300.0
+      },
+      {
+        "avg_rate": -195.0,
+        "customer_name": "Emerald Queen Casino (Broker Costs - DO NOT INVOICE)",
+        "first_spot": "2025-06-01 00:00:00",
+        "last_spot": "2025-06-01 00:00:00",
+        "spot_count": 1,
+        "total_revenue": -195.0
+      }
+    ],
+    "month": "2025-06",
+    "total_customers": 28,
+    "total_revenue": 148378.1
+  },
+  "success": true
+}

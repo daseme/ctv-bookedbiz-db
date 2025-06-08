@@ -1,0 +1,37 @@
+{
+  "data": [
+    {
+      "active": true,
+      "ae_id": "AE001",
+      "avg_deal_size": 65,
+      "name": "Charmaine Lane",
+      "territory": "Commercial",
+      "ytd_actual": 3778605
+    },
+    {
+      "active": true,
+      "ae_id": "AE002",
+      "avg_deal_size": 17,
+      "name": "House",
+      "territory": "House/Internal",
+      "ytd_actual": 1172739
+    },
+    {
+      "active": true,
+      "ae_id": "AE003",
+      "avg_deal_size": 54,
+      "name": "Riley Van Patten",
+      "territory": "Commercial",
+      "ytd_actual": 669373
+    },
+    {
+      "active": true,
+      "ae_id": "AE004",
+      "avg_deal_size": 357,
+      "name": "White Horse International",
+      "territory": "International",
+      "ytd_actual": 57200
+    }
+  ],
+  "success": true
+}

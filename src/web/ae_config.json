@@ -1,0 +1,31 @@
+{
+  "ae_settings": {
+    "Charmaine Lane": {
+      "active": true,
+      "include_in_review": true,
+      "territory": "North"
+    },
+    "House": {
+      "active": true,
+      "include_in_review": true,
+      "territory": "Central"
+    },
+    "Riley Van Patten": {
+      "active": false,
+      "include_in_review": false,
+      "territory": "South"
+    },
+    "White Horse International": {
+      "active": true,
+      "include_in_review": false,
+      "territory": "West"
+    },
+    "WorldLink": {
+      "active": true,
+      "include_in_review": true,
+      "territory": "General",
+      "type": "agency",
+      "agency_name": "WorldLink"
+    }
+  }
+} 

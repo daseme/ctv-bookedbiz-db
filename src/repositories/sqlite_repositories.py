@@ -8,8 +8,8 @@ import logging
 from dataclasses import asdict
 
 from .interfaces import SpotRepository, CustomerRepository
-from ..models.entities import Spot, Customer, Agency, Market, Language, Sector
-from ..database.connection import DatabaseConnection
+from models.entities import Spot, Customer, Agency, Market, Language, Sector
+from database.connection import DatabaseConnection
 from services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class SQLiteSpotRepository(SpotRepository, BaseService):
     """SQLite implementation of spot repository."""
     
     def __init__(self, db_connection: DatabaseConnection):
-        sBaseService.__init__(self, db_connection)
+        BaseService.__init__(self, db_connection)
     
     def save(self, spot: Spot) -> Spot:
         """Save a spot and return it with assigned ID."""

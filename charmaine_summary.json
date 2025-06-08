@@ -1,0 +1,97 @@
+{
+  "data": {
+    "ae_info": {
+      "active": true,
+      "ae_id": "AE001",
+      "name": "Charmaine Lane",
+      "territory": "Commercial"
+    },
+    "monthly_summary": [
+      {
+        "booked_revenue": 148378.09,
+        "budget": 184965,
+        "budget_gap": 74392.09,
+        "current_pipeline": 110979.0,
+        "expected_pipeline": 129475.49999999999,
+        "is_current_month": true,
+        "last_updated": "",
+        "month": "2025-06",
+        "month_display": "June 2025",
+        "notes": "",
+        "pipeline_gap": -18496.499999999985,
+        "pipeline_status": "behind"
+      },
+      {
+        "booked_revenue": 39349.36,
+        "budget": 171669,
+        "budget_gap": -29318.23999999999,
+        "current_pipeline": 103001.4,
+        "expected_pipeline": 120168.29999999999,
+        "is_current_month": false,
+        "last_updated": "",
+        "month": "2025-07",
+        "month_display": "July 2025",
+        "notes": "",
+        "pipeline_gap": -17166.899999999994,
+        "pipeline_status": "behind"
+      },
+      {
+        "booked_revenue": 44082.65,
+        "budget": 175280,
+        "budget_gap": -26029.350000000006,
+        "current_pipeline": 105168.0,
+        "expected_pipeline": 122695.99999999999,
+        "is_current_month": false,
+        "last_updated": "",
+        "month": "2025-08",
+        "month_display": "August 2025",
+        "notes": "",
+        "pipeline_gap": -17527.999999999985,
+        "pipeline_status": "behind"
+      },
+      {
+        "booked_revenue": 35526.21,
+        "budget": 180236,
+        "budget_gap": -36568.19,
+        "current_pipeline": 108141.59999999999,
+        "expected_pipeline": 126165.2,
+        "is_current_month": false,
+        "last_updated": "",
+        "month": "2025-09",
+        "month_display": "September 2025",
+        "notes": "",
+        "pipeline_gap": -18023.600000000006,
+        "pipeline_status": "behind"
+      },
+      {
+        "booked_revenue": 31915.0,
+        "budget": 167930,
+        "budget_gap": -35257.0,
+        "current_pipeline": 100758.0,
+        "expected_pipeline": 117550.99999999999,
+        "is_current_month": false,
+        "last_updated": "",
+        "month": "2025-10",
+        "month_display": "October 2025",
+        "notes": "",
+        "pipeline_gap": -16792.999999999985,
+        "pipeline_status": "behind"
+      },
+      {
+        "booked_revenue": 15975.0,
+        "budget": 212179,
+        "budget_gap": -68896.6,
+        "current_pipeline": 127307.4,
+        "expected_pipeline": 148525.3,
+        "is_current_month": false,
+        "last_updated": "",
+        "month": "2025-11",
+        "month_display": "November 2025",
+        "notes": "",
+        "pipeline_gap": -21217.899999999994,
+        "pipeline_status": "behind"
+      }
+    ]
+  },
+  "success": true
+}
