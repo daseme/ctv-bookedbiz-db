@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Navigation Test - CTV Reports{% endblock %}
+{% block header_title %}Navigation Test{% endblock %}
+{% block header_subtitle %}Testing navigation functionality and visibility{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Navigation Test</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.test-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.test-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.test-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #2d3748;
+}
+
+.test-item {
+    margin: 8px 0;
+    padding: 8px;
+    background: white;
+    border-radius: 4px;
+    border-left: 3px solid #3b82f6;
+}
+
+.nav-test-button {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 4px;
+}
+
+.nav-test-button:hover {
+    background: #2563eb;
+}
+
+.status {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-pass {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-fail {
+    background: #fef2f2;
+    color: #dc2626;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="test-container">
+    
+    <div class="test-section">
+        <div class="test-title">🔍 Navigation Visibility Test</div>
+        <div class="test-item">
+            <strong>Top Navigation Bar:</strong> 
+            <span id="top-nav-status" class="status">Checking...</span>
+            <div>Should show "CTV Booked Biz" logo, search button, and "Management Report" button</div>
+        </div>
+        
+        <div class="test-item">
+            <strong>Breadcrumb Navigation:</strong> 
+            <span id="breadcrumb-status" class="status">Checking...</span>
+            <div>Should show "Home › Navigation Test"</div>
+        </div>
+        
+        <div class="test-item">
+            <strong>Main Navigation Sections:</strong> 
+            <span id="main-nav-status" class="status">Checking...</span>
+            <div>Should show 4 sections: Executive, Operational, Market, Admin</div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <div class="test-title">🖱️ Navigation Link Test</div>
+        <div class="test-item">
+            <strong>Direct Link Tests:</strong><br>
+            <button class="nav-test-button" onclick="testLink('/')">Test Home</button>
+            <button class="nav-test-button" onclick="testLink('/management-report-web')">Test Management Report</button>
+            <button class="nav-test-button" onclick="testLink('/report5')">Test Report 5</button>
+            <button class="nav-test-button" onclick="testLink('/budget-management')">Test Budget Management</button>
+            <button class="nav-test-button" onclick="testLink('/pipeline-revenue')">Test Pipeline Revenue</button>
+        </div>
+        
+        <div class="test-item">
+            <div id="link-test-results">Click buttons above to test navigation links...</div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <div class="test-title">⚡ Navigation Interaction Test</div>
+        <div class="test-item">
+            <strong>Hover Test:</strong> Hover over navigation sections above to see if dropdowns appear
+        </div>
+        
+        <div class="test-item">
+            <strong>Click Test:</strong> Click on navigation section labels to toggle dropdowns
+        </div>
+        
+        <div class="test-item">
+            <strong>Keyboard Test:</strong> Press Alt+M for Management Report, Alt+H for Home
+        </div>
+    </div>
+
+    <div class="test-section">
+        <div class="test-title">📱 Browser Information</div>
+        <div class="test-item">
+            <strong>User Agent:</strong> <span id="user-agent"></span>
+        </div>
+        
+        <div class="test-item">
+            <strong>Screen Size:</strong> <span id="screen-size"></span>
+        </div>
+        
+        <div class="test-item">
+            <strong>Window Size:</strong> <span id="window-size"></span>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Navigation visibility checks
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // Check top navigation
+    const topNav = document.querySelector('.top-nav');
+    const topNavStatus = document.getElementById('top-nav-status');
+    if (topNav) {
+        topNavStatus.textContent = 'FOUND';
+        topNavStatus.className = 'status status-pass';
+    } else {
+        topNavStatus.textContent = 'NOT FOUND';
+        topNavStatus.className = 'status status-fail';
+    }
+    
+    // Check breadcrumb
+    const breadcrumb = document.querySelector('.breadcrumb');
+    const breadcrumbStatus = document.getElementById('breadcrumb-status');
+    if (breadcrumb) {
+        breadcrumbStatus.textContent = 'FOUND';
+        breadcrumbStatus.className = 'status status-pass';
+    } else {
+        breadcrumbStatus.textContent = 'NOT FOUND';
+        breadcrumbStatus.className = 'status status-fail';
+    }
+    
+    // Check main navigation
+    const mainNav = document.querySelector('.main-nav');
+    const navSections = document.querySelectorAll('.nav-section');
+    const mainNavStatus = document.getElementById('main-nav-status');
+    if (mainNav && navSections.length === 4) {
+        mainNavStatus.textContent = `FOUND (${navSections.length} sections)`;
+        mainNavStatus.className = 'status status-pass';
+    } else {
+        mainNavStatus.textContent = `ISSUES (${navSections.length} sections found)`;
+        mainNavStatus.className = 'status status-fail';
+    }
+    
+    // Fill browser info
+    document.getElementById('user-agent').textContent = navigator.userAgent;
+    document.getElementById('screen-size').textContent = `${screen.width} x ${screen.height}`;
+    document.getElementById('window-size').textContent = `${window.innerWidth} x ${window.innerHeight}`;
+});
+
+// Link testing function
+function testLink(url) {
+    const resultsDiv = document.getElementById('link-test-results');
+    resultsDiv.innerHTML = `Testing ${url}...`;
+    
+    fetch(url, { method: 'HEAD' })
+        .then(response => {
+            if (response.ok) {
+                resultsDiv.innerHTML += `<br>✅ ${url} - Status: ${response.status} OK`;
+            } else {
+                resultsDiv.innerHTML += `<br>❌ ${url} - Status: ${response.status} ${response.statusText}`;
+            }
+        })
+        .catch(error => {
+            resultsDiv.innerHTML += `<br>❌ ${url} - Error: ${error.message}`;
+        });
+}
+</script>
+{% endblock %} 

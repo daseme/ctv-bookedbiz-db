@@ -6,17 +6,262 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <style>
         body {
-            font-family: Georgia, 'Times New Roman', serif;
-            background-color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f8fafc;
             margin: 0;
-            padding: 32px;
+            padding: 0;
             color: #2d3748;
             line-height: 1.6;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        
+        /* Top Navigation Bar */
+        .top-nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
+        
+        .top-nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            height: 64px;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+        }
+        
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+        }
+        
+        .top-nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .breadcrumb {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 12px 0;
+            font-size: 14px;
+        }
+        
+        .breadcrumb-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .breadcrumb a {
+            color: #4a5568;
+            text-decoration: none;
+        }
+        
+        .breadcrumb a:hover {
+            color: #667eea;
+        }
+        
+        .breadcrumb-separator {
+            margin: 0 8px;
+            color: #a0aec0;
+        }
+        
+        .breadcrumb-current {
+            color: #2d3748;
+            font-weight: 500;
+        }
+        
+        /* Main Navigation */
+        .main-nav {
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-top: 1px solid #e2e8f0;
+        }
+        
+        .main-nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            overflow: visible;
+        }
+        
+        .nav-section {
+            display: flex;
+            align-items: center;
+            position: relative;
+            margin-right: 32px;
+        }
+        
+        .nav-section:last-child {
+            margin-right: 0;
+        }
+        
+        .nav-section-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #a0aec0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            padding: 16px 16px 8px 0;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .nav-section.executive .nav-section-label { 
+            color: #1e40af; 
+        }
+        .nav-section.operational .nav-section-label { 
+            color: #059669; 
+        }
+        .nav-section.market .nav-section-label { 
+            color: #7c3aed; 
+        }
+        .nav-section.admin .nav-section-label { 
+            color: #dc2626; 
+        }
+        
+        .nav-section:hover .nav-section-label,
+        .nav-section.active .nav-section-label {
+            transform: translateY(-1px);
+            font-weight: 700;
+        }
+        
+        .nav-section.executive:hover .nav-section-label,
+        .nav-section.executive.active .nav-section-label {
+            border-bottom-color: #1e40af;
+        }
+        .nav-section.operational:hover .nav-section-label,
+        .nav-section.operational.active .nav-section-label {
+            border-bottom-color: #059669;
+        }
+        .nav-section.market:hover .nav-section-label,
+        .nav-section.market.active .nav-section-label {
+            border-bottom-color: #7c3aed;
+        }
+        .nav-section.admin:hover .nav-section-label,
+        .nav-section.admin.active .nav-section-label {
+            border-bottom-color: #dc2626;
+        }
+        
+        .nav-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            border-radius: 8px;
+            padding: 12px 0;
+            min-width: 280px;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+            z-index: 200;
+        }
+        
+        .nav-section:hover .nav-dropdown,
+        .nav-section.active .nav-dropdown {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .nav-dropdown-item {
+            display: block;
+            padding: 12px 20px;
+            color: #4a5568;
+            text-decoration: none;
+            transition: all 0.15s;
+            border-left: 3px solid transparent;
+        }
+        
+        .nav-dropdown-item:hover {
+            background: #f7fafc;
+            color: #2d3748;
+        }
+        
+        .nav-dropdown-item.featured {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-left-color: #0ea5e9;
+        }
+        
+        .nav-dropdown-item-title {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .nav-dropdown-item-desc {
+            font-size: 12px;
+            color: #718096;
+            line-height: 1.4;
+        }
+        
+        .nav-dropdown-section {
+            border-top: 1px solid #e2e8f0;
+            margin-top: 8px;
+            padding-top: 8px;
+        }
+        
+        .nav-dropdown-section:first-child {
+            border-top: none;
+            margin-top: 0;
+            padding-top: 0;
+        }
+        
+        /* Quick Actions */
+        .quick-actions {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .quick-actions:hover {
+            background: #5a67d8;
+        }
+        
+        /* Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            min-height: calc(100vh - 140px);
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+        }
+        
+        .content-wrapper {
+            padding: 32px;
+        }
+        
         .header {
             text-align: center;
             margin-bottom: 48px;
@@ -25,40 +270,13 @@
         }
         .header h1 {
             font-size: 28px;
-            font-weight: normal;
+            font-weight: 600;
             color: #1a202c;
             margin: 0 0 8px 0;
         }
         .header .subtitle {
             font-size: 16px;
             color: #718096;
-            font-style: italic;
-        }
-        
-        /* Navigation */
-        .nav {
-            text-align: center;
-            margin-bottom: 24px;
-        }
-        .nav a {
-            display: inline-block;
-            margin: 0 8px;
-            padding: 8px 16px;
-            background: #f7fafc;
-            color: #4a5568;
-            text-decoration: none;
-            border-radius: 4px;
-            border: 1px solid #e2e8f0;
-            transition: all 0.2s;
-        }
-        .nav a:hover {
-            background: #edf2f7;
-            border-color: #cbd5e0;
-        }
-        .nav a.active {
-            background: #4299e1;
-            color: white;
-            border-color: #3182ce;
         }
         
         /* Story Sections */
@@ -67,7 +285,7 @@
         }
         .section-title {
             font-size: 20px;
-            font-weight: normal;
+            font-weight: 500;
             color: #2d3748;
             margin-bottom: 24px;
             text-align: center;
@@ -84,7 +302,7 @@
             text-align: left;
             padding: 10px 6px;
             border-bottom: 2px solid #2d3748;
-            font-weight: normal;
+            font-weight: 500;
             color: #2d3748;
             font-size: 12px;
         }
@@ -187,31 +405,316 @@
             padding: 32px;
             color: #718096;
         }
+        
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .nav-section {
+                margin-right: 24px;
+            }
+            .nav-dropdown {
+                min-width: 240px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .top-nav-container {
+                padding: 0 16px;
+            }
+            .main-nav-container {
+                padding: 0 16px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .nav-section {
+                margin-right: 16px;
+                margin-bottom: 8px;
+            }
+            .breadcrumb-container {
+                padding: 0 16px;
+            }
+            .content-wrapper {
+                padding: 16px;
+            }
+            .nav-dropdown {
+                position: fixed;
+                top: 160px;
+                left: 16px;
+                right: 16px;
+                width: auto;
+                min-width: auto;
+                z-index: 1000;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .main-nav-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .nav-section {
+                margin-right: 0;
+                margin-bottom: 0;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            .nav-section:last-child {
+                border-bottom: none;
+            }
+            .nav-section-label {
+                padding: 12px 16px;
+                text-align: center;
+            }
+        }
     </style>
     {% block extra_styles %}{% endblock %}
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>{% block header_title %}CTV Booked Biz Reports{% endblock %}</h1>
-            <div class="subtitle">{% block header_subtitle %}Revenue Analysis and Performance Tracking{% endblock %}</div>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="top-nav-container">
+            <a href="/" class="logo">
+                <div class="logo-icon">📊</div>
+                CTV Booked Biz
+            </a>
+            <div class="top-nav-actions">
+                <button class="quick-actions" onclick="quickSearch()" style="background: rgba(255,255,255,0.2); margin-right: 12px;">
+                    🔍 Search
+                </button>
+                <button class="quick-actions" onclick="window.location.href='/management-report-web'">
+                    Management Report
+                </button>
+            </div>
         </div>
-        
-        <div class="nav">
+    </nav>
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <div class="breadcrumb-container">
             <a href="/">Home</a>
-            <a href="/report1">Monthly Revenue</a>
-            <a href="/report2">Expectation Tracking</a>
-            <a href="/report3">Performance Story</a>
-            <a href="/report4">Sector Analysis</a>
-            <a href="/report5">Revenue Dashboard</a>
-            <a href="/report6">Language Analysis</a>
-            <a href="/report7">Market-Language</a>
-            <a href="/sector-management">Sector Management</a>
+            {% block breadcrumb %}{% endblock %}
         </div>
-        
-        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Main Navigation -->
+    <nav class="main-nav">
+        <div class="main-nav-container">
+            
+            <!-- Executive Section -->
+            <div class="nav-section executive">
+                <div class="nav-section-label">📊 Executive</div>
+                <div class="nav-dropdown">
+                    <a href="/management-report-web" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Management Performance Report</div>
+                        <div class="nav-dropdown-item-desc">Executive dashboard with quarterly breakdowns and budget pacing</div>
+                    </a>
+                    <a href="/pipeline-revenue" class="nav-dropdown-item">
+                        <div class="nav-dropdown-item-title">Pipeline Revenue Management</div>
+                        <div class="nav-dropdown-item-desc">Interactive pipeline management for revenue committee meetings</div>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Operational Section -->
+            <div class="nav-section operational">
+                <div class="nav-section-label">📈 Operational</div>
+                <div class="nav-dropdown">
+                    <a href="/report5" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Monthly Revenue Dashboard</div>
+                        <div class="nav-dropdown-item-desc">Interactive customer-level revenue breakdown with filtering</div>
+                    </a>
+                    <div class="nav-dropdown-section">
+                        <a href="/report1" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Monthly Revenue Summary</div>
+                            <div class="nav-dropdown-item-desc">Revenue breakdown with spot counts and averages</div>
+                        </a>
+                        <a href="/report2" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Expectation Tracking</div>
+                            <div class="nav-dropdown-item-desc">Budget vs expectations vs actual performance</div>
+                        </a>
+                        <a href="/report3" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Performance Story</div>
+                            <div class="nav-dropdown-item-desc">Quarterly progression with year-over-year comparisons</div>
+                        </a>
+                        <a href="/report4" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Sector Analysis</div>
+                            <div class="nav-dropdown-item-desc">Sector performance and concentration risk assessment</div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Market Section -->
+            <div class="nav-section market">
+                <div class="nav-section-label">🌍 Market</div>
+                <div class="nav-dropdown">
+                    <a href="/report6" class="nav-dropdown-item">
+                        <div class="nav-dropdown-item-title">Language Analysis</div>
+                        <div class="nav-dropdown-item-desc">Multi-language market analysis with revenue distribution</div>
+                    </a>
+                    <a href="/report7" class="nav-dropdown-item">
+                        <div class="nav-dropdown-item-title">Market-Language Analysis</div>
+                        <div class="nav-dropdown-item-desc">Geographic and demographic language performance</div>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Admin Section -->
+            <div class="nav-section admin">
+                <div class="nav-section-label">⚙️ Admin</div>
+                <div class="nav-dropdown">
+                    <a href="/budget-management" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Budget Management</div>
+                        <div class="nav-dropdown-item-desc">Annual budget planning with version control and audit trails</div>
+                    </a>
+                    <div class="nav-dropdown-section">
+                        <a href="/sector-management" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Sector Management</div>
+                            <div class="nav-dropdown-item-desc">Configure and manage sector classifications</div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="content-wrapper">
+            <div class="header">
+                <h1>{% block header_title %}CTV Booked Biz Reports{% endblock %}</h1>
+                <div class="subtitle">{% block header_subtitle %}Revenue Analysis and Performance Tracking{% endblock %}</div>
+            </div>
+            
+            {% block content %}{% endblock %}
+        </div>
     </div>
     
     {% block scripts %}{% endblock %}
+    
+    <script>
+        // Navigation enhancement
+        document.addEventListener('DOMContentLoaded', function() {
+            // Highlight current navigation section based on URL
+            const currentPath = window.location.pathname;
+            const navSections = document.querySelectorAll('.nav-section');
+            
+            // Map URLs to navigation sections
+            const urlToSection = {
+                '/management-report-web': 'executive',
+                '/management-report': 'executive',
+                '/pipeline-revenue': 'executive',
+                '/report1': 'operational',
+                '/report2': 'operational', 
+                '/report3': 'operational',
+                '/report4': 'operational',
+                '/report5': 'operational',
+                '/report6': 'market',
+                '/report7': 'market',
+                '/budget-management': 'admin',
+                '/sector-management': 'admin'
+            };
+            
+            const activeSection = urlToSection[currentPath];
+            if (activeSection) {
+                const section = document.querySelector(`.nav-section.${activeSection} .nav-section-label`);
+                if (section) {
+                    section.style.borderBottomColor = section.parentElement.classList.contains('executive') ? '#1e40af' :
+                                                    section.parentElement.classList.contains('operational') ? '#059669' :
+                                                    section.parentElement.classList.contains('market') ? '#7c3aed' :
+                                                    section.parentElement.classList.contains('admin') ? '#dc2626' : 'transparent';
+                    section.style.fontWeight = '700';
+                }
+                
+                // Highlight specific navigation item
+                const navItems = document.querySelectorAll('.nav-dropdown-item');
+                navItems.forEach(item => {
+                    if (item.getAttribute('href') === currentPath) {
+                        item.style.background = '#f0f9ff';
+                        item.style.borderLeftColor = '#0ea5e9';
+                        item.style.borderLeftWidth = '3px';
+                    }
+                });
+            }
+            
+            // Add keyboard navigation support
+            document.addEventListener('keydown', function(e) {
+                // Alt + H for Home
+                if (e.altKey && e.key === 'h') {
+                    e.preventDefault();
+                    window.location.href = '/';
+                }
+                // Alt + M for Management Report
+                if (e.altKey && e.key === 'm') {
+                    e.preventDefault();
+                    window.location.href = '/management-report-web';
+                }
+                // Alt + D for Revenue Dashboard
+                if (e.altKey && e.key === 'd') {
+                    e.preventDefault();
+                    window.location.href = '/report5';
+                }
+            });
+            
+            // Enhanced navigation with click support
+            const navSectionsForClick = document.querySelectorAll('.nav-section');
+            navSectionsForClick.forEach(section => {
+                // Add click functionality for all screen sizes
+                section.addEventListener('click', function(e) {
+                    // Only prevent default if clicking on the label, not the dropdown items
+                    if (e.target.classList.contains('nav-section-label')) {
+                        e.preventDefault();
+                        
+                        // Close other dropdowns
+                        navSectionsForClick.forEach(otherSection => {
+                            if (otherSection !== section) {
+                                otherSection.classList.remove('active');
+                            }
+                        });
+                        
+                        // Toggle this dropdown
+                        section.classList.toggle('active');
+                    }
+                });
+            });
+            
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.nav-section')) {
+                    navSectionsForClick.forEach(section => {
+                        section.classList.remove('active');
+                    });
+                }
+            });
+        });
+        
+        // Quick search functionality
+        function quickSearch() {
+            const query = prompt('Quick search reports:');
+            if (!query) return;
+            
+            const searchMap = {
+                'management': '/management-report',
+                'pipeline': '/pipeline-revenue', 
+                'monthly': '/report1',
+                'dashboard': '/report5',
+                'expectation': '/report2',
+                'performance': '/report3',
+                'sector': '/report4',
+                'language': '/report6',
+                'market': '/report7',
+                'budget': '/budget-management'
+            };
+            
+            const lowerQuery = query.toLowerCase();
+            for (const [key, url] of Object.entries(searchMap)) {
+                if (key.includes(lowerQuery) || lowerQuery.includes(key)) {
+                    window.location.href = url;
+                    return;
+                }
+            }
+            
+            alert('No matching report found. Try: management, pipeline, monthly, dashboard, budget, etc.');
+        }
+    </script>
 </body>
 </html> 

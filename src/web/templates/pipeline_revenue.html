@@ -5,6 +5,13 @@
 {% block header_title %}{{ title }}{% endblock %}
 {% block header_subtitle %}Pipeline-focused revenue management and forecasting{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-link">Executive</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Pipeline Revenue Management</span>
+{% endblock %}
+
 {% block extra_styles %}
 <style>
 /* Pipeline Revenue Management Styles */
@@ -760,6 +767,97 @@
         gap: 8px;
     }
 }
+
+/* Progress Since Last Review Panel */
+.progress-review-panel {
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border: 2px solid #0ea5e9;
+    border-radius: 12px;
+    margin: 20px 0;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.1);
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(14, 165, 233, 0.2);
+}
+
+.progress-header h3 {
+    margin: 0;
+    color: #0c4a6e;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.review-date {
+    font-size: 12px;
+    color: #0369a1;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.progress-message {
+    background: rgba(22, 163, 74, 0.1);
+    border: 1px solid rgba(22, 163, 74, 0.3);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 16px;
+    color: #166534;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.progress-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.progress-stat {
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(14, 165, 233, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+
+.progress-stat.positive {
+    border-color: rgba(22, 163, 74, 0.3);
+    background: rgba(22, 163, 74, 0.05);
+}
+
+.progress-value {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.progress-stat.positive .progress-value {
+    color: #16a34a;
+}
+
+.progress-stat .progress-value {
+    color: #0ea5e9;
+}
+
+.progress-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.progress-actions {
+    text-align: center;
+}
 </style>
 {% endblock %}
 
@@ -795,6 +893,36 @@
                 </select>
             </div>
             
+            <!-- Progress Since Last Review -->
+            <div id="progress-since-review" class="progress-review-panel" style="display: none;">
+                <div class="progress-header">
+                    <h3>Progress Since Last Review</h3>
+                    <div class="review-date" id="last-review-date"></div>
+                </div>
+                <div class="progress-content">
+                    <div class="progress-message" id="progress-message"></div>
+                    <div class="progress-stats">
+                        <div class="progress-stat positive">
+                            <div class="progress-value" id="revenue-progress">$0</div>
+                            <div class="progress-label">New Revenue Booked</div>
+                        </div>
+                        <div class="progress-stat positive">
+                            <div class="progress-value" id="pipeline-reduction">$0</div>
+                            <div class="progress-label">Pipeline Decay</div>
+                        </div>
+                        <div class="progress-stat">
+                            <div class="progress-value" id="gap-reduction">$0</div>
+                            <div class="progress-label">Gap Reduction</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="progress-actions">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="createNewReviewSnapshot()">
+                        Start New Review Session
+                    </button>
+                </div>
+            </div>
+
             <div class="ae-stats" id="ae-stats" style="display: none;">
                 <div class="stat-item">
                     <div class="stat-value" id="total-revenue">-</div>
@@ -988,6 +1116,7 @@ async function loadAEData(aeId) {
             currentQuarterlyData = result.data.quarterly_summary || [];
             
             displayAEStats(currentAE);
+            displayProgressSinceReview(result.data.progress_since_review);
             displayMonthlyCards(currentMonthlyData, currentQuarterlyData);
             showAEData();
             
@@ -1590,6 +1719,94 @@ window.onclick = function(event) {
     }
 }
 
+// Progress Since Review Functions
+function displayProgressSinceReview(progressData) {
+    const progressPanel = document.getElementById('progress-since-review');
+    
+    if (!progressData) {
+        // Show panel with "Start First Review Session" option
+        progressPanel.style.display = 'block';
+        document.getElementById('last-review-date').textContent = 'No previous review session';
+        document.getElementById('progress-message').textContent = 
+            'Start your first review session to begin tracking pipeline decay and progress between reviews.';
+        
+        // Hide progress stats when no data
+        document.querySelector('.progress-stats').style.display = 'none';
+        
+        // Update button text for first session
+        const button = document.querySelector('#progress-since-review button');
+        button.textContent = 'Start First Review Session';
+        return;
+    }
+    
+    // Show the panel with progress data
+    progressPanel.style.display = 'block';
+    document.querySelector('.progress-stats').style.display = 'flex';
+    
+    // Update the review date
+    const reviewDate = new Date(progressData.last_review_date);
+    document.getElementById('last-review-date').textContent = 
+        `Last review: ${reviewDate.toLocaleDateString()}`;
+    
+    // Create the progress message
+    const message = `Since our last review ${getDaysAgo(reviewDate)} days ago, we've booked ${formatCurrency(progressData.revenue_progress)} additional revenue, automatically reducing our pipeline requirements by ${formatCurrency(progressData.pipeline_reduction)}. The remaining gap has shrunk from ${formatCurrency(Math.abs(progressData.last_gap))} to ${formatCurrency(Math.abs(progressData.current_gap))}.`;
+    
+    document.getElementById('progress-message').textContent = message;
+    
+    // Update progress stats
+    document.getElementById('revenue-progress').textContent = formatCurrency(progressData.revenue_progress);
+    document.getElementById('pipeline-reduction').textContent = formatCurrency(progressData.pipeline_reduction);
+    document.getElementById('gap-reduction').textContent = formatCurrency(progressData.gap_reduction);
+    
+    // Set colors based on positive/negative values
+    const gapStat = document.querySelector('#gap-reduction').closest('.progress-stat');
+    if (progressData.gap_reduction > 0) {
+        gapStat.classList.add('positive');
+        document.getElementById('gap-reduction').style.color = '#16a34a';
+    } else {
+        gapStat.classList.remove('positive');
+        document.getElementById('gap-reduction').style.color = '#dc2626';
+    }
+    
+    // Update button text for subsequent sessions
+    const button = document.querySelector('#progress-since-review button');
+    button.textContent = 'Start New Review Session';
+}
+
+function getDaysAgo(date) {
+    const now = new Date();
+    const diffTime = Math.abs(now - date);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+}
+
+async function createNewReviewSnapshot() {
+    if (!currentAE) {
+        showAlert('error', 'Please select an AE first');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/review/snapshot/${currentAE.ae_id}`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', 'New review session started! Progress tracking baseline created.');
+            
+            // Reload the AE data to get fresh progress information
+            loadAEData(currentAE.ae_id, currentAE.name);
+        } else {
+            showAlert('error', result.error || 'Failed to create review snapshot');
+        }
+    } catch (error) {
+        console.error('Error creating review snapshot:', error);
+        showAlert('error', 'Failed to create review snapshot');
+    }
+}
+
 console.log('Pipeline Revenue Management JavaScript loaded');
 </script>
-{% endblock %} 
+{% endblock %}

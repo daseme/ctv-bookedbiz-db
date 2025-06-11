@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Navigation Demo - CTV Reports{% endblock %}
+{% block header_title %}Navigation System Demo{% endblock %}
+{% block header_subtitle %}Working navigation with hover and click functionality{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Navigation Demo</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.demo-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.demo-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 24px;
+    margin: 24px 0;
+}
+
+.demo-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: #2d3748;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.demo-success {
+    background: #f0fff4;
+    border: 2px solid #68d391;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    color: #2f855a;
+    font-weight: 500;
+}
+
+.demo-instruction {
+    background: #fffbeb;
+    border: 1px solid #f6d259;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 12px 0;
+    color: #975a16;
+}
+
+.demo-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+}
+
+.demo-link {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    text-decoration: none;
+    color: #4a5568;
+    transition: all 0.2s;
+}
+
+.demo-link:hover {
+    border-color: #3b82f6;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+    color: #2d3748;
+}
+
+.demo-link-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #2d3748;
+}
+
+.demo-link-desc {
+    font-size: 12px;
+    color: #718096;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-working {
+    background: #48bb78;
+}
+
+.status-fixed {
+    background: #4299e1;
+}
+
+.highlight-box {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    margin: 20px 0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="demo-container">
+    
+    <div class="highlight-box">
+        <h2 style="margin: 0 0 8px 0;">🎉 Navigation System Fixed!</h2>
+        <p style="margin: 0; opacity: 0.9;">Hover over navigation sections above or click to see dropdowns with working links</p>
+    </div>
+
+    <div class="demo-section">
+        <div class="demo-title">
+            <span class="status-indicator status-fixed"></span>
+            Fixed Issues
+        </div>
+        
+        <div class="demo-success">
+            ✅ <strong>Overflow Issue Resolved:</strong> Removed janky horizontal scrollbar from navigation container
+        </div>
+        
+        <div class="demo-success">
+            ✅ <strong>Dropdown Functionality:</strong> Navigation sections now properly show/hide dropdown menus
+        </div>
+        
+        <div class="demo-success">
+            ✅ <strong>Visual Feedback:</strong> Added hover effects and active states for better user experience
+        </div>
+        
+        <div class="demo-success">
+            ✅ <strong>Responsive Design:</strong> Navigation adapts to different screen sizes without overflow
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <div class="demo-title">
+            <span class="status-indicator status-working"></span>
+            How to Use Navigation
+        </div>
+        
+        <div class="demo-instruction">
+            <strong>1. Hover Method:</strong> Move your mouse over any navigation section (Executive, Operational, Market, Admin) to see dropdown menu
+        </div>
+        
+        <div class="demo-instruction">
+            <strong>2. Click Method:</strong> Click on any navigation section label to toggle dropdown menu
+        </div>
+        
+        <div class="demo-instruction">
+            <strong>3. Keyboard Shortcuts:</strong> Press Alt+M for Management Report, Alt+H for Home, Alt+D for Dashboard
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <div class="demo-title">
+            <span class="status-indicator status-working"></span>
+            Navigation Structure
+        </div>
+        
+        <div class="demo-links">
+            <a href="/management-report-web" class="demo-link">
+                <div class="demo-link-title">📊 Executive</div>
+                <div class="demo-link-desc">Management Report<br>Pipeline Revenue</div>
+            </a>
+            
+            <a href="/report5" class="demo-link">
+                <div class="demo-link-title">📈 Operational</div>
+                <div class="demo-link-desc">Revenue Dashboard<br>Monthly Reports<br>Performance Analysis</div>
+            </a>
+            
+            <a href="/report6" class="demo-link">
+                <div class="demo-link-title">🌍 Market</div>
+                <div class="demo-link-desc">Language Analysis<br>Market Performance</div>
+            </a>
+            
+            <a href="/budget-management" class="demo-link">
+                <div class="demo-link-title">⚙️ Admin</div>
+                <div class="demo-link-desc">Budget Management<br>Sector Management</div>
+            </a>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <div class="demo-title">
+            <span class="status-indicator status-working"></span>
+            Quick Navigation Test
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+            <button onclick="window.location.href='/'" style="padding: 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">🏠 Home</button>
+            <button onclick="window.location.href='/management-report-web'" style="padding: 8px; background: #1e40af; color: white; border: none; border-radius: 4px; cursor: pointer;">📊 Management</button>
+            <button onclick="window.location.href='/report5'" style="padding: 8px; background: #059669; color: white; border: none; border-radius: 4px; cursor: pointer;">📈 Dashboard</button>
+            <button onclick="window.location.href='/budget-management'" style="padding: 8px; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer;">⚙️ Budget</button>
+            <button onclick="window.location.href='/pipeline-revenue'" style="padding: 8px; background: #7c3aed; color: white; border: none; border-radius: 4px; cursor: pointer;">🔗 Pipeline</button>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Add some visual feedback for the demo
+document.addEventListener('DOMContentLoaded', function() {
+    // Highlight active navigation elements
+    const navSections = document.querySelectorAll('.nav-section');
+    navSections.forEach(section => {
+        section.addEventListener('mouseenter', function() {
+            console.log('Hovering over:', section.querySelector('.nav-section-label').textContent);
+        });
+    });
+    
+    // Test navigation functionality
+    console.log('Navigation Demo loaded. Test the navigation sections above!');
+});
+</script>
+{% endblock %} 

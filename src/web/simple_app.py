@@ -5,6 +5,7 @@ import sqlite3
 import os
 import json
 from datetime import datetime
+from budget_warehouse import BudgetWarehouse
 
 app = Flask(__name__)
 
@@ -150,6 +151,16 @@ def is_ae_in_review(ae_name):
 def index():
     """Landing page."""
     return render_template('index.html', title="Revenue Reports Dashboard")
+
+@app.route('/nav-test')
+def nav_test():
+    """Navigation test page."""
+    return render_template('nav_test.html')
+
+@app.route('/nav-demo')
+def nav_demo():
+    """Navigation demonstration page."""
+    return render_template('nav_demo.html')
 
 @app.route('/test')
 def test_db():
@@ -300,6 +311,122 @@ def report1():
         cursor = conn.execute(quarterly_query)
         quarterly_data = [dict(row) for row in cursor.fetchall()]
         
+        # Add client analytics queries (BEFORE closing connection)
+        # 1. Number of clients per month and average dollar amount per client
+        client_monthly_query = """
+        SELECT 
+            strftime('%Y-%m', broadcast_month) as month,
+            CASE strftime('%m', broadcast_month)
+                WHEN '01' THEN 'January'
+                WHEN '02' THEN 'February'
+                WHEN '03' THEN 'March'
+                WHEN '04' THEN 'April'
+                WHEN '05' THEN 'May'
+                WHEN '06' THEN 'June'
+                WHEN '07' THEN 'July'
+                WHEN '08' THEN 'August'
+                WHEN '09' THEN 'September'
+                WHEN '10' THEN 'October'
+                WHEN '11' THEN 'November'
+                WHEN '12' THEN 'December'
+            END || ' ' || strftime('%Y', broadcast_month) as formatted_month,
+            COUNT(DISTINCT sp.customer_id) as client_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(SUM(sp.gross_rate) / COUNT(DISTINCT sp.customer_id), 2) as avg_revenue_per_client,
+            ROUND(AVG(sp.gross_rate), 2) as avg_spot_rate
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        WHERE sp.broadcast_month IS NOT NULL 
+        AND sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND c.normalized_name IS NOT NULL
+        {}
+        GROUP BY strftime('%Y-%m', sp.broadcast_month)
+        ORDER BY month DESC
+        LIMIT 24
+        """.format(date_filter)
+        
+        cursor = conn.execute(client_monthly_query)
+        client_monthly_data = [dict(zip(['month', 'formatted_month', 'client_count', 'total_revenue', 'avg_revenue_per_client', 'avg_spot_rate'], row)) for row in cursor.fetchall()]
+        
+        # 2. Top 5 revenue clients (with filtering)
+        top_clients_query = """
+        SELECT 
+            c.normalized_name as client_name,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_spot_rate,
+            MIN(strftime('%Y-%m', sp.broadcast_month)) as first_month,
+            MAX(strftime('%Y-%m', sp.broadcast_month)) as last_month,
+            COUNT(DISTINCT strftime('%Y-%m', sp.broadcast_month)) as active_months
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        WHERE sp.broadcast_month IS NOT NULL 
+        AND sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND c.normalized_name IS NOT NULL
+        {}
+        GROUP BY c.customer_id, c.normalized_name
+        ORDER BY total_revenue DESC
+        LIMIT 5
+        """.format(date_filter)
+        
+        cursor = conn.execute(top_clients_query)
+        top_clients_data = [dict(zip(['client_name', 'spot_count', 'total_revenue', 'avg_spot_rate', 'first_month', 'last_month', 'active_months'], row)) for row in cursor.fetchall()]
+        
+        # 3. All clients data for dropdown/searchable list (with filtering)
+        all_clients_query = """
+        SELECT 
+            c.normalized_name as client_name,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_spot_rate,
+            MIN(strftime('%Y-%m', sp.broadcast_month)) as first_month,
+            MAX(strftime('%Y-%m', sp.broadcast_month)) as last_month,
+            COUNT(DISTINCT strftime('%Y-%m', sp.broadcast_month)) as active_months,
+            COALESCE(sp.sales_person, 'Unassigned') as ae_name
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        WHERE sp.broadcast_month IS NOT NULL 
+        AND sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND c.normalized_name IS NOT NULL
+        {}
+        GROUP BY c.customer_id, c.normalized_name, sp.sales_person
+        ORDER BY total_revenue DESC
+        LIMIT 100
+        """.format(date_filter)
+        
+        cursor = conn.execute(all_clients_query)
+        all_clients_data = [dict(zip(['client_name', 'spot_count', 'total_revenue', 'avg_spot_rate', 'first_month', 'last_month', 'active_months', 'ae_name'], row)) for row in cursor.fetchall()]
+        
+        # 4. Client summary statistics
+        client_summary_query = """
+        WITH client_revenue AS (
+            SELECT 
+                sp.customer_id,
+                SUM(sp.gross_rate) as revenue_per_client
+            FROM spots sp
+            LEFT JOIN customers c ON sp.customer_id = c.customer_id
+            WHERE sp.broadcast_month IS NOT NULL 
+            AND sp.gross_rate IS NOT NULL
+            AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+            AND c.normalized_name IS NOT NULL
+            {}
+            GROUP BY sp.customer_id
+        )
+        SELECT 
+            COUNT(DISTINCT customer_id) as total_clients,
+            ROUND(SUM(revenue_per_client), 2) as total_revenue,
+            ROUND(AVG(revenue_per_client), 2) as avg_revenue_per_client,
+            ROUND(MAX(revenue_per_client), 2) as max_client_revenue,
+            ROUND(MIN(revenue_per_client), 2) as min_client_revenue
+        FROM client_revenue
+        """.format(date_filter)
+        
+        cursor = conn.execute(client_summary_query)
+        client_summary = dict(cursor.fetchone())
+        
         # Add status to quarterly data based on actual month closures
         for quarter_row in quarterly_data:
             year = int(quarter_row['year'])
@@ -347,10 +474,15 @@ def report1():
             else:
                 month_row['status'] = 'UNKNOWN'
         
+
         # Prepare data for template
         data = {
             'monthly_data': monthly_data,
             'quarterly_data': quarterly_data,
+            'client_monthly_data': client_monthly_data,
+            'top_clients_data': top_clients_data,
+            'all_clients_data': all_clients_data,
+            'client_summary': client_summary,
             'available_years': available_years,
             'filters': {
                 'from_month': from_month,
@@ -1917,6 +2049,10 @@ def get_ae_summary(ae_id: str):
         except:
             avg_deal_size = 0
 
+        # Get progress since last review
+        progress_data = calculate_progress_since_review(ae_name)
+        print(f"DEBUG: Progress data for {ae_name}: {progress_data}")
+        
         response_data = {
             'ae_info': {
                 'ae_id': ae_id,
@@ -1930,7 +2066,8 @@ def get_ae_summary(ae_id: str):
                 'avg_deal_size': avg_deal_size
             },
             'monthly_summary': monthly_summary,
-            'quarterly_summary': quarterly_summary
+            'quarterly_summary': quarterly_summary,
+            'progress_since_review': progress_data
         }
         
         return jsonify({'success': True, 'data': response_data})
@@ -2227,6 +2364,872 @@ def update_review_session():
             'success': False, 
             'error': f'Server error: {str(e)}'
         }), 500
+
+# Review Session Management
+def save_review_session_snapshot(ae_name):
+    """Create a snapshot of current state for review tracking"""
+    snapshot_file = f'review_snapshots_{ae_name.lower().replace(" ", "_")}.json'
+    
+    try:
+        # Get current revenue and pipeline state using proper database connection
+        conn = get_db_connection()
+        ae_condition = get_ae_query_condition(ae_name)
+        
+        # Get current booked revenue by month - use broadcast_month like rest of app
+        revenue_query = f"""
+        SELECT 
+            strftime('%Y-%m', broadcast_month) as month,
+            SUM(gross_rate) as booked_revenue,
+            COUNT(*) as spot_count
+        FROM spots
+        WHERE {ae_condition}
+        AND strftime('%Y', broadcast_month) = '2025'
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        GROUP BY strftime('%Y-%m', broadcast_month)
+        ORDER BY month
+        """
+        
+        cursor = conn.execute(revenue_query)
+        revenue_results = cursor.fetchall()
+        conn.close()
+        
+        # Get current pipeline data from JSON file
+        pipeline_dir = '../../data/processed'
+        pipeline_file = os.path.join(pipeline_dir, 'pipeline_data.json')
+        current_pipeline = {}
+        
+        if os.path.exists(pipeline_file):
+            with open(pipeline_file, 'r') as f:
+                pipeline_data = json.load(f)
+                current_pipeline = pipeline_data.get(ae_name, {})
+        
+        # Get budget data using existing function
+        budget_by_month = {}
+        for month_num in range(1, 13):
+            month_str = f"2025-{month_num:02d}"
+            budget_by_month[month_str] = get_budget_for_ae_month(ae_name, month_str)
+        
+        # Create snapshot
+        snapshot = {
+            'timestamp': datetime.now().isoformat(),
+            'ae_name': ae_name,
+            'revenue_by_month': {row['month']: float(row['booked_revenue']) for row in revenue_results},
+            'pipeline_by_month': {month: data.get('current_pipeline', 0) for month, data in current_pipeline.items()},
+            'budget_by_month': budget_by_month,
+            'total_revenue': sum(float(row['booked_revenue']) for row in revenue_results),
+            'total_pipeline': sum(data.get('current_pipeline', 0) for data in current_pipeline.values())
+        }
+        
+        # Load existing snapshots
+        snapshots = []
+        if os.path.exists(snapshot_file):
+            with open(snapshot_file, 'r') as f:
+                snapshots = json.load(f)
+        
+        # Add new snapshot
+        snapshots.append(snapshot)
+        
+        # Keep only last 10 snapshots to avoid file bloat
+        snapshots = snapshots[-10:]
+        
+        # Save updated snapshots
+        with open(snapshot_file, 'w') as f:
+            json.dump(snapshots, f, indent=2)
+            
+        return True, snapshot
+        
+    except Exception as e:
+        print(f"Error saving review snapshot: {e}")
+        return False, None
+
+def get_latest_review_snapshot(ae_name):
+    """Get the most recent review snapshot for an AE"""
+    snapshot_file = f'review_snapshots_{ae_name.lower().replace(" ", "_")}.json'
+    
+    try:
+        if os.path.exists(snapshot_file):
+            with open(snapshot_file, 'r') as f:
+                snapshots = json.load(f)
+                if snapshots:
+                    return snapshots[-1]  # Return most recent
+    except Exception as e:
+        print(f"Error loading review snapshot: {e}")
+    
+    return None
+
+def calculate_progress_since_review(ae_name):
+    """Calculate progress since last review session"""
+    last_snapshot = get_latest_review_snapshot(ae_name)
+    if not last_snapshot:
+        return None
+    
+    try:
+        # Get current state using existing database connection pattern
+        conn = get_db_connection()
+        ae_condition = get_ae_query_condition(ae_name)
+        
+        # Current revenue - use broadcast_month like rest of the app
+        current_revenue_query = f"""
+        SELECT SUM(gross_rate) as total_revenue
+        FROM spots
+        WHERE {ae_condition}
+        AND strftime('%Y', broadcast_month) = '2025'
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        """
+        
+        cursor = conn.execute(current_revenue_query)
+        result = cursor.fetchone()
+        current_total_revenue = float(result['total_revenue']) if result and result['total_revenue'] else 0
+        
+        # Current pipeline - load from pipeline JSON file
+        pipeline_dir = '../../data/processed'
+        pipeline_file = os.path.join(pipeline_dir, 'pipeline_data.json')
+        current_total_pipeline = 0
+        
+        if os.path.exists(pipeline_file):
+            with open(pipeline_file, 'r') as f:
+                pipeline_data = json.load(f)
+                current_pipeline = pipeline_data.get(ae_name, {})
+                current_total_pipeline = sum(data.get('current_pipeline', 0) for data in current_pipeline.values())
+        
+        # Calculate progress
+        last_revenue = last_snapshot.get('total_revenue', 0)
+        last_pipeline = last_snapshot.get('total_pipeline', 0)
+        
+        revenue_progress = current_total_revenue - last_revenue
+        pipeline_reduction = last_pipeline - current_total_pipeline  # Positive means pipeline decreased
+        
+        # Calculate budget and gaps - use the get_budget_for_ae_month function
+        total_budget = 0
+        for month_num in range(1, 13):
+            month_str = f"2025-{month_num:02d}"
+            month_budget = get_budget_for_ae_month(ae_name, month_str)
+            total_budget += month_budget
+        
+        last_gap = total_budget - (last_revenue + last_pipeline)
+        current_gap = total_budget - (current_total_revenue + current_total_pipeline)
+        gap_reduction = last_gap - current_gap
+        
+        conn.close()
+        
+        return {
+            'last_review_date': last_snapshot.get('timestamp'),
+            'revenue_progress': revenue_progress,
+            'pipeline_reduction': pipeline_reduction,
+            'last_gap': last_gap,
+            'current_gap': current_gap,
+            'gap_reduction': gap_reduction,
+            'last_total_revenue': last_revenue,
+            'current_total_revenue': current_total_revenue,
+            'last_total_pipeline': last_pipeline,
+            'current_total_pipeline': current_total_pipeline
+        }
+        
+    except Exception as e:
+        print(f"Error calculating progress since review: {e}")
+        return None
+
+def get_ae_name_from_id(ae_id):
+    """Convert AE ID (like AE001) to AE name"""
+    try:
+        # Get AE list from config (only active review AEs)
+        ae_config = load_ae_config()
+        review_aes = []
+        for ae_name, config in ae_config.items():
+            if config.get('active', True) and config.get('include_in_review', True):
+                review_aes.append(ae_name)
+        
+        # Sort by name for consistent ordering
+        review_aes.sort()
+        
+        # Map AE ID to name (AE001 = first AE, AE002 = second, etc.)
+        ae_index = int(ae_id[2:]) - 1  # Convert AE002 to index 1
+        if ae_index < 0 or ae_index >= len(review_aes):
+            return None
+        
+        return review_aes[ae_index]
+    except:
+        return None
+
+@app.route('/api/review/snapshot/<ae_id>', methods=['POST'])
+def create_review_snapshot(ae_id):
+    """Create a review session snapshot"""
+    try:
+        ae_name = get_ae_name_from_id(ae_id)
+        if not ae_name:
+            return jsonify({'success': False, 'error': 'AE not found'}), 404
+        
+        success, snapshot = save_review_session_snapshot(ae_name)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Review snapshot created for {ae_name}',
+                'snapshot': snapshot
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create snapshot'}), 500
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/review/progress/<ae_id>', methods=['GET'])
+def get_review_progress(ae_id):
+    """Get progress since last review"""
+    try:
+        ae_name = get_ae_name_from_id(ae_id)
+        if not ae_name:
+            return jsonify({'success': False, 'error': 'AE not found'}), 404
+        
+        progress = calculate_progress_since_review(ae_name)
+        
+        if progress:
+            return jsonify({
+                'success': True,
+                'progress': progress
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'progress': None,
+                'message': 'No previous review session found'
+            })
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/management-report-web')
+def management_report_web():
+    """Management Performance Report - Web Version with Navigation."""
+    try:
+        # Reuse the existing management report logic but render with web template
+        from datetime import datetime
+        
+        print("DEBUG: Management report web route started")
+        conn = get_db_connection()
+        print("DEBUG: Database connection established")
+        
+        # Get year parameter, default to current year
+        current_year = str(datetime.now().year)
+        year = request.args.get('year', current_year)
+        previous_year = str(int(year) - 1)
+        print(f"DEBUG: Using year {year}, previous year {previous_year}")
+        
+        # Load AE configuration and budget warehouse
+        ae_config = load_ae_config()
+        active_aes = [ae for ae, config in ae_config.items() if config.get('active', True)]
+        warehouse = BudgetWarehouse()
+        print(f"DEBUG: Found {len(active_aes)} active AEs")
+        
+        # Company-wide data queries (same as original management report)
+        total_revenue_query = """
+        SELECT ROUND(SUM(gross_rate), 2) as total_revenue
+        FROM spots 
+        WHERE strftime('%Y', broadcast_month) = ?
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        """
+        cursor = conn.execute(total_revenue_query, (year,))
+        total_revenue_raw = cursor.fetchone()['total_revenue'] or 0
+        
+        # Previous year revenue for comparison
+        cursor = conn.execute(total_revenue_query, (previous_year,))
+        previous_year_revenue_raw = cursor.fetchone()['total_revenue'] or 0
+        
+        # Total customers for current year
+        total_customers_query = """
+        SELECT COUNT(DISTINCT customer_id) as total_customers
+        FROM spots 
+        WHERE strftime('%Y', broadcast_month) = ?
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        """
+        cursor = conn.execute(total_customers_query, (year,))
+        total_customers = cursor.fetchone()['total_customers'] or 0
+        
+        # Previous year customers
+        cursor = conn.execute(total_customers_query, (previous_year,))
+        previous_year_customers = cursor.fetchone()['total_customers'] or 0
+        
+        # Calculate year-over-year changes
+        if previous_year_revenue_raw > 0:
+            total_year_over_year_change = ((total_revenue_raw - previous_year_revenue_raw) / previous_year_revenue_raw) * 100
+        else:
+            total_year_over_year_change = 0
+        
+        # Format revenue values
+        total_revenue = f'{total_revenue_raw:,.0f}'
+        total_previous_year_revenue = f'{previous_year_revenue_raw:,.0f}'
+        
+        # Get company quarterly budget totals from warehouse
+        company_budgets = warehouse.get_company_budget_totals(int(year))
+        company_total_budget = sum(company_budgets.values())
+        
+        # Simplified quarterly data for web version
+        company_quarters = []
+        for quarter in range(1, 5):
+            start_month = (quarter - 1) * 3 + 1
+            end_month = quarter * 3
+            
+            quarter_revenue_query = """
+            SELECT ROUND(SUM(gross_rate), 2) as quarter_revenue
+            FROM spots 
+            WHERE strftime('%Y', broadcast_month) = ?
+            AND cast(strftime('%m', broadcast_month) as integer) BETWEEN ? AND ?
+            AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+            """
+            
+            cursor = conn.execute(quarter_revenue_query, (year, start_month, end_month))
+            quarter_booked_revenue = cursor.fetchone()['quarter_revenue'] or 0
+            
+            cursor = conn.execute(quarter_revenue_query, (previous_year, start_month, end_month))
+            prev_quarter_revenue = cursor.fetchone()['quarter_revenue'] or 0
+            
+            # Calculate YoY change for quarter
+            if prev_quarter_revenue > 0:
+                quarter_yoy_change = ((quarter_booked_revenue - prev_quarter_revenue) / prev_quarter_revenue) * 100
+            else:
+                quarter_yoy_change = 0
+            
+            quarter_budget = company_budgets.get(quarter, 0)
+            
+            if quarter_budget > 0:
+                completion_percentage = min(int((quarter_booked_revenue / quarter_budget) * 100), 100)
+            else:
+                completion_percentage = 0
+            
+            company_quarters.append({
+                'name': f'Q{quarter} {year}',
+                'booked': f'{quarter_booked_revenue:,.0f}',
+                'pipeline': '0',
+                'budget': f'{quarter_budget:,.0f}',
+                'completion_percentage': completion_percentage,
+                'year_over_year_change': quarter_yoy_change,
+                'previous_year_booked_raw': prev_quarter_revenue
+            })
+        
+        # Company completion percentage
+        if company_total_budget > 0:
+            company_completion_percentage = min(int((total_revenue_raw / company_total_budget) * 100), 100)
+        else:
+            company_completion_percentage = 0
+        
+        # Simplified AE data for web version
+        ae_data = []
+        for ae_name in active_aes[:3]:  # Limit to first 3 AEs for web version
+            ae_condition = get_ae_query_condition(ae_name)
+            
+            # AE total revenue
+            ae_revenue_query = f"""
+            SELECT ROUND(SUM(gross_rate), 2) as total_revenue
+            FROM spots 
+            WHERE strftime('%Y', broadcast_month) = ?
+            AND ({ae_condition})
+            AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+            """
+            cursor = conn.execute(ae_revenue_query, (year,))
+            ae_revenue = cursor.fetchone()['total_revenue'] or 0
+            
+            # AE previous year revenue
+            cursor = conn.execute(ae_revenue_query, (previous_year,))
+            ae_prev_revenue = cursor.fetchone()['total_revenue'] or 0
+            
+            # Calculate AE YoY change
+            if ae_prev_revenue > 0:
+                ae_yoy_change = ((ae_revenue - ae_prev_revenue) / ae_prev_revenue) * 100
+            else:
+                ae_yoy_change = 0
+            
+            ae_data.append({
+                'name': ae_name,
+                'total_booked_revenue': f'{ae_revenue:,.0f}',
+                'total_customers': 0,  # Simplified for web
+                'total_budget': '0',  # Simplified for web
+                'total_completion_percentage': 0,  # Simplified for web
+                'year_over_year_change': ae_yoy_change,
+                'previous_year_revenue_raw': ae_prev_revenue,
+                'previous_year_revenue_display': f'{ae_prev_revenue:,.0f}',
+                'previous_year_customers': 0,
+                'total_pipeline_revenue': '0',
+                'quarters': []  # Simplified for web
+            })
+        
+        conn.close()
+        
+        return render_template('management_report_web.html',
+            current_year=int(year),
+            total_revenue=total_revenue,
+            total_revenue_raw=total_revenue_raw,
+            total_customers=total_customers,
+            total_previous_year_revenue=total_previous_year_revenue,
+            total_previous_year_revenue_raw=previous_year_revenue_raw,
+            previous_year_customers=previous_year_customers,
+            total_year_over_year_change=total_year_over_year_change,
+            company_total_budget=f"{company_total_budget:,.0f}",
+            company_completion_percentage=company_completion_percentage,
+            total_pipeline_revenue="0",
+            company_quarters=company_quarters,
+            ae_data=ae_data
+        )
+        
+    except Exception as e:
+        print(f"Error in management report web: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error: {e}", 500
+
+@app.route('/management-report')
+def management_report():
+    """Management Performance Report matching the provided HTML template."""
+    try:
+        print("DEBUG: Management report route started")
+        conn = get_db_connection()
+        print("DEBUG: Database connection established")
+        
+        # Get year parameter, default to current year
+        from datetime import datetime
+        current_year = str(datetime.now().year)
+        year = request.args.get('year', current_year)
+        previous_year = str(int(year) - 1)
+        print(f"DEBUG: Using year {year}, previous year {previous_year}")
+        
+        # Load AE configuration and budget warehouse
+        ae_config = load_ae_config()
+        active_aes = [ae for ae, config in ae_config.items() if config.get('active', True)]
+        warehouse = BudgetWarehouse()
+        print(f"DEBUG: Found {len(active_aes)} active AEs")
+        
+        # Company-wide data queries
+        # Total revenue for current year (excluding trade)
+        total_revenue_query = """
+        SELECT ROUND(SUM(gross_rate), 2) as total_revenue
+        FROM spots 
+        WHERE strftime('%Y', broadcast_month) = ?
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        """
+        cursor = conn.execute(total_revenue_query, (year,))
+        total_revenue_raw = cursor.fetchone()['total_revenue'] or 0
+        print(f"DEBUG: Total revenue raw: {total_revenue_raw}")
+        
+        # Previous year revenue for comparison
+        cursor = conn.execute(total_revenue_query, (previous_year,))
+        previous_year_revenue_raw = cursor.fetchone()['total_revenue'] or 0
+        print(f"DEBUG: Previous year revenue raw: {previous_year_revenue_raw}")
+        
+        # Total customers for current year
+        total_customers_query = """
+        SELECT COUNT(DISTINCT customer_id) as total_customers
+        FROM spots 
+        WHERE strftime('%Y', broadcast_month) = ?
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        """
+        cursor = conn.execute(total_customers_query, (year,))
+        total_customers = cursor.fetchone()['total_customers'] or 0
+        print(f"DEBUG: Total customers: {total_customers}")
+        
+        # Previous year customers
+        cursor = conn.execute(total_customers_query, (previous_year,))
+        previous_year_customers = cursor.fetchone()['total_customers'] or 0
+        print(f"DEBUG: Previous year customers: {previous_year_customers}")
+        
+        # Calculate year-over-year changes
+        if previous_year_revenue_raw > 0:
+            total_year_over_year_change = ((total_revenue_raw - previous_year_revenue_raw) / previous_year_revenue_raw) * 100
+        else:
+            total_year_over_year_change = 0
+        
+        # Format revenue values
+        total_revenue = f'{total_revenue_raw:,.0f}'
+        total_previous_year_revenue = f'{previous_year_revenue_raw:,.0f}'
+        
+        print(f"DEBUG: Formatted total revenue: {total_revenue}")
+        
+        # Get quarterly data for company using budget warehouse
+        quarters = []
+        company_total_budget = 0
+        total_pipeline_revenue = 0
+        
+        # Get company quarterly budget totals from warehouse
+        company_budgets = warehouse.get_company_budget_totals(int(year))
+        print(f"DEBUG: Company budgets from warehouse: {company_budgets}")
+        
+        for quarter in range(1, 5):
+            # Define quarter months (1-3, 4-6, 7-9, 10-12)
+            start_month = (quarter - 1) * 3 + 1
+            end_month = quarter * 3
+            
+            # Booked revenue for this quarter
+            quarter_revenue_query = """
+            SELECT ROUND(SUM(gross_rate), 2) as quarter_revenue
+            FROM spots 
+            WHERE strftime('%Y', broadcast_month) = ?
+            AND cast(strftime('%m', broadcast_month) as integer) BETWEEN ? AND ?
+            AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+            """
+            
+            cursor = conn.execute(quarter_revenue_query, (year, start_month, end_month))
+            quarter_booked_revenue = cursor.fetchone()['quarter_revenue'] or 0
+            print(f"DEBUG: Q{quarter} booked revenue: {quarter_booked_revenue}")
+            
+            # Pipeline revenue for this quarter (from database)
+            quarter_pipeline_revenue = 0
+            for month_num in range(start_month, end_month + 1):
+                pipeline_query = """
+                SELECT ROUND(SUM(pipeline_amount), 2) as pipeline_revenue
+                FROM pipeline 
+                WHERE year = ? AND month = ? AND is_current = 1
+                """
+                cursor = conn.execute(pipeline_query, (int(year), month_num))
+                month_pipeline = cursor.fetchone()['pipeline_revenue'] or 0
+                quarter_pipeline_revenue += month_pipeline
+            
+            # Previous year quarter revenue
+            cursor = conn.execute(quarter_revenue_query, (previous_year, start_month, end_month))
+            prev_quarter_revenue = cursor.fetchone()['quarter_revenue'] or 0
+            
+            # Calculate YoY change for quarter (based on booked revenue)
+            if prev_quarter_revenue > 0:
+                quarter_yoy_change = ((quarter_booked_revenue - prev_quarter_revenue) / prev_quarter_revenue) * 100
+            else:
+                quarter_yoy_change = 0
+            
+            # Get budget for this quarter from warehouse
+            quarter_budget = company_budgets.get(quarter, 0)
+            company_total_budget += quarter_budget
+            total_pipeline_revenue += quarter_pipeline_revenue
+            
+            # Calculate completion percentage (booked + pipeline vs budget)
+            total_quarter_revenue = quarter_booked_revenue + quarter_pipeline_revenue
+            if quarter_budget > 0:
+                completion_percentage = min(int((total_quarter_revenue / quarter_budget) * 100), 100)
+            else:
+                completion_percentage = 0
+            
+            quarters.append({
+                'name': f'Q{quarter} {year[2:]}',
+                'booked': f'{quarter_booked_revenue:,.0f}',
+                'pipeline': f'{quarter_pipeline_revenue:,.0f}',
+                'budget': f'{quarter_budget:,.0f}',
+                'completion_percentage': completion_percentage,
+                'year_over_year_change': quarter_yoy_change,
+                'previous_year_booked_raw': prev_quarter_revenue
+            })
+        
+        # Company completion percentage
+        if company_total_budget > 0:
+            company_completion_percentage = min(int((total_revenue_raw / company_total_budget) * 100), 100)
+        else:
+            company_completion_percentage = 0
+        
+        # Get individual AE data using budget warehouse
+        ae_data = []
+        ae_budget_summary = warehouse.get_quarterly_budget_summary(int(year))
+        print(f"DEBUG: AE budget summary from warehouse: {ae_budget_summary}")
+        
+        for ae_name in active_aes:
+            ae_condition = get_ae_query_condition(ae_name)
+            
+            # AE total revenue
+            ae_revenue_query = f"""
+            SELECT ROUND(SUM(gross_rate), 2) as total_revenue
+            FROM spots 
+            WHERE strftime('%Y', broadcast_month) = ?
+            AND ({ae_condition})
+            AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+            """
+            cursor = conn.execute(ae_revenue_query, (year,))
+            ae_revenue = cursor.fetchone()['total_revenue'] or 0
+            
+            # AE previous year revenue
+            cursor = conn.execute(ae_revenue_query, (previous_year,))
+            ae_prev_revenue = cursor.fetchone()['total_revenue'] or 0
+            
+            # AE customers
+            ae_customers_query = f"""
+            SELECT COUNT(DISTINCT customer_id) as total_customers
+            FROM spots 
+            WHERE strftime('%Y', broadcast_month) = ?
+            AND ({ae_condition})
+            AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+            """
+            cursor = conn.execute(ae_customers_query, (year,))
+            ae_customers = cursor.fetchone()['total_customers'] or 0
+            
+            # AE previous year customers
+            cursor = conn.execute(ae_customers_query, (previous_year,))
+            ae_prev_customers = cursor.fetchone()['total_customers'] or 0
+            
+            # Calculate AE YoY change
+            if ae_prev_revenue > 0:
+                ae_yoy_change = ((ae_revenue - ae_prev_revenue) / ae_prev_revenue) * 100
+            else:
+                ae_yoy_change = 0
+            
+            # AE quarterly data
+            ae_quarters = []
+            ae_total_budget = 0
+            
+            for quarter in range(1, 5):
+                # Define quarter months (1-3, 4-6, 7-9, 10-12)
+                start_month = (quarter - 1) * 3 + 1
+                end_month = quarter * 3
+                
+                ae_quarter_query = f"""
+                SELECT ROUND(SUM(gross_rate), 2) as quarter_revenue
+                FROM spots 
+                WHERE strftime('%Y', broadcast_month) = ?
+                AND cast(strftime('%m', broadcast_month) as integer) BETWEEN ? AND ?
+                AND ({ae_condition})
+                AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                """
+                
+                cursor = conn.execute(ae_quarter_query, (year, start_month, end_month))
+                ae_quarter_revenue = cursor.fetchone()['quarter_revenue'] or 0
+                
+                # Previous year quarter
+                cursor = conn.execute(ae_quarter_query, (previous_year, start_month, end_month))
+                ae_prev_quarter_revenue = cursor.fetchone()['quarter_revenue'] or 0
+                
+                # Quarter YoY change
+                if ae_prev_quarter_revenue > 0:
+                    ae_quarter_yoy = ((ae_quarter_revenue - ae_prev_quarter_revenue) / ae_prev_quarter_revenue) * 100
+                else:
+                    ae_quarter_yoy = 0
+                
+                # Get real budget for AE quarter from warehouse
+                ae_quarter_budget = ae_budget_summary.get(ae_name, {}).get(quarter, 0)
+                ae_total_budget += ae_quarter_budget
+                
+                # Completion percentage
+                if ae_quarter_budget > 0:
+                    ae_quarter_completion = min(int((ae_quarter_revenue / ae_quarter_budget) * 100), 100)
+                else:
+                    ae_quarter_completion = 0
+                
+                ae_quarters.append({
+                    'name': f'Q{quarter}',
+                    'booked': f'{ae_quarter_revenue:,.0f}',
+                    'pipeline': '0',
+                    'budget': f'{ae_quarter_budget:,.0f}',
+                    'completion_percentage': ae_quarter_completion,
+                    'year_over_year_change': ae_quarter_yoy,
+                    'previous_year_booked_raw': ae_prev_quarter_revenue
+                })
+            
+            # AE total completion percentage
+            if ae_total_budget > 0:
+                ae_total_completion = min(int((ae_revenue / ae_total_budget) * 100), 100)
+            else:
+                ae_total_completion = 0
+            
+            ae_data.append({
+                'name': ae_name,
+                'total_booked_revenue': f'{ae_revenue:,.0f}',
+                'total_customers': ae_customers,
+                'total_budget': f'{ae_total_budget:,.0f}',
+                'total_completion_percentage': ae_total_completion,
+                'previous_year_revenue_raw': ae_prev_revenue,
+                'previous_year_revenue_display': f'{ae_prev_revenue:,.0f}',
+                'previous_year_customers': ae_prev_customers,
+                'year_over_year_change': ae_yoy_change,
+                'quarters': ae_quarters,
+                'annual_totals': {
+                    'booked': f'{ae_revenue:,.0f}',
+                    'pipeline': '0',
+                    'budget': f'{ae_total_budget:,.0f}',
+                    'completion_percentage': ae_total_completion,
+                    'year_over_year_change': ae_yoy_change
+                }
+            })
+        
+        print(f"DEBUG: About to close connection and render template")
+        
+        conn.close()
+        
+        return render_template('management_report.html', 
+            year=year,
+            total_revenue=total_revenue,
+            total_customers=total_customers,
+            total_previous_year_revenue=total_previous_year_revenue,
+            total_previous_year_revenue_raw=previous_year_revenue_raw,
+            previous_year_customers=previous_year_customers,
+            total_year_over_year_change=total_year_over_year_change,
+            company_completion_percentage=company_completion_percentage,
+            total_pipeline_revenue=f'{total_pipeline_revenue:,.0f}',
+            quarters=quarters,
+            ae_data=ae_data
+        )
+    except Exception as e:
+        print(f"DEBUG: Error in management report: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error: {e}", 500
+
+def get_quarter_months(year, quarter_num):
+    """Get the month strings for a given quarter."""
+    year_suffix = str(year)[2:]
+    month_mapping = {
+        1: [f'Jan-{year_suffix}', f'Feb-{year_suffix}', f'Mar-{year_suffix}'],
+        2: [f'Apr-{year_suffix}', f'May-{year_suffix}', f'Jun-{year_suffix}'],
+        3: [f'Jul-{year_suffix}', f'Aug-{year_suffix}', f'Sep-{year_suffix}'],
+        4: [f'Oct-{year_suffix}', f'Nov-{year_suffix}', f'Dec-{year_suffix}']
+    }
+    return month_mapping.get(quarter_num, [])
+
+@app.route('/budget-management')
+def budget_management():
+    """Budget Management Interface."""
+    try:
+        warehouse = BudgetWarehouse()
+        
+        # Get available budget years/versions
+        conn = get_db_connection()
+        cursor = conn.execute("""
+        SELECT DISTINCT year, COUNT(*) as version_count
+        FROM budget_versions 
+        ORDER BY year DESC
+        """)
+        available_years = cursor.fetchall()
+        
+        # Get current active budgets summary
+        current_year = datetime.now().year
+        try:
+            company_budgets = warehouse.get_company_budget_totals(current_year)
+            ae_budgets = warehouse.get_quarterly_budget_summary(current_year)
+            has_current_data = True
+        except:
+            company_budgets = {}
+            ae_budgets = {}
+            has_current_data = False
+        
+        # Get budget versions for current year
+        cursor = conn.execute("""
+        SELECT version_id, version_name, created_date, created_by, description, is_active
+        FROM budget_versions 
+        WHERE year = ?
+        ORDER BY created_date DESC
+        """, (current_year,))
+        budget_versions = cursor.fetchall()
+        
+        conn.close()
+        
+        return render_template('budget_management.html',
+            available_years=available_years,
+            current_year=current_year,
+            company_budgets=company_budgets,
+            ae_budgets=ae_budgets,
+            has_current_data=has_current_data,
+            budget_versions=budget_versions
+        )
+    except Exception as e:
+        print(f"Error in budget management: {e}")
+        return f"Error: {e}", 500
+
+@app.route('/api/budget/upload', methods=['POST'])
+def upload_budget():
+    """API endpoint to upload new budget data."""
+    try:
+        data = request.get_json()
+        
+        year = data.get('year')
+        version_name = data.get('version_name')
+        description = data.get('description', f'{year} Budget Upload')
+        budget_data = data.get('budget_data', {})
+        
+        if not year or not version_name or not budget_data:
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+        
+        warehouse = BudgetWarehouse()
+        
+        # Create new budget version
+        conn = warehouse.get_connection()
+        cursor = conn.execute("""
+        INSERT INTO budget_versions 
+        (version_name, year, created_by, description, is_active, source_file)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (version_name, year, "Web Upload", description, 1, "Manual Web Entry"))
+        
+        version_id = cursor.lastrowid
+        
+        # Month to quarter mapping
+        month_to_quarter = {
+            1: 1, 2: 1, 3: 1,    # Q1
+            4: 2, 5: 2, 6: 2,    # Q2  
+            7: 3, 8: 3, 9: 3,    # Q3
+            10: 4, 11: 4, 12: 4  # Q4
+        }
+        
+        # Insert budget data
+        for ae_name, monthly_budgets in budget_data.items():
+            if isinstance(monthly_budgets, list) and len(monthly_budgets) == 12:
+                for month_idx, budget_amount in enumerate(monthly_budgets):
+                    month_num = month_idx + 1
+                    quarter = month_to_quarter[month_num]
+                    
+                    conn.execute("""
+                    INSERT INTO budget_data 
+                    (version_id, ae_name, year, quarter, month, budget_amount)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, (version_id, ae_name, year, quarter, month_num, float(budget_amount or 0)))
+        
+        # Also populate legacy budget table
+        for ae_name, monthly_budgets in budget_data.items():
+            if isinstance(monthly_budgets, list) and len(monthly_budgets) == 12:
+                for month_idx, budget_amount in enumerate(monthly_budgets):
+                    month_num = month_idx + 1
+                    
+                    conn.execute("""
+                    INSERT OR REPLACE INTO budget 
+                    (ae_name, year, month, budget_amount, created_date, updated_date, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (ae_name, year, month_num, float(budget_amount or 0), 
+                         datetime.now(), datetime.now(), f"Budget Management v{version_id}"))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Budget uploaded successfully for {year}',
+            'version_id': version_id
+        })
+        
+    except Exception as e:
+        print(f"Error uploading budget: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/budget/get/<int:year>')
+def get_budget_data(year):
+    """Get budget data for a specific year."""
+    try:
+        warehouse = BudgetWarehouse()
+        
+        company_budgets = warehouse.get_company_budget_totals(year)
+        ae_budgets = warehouse.get_quarterly_budget_summary(year)
+        
+        # Convert to monthly format for editing
+        monthly_budgets = {}
+        for ae_name, quarters in ae_budgets.items():
+            monthly_data = [0] * 12
+            # This is a simplified conversion - in reality you'd need the monthly breakdown
+            for quarter, amount in quarters.items():
+                start_month = (quarter - 1) * 3
+                months_in_quarter = 3
+                monthly_amount = amount / months_in_quarter
+                for i in range(months_in_quarter):
+                    monthly_data[start_month + i] = monthly_amount
+            monthly_budgets[ae_name] = monthly_data
+        
+        return jsonify({
+            'success': True,
+            'year': year,
+            'company_budgets': company_budgets,
+            'ae_budgets': ae_budgets,
+            'monthly_budgets': monthly_budgets
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 

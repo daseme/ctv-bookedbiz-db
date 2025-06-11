@@ -6,97 +6,232 @@
 {% block header_subtitle %}Revenue Analysis and Performance Tracking Dashboard{% endblock %}
 
 {% block content %}
-<div class="story-section">
-    <div class="section-title">Available Reports</div>
+
+<!-- Executive Dashboard Section -->
+<div class="story-section" style="margin-bottom: 48px;">
+    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
+        <span style="background: #1e40af; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">📊 EXECUTIVE</span>
+        <span style="color: #1e40af; font-size: 24px; font-weight: 700;">Management & Strategic Reports</span>
+    </div>
+    <p style="color: #6b7280; font-size: 16px; margin-bottom: 32px; max-width: 800px;">
+        High-level performance dashboards and strategic analysis tools designed for executive review and decision-making.
+    </p>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin: 32px 0;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px;">
         
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
-            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Monthly Revenue Summary</h3>
-            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+        <div style="background: linear-gradient(135deg, #e6fffa 0%, #f0fdfa 100%); border: 2px solid #14b8a6; border-radius: 12px; padding: 28px; position: relative; overflow: hidden;">
+            <div style="position: absolute; top: 16px; right: 16px; background: #14b8a6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">FEATURED</div>
+            <h3 style="margin: 0 0 12px 0; color: #0f766e; font-size: 20px; font-weight: 700;">📊 Management Performance Report</h3>
+            <p style="color: #134e4a; margin-bottom: 20px; font-size: 15px; line-height: 1.5;">
+                Executive-level performance dashboard with quarterly breakdowns, year-over-year comparisons, budget pacing, and AE performance metrics. Email-ready format for management distribution.
+            </p>
+            <a href="/management-report" style="display: inline-block; padding: 12px 24px; background: #14b8a6; color: white; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; transition: all 0.2s;">
+                View Management Report
+            </a>
+        </div>
+        
+        <div style="background: linear-gradient(135deg, #fef3c7 0%, #fefce8 100%); border: 2px solid #f59e0b; border-radius: 12px; padding: 28px;">
+            <h3 style="margin: 0 0 12px 0; color: #92400e; font-size: 18px; font-weight: 700;">🎯 Pipeline Revenue Management</h3>
+            <p style="color: #a16207; margin-bottom: 20px; font-size: 14px; line-height: 1.5;">
+                Interactive pipeline-focused revenue management system for bi-weekly reviews. Edit forecasts, analyze gaps, and track review completion for revenue committee meetings.
+            </p>
+            <a href="/pipeline-revenue" style="display: inline-block; padding: 10px 20px; background: #f59e0b; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600;">
+                Launch Pipeline Manager
+            </a>
+        </div>
+        
+    </div>
+</div>
+
+<!-- Operational Reports Section -->
+<div class="story-section" style="margin-bottom: 48px;">
+    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
+        <span style="background: #059669; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">📈 OPERATIONAL</span>
+        <span style="color: #059669; font-size: 24px; font-weight: 700;">Revenue & Performance Analysis</span>
+    </div>
+    <p style="color: #6b7280; font-size: 16px; margin-bottom: 32px; max-width: 800px;">
+        Detailed operational reports for day-to-day revenue tracking, performance monitoring, and business analysis.
+    </p>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+        
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <div style="background: #f0f9ff; color: #0369a1; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">📊</div>
+                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Monthly Revenue Dashboard</h3>
+            </div>
+            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
+                Interactive customer-level monthly revenue breakdown with year selection, advanced filtering, search, and export capabilities.
+            </p>
+            <a href="/report5" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
+                View Dashboard
+            </a>
+        </div>
+        
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <div style="background: #f0fdf4; color: #16a34a; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">📋</div>
+                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Monthly Revenue Summary</h3>
+            </div>
+            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
                 Comprehensive breakdown of revenue by month with key metrics including spot counts, averages, and totals.
             </p>
-            <a href="/report1" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Report</a>
+            <a href="/report1" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
+                View Report
+            </a>
         </div>
         
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
-            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Expectation Tracking</h3>
-            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <div style="background: #fef2f2; color: #dc2626; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">🎯</div>
+                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Expectation Tracking</h3>
+            </div>
+            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
                 Management expectation tracking comparing budget vs current expectations vs actual performance by quarter and AE.
             </p>
-            <a href="/report2" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Report</a>
+            <a href="/report2" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
+                View Report
+            </a>
         </div>
         
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
-            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Performance Story</h3>
-            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
-                Quarterly performance analysis showing the story of revenue progression with year-over-year comparisons.
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <div style="background: #fefce8; color: #ca8a04; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">📈</div>
+                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Performance Story</h3>
+            </div>
+            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
+                Quarterly performance analysis showing revenue progression with year-over-year comparisons and trend analysis.
             </p>
-            <a href="/report3" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Report</a>
+            <a href="/report3" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
+                View Report
+            </a>
         </div>
         
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
-            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Sector Analysis</h3>
-            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <div style="background: #f0f9ff; color: #2563eb; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">🏭</div>
+                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Sector Analysis</h3>
+            </div>
+            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
                 Enhanced quarterly performance with detailed sector analysis, concentration risk assessment, and AE performance tracking.
             </p>
-            <a href="/report4" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Report</a>
-        </div>
-        
-        <div style="background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 24px;">
-            <h3 style="margin: 0 0 16px 0; color: #2d3748;">📊 Monthly Revenue Dashboard</h3>
-            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
-                <strong>NEW!</strong> Interactive customer-level monthly revenue breakdown with <strong>year selection</strong>, advanced filtering, search, export, and Account Executive tracking. Live data with drill-down capabilities.
-            </p>
-            <a href="/report5" style="display: inline-block; padding: 8px 16px; background: #38a169; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">View Dashboard</a>
-        </div>
-        
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
-            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Language Analysis</h3>
-            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
-                Multi-language market analysis with revenue distribution, audience reach insights, market share analysis, and monthly trends across different languages and demographics.
-            </p>
-            <a href="/report6" style="display: inline-block; padding: 8px 16px; background: #4299e1; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">View Analysis</a>
-        </div>
-        
-        <div style="background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 24px;">
-            <h3 style="margin: 0 0 16px 0; color: #2d3748;">🌍 Market-Language Analysis</h3>
-            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
-                <strong>NEW!</strong> Geographic and demographic breakdown showing how different languages perform across markets. Includes market share analysis, language diversity metrics, revenue heatmaps, and cross-market language penetration insights.
-            </p>
-            <a href="/report7" style="display: inline-block; padding: 8px 16px; background: #0284c7; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">View Market Analysis</a>
-        </div>
-        
-        <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 24px;">
-            <h3 style="margin: 0 0 16px 0; color: #2d3748;">🎯 Pipeline Revenue Management</h3>
-            <p style="color: #4a5568; margin-bottom: 16px; font-size: 14px;">
-                <strong>NEW!</strong> Interactive pipeline-focused revenue management system. Select AEs for bi-weekly reviews, edit pipeline forecasts inline, analyze gaps vs. expectations, drill down to customer details, and track review completion. Designed for revenue committee meetings.
-            </p>
-            <a href="/pipeline-revenue" style="display: inline-block; padding: 8px 16px; background: #d97706; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">Launch Pipeline Manager</a>
+            <a href="/report4" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
+                View Report
+            </a>
         </div>
         
     </div>
 </div>
 
+<!-- Market Analysis Section -->
+<div class="story-section" style="margin-bottom: 48px;">
+    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
+        <span style="background: #7c3aed; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">🌍 MARKET</span>
+        <span style="color: #7c3aed; font-size: 24px; font-weight: 700;">Market & Language Analysis</span>
+    </div>
+    <p style="color: #6b7280; font-size: 16px; margin-bottom: 32px; max-width: 800px;">
+        Specialized reports for market penetration, language demographics, and geographic revenue analysis.
+    </p>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+        
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <div style="background: #fdf2f8; color: #c026d3; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">🗣️</div>
+                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Language Analysis</h3>
+            </div>
+            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
+                Multi-language market analysis with revenue distribution, audience reach insights, market share analysis, and monthly trends.
+            </p>
+            <a href="/report6" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
+                View Analysis
+            </a>
+        </div>
+        
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <div style="background: #ecfdf5; color: #059669; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">🌏</div>
+                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Market-Language Analysis</h3>
+            </div>
+            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
+                Geographic and demographic breakdown showing language performance across markets with penetration insights and revenue heatmaps.
+            </p>
+            <a href="/report7" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
+                View Market Analysis
+            </a>
+        </div>
+        
+    </div>
+</div>
+
+<!-- Administration Section -->
+<div class="story-section" style="margin-bottom: 48px;">
+    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
+        <span style="background: #dc2626; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">⚙️ ADMIN</span>
+        <span style="color: #dc2626; font-size: 24px; font-weight: 700;">System Administration</span>
+    </div>
+    <p style="color: #6b7280; font-size: 16px; margin-bottom: 32px; max-width: 800px;">
+        Administrative functions for budget management, system configuration, and data governance.
+    </p>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px;">
+        
+        <div style="background: linear-gradient(135deg, #f3e8ff 0%, #faf5ff 100%); border: 2px solid #8b5cf6; border-radius: 12px; padding: 28px; position: relative; overflow: hidden;">
+            <div style="position: absolute; top: 16px; right: 16px; background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">ADMIN</div>
+            <h3 style="margin: 0 0 12px 0; color: #6b21a8; font-size: 20px; font-weight: 700;">🎯 Budget Management System</h3>
+            <p style="color: #7c2d92; margin-bottom: 20px; font-size: 15px; line-height: 1.5;">
+                Comprehensive budget planning and management system with version control, yearly budget creation, AE allocations, and historical tracking with full audit trails.
+            </p>
+            <a href="/budget-management" style="display: inline-block; padding: 12px 24px; background: #8b5cf6; color: white; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; transition: all 0.2s;">
+                Manage Budgets
+            </a>
+        </div>
+        
+    </div>
+</div>
+
+<!-- Technical Resources Section -->
+<div class="story-section" style="margin-bottom: 24px;">
+    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
+        <span style="background: #374151; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">🔧 API</span>
+        <span style="color: #374151; font-size: 24px; font-weight: 700;">Developer Resources</span>
+    </div>
+    
+    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px;">
+        <p style="margin: 0 0 16px 0; font-size: 15px; color: #4b5563;">Access report data programmatically via API endpoints:</p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
+            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
+                <code style="color: #059669; font-weight: 600;">/api/data/monthly</code>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Monthly revenue summary data</div>
+            </div>
+            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
+                <code style="color: #059669; font-weight: 600;">/api/data/quarterly</code>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Quarterly performance data</div>
+            </div>
+            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
+                <code style="color: #059669; font-weight: 600;">/api/data/ae</code>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Account Executive performance data</div>
+            </div>
+            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
+                <code style="color: #059669; font-weight: 600;">/api/data/sectors</code>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Sector analysis data</div>
+            </div>
+            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
+                <code style="color: #059669; font-weight: 600;">/api/data/revenue_dashboard</code>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Customer monthly revenue breakdown</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Information -->
 <div class="insight-box">
-    <div class="insight-title">About These Reports</div>
+    <div class="insight-title">About This System</div>
     <div class="insight-text">
         These reports are generated from live data in the CTV Booked Biz database. All revenue figures exclude trade revenue 
-        and focus on actual monetary transactions. Reports are updated in real-time as new data is imported.
+        and focus on actual monetary transactions. Reports are updated in real-time as new data is imported. System includes 
+        comprehensive budget management, version control, and full audit trails for financial compliance.
     </div>
 </div>
 
-<div class="story-section">
-    <div class="section-title">API Access</div>
-    <div style="background: #f7fafc; padding: 16px; border-radius: 4px; margin: 16px 0;">
-        <p style="margin: 0 0 8px 0; font-size: 14px;">Access report data programmatically via API endpoints:</p>
-        <ul style="margin: 8px 0; padding-left: 20px; font-size: 13px; color: #4a5568;">
-            <li><code>/api/data/monthly</code> - Monthly revenue summary data</li>
-            <li><code>/api/data/quarterly</code> - Quarterly performance data</li>
-            <li><code>/api/data/ae</code> - Account Executive performance data</li>
-            <li><code>/api/data/sectors</code> - Sector analysis data</li>
-            <li><code>/api/data/revenue_dashboard</code> - Customer monthly revenue breakdown data</li>
-        </ul>
-    </div>
-</div>
 {% endblock %} 
