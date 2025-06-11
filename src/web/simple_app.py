@@ -6,6 +6,7 @@ import os
 import json
 from datetime import datetime
 from budget_warehouse import BudgetWarehouse
+from types import SimpleNamespace
 
 app = Flask(__name__)
 
@@ -161,6 +162,11 @@ def nav_test():
 def nav_demo():
     """Navigation demonstration page."""
     return render_template('nav_demo.html')
+
+@app.route('/nord-showcase')
+def nord_showcase():
+    """Nord design system showcase and comparison page."""
+    return render_template('nord_showcase.html')
 
 @app.route('/test')
 def test_db():
@@ -2778,6 +2784,120 @@ def management_report_web():
         traceback.print_exc()
         return f"Error: {e}", 500
 
+@app.route('/management-report-nord')
+def management_report_nord():
+    """Nord-themed management report for design prototype"""
+    try:
+        conn = get_db_connection()
+        current_year = datetime.now().year
+        
+        # Use existing management report logic but render with Nord template
+        config = load_ae_config()
+        ae_config = config.get('ae_settings', {})
+        review_aes = {name: settings for name, settings in ae_config.items() 
+                     if settings.get('include_in_review', False)}
+        
+        # Get quarterly performance data
+        quarterly_query = """
+        SELECT 
+            CASE 
+                WHEN strftime('%m', broadcast_month) IN ('01', '02', '03') THEN 'Q1'
+                WHEN strftime('%m', broadcast_month) IN ('04', '05', '06') THEN 'Q2'
+                WHEN strftime('%m', broadcast_month) IN ('07', '08', '09') THEN 'Q3'
+                WHEN strftime('%m', broadcast_month) IN ('10', '11', '12') THEN 'Q4'
+            END as quarter,
+            strftime('%Y', broadcast_month) as year,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            COUNT(DISTINCT customer_id) as customer_count,
+            COUNT(*) as spot_count
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        AND strftime('%Y', broadcast_month) = ?
+        GROUP BY quarter, year
+        ORDER BY quarter
+        """
+        
+        cursor = conn.execute(quarterly_query, (str(current_year),))
+        quarters_data = [dict(row) for row in cursor.fetchall()]
+        
+        # Calculate budgets and totals (simplified for prototype)
+        total_revenue = sum(q['total_revenue'] for q in quarters_data)
+        total_customers = sum(q['customer_count'] for q in quarters_data)
+        
+        # Format quarters for display
+        company_quarters = []
+        quarterly_budget = 250000  # Sample budget per quarter
+        
+        for q_data in quarters_data:
+            quarter_budget = quarterly_budget
+            completion_pct = min(100, (q_data['total_revenue'] / quarter_budget * 100)) if quarter_budget > 0 else 0
+            
+            company_quarters.append({
+                'name': f"{q_data['quarter']} {q_data['year']}",
+                'booked': f"{q_data['total_revenue']:,.0f}",
+                'pipeline': f"{quarterly_budget * 0.3:,.0f}",  # Sample pipeline
+                'budget': f"{quarter_budget:,.0f}",
+                'completion_percentage': f"{completion_pct:.0f}",
+                'year_over_year_change': 15.2,  # Sample data
+                'previous_year_booked_raw': q_data['total_revenue'] * 0.85  # Sample previous year data
+            })
+        
+        # Get AE performance data (simplified)
+        ae_data = []
+        for ae_name in review_aes.keys():
+            ae_query = """
+            SELECT 
+                ROUND(SUM(gross_rate), 2) as total_revenue,
+                COUNT(DISTINCT customer_id) as customer_count,
+                COUNT(*) as spot_count
+            FROM spots 
+            WHERE sales_person = ?
+            AND strftime('%Y', broadcast_month) = ?
+            AND gross_rate IS NOT NULL
+            AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+            """
+            
+            cursor = conn.execute(ae_query, (ae_name, str(current_year)))
+            ae_result = cursor.fetchone()
+            
+            if ae_result and ae_result['total_revenue']:
+                ae_data.append({
+                    'name': ae_name,
+                    'total_booked_revenue': f"{ae_result['total_revenue']:,.0f}",
+                    'total_customers': ae_result['customer_count'],
+                    'total_budget': '150,000',  # Sample budget
+                    'total_completion_percentage': min(100, (ae_result['total_revenue'] / 150000 * 100)),
+                    'year_over_year_change': 12.5,  # Sample data
+                    'previous_year_revenue_display': '85,000',  # Sample data
+                    'previous_year_revenue_raw': 85000,
+                    'previous_year_customers': 15
+                })
+        
+        conn.close()
+        
+        # Template data
+        template_data = {
+            'current_year': current_year,
+            'total_revenue': f"{total_revenue:,.0f}",
+            'total_customers': total_customers,
+            'company_total_budget': '1,000,000',
+            'company_completion_percentage': min(100, (total_revenue / 1000000 * 100)),
+            'total_pipeline_revenue': '300,000',
+            'company_quarters': company_quarters,
+            'ae_data': ae_data,
+            'total_previous_year_revenue': '850,000',
+            'total_previous_year_revenue_raw': 850000,
+            'total_year_over_year_change': 15.2,
+            'previous_year_customers': 45
+        }
+        
+        return render_template('management_report_nord.html', **template_data)
+        
+    except Exception as e:
+        return f"Error generating Nord management report: {str(e)}"
+
 @app.route('/management-report')
 def management_report():
     """Management Performance Report matching the provided HTML template."""
@@ -3230,6 +3350,685 @@ def get_budget_data(year):
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/report1-nord')
+def report1_nord():
+    """Monthly Revenue Report with Nord Theme - using same data logic as original report1."""
+    try:
+        conn = get_db_connection()
+        
+        # Get date range parameters
+        from_month = request.args.get('from_month', '')
+        from_year = request.args.get('from_year', '')
+        to_month = request.args.get('to_month', '')
+        to_year = request.args.get('to_year', '')
+        
+        # Build date range conditions
+        date_conditions = []
+        
+        if from_year and from_month:
+            from_date = f"{from_year}-{from_month}"
+            date_conditions.append(f"strftime('%Y-%m', broadcast_month) >= '{from_date}'")
+        elif from_year:
+            date_conditions.append(f"strftime('%Y', broadcast_month) >= '{from_year}'")
+        elif from_month:
+            date_conditions.append(f"strftime('%m', broadcast_month) >= '{from_month}'")
+            
+        if to_year and to_month:
+            to_date = f"{to_year}-{to_month}"
+            date_conditions.append(f"strftime('%Y-%m', broadcast_month) <= '{to_date}'")
+        elif to_year:
+            date_conditions.append(f"strftime('%Y', broadcast_month) <= '{to_year}'")
+        elif to_month:
+            date_conditions.append(f"strftime('%m', broadcast_month) <= '{to_month}'")
+        
+        # Add date conditions to WHERE clause
+        date_filter = ""
+        if date_conditions:
+            date_filter = "AND " + " AND ".join(date_conditions)
+        
+        # Get available years for the form
+        years_query = """
+        SELECT DISTINCT strftime('%Y', broadcast_month) as year 
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        ORDER BY year DESC
+        """
+        
+        cursor = conn.execute(years_query)
+        available_years = [row[0] for row in cursor.fetchall()]
+        
+        # Modified query to use gross_rate OR spot_value to include 2025 data
+        query = """
+        SELECT 
+            strftime('%Y-%m', broadcast_month) as month,
+            CASE strftime('%m', broadcast_month)
+                WHEN '01' THEN 'January'
+                WHEN '02' THEN 'February'
+                WHEN '03' THEN 'March'
+                WHEN '04' THEN 'April'
+                WHEN '05' THEN 'May'
+                WHEN '06' THEN 'June'
+                WHEN '07' THEN 'July'
+                WHEN '08' THEN 'August'
+                WHEN '09' THEN 'September'
+                WHEN '10' THEN 'October'
+                WHEN '11' THEN 'November'
+                WHEN '12' THEN 'December'
+            END || ' ' || strftime('%Y', broadcast_month) as formatted_month,
+            COUNT(*) as spot_count,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate,
+            ROUND(MIN(gross_rate), 2) as min_rate,
+            ROUND(MAX(gross_rate), 2) as max_rate
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        {}
+        GROUP BY strftime('%Y-%m', broadcast_month)
+        ORDER BY month DESC
+        LIMIT 24
+        """.format(date_filter)
+        
+        cursor = conn.execute(query)
+        results = cursor.fetchall()
+        
+        # Add quarterly data for report1
+        quarterly_query = """
+        SELECT 
+            CASE 
+                WHEN strftime('%m', broadcast_month) IN ('01', '02', '03') THEN 'Q1'
+                WHEN strftime('%m', broadcast_month) IN ('04', '05', '06') THEN 'Q2'
+                WHEN strftime('%m', broadcast_month) IN ('07', '08', '09') THEN 'Q3'
+                WHEN strftime('%m', broadcast_month) IN ('10', '11', '12') THEN 'Q4'
+            END as quarter,
+            strftime('%Y', broadcast_month) as year,
+            COUNT(*) as spot_count,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        {}
+        GROUP BY quarter, year
+        ORDER BY year DESC, quarter DESC
+        LIMIT 8
+        """.format(date_filter)
+        
+        cursor = conn.execute(quarterly_query)
+        quarterly_data = [dict(row) for row in cursor.fetchall()]
+        
+        # Add client analytics queries (BEFORE closing connection)
+        # 1. Number of clients per month and average dollar amount per client
+        client_monthly_query = """
+        SELECT 
+            strftime('%Y-%m', broadcast_month) as month,
+            CASE strftime('%m', broadcast_month)
+                WHEN '01' THEN 'January'
+                WHEN '02' THEN 'February'
+                WHEN '03' THEN 'March'
+                WHEN '04' THEN 'April'
+                WHEN '05' THEN 'May'
+                WHEN '06' THEN 'June'
+                WHEN '07' THEN 'July'
+                WHEN '08' THEN 'August'
+                WHEN '09' THEN 'September'
+                WHEN '10' THEN 'October'
+                WHEN '11' THEN 'November'
+                WHEN '12' THEN 'December'
+            END || ' ' || strftime('%Y', broadcast_month) as formatted_month,
+            COUNT(DISTINCT sp.customer_id) as client_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(SUM(sp.gross_rate) / COUNT(DISTINCT sp.customer_id), 2) as avg_revenue_per_client,
+            ROUND(AVG(sp.gross_rate), 2) as avg_spot_rate
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        WHERE sp.broadcast_month IS NOT NULL 
+        AND sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND c.normalized_name IS NOT NULL
+        {}
+        GROUP BY strftime('%Y-%m', sp.broadcast_month)
+        ORDER BY month DESC
+        LIMIT 24
+        """.format(date_filter)
+        
+        cursor = conn.execute(client_monthly_query)
+        client_monthly_data = [dict(zip(['month', 'formatted_month', 'client_count', 'total_revenue', 'avg_revenue_per_client', 'avg_spot_rate'], row)) for row in cursor.fetchall()]
+        
+        # Top 20 clients
+        top_clients_query = """
+        SELECT 
+            c.normalized_name as client_name,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        WHERE sp.broadcast_month IS NOT NULL 
+        AND sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND c.normalized_name IS NOT NULL
+        {}
+        GROUP BY c.customer_id, c.normalized_name
+        ORDER BY total_revenue DESC
+        LIMIT 20
+        """.format(date_filter)
+        
+        cursor = conn.execute(top_clients_query)
+        top_clients_data = [dict(zip(['client_name', 'spot_count', 'total_revenue', 'avg_rate'], row)) for row in cursor.fetchall()]
+        
+        # Calculate overall stats for client summary
+        if top_clients_data:
+            total_clients = len(top_clients_data)
+            total_revenue = sum(client['total_revenue'] for client in top_clients_data)
+            avg_revenue_per_client = total_revenue / total_clients if total_clients > 0 else 0
+            max_client_revenue = max(client['total_revenue'] for client in top_clients_data)
+        else:
+            total_clients = 0
+            avg_revenue_per_client = 0
+            max_client_revenue = 0
+        
+        client_summary = {
+            'total_clients': total_clients,
+            'avg_revenue_per_client': avg_revenue_per_client,
+            'max_client_revenue': max_client_revenue
+        }
+        
+        # Apply the SAME status logic as regular reports
+        for row in quarterly_data:
+            row['status'] = get_quarter_status(int(row['year']), int(row['quarter'][1]))
+        
+        conn.close()
+        
+        # Prepare data structure
+        monthly_data = []
+        for row in results:
+            month_obj = SimpleNamespace()
+            month_obj.month = row[0]
+            month_obj.formatted_month = row[1]
+            month_obj.spot_count = row[2]
+            month_obj.total_revenue = row[3]
+            month_obj.avg_rate = row[4]
+            month_obj.min_rate = row[5]
+            month_obj.max_rate = row[6]
+            # Get month closure status from database
+            current_year = datetime.now().year
+            current_month = datetime.now().month
+            row_year = int(month_obj.month.split('-')[0])
+            row_month = int(month_obj.month.split('-')[1])
+            
+            if row_year < current_year or (row_year == current_year and row_month < current_month):
+                month_obj.status = 'CLOSED'
+            else:
+                month_obj.status = 'OPEN'
+                
+            monthly_data.append(month_obj)
+        
+        # Calculate total row
+        if monthly_data:
+            total_spots = sum(row.spot_count for row in monthly_data if row.spot_count)
+            total_revenue = sum(row.total_revenue for row in monthly_data if row.total_revenue)
+            avg_rate = total_revenue / total_spots if total_spots > 0 else 0
+            
+            total_row = SimpleNamespace()
+            total_row.formatted_month = '*** TOTAL ***'
+            total_row.spot_count = total_spots
+            total_row.total_revenue = total_revenue
+            total_row.avg_rate = avg_rate
+            total_row.min_rate = min((row.min_rate for row in monthly_data if row.min_rate), default=0)
+            total_row.max_rate = max((row.max_rate for row in monthly_data if row.max_rate), default=0)
+            total_row.status = 'CALCULATED'
+            
+            monthly_data.append(total_row)
+        
+        data = {
+            'monthly_data': monthly_data,
+            'quarterly_data': quarterly_data,
+            'available_years': available_years,
+            'client_monthly_data': client_monthly_data,
+            'top_clients': top_clients_data,
+            'client_summary': client_summary
+        }
+        
+        return render_template('report1_nord.html', 
+                             data=data, 
+                             title='Monthly Revenue Summary (Nord)')
+        
+    except Exception as e:
+        print(f"Error in report1_nord: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/report2-nord')
+def report2_nord():
+    """Expectation Tracking Report with Nord Theme."""
+    try:
+        conn = get_db_connection()
+        
+        # Use same data logic as report2
+        query = """
+        SELECT 
+            CASE 
+                WHEN strftime('%m', broadcast_month) IN ('01', '02', '03') THEN 'Q1'
+                WHEN strftime('%m', broadcast_month) IN ('04', '05', '06') THEN 'Q2'
+                WHEN strftime('%m', broadcast_month) IN ('07', '08', '09') THEN 'Q3'
+                WHEN strftime('%m', broadcast_month) IN ('10', '11', '12') THEN 'Q4'
+            END as quarter,
+            strftime('%Y', broadcast_month) as year,
+            COUNT(*) as spot_count,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        GROUP BY quarter, year
+        ORDER BY year DESC, quarter DESC
+        LIMIT 12
+        """
+        
+        cursor = conn.execute(query)
+        quarterly_data = [dict(row) for row in cursor.fetchall()]
+        
+        # Apply quarter status logic
+        for row in quarterly_data:
+            row['status'] = get_quarter_status(int(row['year']), int(row['quarter'][1]))
+        
+        # AE Performance data
+        ae_query = """
+        SELECT 
+            COALESCE(sales_person, 'Unassigned') as ae_name,
+            COUNT(*) as spot_count,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate,
+            MIN(broadcast_month) as first_spot_date,
+            MAX(broadcast_month) as last_spot_date
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        GROUP BY sales_person
+        ORDER BY total_revenue DESC
+        LIMIT 20
+        """
+        
+        cursor = conn.execute(ae_query)
+        ae_performance = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        data = {
+            'quarterly_data': quarterly_data,
+            'ae_performance': ae_performance
+        }
+        
+        return render_template('report2_nord.html', 
+                             data=data, 
+                             title='Expectation Tracking (Nord)')
+        
+    except Exception as e:
+        print(f"Error in report2_nord: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/report3-nord')
+def report3_nord():
+    """Performance Story Report with Nord Theme."""
+    try:
+        conn = get_db_connection()
+        
+        # Use same data logic as report3
+        current_year = datetime.now().year
+        
+        query = """
+        SELECT 
+            CASE 
+                WHEN strftime('%m', broadcast_month) IN ('01', '02', '03') THEN 'Q1'
+                WHEN strftime('%m', broadcast_month) IN ('04', '05', '06') THEN 'Q2'
+                WHEN strftime('%m', broadcast_month) IN ('07', '08', '09') THEN 'Q3'
+                WHEN strftime('%m', broadcast_month) IN ('10', '11', '12') THEN 'Q4'
+            END as quarter,
+            strftime('%Y', broadcast_month) as year,
+            COUNT(*) as spot_count,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        GROUP BY quarter, year
+        ORDER BY year DESC, quarter DESC
+        """
+        
+        cursor = conn.execute(query)
+        quarterly_data = [dict(row) for row in cursor.fetchall()]
+        
+        # AE Performance data
+        ae_query = """
+        SELECT 
+            COALESCE(sales_person, 'Unassigned') as ae_name,
+            COUNT(*) as spot_count,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL 
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        GROUP BY sales_person
+        ORDER BY total_revenue DESC
+        LIMIT 15
+        """
+        
+        cursor = conn.execute(ae_query)
+        ae_performance = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        data = {
+            'quarterly_data': quarterly_data,
+            'ae_performance': ae_performance,
+            'current_year': current_year
+        }
+        
+        return render_template('report3_nord.html', 
+                             data=data, 
+                             title='Performance Story (Nord)')
+        
+    except Exception as e:
+        print(f"Error in report3_nord: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/report4-nord')
+def report4_nord():
+    """Sector Analysis Report with Nord Theme."""
+    try:
+        conn = get_db_connection()
+        
+        # Use same data logic as report4 - get sector groups
+        sector_groups_query = """
+        SELECT 
+            COALESCE(s.sector_group, 'Unassigned') as group_name,
+            COUNT(DISTINCT c.customer_id) as customer_count,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate,
+            ROUND((SUM(sp.gross_rate) * 100.0 / (SELECT SUM(gross_rate) FROM spots WHERE gross_rate IS NOT NULL)), 1) as market_share_pct
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        GROUP BY s.sector_group
+        ORDER BY total_revenue DESC
+        """
+        
+        cursor = conn.execute(sector_groups_query)
+        sector_groups = [dict(row) for row in cursor.fetchall()]
+        
+        # Get top customers for each group
+        for group in sector_groups:
+            customers_query = """
+            SELECT 
+                c.normalized_name as customer_name,
+                ROUND(SUM(sp.gross_rate), 2) as total_revenue
+            FROM spots sp
+            LEFT JOIN customers c ON sp.customer_id = c.customer_id
+            LEFT JOIN sectors s ON c.sector_id = s.sector_id
+            WHERE sp.gross_rate IS NOT NULL
+            AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+            AND COALESCE(s.sector_group, 'Unassigned') = ?
+            GROUP BY c.customer_id, c.normalized_name
+            ORDER BY total_revenue DESC
+            LIMIT 5
+            """
+            
+            cursor = conn.execute(customers_query, (group['group_name'],))
+            group['top_customers'] = [dict(row) for row in cursor.fetchall()]
+        
+        # Get all sectors
+        all_sectors_query = """
+        SELECT 
+            COALESCE(s.sector_name, 'Unassigned') as sector_name,
+            COALESCE(s.sector_group, 'No Group') as sector_group,
+            COUNT(DISTINCT c.customer_id) as customer_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        GROUP BY s.sector_id, s.sector_name, s.sector_group
+        ORDER BY total_revenue DESC
+        """
+        
+        cursor = conn.execute(all_sectors_query)
+        all_sectors = [dict(row) for row in cursor.fetchall()]
+        
+        # Assignment summary
+        assignment_query = """
+        SELECT 
+            SUM(CASE WHEN s.sector_id IS NOT NULL THEN 1 ELSE 0 END) as assigned_customers,
+            SUM(CASE WHEN s.sector_id IS NULL THEN 1 ELSE 0 END) as unassigned_customers,
+            SUM(CASE WHEN s.sector_id IS NOT NULL THEN sp.gross_rate ELSE 0 END) as assigned_revenue,
+            SUM(CASE WHEN s.sector_id IS NULL THEN sp.gross_rate ELSE 0 END) as unassigned_revenue,
+            ROUND((SUM(CASE WHEN s.sector_id IS NOT NULL THEN sp.gross_rate ELSE 0 END) * 100.0 / SUM(sp.gross_rate)), 1) as assigned_percentage,
+            ROUND((SUM(CASE WHEN s.sector_id IS NULL THEN sp.gross_rate ELSE 0 END) * 100.0 / SUM(sp.gross_rate)), 1) as unassigned_percentage
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        """
+        
+        cursor = conn.execute(assignment_query)
+        assignment_summary = dict(cursor.fetchone())
+        
+        # Top customers by sector
+        top_customers_query = """
+        SELECT 
+            c.normalized_name as customer_name,
+            COALESCE(s.sector_name, 'Unassigned') as sector_name,
+            COALESCE(s.sector_group, 'Unassigned') as sector_group,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        AND c.normalized_name IS NOT NULL
+        GROUP BY c.customer_id, c.normalized_name, s.sector_name, s.sector_group
+        ORDER BY total_revenue DESC
+        LIMIT 20
+        """
+        
+        cursor = conn.execute(top_customers_query)
+        top_customers_by_sector = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        data = {
+            'sector_groups': sector_groups,
+            'all_sectors': all_sectors,
+            'assignment_summary': assignment_summary,
+            'top_customers_by_sector': top_customers_by_sector
+        }
+        
+        return render_template('report4_nord.html', 
+                             data=data, 
+                             title='Sector Analysis (Nord)')
+        
+    except Exception as e:
+        print(f"Error in report4_nord: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/report6-nord')
+def report6_nord():
+    """Language Analysis Report with Nord Theme."""
+    try:
+        conn = get_db_connection()
+        
+        # Get year parameter
+        selected_year = request.args.get('year', str(datetime.now().year))
+        
+        # Use same data logic as report6
+        language_query = """
+        SELECT 
+            COALESCE(language, 'Other') as language_name,
+            COUNT(*) as spot_count,
+            ROUND(SUM(gross_rate), 2) as total_revenue,
+            ROUND(AVG(gross_rate), 2) as avg_rate,
+            ROUND((SUM(gross_rate) * 100.0 / (
+                SELECT SUM(gross_rate) 
+                FROM spots 
+                WHERE strftime('%Y', broadcast_month) = ? 
+                AND gross_rate IS NOT NULL
+            )), 1) as market_share_pct
+        FROM spots 
+        WHERE strftime('%Y', broadcast_month) = ?
+        AND gross_rate IS NOT NULL
+        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        GROUP BY language
+        ORDER BY total_revenue DESC
+        """
+        
+        cursor = conn.execute(language_query, (selected_year, selected_year))
+        language_data = [dict(row) for row in cursor.fetchall()]
+        
+        # Get available years
+        years_query = """
+        SELECT DISTINCT strftime('%Y', broadcast_month) as year
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL
+        ORDER BY year DESC
+        """
+        cursor = conn.execute(years_query)
+        available_years = [int(row['year']) for row in cursor.fetchall()]
+        
+        # Calculate totals
+        total_revenue = sum(lang['total_revenue'] or 0 for lang in language_data)
+        total_spots = sum(lang['spot_count'] or 0 for lang in language_data)
+        language_count = len(language_data)
+        top_language = language_data[0] if language_data else None
+        
+        conn.close()
+        
+        data = {
+            'language_data': language_data,
+            'selected_year': int(selected_year),
+            'available_years': available_years,
+            'total_revenue': total_revenue,
+            'total_spots': total_spots,
+            'language_count': language_count,
+            'top_language': top_language
+        }
+        
+        return render_template('report6_nord.html', 
+                             data=data, 
+                             title='Language Analysis (Nord)')
+        
+    except Exception as e:
+        print(f"Error in report6_nord: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/report7-nord')
+def report7_nord():
+    """Market-Language Analysis Report with Nord Theme."""
+    try:
+        conn = get_db_connection()
+        
+        # Get year parameter
+        selected_year = request.args.get('year', str(datetime.now().year))
+        
+        # Use same data logic as report7
+        market_language_query = """
+        SELECT 
+            COALESCE(m.market_name, 'Unknown') as market_name,
+            COALESCE(sp.language, 'Other') as language_name,
+            COUNT(*) as spot_count,
+            COUNT(DISTINCT c.customer_id) as customer_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate,
+            ROUND((SUM(sp.gross_rate) * 100.0 / (
+                SELECT SUM(gross_rate) 
+                FROM spots 
+                WHERE strftime('%Y', broadcast_month) = ?
+                AND gross_rate IS NOT NULL
+            )), 1) as language_share_pct
+        FROM spots sp
+        LEFT JOIN customers c ON sp.customer_id = c.customer_id
+        LEFT JOIN markets m ON c.market_id = m.market_id
+        WHERE strftime('%Y', sp.broadcast_month) = ?
+        AND sp.gross_rate IS NOT NULL
+        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        GROUP BY m.market_name, sp.language
+        ORDER BY m.market_name, total_revenue DESC
+        """
+        
+        cursor = conn.execute(market_language_query, (selected_year, selected_year))
+        market_language_combinations = [dict(row) for row in cursor.fetchall()]
+        
+        # Get available years
+        years_query = """
+        SELECT DISTINCT strftime('%Y', broadcast_month) as year
+        FROM spots 
+        WHERE broadcast_month IS NOT NULL
+        ORDER BY year DESC
+        """
+        cursor = conn.execute(years_query)
+        available_years = [int(row['year']) for row in cursor.fetchall()]
+        
+        # Calculate summary stats
+        total_revenue = sum(combo['total_revenue'] or 0 for combo in market_language_combinations)
+        total_customers = sum(combo['customer_count'] or 0 for combo in market_language_combinations)
+        
+        markets = set(combo['market_name'] for combo in market_language_combinations)
+        languages = set(combo['language_name'] for combo in market_language_combinations)
+        
+        market_count = len(markets)
+        language_count = len(languages)
+        total_markets = market_count
+        
+        # Top combinations
+        top_combinations = sorted(market_language_combinations, key=lambda x: x['total_revenue'] or 0, reverse=True)[:10]
+        top_combination = top_combinations[0] if top_combinations else None
+        
+        # Add market language count for grouping
+        market_lang_counts = {}
+        for combo in market_language_combinations:
+            market = combo['market_name']
+            if market not in market_lang_counts:
+                market_lang_counts[market] = 0
+            market_lang_counts[market] += 1
+        
+        for combo in market_language_combinations:
+            combo['market_language_count'] = market_lang_counts[combo['market_name']]
+        
+        conn.close()
+        
+        data = {
+            'market_language_combinations': market_language_combinations,
+            'top_combinations': top_combinations,
+            'selected_year': int(selected_year),
+            'available_years': available_years,
+            'total_revenue': total_revenue,
+            'total_customers': total_customers,
+            'market_count': market_count,
+            'language_count': language_count,
+            'total_markets': total_markets,
+            'top_combination': top_combination
+        }
+        
+        return render_template('report7_nord.html', 
+                             data=data, 
+                             title='Market-Language Analysis (Nord)')
+        
+    except Exception as e:
+        print(f"Error in report7_nord: {str(e)}")
+        return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 

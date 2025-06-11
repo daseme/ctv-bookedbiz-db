@@ -1,0 +1,1475 @@
+{
+  "database_name": "production.db",
+  "generated_at": "2025-06-11T08:18:48.801930",
+  "description": "CTV Booked Business Database - Revenue tracking and management system",
+  "tables": {
+    "agencies": {
+      "description": "Advertising agency master data",
+      "row_count": 65,
+      "columns": [
+        {
+          "name": "agency_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: agency_id"
+        },
+        {
+          "name": "agency_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: agency_name"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        },
+        {
+          "name": "updated_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: updated_date"
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "not_null": false,
+          "default_value": "1",
+          "primary_key": false,
+          "description": "Column: is_active"
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: notes"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "agency_id",
+          "sample_values": [
+            "7",
+            "36",
+            "8",
+            "1",
+            "9"
+          ]
+        },
+        {
+          "column": "agency_name",
+          "sample_values": [
+            "3 Olives Media",
+            "3Fold",
+            "A Partnership",
+            "Acento",
+            "Admerasia"
+          ]
+        },
+        {
+          "column": "created_date",
+          "sample_values": [
+            "2025-06-06 17:44:15",
+            "2025-06-06 17:44:19",
+            "2025-06-06 17:44:20",
+            "2025-06-06 17:44:22",
+            "2025-06-06 17:44:23"
+          ]
+        }
+      ]
+    },
+    "budget": {
+      "description": "Annual budget allocations by AE and time period",
+      "row_count": 60,
+      "columns": [
+        {
+          "name": "budget_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: budget_id"
+        },
+        {
+          "name": "ae_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: ae_name"
+        },
+        {
+          "name": "year",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: year"
+        },
+        {
+          "name": "month",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: month"
+        },
+        {
+          "name": "budget_amount",
+          "type": "DECIMAL(12, 2)",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: budget_amount"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        },
+        {
+          "name": "updated_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: updated_date"
+        },
+        {
+          "name": "source",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: source"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "budget_id",
+          "sample_values": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+          ]
+        },
+        {
+          "column": "ae_name",
+          "sample_values": [
+            "Charmaine Lane",
+            "House",
+            "White Horse International",
+            "WorldLink",
+            "ZTBD"
+          ]
+        },
+        {
+          "column": "year",
+          "sample_values": [
+            "2025"
+          ]
+        }
+      ]
+    },
+    "budget_data": {
+      "description": "Database table: budget_data",
+      "row_count": 60,
+      "columns": [
+        {
+          "name": "budget_data_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: budget_data_id"
+        },
+        {
+          "name": "version_id",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: version_id"
+        },
+        {
+          "name": "ae_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: ae_name"
+        },
+        {
+          "name": "year",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: year"
+        },
+        {
+          "name": "quarter",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: quarter"
+        },
+        {
+          "name": "month",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: month"
+        },
+        {
+          "name": "budget_amount",
+          "type": "DECIMAL(12, 2)",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: budget_amount"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "budget_data_id",
+          "sample_values": [
+            "1",
+            "2",
+            "3",
+            "13",
+            "14"
+          ]
+        },
+        {
+          "column": "version_id",
+          "sample_values": [
+            "1"
+          ]
+        },
+        {
+          "column": "ae_name",
+          "sample_values": [
+            "Charmaine Lane",
+            "House",
+            "White Horse International",
+            "WorldLink",
+            "ZTBD"
+          ]
+        }
+      ]
+    },
+    "budget_versions": {
+      "description": "Database table: budget_versions",
+      "row_count": 1,
+      "columns": [
+        {
+          "name": "version_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: version_id"
+        },
+        {
+          "name": "version_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: version_name"
+        },
+        {
+          "name": "year",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: year"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        },
+        {
+          "name": "created_by",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: created_by"
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: description"
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "not_null": false,
+          "default_value": "1",
+          "primary_key": false,
+          "description": "Column: is_active"
+        },
+        {
+          "name": "source_file",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: source_file"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "version_id",
+          "sample_values": [
+            "1"
+          ]
+        },
+        {
+          "column": "version_name",
+          "sample_values": [
+            "2025_Initial"
+          ]
+        },
+        {
+          "column": "year",
+          "sample_values": [
+            "2025"
+          ]
+        }
+      ]
+    },
+    "customer_mappings": {
+      "description": "Database table: customer_mappings",
+      "row_count": 0,
+      "columns": [
+        {
+          "name": "mapping_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: mapping_id"
+        },
+        {
+          "name": "original_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: original_name"
+        },
+        {
+          "name": "customer_id",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: customer_id"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        },
+        {
+          "name": "created_by",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": "'system'",
+          "primary_key": false,
+          "description": "Column: created_by"
+        },
+        {
+          "name": "confidence_score",
+          "type": "REAL",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: confidence_score"
+        }
+      ],
+      "key_data_samples": []
+    },
+    "customers": {
+      "description": "Customer master data with normalized names and sector classifications",
+      "row_count": 158,
+      "columns": [
+        {
+          "name": "customer_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Unique customer identifier (primary key)"
+        },
+        {
+          "name": "normalized_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Standardized customer name for reporting"
+        },
+        {
+          "name": "sector_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: sector_id"
+        },
+        {
+          "name": "agency_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: agency_id"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        },
+        {
+          "name": "updated_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: updated_date"
+        },
+        {
+          "name": "customer_type",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: customer_type"
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "not_null": false,
+          "default_value": "1",
+          "primary_key": false,
+          "description": "Column: is_active"
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: notes"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "customer_id",
+          "sample_values": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+          ]
+        },
+        {
+          "column": "normalized_name",
+          "sample_values": [
+            "4Imprint (Marketing Architects)",
+            "AAAJ SoCal",
+            "AIDS Healthcare Foundation",
+            "AVS Television Network",
+            "Alameda Community County Food Bank"
+          ]
+        },
+        {
+          "column": "sector_id",
+          "sample_values": [
+            "1",
+            "2",
+            "3",
+            "6"
+          ]
+        }
+      ]
+    },
+    "import_batches": {
+      "description": "Database table: import_batches",
+      "row_count": 6,
+      "columns": [
+        {
+          "name": "batch_id",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: batch_id"
+        },
+        {
+          "name": "import_date",
+          "type": "TIMESTAMP",
+          "not_null": true,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: import_date"
+        },
+        {
+          "name": "import_mode",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: import_mode"
+        },
+        {
+          "name": "source_file",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: source_file"
+        },
+        {
+          "name": "broadcast_months_affected",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: broadcast_months_affected"
+        },
+        {
+          "name": "records_imported",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": "0",
+          "primary_key": false,
+          "description": "Column: records_imported"
+        },
+        {
+          "name": "records_deleted",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": "0",
+          "primary_key": false,
+          "description": "Column: records_deleted"
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": "'RUNNING'",
+          "primary_key": false,
+          "description": "Column: status"
+        },
+        {
+          "name": "started_by",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: started_by"
+        },
+        {
+          "name": "completed_at",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: completed_at"
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: notes"
+        },
+        {
+          "name": "error_summary",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: error_summary"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "batch_id",
+          "sample_values": [
+            "historical_1749231709",
+            "historical_1749232743",
+            "historical_1749233540",
+            "historical_1749235367",
+            "historical_1749236209"
+          ]
+        },
+        {
+          "column": "import_date",
+          "sample_values": [
+            "2025-06-06 17:42:43",
+            "2025-06-06 17:59:23",
+            "2025-06-06 18:12:40",
+            "2025-06-06 18:43:10",
+            "2025-06-06 18:56:55"
+          ]
+        },
+        {
+          "column": "import_mode",
+          "sample_values": [
+            "HISTORICAL",
+            "WEEKLY_UPDATE"
+          ]
+        }
+      ]
+    },
+    "languages": {
+      "description": "Database table: languages",
+      "row_count": 9,
+      "columns": [
+        {
+          "name": "language_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: language_id"
+        },
+        {
+          "name": "language_code",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: language_code"
+        },
+        {
+          "name": "language_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: language_name"
+        },
+        {
+          "name": "language_group",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: language_group"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "language_id",
+          "sample_values": [
+            "3",
+            "1",
+            "5",
+            "9",
+            "8"
+          ]
+        },
+        {
+          "column": "language_code",
+          "sample_values": [
+            "C",
+            "E",
+            "Hm",
+            "J",
+            "K"
+          ]
+        },
+        {
+          "column": "language_name",
+          "sample_values": [
+            "English",
+            "Mandarin",
+            "Cantonese",
+            "Tagalog",
+            "Hmong"
+          ]
+        }
+      ]
+    },
+    "markets": {
+      "description": "Geographic market definitions",
+      "row_count": 8,
+      "columns": [
+        {
+          "name": "market_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: market_id"
+        },
+        {
+          "name": "market_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: market_name"
+        },
+        {
+          "name": "market_code",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: market_code"
+        },
+        {
+          "name": "region",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: region"
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "not_null": false,
+          "default_value": "1",
+          "primary_key": false,
+          "description": "Column: is_active"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "market_id",
+          "sample_values": [
+            "6",
+            "3",
+            "13",
+            "7",
+            "9"
+          ]
+        },
+        {
+          "column": "market_name",
+          "sample_values": [
+            "CHI MSP",
+            "Central Valley",
+            "DALLAS",
+            "HOUSTON",
+            "LOS ANGELES"
+          ]
+        },
+        {
+          "column": "market_code",
+          "sample_values": [
+            "CMP",
+            "CVC",
+            "DAL",
+            "HOU",
+            "LAX"
+          ]
+        }
+      ]
+    },
+    "month_closures": {
+      "description": "Monthly financial period closure tracking",
+      "row_count": 17,
+      "columns": [
+        {
+          "name": "broadcast_month",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Month that was closed (Mmm-YY format)"
+        },
+        {
+          "name": "closed_date",
+          "type": "DATE",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: closed_date"
+        },
+        {
+          "name": "closed_by",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "User who closed the month"
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: notes"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "broadcast_month",
+          "sample_values": [
+            "Apr-24",
+            "Apr-25",
+            "Aug-24",
+            "Dec-24",
+            "Feb-24"
+          ]
+        },
+        {
+          "column": "closed_date",
+          "sample_values": [
+            "2025-06-06"
+          ]
+        },
+        {
+          "column": "closed_by",
+          "sample_values": [
+            "Kurt"
+          ]
+        }
+      ]
+    },
+    "pipeline": {
+      "description": "Revenue pipeline tracking for forecasting and budget management",
+      "row_count": 0,
+      "columns": [
+        {
+          "name": "pipeline_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: pipeline_id"
+        },
+        {
+          "name": "ae_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Account Executive name"
+        },
+        {
+          "name": "year",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Pipeline year"
+        },
+        {
+          "name": "month",
+          "type": "INTEGER",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Pipeline month"
+        },
+        {
+          "name": "pipeline_amount",
+          "type": "DECIMAL(12, 2)",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Forecasted revenue amount"
+        },
+        {
+          "name": "update_date",
+          "type": "DATE",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: update_date"
+        },
+        {
+          "name": "is_current",
+          "type": "BOOLEAN",
+          "not_null": false,
+          "default_value": "1",
+          "primary_key": false,
+          "description": "Whether this is the current active pipeline version"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        },
+        {
+          "name": "created_by",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: created_by"
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: notes"
+        }
+      ],
+      "key_data_samples": []
+    },
+    "sectors": {
+      "description": "Business sector classifications and hierarchies",
+      "row_count": 16,
+      "columns": [
+        {
+          "name": "sector_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: sector_id"
+        },
+        {
+          "name": "sector_code",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: sector_code"
+        },
+        {
+          "name": "sector_name",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: sector_name"
+        },
+        {
+          "name": "sector_group",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: sector_group"
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "not_null": false,
+          "default_value": "1",
+          "primary_key": false,
+          "description": "Column: is_active"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: created_date"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "sector_id",
+          "sample_values": [
+            "1",
+            "15",
+            "2",
+            "12",
+            "6"
+          ]
+        },
+        {
+          "column": "sector_code",
+          "sample_values": [
+            "AUTO",
+            "CASINO",
+            "CPG",
+            "EDU",
+            "FIN"
+          ]
+        },
+        {
+          "column": "sector_name",
+          "sample_values": [
+            "Automotive",
+            "Consumer Packaged Goods",
+            "Insurance",
+            "Outreach",
+            "Technology"
+          ]
+        }
+      ]
+    },
+    "spots": {
+      "description": "Main revenue table containing all booked advertising spots with customer and sales data",
+      "row_count": 738992,
+      "columns": [
+        {
+          "name": "spot_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": true,
+          "description": "Column: spot_id"
+        },
+        {
+          "name": "bill_code",
+          "type": "TEXT",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Billing code for agency tracking"
+        },
+        {
+          "name": "air_date",
+          "type": "DATE",
+          "not_null": true,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: air_date"
+        },
+        {
+          "name": "end_date",
+          "type": "DATE",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: end_date"
+        },
+        {
+          "name": "day_of_week",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: day_of_week"
+        },
+        {
+          "name": "time_in",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: time_in"
+        },
+        {
+          "name": "time_out",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: time_out"
+        },
+        {
+          "name": "length_seconds",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: length_seconds"
+        },
+        {
+          "name": "media",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: media"
+        },
+        {
+          "name": "program",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: program"
+        },
+        {
+          "name": "language_code",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: language_code"
+        },
+        {
+          "name": "format",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: format"
+        },
+        {
+          "name": "sequence_number",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: sequence_number"
+        },
+        {
+          "name": "line_number",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: line_number"
+        },
+        {
+          "name": "spot_type",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: spot_type"
+        },
+        {
+          "name": "estimate",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: estimate"
+        },
+        {
+          "name": "gross_rate",
+          "type": "DECIMAL(12, 2)",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Revenue amount for the advertising spot"
+        },
+        {
+          "name": "make_good",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: make_good"
+        },
+        {
+          "name": "spot_value",
+          "type": "DECIMAL(12, 2)",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: spot_value"
+        },
+        {
+          "name": "broadcast_month",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Month when the ad was/will be broadcast"
+        },
+        {
+          "name": "broker_fees",
+          "type": "DECIMAL(12, 2)",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: broker_fees"
+        },
+        {
+          "name": "priority",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: priority"
+        },
+        {
+          "name": "station_net",
+          "type": "DECIMAL(12, 2)",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: station_net"
+        },
+        {
+          "name": "sales_person",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Account Executive responsible for the sale"
+        },
+        {
+          "name": "revenue_type",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Type of revenue (e.g., Trade, Cash)"
+        },
+        {
+          "name": "billing_type",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: billing_type"
+        },
+        {
+          "name": "agency_flag",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: agency_flag"
+        },
+        {
+          "name": "affidavit_flag",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: affidavit_flag"
+        },
+        {
+          "name": "contract",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: contract"
+        },
+        {
+          "name": "market_name",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: market_name"
+        },
+        {
+          "name": "customer_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Unique customer identifier"
+        },
+        {
+          "name": "agency_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Advertising agency identifier"
+        },
+        {
+          "name": "market_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Geographic market identifier"
+        },
+        {
+          "name": "language_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: language_id"
+        },
+        {
+          "name": "load_date",
+          "type": "TIMESTAMP",
+          "not_null": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "primary_key": false,
+          "description": "Column: load_date"
+        },
+        {
+          "name": "source_file",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: source_file"
+        },
+        {
+          "name": "is_historical",
+          "type": "BOOLEAN",
+          "not_null": false,
+          "default_value": "0",
+          "primary_key": false,
+          "description": "Column: is_historical"
+        },
+        {
+          "name": "effective_date",
+          "type": "DATE",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: effective_date"
+        },
+        {
+          "name": "import_batch_id",
+          "type": "TEXT",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: import_batch_id"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "spot_id",
+          "sample_values": [
+            "726675",
+            "726676",
+            "726677",
+            "726678",
+            "726679"
+          ]
+        },
+        {
+          "column": "bill_code",
+          "sample_values": [
+            "Acento:City Colleges of Chicago PRODUCTION",
+            "Hoffman Lewis:Toyota PRODUCTION",
+            "iGRAPHIX:Pechanga Resort Casino PROD",
+            "Ntooitive:LA Care Health Plan PRODUCTION",
+            "WorldLink Broker Fees (DO NOT INVOICE)"
+          ]
+        },
+        {
+          "column": "air_date",
+          "sample_values": [
+            "11/25/2024",
+            "11/26/2024",
+            "11/27/2024",
+            "11/28/2024",
+            "11/29/2024"
+          ]
+        }
+      ]
+    },
+    "sqlite_sequence": {
+      "description": "Database table: sqlite_sequence",
+      "row_count": 9,
+      "columns": [
+        {
+          "name": "name",
+          "type": "",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: name"
+        },
+        {
+          "name": "seq",
+          "type": "",
+          "not_null": false,
+          "default_value": null,
+          "primary_key": false,
+          "description": "Column: seq"
+        }
+      ],
+      "key_data_samples": [
+        {
+          "column": "name",
+          "sample_values": [
+            "markets",
+            "languages",
+            "sectors",
+            "agencies",
+            "customers"
+          ]
+        },
+        {
+          "column": "seq",
+          "sample_values": [
+            "14",
+            "9",
+            "16",
+            "65",
+            "158"
+          ]
+        }
+      ]
+    }
+  }
+}

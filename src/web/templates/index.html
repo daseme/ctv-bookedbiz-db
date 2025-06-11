@@ -7,230 +7,664 @@
 
 {% block content %}
 
-<!-- Executive Dashboard Section -->
-<div class="story-section" style="margin-bottom: 48px;">
-    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
-        <span style="background: #1e40af; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">📊 EXECUTIVE</span>
-        <span style="color: #1e40af; font-size: 24px; font-weight: 700;">Management & Strategic Reports</span>
+<style>
+/* Import Nord Base Styling */
+:root {
+    /* Nord Color Palette */
+    --nord0: #2e3440;   /* Polar Night */
+    --nord1: #3b4252;
+    --nord2: #434c5e;
+    --nord3: #4c566a;
+    --nord4: #d8dee9;   /* Snow Storm */
+    --nord5: #e5e9f0;
+    --nord6: #eceff4;
+    --nord7: #8fbcbb;   /* Frost */
+    --nord8: #88c0d0;
+    --nord9: #81a1c1;
+    --nord10: #5e81ac;
+    --nord11: #bf616a;  /* Aurora */
+    --nord12: #d08770;
+    --nord13: #ebcb8b;
+    --nord14: #a3be8c;
+    --nord15: #b48ead;
+}
+
+.nord-hero {
+    background: linear-gradient(135deg, var(--nord0) 0%, var(--nord1) 50%, var(--nord2) 100%);
+    color: var(--nord6);
+    padding: 60px 0;
+    margin: -32px -32px 48px -32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.nord-hero::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at 20% 30%, rgba(143, 188, 187, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(129, 161, 193, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.nord-hero-content {
+    position: relative;
+    z-index: 1;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 32px;
+}
+
+.nord-hero h1 {
+    font-size: 42px;
+    font-weight: 700;
+    margin: 0 0 16px 0;
+    color: var(--nord6);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.nord-hero p {
+    font-size: 20px;
+    color: var(--nord4);
+    margin: 0 0 32px 0;
+    line-height: 1.6;
+}
+
+.nord-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 24px;
+    margin-top: 32px;
+}
+
+.nord-stat {
+    background: rgba(216, 222, 233, 0.1);
+    border: 1px solid rgba(216, 222, 233, 0.2);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    backdrop-filter: blur(8px);
+}
+
+.nord-stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--nord8);
+    margin-bottom: 4px;
+}
+
+.nord-stat-label {
+    font-size: 14px;
+    color: var(--nord4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.nord-section {
+    margin-bottom: 64px;
+}
+
+.nord-section-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 32px;
+}
+
+.nord-section-badge {
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    margin-right: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nord-section-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.nord-section-description {
+    color: var(--nord3);
+    font-size: 16px;
+    margin: 16px 0 32px 0;
+    max-width: 800px;
+    line-height: 1.6;
+}
+
+.nord-grid {
+    display: grid;
+    gap: 24px;
+}
+
+.nord-grid-2 {
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+}
+
+.nord-grid-3 {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.nord-card {
+    background: var(--nord6);
+    border: 1px solid var(--nord5);
+    border-radius: 12px;
+    padding: 28px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.nord-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(46, 52, 64, 0.15);
+    border-color: var(--nord8);
+}
+
+.nord-card-featured {
+    background: linear-gradient(135deg, var(--nord6) 0%, #f8fafc 100%);
+    border: 2px solid var(--nord8);
+    position: relative;
+}
+
+.nord-card-featured::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at 80% 20%, rgba(136, 192, 208, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.nord-card-content {
+    position: relative;
+    z-index: 1;
+}
+
+.nord-card-badge {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: var(--nord8);
+    color: var(--nord6);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.nord-card-icon {
+    background: var(--nord9);
+    color: var(--nord6);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 20px;
+    display: inline-block;
+}
+
+.nord-card-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--nord0);
+    margin: 0 0 12px 0;
+}
+
+.nord-card-description {
+    color: var(--nord2);
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+.nord-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: var(--nord10);
+    color: var(--nord6);
+    text-decoration: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s;
+    margin-right: 12px;
+    margin-bottom: 8px;
+}
+
+.nord-btn:hover {
+    background: var(--nord9);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(94, 129, 172, 0.3);
+}
+
+.nord-btn-primary {
+    background: var(--nord8);
+    font-size: 15px;
+    padding: 14px 28px;
+}
+
+.nord-btn-primary:hover {
+    background: var(--nord7);
+}
+
+.nord-btn-secondary {
+    background: var(--nord14);
+}
+
+.nord-btn-secondary:hover {
+    background: var(--nord7);
+}
+
+.nord-btn-accent {
+    background: var(--nord13);
+    color: var(--nord0);
+}
+
+.nord-btn-accent:hover {
+    background: var(--nord12);
+}
+
+.nord-api-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.nord-api-card {
+    background: var(--nord6);
+    border: 1px solid var(--nord5);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.nord-api-endpoint {
+    color: var(--nord14);
+    font-weight: 700;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 14px;
+}
+
+.nord-api-description {
+    font-size: 12px;
+    color: var(--nord2);
+    margin-top: 6px;
+}
+
+.nord-info-box {
+    background: linear-gradient(135deg, var(--nord0) 0%, var(--nord1) 100%);
+    color: var(--nord4);
+    border-radius: 12px;
+    padding: 32px;
+    margin-top: 48px;
+    position: relative;
+    overflow: hidden;
+}
+
+.nord-info-box::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at 30% 70%, rgba(143, 188, 187, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.nord-info-content {
+    position: relative;
+    z-index: 1;
+}
+
+.nord-info-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--nord6);
+    margin-bottom: 16px;
+}
+
+.nord-info-text {
+    line-height: 1.6;
+    font-size: 15px;
+}
+
+/* Executive Section Styling */
+.executive .nord-section-badge {
+    background: linear-gradient(135deg, var(--nord8) 0%, var(--nord7) 100%);
+    color: var(--nord6);
+}
+
+.executive .nord-section-title {
+    color: var(--nord8);
+}
+
+/* Operational Section Styling */
+.operational .nord-section-badge {
+    background: linear-gradient(135deg, var(--nord14) 0%, var(--nord7) 100%);
+    color: var(--nord6);
+}
+
+.operational .nord-section-title {
+    color: var(--nord14);
+}
+
+/* Market Section Styling */
+.market .nord-section-badge {
+    background: linear-gradient(135deg, var(--nord15) 0%, var(--nord8) 100%);
+    color: var(--nord6);
+}
+
+.market .nord-section-title {
+    color: var(--nord15);
+}
+
+/* Admin Section Styling */
+.admin .nord-section-badge {
+    background: linear-gradient(135deg, var(--nord11) 0%, var(--nord12) 100%);
+    color: var(--nord6);
+}
+
+.admin .nord-section-title {
+    color: var(--nord11);
+}
+
+/* API Section Styling */
+.api .nord-section-badge {
+    background: linear-gradient(135deg, var(--nord0) 0%, var(--nord2) 100%);
+    color: var(--nord6);
+}
+
+.api .nord-section-title {
+    color: var(--nord0);
+}
+</style>
+
+<!-- Hero Section -->
+<div class="nord-hero">
+    <div class="nord-hero-content">
+        <h1>❄️ CTV Revenue Analytics</h1>
+        <p>Professional revenue analysis and performance tracking with Nordic design excellence</p>
+        
+        <div class="nord-stats">
+            <div class="nord-stat">
+                <div class="nord-stat-value">738K+</div>
+                <div class="nord-stat-label">Spots Tracked</div>
+            </div>
+            <div class="nord-stat">
+                <div class="nord-stat-value">14</div>
+                <div class="nord-stat-label">Data Tables</div>
+            </div>
+            <div class="nord-stat">
+                <div class="nord-stat-value">12</div>
+                <div class="nord-stat-label">Active Reports</div>
+            </div>
+            <div class="nord-stat">
+                <div class="nord-stat-value">Real-time</div>
+                <div class="nord-stat-label">Data Updates</div>
+            </div>
+        </div>
     </div>
-    <p style="color: #6b7280; font-size: 16px; margin-bottom: 32px; max-width: 800px;">
+</div>
+
+<!-- Executive Dashboard Section -->
+<div class="nord-section executive">
+    <div class="nord-section-header">
+        <div class="nord-section-badge">
+            <span>❄️</span>
+            Executive
+        </div>
+        <h2 class="nord-section-title">Management & Strategic Reports</h2>
+    </div>
+    <p class="nord-section-description">
         High-level performance dashboards and strategic analysis tools designed for executive review and decision-making.
     </p>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px;">
-        
-        <div style="background: linear-gradient(135deg, #e6fffa 0%, #f0fdfa 100%); border: 2px solid #14b8a6; border-radius: 12px; padding: 28px; position: relative; overflow: hidden;">
-            <div style="position: absolute; top: 16px; right: 16px; background: #14b8a6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">FEATURED</div>
-            <h3 style="margin: 0 0 12px 0; color: #0f766e; font-size: 20px; font-weight: 700;">📊 Management Performance Report</h3>
-            <p style="color: #134e4a; margin-bottom: 20px; font-size: 15px; line-height: 1.5;">
-                Executive-level performance dashboard with quarterly breakdowns, year-over-year comparisons, budget pacing, and AE performance metrics. Email-ready format for management distribution.
-            </p>
-            <a href="/management-report" style="display: inline-block; padding: 12px 24px; background: #14b8a6; color: white; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; transition: all 0.2s;">
-                View Management Report
-            </a>
+    <div class="nord-grid nord-grid-2">
+        <div class="nord-card nord-card-featured">
+            <div class="nord-card-badge">Featured</div>
+            <div class="nord-card-content">
+                <div class="nord-card-icon">📊</div>
+                <h3 class="nord-card-title">Management Performance Report</h3>
+                <p class="nord-card-description">
+                    Executive-level performance dashboard with quarterly breakdowns, year-over-year comparisons, budget pacing, and AE performance metrics. Email-ready format for management distribution.
+                </p>
+                <a href="/management-report-nord" class="nord-btn nord-btn-primary">❄️ Nordic Version</a>
+                <a href="/management-report" class="nord-btn nord-btn-secondary">Classic Version</a>
+            </div>
         </div>
         
-        <div style="background: linear-gradient(135deg, #fef3c7 0%, #fefce8 100%); border: 2px solid #f59e0b; border-radius: 12px; padding: 28px;">
-            <h3 style="margin: 0 0 12px 0; color: #92400e; font-size: 18px; font-weight: 700;">🎯 Pipeline Revenue Management</h3>
-            <p style="color: #a16207; margin-bottom: 20px; font-size: 14px; line-height: 1.5;">
-                Interactive pipeline-focused revenue management system for bi-weekly reviews. Edit forecasts, analyze gaps, and track review completion for revenue committee meetings.
-            </p>
-            <a href="/pipeline-revenue" style="display: inline-block; padding: 10px 20px; background: #f59e0b; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600;">
-                Launch Pipeline Manager
-            </a>
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">🎯</div>
+                <h3 class="nord-card-title">Pipeline Revenue Management</h3>
+                <p class="nord-card-description">
+                    Interactive pipeline-focused revenue management system for bi-weekly reviews. Edit forecasts, analyze gaps, and track review completion for revenue committee meetings.
+                </p>
+                <a href="/pipeline-revenue" class="nord-btn nord-btn-accent">Launch Pipeline Manager</a>
+            </div>
         </div>
-        
     </div>
 </div>
 
 <!-- Operational Reports Section -->
-<div class="story-section" style="margin-bottom: 48px;">
-    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
-        <span style="background: #059669; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">📈 OPERATIONAL</span>
-        <span style="color: #059669; font-size: 24px; font-weight: 700;">Revenue & Performance Analysis</span>
+<div class="nord-section operational">
+    <div class="nord-section-header">
+        <div class="nord-section-badge">
+            <span>❄️</span>
+            Operational
+        </div>
+        <h2 class="nord-section-title">Revenue & Performance Analysis</h2>
     </div>
-    <p style="color: #6b7280; font-size: 16px; margin-bottom: 32px; max-width: 800px;">
+    <p class="nord-section-description">
         Detailed operational reports for day-to-day revenue tracking, performance monitoring, and business analysis.
     </p>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-        
-        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
-            <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                <div style="background: #f0f9ff; color: #0369a1; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">📊</div>
-                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Monthly Revenue Dashboard</h3>
+    <div class="nord-grid nord-grid-3">
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">📊</div>
+                <h3 class="nord-card-title">Monthly Revenue Dashboard</h3>
+                <p class="nord-card-description">
+                    Interactive customer-level monthly revenue breakdown with year selection, advanced filtering, search, and export capabilities.
+                </p>
+                <a href="/report5" class="nord-btn nord-btn-primary">View Dashboard</a>
             </div>
-            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
-                Interactive customer-level monthly revenue breakdown with year selection, advanced filtering, search, and export capabilities.
-            </p>
-            <a href="/report5" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
-                View Dashboard
-            </a>
         </div>
         
-        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
-            <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                <div style="background: #f0fdf4; color: #16a34a; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">📋</div>
-                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Monthly Revenue Summary</h3>
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">📋</div>
+                <h3 class="nord-card-title">Monthly Revenue Summary</h3>
+                <p class="nord-card-description">
+                    Comprehensive breakdown of revenue by month with key metrics including spot counts, averages, and totals.
+                </p>
+                <a href="/report1-nord" class="nord-btn nord-btn-primary">❄️ Nordic Version</a>
+                <a href="/report1" class="nord-btn nord-btn-secondary">Classic Version</a>
             </div>
-            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
-                Comprehensive breakdown of revenue by month with key metrics including spot counts, averages, and totals.
-            </p>
-            <a href="/report1" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
-                View Report
-            </a>
         </div>
         
-        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
-            <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                <div style="background: #fef2f2; color: #dc2626; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">🎯</div>
-                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Expectation Tracking</h3>
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">🎯</div>
+                <h3 class="nord-card-title">Expectation Tracking</h3>
+                <p class="nord-card-description">
+                    Management expectation tracking comparing budget vs current expectations vs actual performance by quarter and AE.
+                </p>
+                <a href="/report2-nord" class="nord-btn nord-btn-primary">❄️ Nordic Version</a>
+                <a href="/report2" class="nord-btn nord-btn-secondary">Classic Version</a>
             </div>
-            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
-                Management expectation tracking comparing budget vs current expectations vs actual performance by quarter and AE.
-            </p>
-            <a href="/report2" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
-                View Report
-            </a>
         </div>
         
-        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
-            <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                <div style="background: #fefce8; color: #ca8a04; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">📈</div>
-                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Performance Story</h3>
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">📈</div>
+                <h3 class="nord-card-title">Performance Story</h3>
+                <p class="nord-card-description">
+                    Quarterly performance analysis showing revenue progression with year-over-year comparisons and trend analysis.
+                </p>
+                <a href="/report3-nord" class="nord-btn nord-btn-primary">❄️ Nordic Version</a>
+                <a href="/report3" class="nord-btn nord-btn-secondary">Classic Version</a>
             </div>
-            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
-                Quarterly performance analysis showing revenue progression with year-over-year comparisons and trend analysis.
-            </p>
-            <a href="/report3" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
-                View Report
-            </a>
         </div>
         
-        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
-            <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                <div style="background: #f0f9ff; color: #2563eb; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">🏭</div>
-                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Sector Analysis</h3>
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">🏭</div>
+                <h3 class="nord-card-title">Sector Analysis</h3>
+                <p class="nord-card-description">
+                    Enhanced quarterly performance with detailed sector analysis, concentration risk assessment, and AE performance tracking.
+                </p>
+                <a href="/report4-nord" class="nord-btn nord-btn-primary">❄️ Nordic Version</a>
+                <a href="/report4" class="nord-btn nord-btn-secondary">Classic Version</a>
             </div>
-            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
-                Enhanced quarterly performance with detailed sector analysis, concentration risk assessment, and AE performance tracking.
-            </p>
-            <a href="/report4" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
-                View Report
-            </a>
         </div>
-        
     </div>
 </div>
 
 <!-- Market Analysis Section -->
-<div class="story-section" style="margin-bottom: 48px;">
-    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
-        <span style="background: #7c3aed; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">🌍 MARKET</span>
-        <span style="color: #7c3aed; font-size: 24px; font-weight: 700;">Market & Language Analysis</span>
+<div class="nord-section market">
+    <div class="nord-section-header">
+        <div class="nord-section-badge">
+            <span>❄️</span>
+            Market
+        </div>
+        <h2 class="nord-section-title">Market & Language Analysis</h2>
     </div>
-    <p style="color: #6b7280; font-size: 16px; margin-bottom: 32px; max-width: 800px;">
+    <p class="nord-section-description">
         Specialized reports for market penetration, language demographics, and geographic revenue analysis.
     </p>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-        
-        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
-            <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                <div style="background: #fdf2f8; color: #c026d3; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">🗣️</div>
-                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Language Analysis</h3>
+    <div class="nord-grid nord-grid-2">
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">🗣️</div>
+                <h3 class="nord-card-title">Language Analysis</h3>
+                <p class="nord-card-description">
+                    Multi-language market analysis with revenue distribution, audience reach insights, market share analysis, and monthly trends.
+                </p>
+                <a href="/report6-nord" class="nord-btn nord-btn-primary">❄️ Nordic Version</a>
+                <a href="/report6" class="nord-btn nord-btn-secondary">Classic Version</a>
             </div>
-            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
-                Multi-language market analysis with revenue distribution, audience reach insights, market share analysis, and monthly trends.
-            </p>
-            <a href="/report6" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
-                View Analysis
-            </a>
         </div>
         
-        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)'">
-            <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                <div style="background: #ecfdf5; color: #059669; padding: 8px; border-radius: 6px; margin-right: 12px; font-size: 16px;">🌏</div>
-                <h3 style="margin: 0; color: #1f2937; font-size: 16px; font-weight: 600;">Market-Language Analysis</h3>
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">🌏</div>
+                <h3 class="nord-card-title">Market-Language Analysis</h3>
+                <p class="nord-card-description">
+                    Geographic and demographic breakdown showing language performance across markets with penetration insights and revenue heatmaps.
+                </p>
+                <a href="/report7-nord" class="nord-btn nord-btn-primary">❄️ Nordic Version</a>
+                <a href="/report7" class="nord-btn nord-btn-secondary">Classic Version</a>
             </div>
-            <p style="color: #6b7280; margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
-                Geographic and demographic breakdown showing language performance across markets with penetration insights and revenue heatmaps.
-            </p>
-            <a href="/report7" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500;">
-                View Market Analysis
-            </a>
         </div>
-        
     </div>
 </div>
 
 <!-- Administration Section -->
-<div class="story-section" style="margin-bottom: 48px;">
-    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
-        <span style="background: #dc2626; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">⚙️ ADMIN</span>
-        <span style="color: #dc2626; font-size: 24px; font-weight: 700;">System Administration</span>
+<div class="nord-section admin">
+    <div class="nord-section-header">
+        <div class="nord-section-badge">
+            <span>❄️</span>
+            Admin
+        </div>
+        <h2 class="nord-section-title">System Administration</h2>
     </div>
-    <p style="color: #6b7280; font-size: 16px; margin-bottom: 32px; max-width: 800px;">
+    <p class="nord-section-description">
         Administrative functions for budget management, system configuration, and data governance.
     </p>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px;">
-        
-        <div style="background: linear-gradient(135deg, #f3e8ff 0%, #faf5ff 100%); border: 2px solid #8b5cf6; border-radius: 12px; padding: 28px; position: relative; overflow: hidden;">
-            <div style="position: absolute; top: 16px; right: 16px; background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">ADMIN</div>
-            <h3 style="margin: 0 0 12px 0; color: #6b21a8; font-size: 20px; font-weight: 700;">🎯 Budget Management System</h3>
-            <p style="color: #7c2d92; margin-bottom: 20px; font-size: 15px; line-height: 1.5;">
-                Comprehensive budget planning and management system with version control, yearly budget creation, AE allocations, and historical tracking with full audit trails.
-            </p>
-            <a href="/budget-management" style="display: inline-block; padding: 12px 24px; background: #8b5cf6; color: white; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; transition: all 0.2s;">
-                Manage Budgets
-            </a>
+    <div class="nord-grid nord-grid-2">
+        <div class="nord-card nord-card-featured">
+            <div class="nord-card-badge">Admin</div>
+            <div class="nord-card-content">
+                <div class="nord-card-icon">🎯</div>
+                <h3 class="nord-card-title">Budget Management System</h3>
+                <p class="nord-card-description">
+                    Comprehensive budget planning and management system with version control, yearly budget creation, AE allocations, and historical tracking with full audit trails.
+                </p>
+                <a href="/budget-management" class="nord-btn nord-btn-primary">Manage Budgets</a>
+            </div>
         </div>
         
+        <div class="nord-card">
+            <div class="nord-card-content">
+                <div class="nord-card-icon">⚙️</div>
+                <h3 class="nord-card-title">Sector Management</h3>
+                <p class="nord-card-description">
+                    Administrative interface for managing sector classifications, updating business categories, and maintaining data integrity across the revenue analysis system.
+                </p>
+                <a href="/sector-management" class="nord-btn nord-btn-primary">Manage Sectors</a>
+            </div>
+        </div>
     </div>
 </div>
 
 <!-- Technical Resources Section -->
-<div class="story-section" style="margin-bottom: 24px;">
-    <div class="section-title" style="display: flex; align-items: center; margin-bottom: 24px;">
-        <span style="background: #374151; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-right: 16px;">🔧 API</span>
-        <span style="color: #374151; font-size: 24px; font-weight: 700;">Developer Resources</span>
+<div class="nord-section api">
+    <div class="nord-section-header">
+        <div class="nord-section-badge">
+            <span>❄️</span>
+            API
+        </div>
+        <h2 class="nord-section-title">Developer Resources</h2>
     </div>
+    <p class="nord-section-description">
+        Access report data programmatically via API endpoints for integration with external systems.
+    </p>
     
-    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px;">
-        <p style="margin: 0 0 16px 0; font-size: 15px; color: #4b5563;">Access report data programmatically via API endpoints:</p>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
-            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
-                <code style="color: #059669; font-weight: 600;">/api/data/monthly</code>
-                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Monthly revenue summary data</div>
-            </div>
-            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
-                <code style="color: #059669; font-weight: 600;">/api/data/quarterly</code>
-                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Quarterly performance data</div>
-            </div>
-            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
-                <code style="color: #059669; font-weight: 600;">/api/data/ae</code>
-                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Account Executive performance data</div>
-            </div>
-            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
-                <code style="color: #059669; font-weight: 600;">/api/data/sectors</code>
-                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Sector analysis data</div>
-            </div>
-            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 12px;">
-                <code style="color: #059669; font-weight: 600;">/api/data/revenue_dashboard</code>
-                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Customer monthly revenue breakdown</div>
-            </div>
+    <div class="nord-api-grid">
+        <div class="nord-api-card">
+            <div class="nord-api-endpoint">/api/data/monthly</div>
+            <div class="nord-api-description">Monthly revenue summary data</div>
+        </div>
+        <div class="nord-api-card">
+            <div class="nord-api-endpoint">/api/data/quarterly</div>
+            <div class="nord-api-description">Quarterly performance data</div>
+        </div>
+        <div class="nord-api-card">
+            <div class="nord-api-endpoint">/api/data/ae</div>
+            <div class="nord-api-description">Account Executive performance data</div>
+        </div>
+        <div class="nord-api-card">
+            <div class="nord-api-endpoint">/api/data/sectors</div>
+            <div class="nord-api-description">Sector analysis data</div>
+        </div>
+        <div class="nord-api-card">
+            <div class="nord-api-endpoint">/api/data/revenue_dashboard</div>
+            <div class="nord-api-description">Customer monthly revenue breakdown</div>
         </div>
     </div>
 </div>
 
 <!-- System Information -->
-<div class="insight-box">
-    <div class="insight-title">About This System</div>
-    <div class="insight-text">
-        These reports are generated from live data in the CTV Booked Biz database. All revenue figures exclude trade revenue 
-        and focus on actual monetary transactions. Reports are updated in real-time as new data is imported. System includes 
-        comprehensive budget management, version control, and full audit trails for financial compliance.
+<div class="nord-info-box">
+    <div class="nord-info-content">
+        <div class="nord-info-title">❄️ About This Nordic System</div>
+        <div class="nord-info-text">
+            These reports are generated from live data in the CTV Booked Biz database with professional Nordic design excellence. 
+            All revenue figures exclude trade revenue and focus on actual monetary transactions. Reports are updated in real-time 
+            as new data is imported. The system includes comprehensive budget management, version control, and full audit trails 
+            for financial compliance. Nordic versions feature enhanced UX with the Nord color palette for improved readability and aesthetic appeal.
+        </div>
     </div>
 </div>
 

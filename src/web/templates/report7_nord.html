@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Geographic and demographic analysis (Nord Theme){% endblock %}
+
+{% block extra_styles %}
+{% include "nord_base.html" %}
+<style>
+/* Nord Market-Language Report Specific Styles */
+.nord-market-controls {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 24px 0;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: center;
+}
+
+.nord-analysis-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin: 32px 0;
+}
+
+.nord-chart-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+}
+
+.nord-market-badge {
+    background: var(--bg-secondary);
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 9px;
+    color: var(--text-secondary);
+    display: inline-block;
+    margin-left: 4px;
+}
+
+.nord-language-flag {
+    display: inline-block;
+    width: 12px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 4px;
+}
+
+.lang-english { background: var(--nord10); }
+.lang-vietnamese { background: var(--nord11); }
+.lang-tagalog { background: var(--nord14); }
+.lang-spanish { background: var(--nord13); }
+.lang-chinese { background: var(--nord11); }
+.lang-korean { background: var(--nord15); }
+.lang-mandarin { background: var(--nord11); }
+.lang-other { background: var(--nord3); }
+
+@media (max-width: 768px) {
+    .nord-analysis-grid, .nord-chart-pair {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">🗺️</span>
+            Market-Language Analysis - {{ data.selected_year }}
+        </h2>
+    </div>
+    <div class="nord-alert info">
+        Geographic and demographic analysis across {{ data.market_count }} markets and {{ data.language_count }} languages.
+        <strong>Total revenue:</strong> ${{ "{:,.0f}".format(data.total_revenue) }} |
+        <strong>{{ data.total_customers }} customers</strong> |
+        <strong>{{ data.total_markets }} markets</strong> |
+        {% if data.top_combination %}
+        <strong>Top combination:</strong> {{ data.top_combination.market_name }} - {{ data.top_combination.language_name }} (${{ "{:,.0f}".format(data.top_combination.total_revenue) }})
+        {% endif %}
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">⚙️</span>
+            Analysis Controls
+        </h2>
+    </div>
+    
+    <div class="nord-market-controls">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <label for="yearSelect" style="font-size: 14px; font-weight: 600; color: var(--text-primary);">Analysis Year:</label>
+            <select id="yearSelect" class="nord-select">
+                {% for year in data.available_years %}
+                <option value="{{ year }}" {% if year == data.selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📊</span>
+            Market-Language Overview
+        </h2>
+    </div>
+    
+    <div class="nord-stats-grid">
+        <div class="nord-stat-card">
+            <div class="nord-stat-value">{{ data.market_count }}</div>
+            <div class="nord-stat-label">Markets</div>
+        </div>
+        <div class="nord-stat-card">
+            <div class="nord-stat-value">{{ data.language_count }}</div>
+            <div class="nord-stat-label">Languages</div>
+        </div>
+        <div class="nord-stat-card">
+            <div class="nord-stat-value">${{ "{:,.0f}".format(data.total_revenue) }}</div>
+            <div class="nord-stat-label">Total Revenue</div>
+        </div>
+        <div class="nord-stat-card">
+            <div class="nord-stat-value">{{ data.total_customers }}</div>
+            <div class="nord-stat-label">Customers</div>
+        </div>
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📈</span>
+            Market & Language Distribution
+        </h2>
+    </div>
+    
+    <div class="nord-chart-pair">
+        <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; height: 350px;">
+            <h3 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 16px; font-weight: 600;">Revenue by Market</h3>
+            <canvas id="marketChart" style="max-height: 290px;"></canvas>
+        </div>
+        
+        <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; height: 350px;">
+            <h3 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 16px; font-weight: 600;">Revenue by Language</h3>
+            <canvas id="languageChart" style="max-height: 290px;"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📋</span>
+            Market-Language Breakdown
+        </h2>
+    </div>
+    
+    <table class="nord-table">
+        <thead>
+            <tr>
+                <th>Market</th>
+                <th>Language</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Customers</th>
+                <th class="number">Market Share</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for combo in data.market_language_combinations %}
+            {% if combo.market_name %}
+            <tr style="{% if loop.first or data.market_language_combinations[loop.index0 - 1].market_name != combo.market_name %}background: var(--bg-secondary);{% endif %}">
+                <td style="{% if loop.first or data.market_language_combinations[loop.index0 - 1].market_name != combo.market_name %}font-weight: 600; color: var(--text-primary);{% else %}color: var(--text-muted); font-size: 12px;{% endif %}">
+                    {% if loop.first or data.market_language_combinations[loop.index0 - 1].market_name != combo.market_name %}
+                        {{ combo.market_name }}
+                        <span class="nord-market-badge">{{ combo.market_language_count }} languages</span>
+                    {% else %}
+                        ↳
+                    {% endif %}
+                </td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="nord-language-flag lang-{{ combo.language_name.lower() }}"></span>
+                        <span style="font-weight: 500; color: var(--text-primary);">{{ combo.language_name }}</span>
+                    </div>
+                </td>
+                <td class="number">${{ "{:,.0f}".format(combo.total_revenue) if combo.total_revenue else "0" }}</td>
+                <td class="number">{{ "{:,}".format(combo.spot_count) if combo.spot_count else "0" }}</td>
+                <td class="number">{{ combo.customer_count or 0 }}</td>
+                <td class="number">
+                    {% if combo.language_share_pct >= 25 %}
+                        <span style="background: var(--accent-success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">{{ combo.language_share_pct }}%</span>
+                    {% elif combo.language_share_pct >= 10 %}
+                        <span style="background: var(--accent-info); color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">{{ combo.language_share_pct }}%</span>
+                    {% elif combo.language_share_pct >= 5 %}
+                        <span style="background: var(--accent-warning); color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">{{ combo.language_share_pct }}%</span>
+                    {% else %}
+                        <span style="background: var(--text-muted); color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">{{ combo.language_share_pct }}%</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">🏆</span>
+            Top Market-Language Combinations
+        </h2>
+    </div>
+    
+    <div class="nord-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+        {% for combo in data.top_combinations[:6] %}
+        <div class="nord-stat-card" style="padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0;">{{ combo.market_name }}</h3>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                        <span class="nord-language-flag lang-{{ combo.language_name.lower() }}"></span>
+                        <span style="font-size: 14px; color: var(--text-secondary);">{{ combo.language_name }}</span>
+                    </div>
+                </div>
+                {% if combo.total_revenue > 500000 %}
+                    <span style="padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--accent-success); color: white;">TOP</span>
+                {% elif combo.total_revenue > 200000 %}
+                    <span style="padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--accent-info); color: white;">STRONG</span>
+                {% else %}
+                    <span style="padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--accent-warning); color: white;">EMERGING</span>
+                {% endif %}
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div style="text-align: center; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+                    <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">Revenue</div>
+                    <div style="font-size: 16px; font-weight: 700; color: var(--accent-primary);">
+                        ${{ "{:,.0f}".format(combo.total_revenue) }}
+                    </div>
+                </div>
+                <div style="text-align: center; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+                    <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">Customers</div>
+                    <div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">{{ combo.customer_count }}</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Hidden data for JavaScript -->
+<script id="chart-data" type="application/json">
+{{ data | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Get data from the hidden script tag
+const dataScript = document.getElementById('chart-data');
+const reportData = JSON.parse(dataScript.textContent);
+
+// Nord color palette
+const nordColors = [
+    '#5e81ac', '#88c0d0', '#a3be8c', '#ebcb8b', '#d08770', 
+    '#b48ead', '#8fbcbb', '#bf616a', '#4c566a', '#81a1c1'
+];
+
+// Market Chart
+const ctxMarket = document.getElementById('marketChart').getContext('2d');
+const marketData = {};
+reportData.market_language_combinations.forEach(combo => {
+    if (!marketData[combo.market_name]) {
+        marketData[combo.market_name] = 0;
+    }
+    marketData[combo.market_name] += combo.total_revenue || 0;
+});
+
+new Chart(ctxMarket, {
+    type: 'doughnut',
+    data: {
+        labels: Object.keys(marketData),
+        datasets: [{
+            data: Object.values(marketData),
+            backgroundColor: nordColors.slice(0, Object.keys(marketData).length),
+            borderColor: '#eceff4',
+            borderWidth: 2
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    color: '#4c566a',
+                    font: { family: 'Inter', size: 10 },
+                    padding: 10
+                }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(46, 52, 64, 0.95)',
+                titleColor: '#eceff4',
+                bodyColor: '#d8dee9',
+                borderColor: '#5e81ac',
+                borderWidth: 1,
+                callbacks: {
+                    label: function(context) {
+                        return context.label + ': $' + context.parsed.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Language Chart
+const ctxLanguage = document.getElementById('languageChart').getContext('2d');
+const languageData = {};
+reportData.market_language_combinations.forEach(combo => {
+    if (!languageData[combo.language_name]) {
+        languageData[combo.language_name] = 0;
+    }
+    languageData[combo.language_name] += combo.total_revenue || 0;
+});
+
+new Chart(ctxLanguage, {
+    type: 'doughnut',
+    data: {
+        labels: Object.keys(languageData),
+        datasets: [{
+            data: Object.values(languageData),
+            backgroundColor: nordColors.slice(0, Object.keys(languageData).length),
+            borderColor: '#eceff4',
+            borderWidth: 2
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    color: '#4c566a',
+                    font: { family: 'Inter', size: 10 },
+                    padding: 10
+                }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(46, 52, 64, 0.95)',
+                titleColor: '#eceff4',
+                bodyColor: '#d8dee9',
+                borderColor: '#5e81ac',
+                borderWidth: 1,
+                callbacks: {
+                    label: function(context) {
+                        return context.label + ': $' + context.parsed.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Year selector functionality
+document.getElementById('yearSelect').addEventListener('change', function() {
+    const selectedYear = this.value;
+    window.location.href = `/report7-nord?year=${selectedYear}`;
+});
+</script>
+{% endblock %} 

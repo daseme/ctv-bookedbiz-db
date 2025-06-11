@@ -1,0 +1,404 @@
+<!-- Nord Theme CSS Module - Include this in any template to apply Nordic ice aesthetic -->
+<style>
+/* Nord Color Palette */
+:root {
+    /* Nord Polar Night */
+    --nord0: #2e3440;
+    --nord1: #3b4252;
+    --nord2: #434c5e;
+    --nord3: #4c566a;
+    
+    /* Nord Snow Storm */
+    --nord4: #d8dee9;
+    --nord5: #e5e9f0;
+    --nord6: #eceff4;
+    
+    /* Nord Frost */
+    --nord7: #8fbcbb;  /* Frost Teal */
+    --nord8: #88c0d0;  /* Frost Light Blue */
+    --nord9: #81a1c1;  /* Frost Blue */
+    --nord10: #5e81ac; /* Frost Dark Blue */
+    
+    /* Nord Aurora */
+    --nord11: #bf616a; /* Aurora Red */
+    --nord12: #d08770; /* Aurora Orange */
+    --nord13: #ebcb8b; /* Aurora Yellow */
+    --nord14: #a3be8c; /* Aurora Green */
+    --nord15: #b48ead; /* Aurora Purple */
+    
+    /* Semantic Variables */
+    --bg-primary: var(--nord6);
+    --bg-secondary: var(--nord5);
+    --bg-tertiary: var(--nord4);
+    --text-primary: var(--nord0);
+    --text-secondary: var(--nord3);
+    --text-muted: var(--nord3);
+    --border-color: var(--nord4);
+    --shadow-color: rgba(46, 52, 64, 0.1);
+    
+    /* Accent Colors */
+    --accent-primary: var(--nord10);
+    --accent-success: var(--nord14);
+    --accent-warning: var(--nord13);
+    --accent-danger: var(--nord11);
+    --accent-info: var(--nord8);
+}
+
+/* Override base styles for Nord theme */
+body {
+    background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Nord Navigation Bar Override */
+.top-nav {
+    background: linear-gradient(135deg, var(--nord0) 0%, var(--nord1) 100%) !important;
+    box-shadow: 0 2px 4px rgba(46, 52, 64, 0.3) !important;
+}
+
+.main-nav {
+    background: var(--bg-secondary) !important;
+    border-top: 1px solid var(--nord7) !important;
+}
+
+.nav-section-label {
+    color: var(--nord4) !important;
+}
+
+.nav-section.executive .nav-section-label { 
+    color: var(--nord8) !important; 
+}
+.nav-section.operational .nav-section-label { 
+    color: var(--nord14) !important; 
+}
+.nav-section.market .nav-section-label { 
+    color: var(--nord15) !important; 
+}
+.nav-section.admin .nav-section-label { 
+    color: var(--nord11) !important; 
+}
+
+.nav-section:hover .nav-section-label,
+.nav-section.active .nav-section-label {
+    color: var(--nord6) !important;
+}
+
+.nav-section.executive:hover .nav-section-label,
+.nav-section.executive.active .nav-section-label {
+    border-bottom-color: var(--nord8) !important;
+}
+.nav-section.operational:hover .nav-section-label,
+.nav-section.operational.active .nav-section-label {
+    border-bottom-color: var(--nord14) !important;
+}
+.nav-section.market:hover .nav-section-label,
+.nav-section.market.active .nav-section-label {
+    border-bottom-color: var(--nord15) !important;
+}
+.nav-section.admin:hover .nav-section-label,
+.nav-section.admin.active .nav-section-label {
+    border-bottom-color: var(--nord11) !important;
+}
+
+.container {
+    background: var(--bg-primary);
+    box-shadow: 0 4px 20px var(--shadow-color);
+    border: 1px solid var(--border-color);
+}
+
+.header {
+    background: linear-gradient(135deg, var(--nord6) 0%, rgba(255,255,255,0.8) 100%);
+    border-bottom: 2px solid var(--border-color);
+    backdrop-filter: blur(8px);
+}
+
+.header h1 {
+    color: var(--text-primary);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+}
+
+.header .subtitle {
+    color: var(--text-secondary);
+}
+
+/* Nord Report Sections */
+.nord-section {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 16px var(--shadow-color);
+    backdrop-filter: blur(8px);
+}
+
+.nord-section-header {
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 16px;
+    margin-bottom: 24px;
+}
+
+.nord-section-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nord-section-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--nord9));
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+}
+
+/* Nord Tables */
+.nord-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px var(--shadow-color);
+    background: var(--bg-primary);
+}
+
+.nord-table th {
+    background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.nord-table th.number {
+    text-align: right;
+}
+
+.nord-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.nord-table td.number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+}
+
+.nord-table tr:hover {
+    background: var(--bg-secondary);
+}
+
+.nord-table tr.total {
+    background: linear-gradient(135deg, var(--bg-secondary), var(--bg-primary));
+    font-weight: 600;
+}
+
+.nord-table tr.total td {
+    border-top: 2px solid var(--border-color);
+    background: transparent;
+}
+
+/* Nord Buttons */
+.nord-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 14px;
+    border: 1px solid transparent;
+}
+
+.nord-btn-primary {
+    background: linear-gradient(135deg, var(--accent-primary), var(--nord9));
+    color: white;
+    box-shadow: 0 2px 8px rgba(94, 129, 172, 0.3);
+}
+
+.nord-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(94, 129, 172, 0.4);
+}
+
+.nord-btn-secondary {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.nord-btn-secondary:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--text-muted);
+}
+
+/* Nord Form Controls */
+.nord-form-group {
+    margin-bottom: 16px;
+}
+
+.nord-label {
+    display: block;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+
+.nord-input, .nord-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.nord-input:focus, .nord-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(94, 129, 172, 0.1);
+}
+
+/* Nord Stats Cards */
+.nord-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+}
+
+.nord-stat-card {
+    background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 12px var(--shadow-color);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.nord-stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-primary), var(--nord9));
+}
+
+.nord-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px var(--shadow-color);
+}
+
+.nord-stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent-primary);
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+.nord-stat-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Nord Alerts */
+.nord-alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 16px 0;
+    border-left: 4px solid;
+}
+
+.nord-alert.info {
+    background: rgba(136, 192, 208, 0.1);
+    border-left-color: var(--accent-info);
+    color: var(--text-primary);
+}
+
+.nord-alert.success {
+    background: rgba(163, 190, 140, 0.1);
+    border-left-color: var(--accent-success);
+    color: var(--text-primary);
+}
+
+.nord-alert.warning {
+    background: rgba(235, 203, 139, 0.1);
+    border-left-color: var(--accent-warning);
+    color: var(--text-primary);
+}
+
+.nord-alert.danger {
+    background: rgba(191, 97, 106, 0.1);
+    border-left-color: var(--accent-danger);
+    color: var(--text-primary);
+}
+
+/* Nord Filters */
+.nord-filters {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    align-items: end;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .nord-stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .nord-filters {
+        grid-template-columns: 1fr;
+    }
+    
+    .nord-table {
+        font-size: 12px;
+    }
+    
+    .nord-table th,
+    .nord-table td {
+        padding: 8px 10px;
+    }
+}
+</style>
+
+<!-- Google Fonts for better typography -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"> 
