@@ -1,0 +1,915 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Manage customer sector assignments and classifications{% endblock %}
+
+{% block extra_styles %}
+<style>
+/* Sector Management Styles */
+.management-container {
+    margin: 0 auto;
+    padding: 24px;
+}
+
+.controls-panel {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.controls-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 200px;
+}
+
+.control-group label {
+    font-weight: 600;
+    color: #4a5568;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.control-group input, .control-group select {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    color: #374151;
+    min-width: 150px;
+}
+
+.control-group input:focus, .control-group select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-secondary {
+    background: #6b7280;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #4b5563;
+}
+
+.btn-success {
+    background: #10b981;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #059669;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 4px;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.data-table {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+
+.table-header {
+    background: #f8fafc;
+    padding: 16px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.table-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.table-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.customers-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.customers-table th {
+    background: #f9fafb;
+    padding: 12px 8px;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.customers-table td {
+    padding: 12px 8px;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 13px;
+    vertical-align: middle;
+}
+
+.customers-table tr:hover {
+    background: #f9fafb;
+}
+
+.customer-name {
+    font-weight: 600;
+    color: #1f2937;
+    max-width: 250px;
+    word-break: break-word;
+}
+
+.sector-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sector-commercial { background: #dcfce7; color: #166534; }
+.sector-financial { background: #fef3c7; color: #92400e; }
+.sector-outreach { background: #dbeafe; color: #1e40af; }
+.sector-political { background: #fed7d7; color: #b91c1c; }
+.sector-unassigned { background: #f3f4f6; color: #6b7280; }
+
+.revenue-amount {
+    font-weight: 600;
+    color: #059669;
+    text-align: right;
+}
+
+.sector-select {
+    min-width: 120px;
+    padding: 4px 8px;
+    font-size: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin: 24px 0;
+}
+
+.pagination a, .pagination span {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #374151;
+    font-size: 14px;
+}
+
+.pagination a:hover {
+    background: #f3f4f6;
+}
+
+.pagination .current {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+}
+
+.pagination .disabled {
+    color: #9ca3af;
+    pointer-events: none;
+}
+
+.sector-distribution {
+    margin: 24px 0;
+}
+
+.distribution-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.distribution-item {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+}
+
+.distribution-sector {
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 4px;
+}
+
+.distribution-count {
+    font-size: 18px;
+    font-weight: 700;
+    color: #3b82f6;
+    margin-bottom: 2px;
+}
+
+.distribution-percentage {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.bulk-actions {
+    background: #fffbeb;
+    border: 1px solid #fed7aa;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+    display: none;
+}
+
+.bulk-actions.active {
+    display: block;
+}
+
+.bulk-actions-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.selected-count {
+    font-weight: 600;
+    color: #92400e;
+}
+
+.checkbox-cell {
+    width: 30px;
+    text-align: center;
+}
+
+.customer-checkbox {
+    margin: 0;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background: white;
+    margin: 15% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.close {
+    color: #9ca3af;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close:hover {
+    color: #374151;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.form-group input, .form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.alert {
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+.alert-success {
+    background: #dcfce7;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+}
+
+.alert-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}
+
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f3f4f6;
+    border-top: 2px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="management-container">
+    <!-- Stats Overview -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">{{ "{:,}".format(data.stats.total_customers) }}</div>
+            <div class="stat-label">Total Customers</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ "{:,}".format(data.stats.assigned_customers) }}</div>
+            <div class="stat-label">Assigned</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ "{:,}".format(data.stats.unassigned_customers) }}</div>
+            <div class="stat-label">Unassigned</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ "{:.1f}".format(data.stats.assignment_percentage) }}%</div>
+            <div class="stat-label">Assignment Rate</div>
+        </div>
+    </div>
+
+    <!-- Sector Distribution -->
+    <div class="sector-distribution">
+        <h3>Sector Distribution</h3>
+        <div class="distribution-grid">
+            {% for dist in data.sector_distribution %}
+            <div class="distribution-item">
+                <div class="distribution-sector">{{ dist.sector_name }}</div>
+                <div class="distribution-count">{{ "{:,}".format(dist.customer_count) }}</div>
+                <div class="distribution-percentage">{{ "{:.1f}".format(dist.percentage) }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Controls Panel -->
+    <div class="controls-panel">
+        <form method="GET" id="filter-form">
+            <div class="controls-row">
+                <div class="control-group">
+                    <label for="search">Search:</label>
+                    <input type="text" id="search" name="search" value="{{ data.filters.search }}" 
+                           placeholder="Customer name...">
+                </div>
+                
+                <div class="control-group">
+                    <label for="sector">Sector:</label>
+                    <select id="sector" name="sector">
+                        <option value="">All Sectors</option>
+                        {% for sector in data.sectors %}
+                        <option value="{{ sector.sector_code }}" 
+                                {% if sector.sector_code == data.filters.sector %}selected{% endif %}>
+                            {{ sector.sector_code }} - {{ sector.sector_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="assignment">Assignment:</label>
+                    <select id="assignment" name="assignment">
+                        <option value="">All Customers</option>
+                        <option value="assigned" {% if data.filters.assignment == 'assigned' %}selected{% endif %}>
+                            Assigned Only
+                        </option>
+                        <option value="unassigned" {% if data.filters.assignment == 'unassigned' %}selected{% endif %}>
+                            Unassigned Only
+                        </option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a href="/sector-management" class="btn btn-secondary">Reset</a>
+            </div>
+        </form>
+        
+        <div class="controls-row">
+            <button type="button" class="btn btn-success" onclick="openCreateSectorModal()">
+                Create New Sector
+            </button>
+            <button type="button" class="btn btn-primary" onclick="selectAll()">
+                Select All
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="clearSelection()">
+                Clear Selection
+            </button>
+        </div>
+    </div>
+
+    <!-- Bulk Actions Panel -->
+    <div id="bulk-actions" class="bulk-actions">
+        <div class="bulk-actions-content">
+            <span class="selected-count" id="selected-count">0 customers selected</span>
+            <select id="bulk-sector" class="sector-select">
+                <option value="">Select sector...</option>
+                <option value="">-- Remove Assignment --</option>
+                {% for sector in data.sectors %}
+                <option value="{{ sector.sector_id }}">{{ sector.sector_code }} - {{ sector.sector_name }}</option>
+                {% endfor %}
+            </select>
+            <button type="button" class="btn btn-success btn-sm" onclick="bulkAssign()">
+                Assign Selected
+            </button>
+        </div>
+    </div>
+
+    <!-- Customers Table -->
+    <div class="data-table">
+        <div class="table-header">
+            <div class="table-title">
+                Customer Management 
+                ({{ "{:,}".format(data.pagination.total_count) }} total, 
+                 showing {{ ((data.pagination.page - 1) * data.pagination.per_page + 1) }} - 
+                 {{ ((data.pagination.page - 1) * data.pagination.per_page + data.customers|length) }})
+            </div>
+        </div>
+        
+        <table class="customers-table">
+            <thead>
+                <tr>
+                    <th class="checkbox-cell">
+                        <input type="checkbox" id="select-all" onchange="toggleSelectAll()">
+                    </th>
+                    <th>Customer Name</th>
+                    <th>Current Sector</th>
+                    <th>Group</th>
+                    <th>Revenue</th>
+                    <th>Spots</th>
+                    <th>Avg Rate</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for customer in data.customers %}
+                <tr data-customer-id="{{ customer.customer_id }}">
+                    <td class="checkbox-cell">
+                        <input type="checkbox" class="customer-checkbox" 
+                               value="{{ customer.customer_id }}" onchange="updateSelection()">
+                    </td>
+                    <td class="customer-name">{{ customer.normalized_name }}</td>
+                    <td>
+                        {% if customer.sector_code %}
+                        <span class="sector-badge sector-{{ customer.sector_group|lower }}">
+                            {{ customer.sector_code }}
+                        </span>
+                        {% else %}
+                        <span class="sector-badge sector-unassigned">UNASSIGNED</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ customer.sector_group or 'N/A' }}</td>
+                    <td class="revenue-amount">
+                        {% if customer.total_revenue %}
+                        ${{ "{:,.0f}".format(customer.total_revenue) }}
+                        {% else %}
+                        $0
+                        {% endif %}
+                    </td>
+                    <td>{{ "{:,}".format(customer.spot_count or 0) }}</td>
+                    <td>
+                        {% if customer.avg_rate %}
+                        ${{ "{:,.0f}".format(customer.avg_rate) }}
+                        {% else %}
+                        $0
+                        {% endif %}
+                    </td>
+                    <td>
+                        <select class="sector-select" 
+                                onchange="assignSector({{ customer.customer_id }}, this.value)">
+                            <option value="">-- Select Sector --</option>
+                            <option value="">Remove Assignment</option>
+                            {% for sector in data.sectors %}
+                            <option value="{{ sector.sector_id }}" 
+                                    {% if sector.sector_id == customer.sector_id %}selected{% endif %}>
+                                {{ sector.sector_code }} - {{ sector.sector_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination">
+        {% if data.pagination.has_prev %}
+        <a href="?page={{ data.pagination.page - 1 }}&search={{ data.filters.search }}&sector={{ data.filters.sector }}&assignment={{ data.filters.assignment }}">
+            Previous
+        </a>
+        {% else %}
+        <span class="disabled">Previous</span>
+        {% endif %}
+        
+        <span class="current">{{ data.pagination.page }}</span>
+        <span>of {{ data.pagination.total_pages }}</span>
+        
+        {% if data.pagination.has_next %}
+        <a href="?page={{ data.pagination.page + 1 }}&search={{ data.filters.search }}&sector={{ data.filters.sector }}&assignment={{ data.filters.assignment }}">
+            Next
+        </a>
+        {% else %}
+        <span class="disabled">Next</span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Create Sector Modal -->
+<div id="create-sector-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Create New Sector</h3>
+            <span class="close" onclick="closeCreateSectorModal()">&times;</span>
+        </div>
+        <form id="create-sector-form">
+            <div class="form-group">
+                <label for="sector-code">Sector Code (e.g., AUTO, TECH):</label>
+                <input type="text" id="sector-code" name="sector_code" required 
+                       placeholder="Enter sector code..." maxlength="10">
+            </div>
+            <div class="form-group">
+                <label for="sector-name">Sector Name:</label>
+                <input type="text" id="sector-name" name="sector_name" required 
+                       placeholder="Enter sector name...">
+            </div>
+            <div class="form-group">
+                <label for="sector-group">Sector Group:</label>
+                <select id="sector-group" name="sector_group">
+                    <option value="">Select group...</option>
+                    <option value="Commercial">Commercial</option>
+                    <option value="Financial">Financial</option>
+                    <option value="Community">Community</option>
+                    <option value="Public">Public</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div style="text-align: right; margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" onclick="closeCreateSectorModal()">
+                    Cancel
+                </button>
+                <button type="submit" class="btn btn-success">
+                    Create Sector
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Alert Container -->
+<div id="alert-container" style="position: fixed; top: 20px; right: 20px; z-index: 1001;">
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+console.log('Sector Management JavaScript loading...');
+
+let selectedCustomers = new Set();
+
+// Update selection tracking
+function updateSelection() {
+    const checkboxes = document.querySelectorAll('.customer-checkbox:checked');
+    selectedCustomers.clear();
+    
+    checkboxes.forEach(cb => {
+        selectedCustomers.add(parseInt(cb.value));
+    });
+    
+    const count = selectedCustomers.size;
+    const bulkActions = document.getElementById('bulk-actions');
+    const selectedCount = document.getElementById('selected-count');
+    
+    if (count > 0) {
+        bulkActions.classList.add('active');
+        selectedCount.textContent = `${count} customer${count !== 1 ? 's' : ''} selected`;
+    } else {
+        bulkActions.classList.remove('active');
+    }
+    
+    // Update select all checkbox
+    const selectAll = document.getElementById('select-all');
+    const allCheckboxes = document.querySelectorAll('.customer-checkbox');
+    selectAll.indeterminate = count > 0 && count < allCheckboxes.length;
+    selectAll.checked = count === allCheckboxes.length;
+}
+
+// Toggle select all
+function toggleSelectAll() {
+    const selectAll = document.getElementById('select-all');
+    const checkboxes = document.querySelectorAll('.customer-checkbox');
+    
+    checkboxes.forEach(cb => {
+        cb.checked = selectAll.checked;
+    });
+    
+    updateSelection();
+}
+
+// Select all visible customers
+function selectAll() {
+    const checkboxes = document.querySelectorAll('.customer-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = true;
+    });
+    updateSelection();
+}
+
+// Clear all selections
+function clearSelection() {
+    const checkboxes = document.querySelectorAll('.customer-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = false;
+    });
+    updateSelection();
+}
+
+// Assign individual customer to sector
+async function assignSector(customerId, sectorId) {
+    try {
+        const response = await fetch('/api/assign-sector', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                customer_id: customerId,
+                sector_id: sectorId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', result.message);
+            // Refresh the page to show updated data
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showAlert('error', result.error || 'Assignment failed');
+        }
+    } catch (error) {
+        console.error('Assignment error:', error);
+        showAlert('error', 'Failed to assign sector');
+    }
+}
+
+// Bulk assign sectors
+async function bulkAssign() {
+    const sectorSelect = document.getElementById('bulk-sector');
+    const sectorId = sectorSelect.value;
+    
+    if (selectedCustomers.size === 0) {
+        showAlert('error', 'Please select customers first');
+        return;
+    }
+    
+    if (!sectorId && sectorId !== '') {
+        showAlert('error', 'Please select a sector');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/bulk-assign-sector', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                customer_ids: Array.from(selectedCustomers),
+                sector_id: sectorId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', result.message);
+            // Refresh the page to show updated data
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showAlert('error', result.error || 'Bulk assignment failed');
+        }
+    } catch (error) {
+        console.error('Bulk assignment error:', error);
+        showAlert('error', 'Failed to assign sectors');
+    }
+}
+
+// Create new sector modal functions
+function openCreateSectorModal() {
+    document.getElementById('create-sector-modal').style.display = 'block';
+}
+
+function closeCreateSectorModal() {
+    document.getElementById('create-sector-modal').style.display = 'none';
+    document.getElementById('create-sector-form').reset();
+}
+
+// Create sector form submission
+document.getElementById('create-sector-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData);
+    
+    try {
+        const response = await fetch('/api/create-sector', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', result.message);
+            closeCreateSectorModal();
+            // Refresh the page to show new sector
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showAlert('error', result.error || 'Failed to create sector');
+        }
+    } catch (error) {
+        console.error('Create sector error:', error);
+        showAlert('error', 'Failed to create sector');
+    }
+});
+
+// Show alert messages
+function showAlert(type, message) {
+    const container = document.getElementById('alert-container');
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${type}`;
+    alert.textContent = message;
+    
+    container.appendChild(alert);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.parentNode.removeChild(alert);
+        }
+    }, 5000);
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('create-sector-modal');
+    if (event.target === modal) {
+        closeCreateSectorModal();
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Sector Management page loaded');
+    updateSelection();
+});
+
+console.log('Sector Management JavaScript loaded');
+</script>
+{% endblock %} 

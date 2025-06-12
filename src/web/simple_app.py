@@ -1716,6 +1716,168 @@ def assign_sector():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/sector-management-old')
+def sector_management_old():
+    """Sector management dashboard (Legacy Version)."""
+    try:
+        conn = get_db_connection()
+        
+        # Get filter parameters
+        search_term = request.args.get('search', '').strip()
+        sector_filter = request.args.get('sector', '')
+        assignment_filter = request.args.get('assignment', '')  # 'assigned', 'unassigned', 'all'
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 50))
+        
+        # Get all sectors for dropdown
+        sectors_query = """
+        SELECT sector_id, sector_code, sector_name, sector_group
+        FROM sectors 
+        WHERE is_active = 1 
+        ORDER BY sector_group, sector_code
+        """
+        cursor = conn.execute(sectors_query)
+        sectors = [dict(row) for row in cursor.fetchall()]
+        
+        # Build customer query with filters
+        customer_query = """
+        SELECT 
+            c.customer_id,
+            c.normalized_name,
+            c.sector_id,
+            s.sector_code,
+            s.sector_name,
+            s.sector_group,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            ROUND(AVG(sp.gross_rate), 2) as avg_rate,
+            MIN(sp.broadcast_month) as first_spot,
+            MAX(sp.broadcast_month) as last_spot
+        FROM customers c
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        LEFT JOIN spots sp ON c.customer_id = sp.customer_id 
+            AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        WHERE c.is_active = 1
+        """
+        
+        params = []
+        
+        # Apply filters
+        if search_term:
+            customer_query += " AND c.normalized_name LIKE ?"
+            params.append(f"%{search_term}%")
+        
+        if sector_filter:
+            customer_query += " AND s.sector_code = ?"
+            params.append(sector_filter)
+        
+        if assignment_filter == 'assigned':
+            customer_query += " AND c.sector_id IS NOT NULL"
+        elif assignment_filter == 'unassigned':
+            customer_query += " AND c.sector_id IS NULL"
+        
+        customer_query += """
+        GROUP BY c.customer_id, c.normalized_name, c.sector_id, s.sector_code, s.sector_name, s.sector_group
+        ORDER BY total_revenue DESC
+        """
+        
+        # Add pagination
+        offset = (page - 1) * per_page
+        customer_query += f" LIMIT {per_page} OFFSET {offset}"
+        
+        cursor = conn.execute(customer_query, params)
+        customers = [dict(row) for row in cursor.fetchall()]
+        
+        # Get total count for pagination
+        count_query = """
+        SELECT COUNT(DISTINCT c.customer_id) as total_count
+        FROM customers c
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        LEFT JOIN spots sp ON c.customer_id = sp.customer_id 
+            AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+        WHERE c.is_active = 1
+        """
+        
+        count_params = []
+        if search_term:
+            count_query += " AND c.normalized_name LIKE ?"
+            count_params.append(f"%{search_term}%")
+        
+        if sector_filter:
+            count_query += " AND s.sector_code = ?"
+            count_params.append(sector_filter)
+        
+        if assignment_filter == 'assigned':
+            count_query += " AND c.sector_id IS NOT NULL"
+        elif assignment_filter == 'unassigned':
+            count_query += " AND c.sector_id IS NULL"
+        
+        cursor = conn.execute(count_query, count_params)
+        total_count = cursor.fetchone()[0]
+        
+        # Get summary statistics
+        stats_query = """
+        SELECT 
+            COUNT(*) as total_customers,
+            COUNT(sector_id) as assigned_customers,
+            COUNT(*) - COUNT(sector_id) as unassigned_customers,
+            ROUND(COUNT(sector_id) * 100.0 / COUNT(*), 1) as assignment_percentage
+        FROM customers 
+        WHERE is_active = 1
+        """
+        cursor = conn.execute(stats_query)
+        stats = dict(cursor.fetchone())
+        
+        # Sector distribution
+        sector_dist_query = """
+        SELECT 
+            COALESCE(s.sector_code, 'UNASSIGNED') as sector_code,
+            COALESCE(s.sector_name, 'Unassigned') as sector_name,
+            COALESCE(s.sector_group, 'UNASSIGNED') as sector_group,
+            COUNT(c.customer_id) as customer_count,
+            ROUND(COUNT(c.customer_id) * 100.0 / (
+                SELECT COUNT(*) FROM customers WHERE is_active = 1
+            ), 1) as percentage
+        FROM customers c
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE c.is_active = 1
+        GROUP BY s.sector_id, s.sector_code, s.sector_name, s.sector_group
+        ORDER BY customer_count DESC
+        """
+        cursor = conn.execute(sector_dist_query)
+        sector_distribution = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        # Calculate pagination info
+        total_pages = (total_count + per_page - 1) // per_page
+        has_prev = page > 1
+        has_next = page < total_pages
+        
+        data = {
+            'customers': customers,
+            'sectors': sectors,
+            'stats': stats,
+            'sector_distribution': sector_distribution,
+            'filters': {
+                'search': search_term,
+                'sector': sector_filter,
+                'assignment': assignment_filter
+            },
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total_count': total_count,
+                'total_pages': total_pages,
+                'has_prev': has_prev,
+                'has_next': has_next
+            }
+        }
+        
+        return render_template('sector_management_old.html', title="Sector Management (Legacy)", data=data)
+    except Exception as e:
+        return f"Error loading sector management old: {str(e)}", 500
+
 # ===== PIPELINE REVENUE MANAGEMENT ROUTES =====
 
 @app.route('/pipeline-revenue')
@@ -3239,10 +3401,61 @@ def budget_management():
             company_budgets=company_budgets,
             ae_budgets=ae_budgets,
             has_current_data=has_current_data,
-            budget_versions=budget_versions
+            budget_versions=budget_versions,
+            title='Budget Management'
         )
     except Exception as e:
         print(f"Error in budget management: {e}")
+        return f"Error: {e}", 500
+
+@app.route('/budget-management-old')
+def budget_management_old():
+    """Budget Management Interface (Legacy Version)."""
+    try:
+        warehouse = BudgetWarehouse()
+        
+        # Get available budget years/versions
+        conn = get_db_connection()
+        cursor = conn.execute("""
+        SELECT DISTINCT year, COUNT(*) as version_count
+        FROM budget_versions 
+        ORDER BY year DESC
+        """)
+        available_years = cursor.fetchall()
+        
+        # Get current active budgets summary
+        current_year = datetime.now().year
+        try:
+            company_budgets = warehouse.get_company_budget_totals(current_year)
+            ae_budgets = warehouse.get_quarterly_budget_summary(current_year)
+            has_current_data = True
+        except:
+            company_budgets = {}
+            ae_budgets = {}
+            has_current_data = False
+        
+        # Get budget versions for current year
+        cursor = conn.execute("""
+        SELECT version_id, version_name, created_date, created_by, description, is_active
+        FROM budget_versions 
+        WHERE year = ?
+        ORDER BY created_date DESC
+        """, (current_year,))
+        budget_versions = cursor.fetchall()
+        
+        conn.close()
+        
+        return render_template('budget_management_old.html',
+            available_years=available_years,
+            current_year=current_year,
+            company_budgets=company_budgets,
+            ae_budgets=ae_budgets,
+            has_current_data=has_current_data,
+            budget_versions=budget_versions,
+            title='Budget Management (Legacy)'
+        )
+    except Exception as e:
+        print(f"Error in budget management old: {e}")
         return f"Error: {e}", 500
 
 @app.route('/api/budget/upload', methods=['POST'])
@@ -3877,21 +4090,33 @@ def report6_nord():
         # Use same data logic as report6
         language_query = """
         SELECT 
-            COALESCE(language, 'Other') as language_name,
+            CASE s.language_code
+                WHEN 'E' THEN 'English'
+                WHEN 'V' THEN 'Vietnamese'
+                WHEN 'T' THEN 'Tagalog'
+                WHEN 'SA' THEN 'Spanish'
+                WHEN 'C' THEN 'Chinese'
+                WHEN 'K' THEN 'Korean'
+                WHEN 'P' THEN 'Portuguese'
+                WHEN 'M/C' THEN 'Mixed Content'
+                WHEN 'Hm' THEN 'Hmong'
+                WHEN 'J' THEN 'Japanese'
+                WHEN 'H' THEN 'Hindi'
+                ELSE COALESCE(s.language_code, 'Unknown')
+            END as language_name,
+            s.language_code,
             COUNT(*) as spot_count,
-            ROUND(SUM(gross_rate), 2) as total_revenue,
-            ROUND(AVG(gross_rate), 2) as avg_rate,
-            ROUND((SUM(gross_rate) * 100.0 / (
-                SELECT SUM(gross_rate) 
-                FROM spots 
-                WHERE strftime('%Y', broadcast_month) = ? 
-                AND gross_rate IS NOT NULL
-            )), 1) as market_share_pct
-        FROM spots 
-        WHERE strftime('%Y', broadcast_month) = ?
-        AND gross_rate IS NOT NULL
-        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-        GROUP BY language
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
+            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate,
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)) * 100.0 / 
+                (SELECT SUM(gross_rate) FROM spots 
+                 WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                 AND strftime('%Y', broadcast_month) = ?), 2) as market_share_pct
+        FROM spots s
+        WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND s.language_code IS NOT NULL
+        AND strftime('%Y', s.broadcast_month) = ?
+        GROUP BY s.language_code
         ORDER BY total_revenue DESC
         """
         
@@ -3900,13 +4125,13 @@ def report6_nord():
         
         # Get available years
         years_query = """
-        SELECT DISTINCT strftime('%Y', broadcast_month) as year
+        SELECT DISTINCT substr(broadcast_month, 1, 4) as year 
         FROM spots 
-        WHERE broadcast_month IS NOT NULL
+        WHERE broadcast_month IS NOT NULL 
         ORDER BY year DESC
         """
         cursor = conn.execute(years_query)
-        available_years = [int(row['year']) for row in cursor.fetchall()]
+        available_years = [row['year'] for row in cursor.fetchall()]
         
         # Calculate totals
         total_revenue = sum(lang['total_revenue'] or 0 for lang in language_data)
@@ -3918,7 +4143,7 @@ def report6_nord():
         
         data = {
             'language_data': language_data,
-            'selected_year': int(selected_year),
+            'selected_year': selected_year,
             'available_years': available_years,
             'total_revenue': total_revenue,
             'total_spots': total_spots,
@@ -3943,83 +4168,136 @@ def report7_nord():
         # Get year parameter
         selected_year = request.args.get('year', str(datetime.now().year))
         
-        # Use same data logic as report7
+        # Use same data logic as original report7
         market_language_query = """
         SELECT 
-            COALESCE(m.market_name, 'Unknown') as market_name,
-            COALESCE(sp.language, 'Other') as language_name,
+            COALESCE(s.market_name, 'Unknown Market') as market_name,
+            CASE s.language_code
+                WHEN 'E' THEN 'English'
+                WHEN 'V' THEN 'Vietnamese'
+                WHEN 'T' THEN 'Tagalog'
+                WHEN 'SA' THEN 'Spanish'
+                WHEN 'C' THEN 'Chinese'
+                WHEN 'K' THEN 'Korean'
+                WHEN 'P' THEN 'Portuguese'
+                WHEN 'M/C' THEN 'Mixed Content'
+                WHEN 'Hm' THEN 'Hmong'
+                WHEN 'J' THEN 'Japanese'
+                WHEN 'H' THEN 'Hindi'
+                WHEN 'M' THEN 'Mandarin'
+                ELSE COALESCE(s.language_code, 'Unknown')
+            END as language_name,
+            s.language_code,
             COUNT(*) as spot_count,
-            COUNT(DISTINCT c.customer_id) as customer_count,
-            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
-            ROUND(AVG(sp.gross_rate), 2) as avg_rate,
-            ROUND((SUM(sp.gross_rate) * 100.0 / (
-                SELECT SUM(gross_rate) 
-                FROM spots 
-                WHERE strftime('%Y', broadcast_month) = ?
-                AND gross_rate IS NOT NULL
-            )), 1) as language_share_pct
-        FROM spots sp
-        LEFT JOIN customers c ON sp.customer_id = c.customer_id
-        LEFT JOIN markets m ON c.market_id = m.market_id
-        WHERE strftime('%Y', sp.broadcast_month) = ?
-        AND sp.gross_rate IS NOT NULL
-        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
-        GROUP BY m.market_name, sp.language
-        ORDER BY m.market_name, total_revenue DESC
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
+            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate,
+            -- Market share within language
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)) * 100.0 / 
+                (SELECT SUM(gross_rate) FROM spots 
+                 WHERE language_code = s.language_code 
+                 AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                 AND strftime('%Y', broadcast_month) = ?), 2) as market_share_within_language,
+            -- Language share within market
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)) * 100.0 / 
+                (SELECT SUM(gross_rate) FROM spots 
+                 WHERE market_name = s.market_name 
+                 AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                 AND strftime('%Y', broadcast_month) = ?), 2) as language_share_within_market
+        FROM spots s
+        WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND s.language_code IS NOT NULL
+        AND s.market_name IS NOT NULL
+        AND strftime('%Y', s.broadcast_month) = ?
+        GROUP BY s.market_name, s.language_code
+        ORDER BY s.market_name, total_revenue DESC
         """
         
-        cursor = conn.execute(market_language_query, (selected_year, selected_year))
-        market_language_combinations = [dict(row) for row in cursor.fetchall()]
+        # Market summary
+        market_summary_query = """
+        SELECT 
+            s.market_name,
+            COUNT(*) as total_spots,
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
+            COUNT(DISTINCT s.language_code) as language_count,
+            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate
+        FROM spots s
+        WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND s.market_name IS NOT NULL
+        AND strftime('%Y', s.broadcast_month) = ?
+        GROUP BY s.market_name
+        ORDER BY total_revenue DESC
+        """
+        
+        # Language summary
+        language_summary_query = """
+        SELECT 
+            CASE s.language_code
+                WHEN 'E' THEN 'English'
+                WHEN 'V' THEN 'Vietnamese'
+                WHEN 'T' THEN 'Tagalog'
+                WHEN 'SA' THEN 'Spanish'
+                WHEN 'C' THEN 'Chinese'
+                WHEN 'K' THEN 'Korean'
+                WHEN 'P' THEN 'Portuguese'
+                WHEN 'M/C' THEN 'Mixed Content'
+                WHEN 'Hm' THEN 'Hmong'
+                WHEN 'J' THEN 'Japanese'
+                WHEN 'H' THEN 'Hindi'
+                WHEN 'M' THEN 'Mandarin'
+                ELSE COALESCE(s.language_code, 'Unknown')
+            END as language_name,
+            s.language_code,
+            COUNT(*) as total_spots,
+            ROUND(SUM(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as total_revenue,
+            COUNT(DISTINCT s.market_name) as market_reach,
+            ROUND(AVG(COALESCE(s.gross_rate, s.spot_value, 0)), 2) as avg_rate
+        FROM spots s
+        WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND s.language_code IS NOT NULL
+        AND strftime('%Y', s.broadcast_month) = ?
+        GROUP BY s.language_code
+        ORDER BY total_revenue DESC
+        """
         
         # Get available years
         years_query = """
-        SELECT DISTINCT strftime('%Y', broadcast_month) as year
+        SELECT DISTINCT substr(broadcast_month, 1, 4) as year 
         FROM spots 
-        WHERE broadcast_month IS NOT NULL
+        WHERE broadcast_month IS NOT NULL 
         ORDER BY year DESC
         """
+        
+        cursor = conn.execute(market_language_query, (selected_year, selected_year, selected_year))
+        market_language_data = [dict(row) for row in cursor.fetchall()]
+        
+        cursor = conn.execute(market_summary_query, (selected_year,))
+        market_summary = [dict(row) for row in cursor.fetchall()]
+        
+        cursor = conn.execute(language_summary_query, (selected_year,))
+        language_summary = [dict(row) for row in cursor.fetchall()]
+        
         cursor = conn.execute(years_query)
-        available_years = [int(row['year']) for row in cursor.fetchall()]
-        
-        # Calculate summary stats
-        total_revenue = sum(combo['total_revenue'] or 0 for combo in market_language_combinations)
-        total_customers = sum(combo['customer_count'] or 0 for combo in market_language_combinations)
-        
-        markets = set(combo['market_name'] for combo in market_language_combinations)
-        languages = set(combo['language_name'] for combo in market_language_combinations)
-        
-        market_count = len(markets)
-        language_count = len(languages)
-        total_markets = market_count
-        
-        # Top combinations
-        top_combinations = sorted(market_language_combinations, key=lambda x: x['total_revenue'] or 0, reverse=True)[:10]
-        top_combination = top_combinations[0] if top_combinations else None
-        
-        # Add market language count for grouping
-        market_lang_counts = {}
-        for combo in market_language_combinations:
-            market = combo['market_name']
-            if market not in market_lang_counts:
-                market_lang_counts[market] = 0
-            market_lang_counts[market] += 1
-        
-        for combo in market_language_combinations:
-            combo['market_language_count'] = market_lang_counts[combo['market_name']]
+        available_years = [row[0] for row in cursor.fetchall()]
         
         conn.close()
         
+        # Calculate insights
+        total_markets = len(market_summary)
+        total_languages = len(language_summary)
+        total_revenue = sum(market['total_revenue'] for market in market_summary)
+        total_spots = sum(market['total_spots'] for market in market_summary)
+        
         data = {
-            'market_language_combinations': market_language_combinations,
-            'top_combinations': top_combinations,
-            'selected_year': int(selected_year),
+            'market_language_data': market_language_data,
+            'market_summary': market_summary,
+            'language_summary': language_summary,
             'available_years': available_years,
-            'total_revenue': total_revenue,
-            'total_customers': total_customers,
-            'market_count': market_count,
-            'language_count': language_count,
+            'selected_year': selected_year,
             'total_markets': total_markets,
-            'top_combination': top_combination
+            'total_languages': total_languages,
+            'total_revenue': total_revenue,
+            'total_spots': total_spots,
+            'current_year': datetime.now().year
         }
         
         return render_template('report7_nord.html', 
@@ -4028,6 +4306,140 @@ def report7_nord():
         
     except Exception as e:
         print(f"Error in report7_nord: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/budget-management-nord')
+def budget_management_nord():
+    """Budget Management with Nord Theme."""
+    try:
+        # Use same logic as original budget management
+        current_year = datetime.now().year
+        
+        conn = get_db_connection()
+        
+        # Get current year budget data
+        budget_query = """
+        SELECT ae_name, quarter, SUM(budget_amount) as total_budget
+        FROM budgets 
+        WHERE year = ? 
+        GROUP BY ae_name, quarter
+        ORDER BY ae_name, quarter
+        """
+        
+        cursor = conn.execute(budget_query, (current_year,))
+        budget_data = cursor.fetchall()
+        
+        # Organize data
+        ae_budgets = {}
+        company_budgets = {1: 0, 2: 0, 3: 0, 4: 0}
+        
+        for row in budget_data:
+            ae_name = row['ae_name']
+            quarter = row['quarter']
+            amount = row['total_budget'] or 0
+            
+            if ae_name not in ae_budgets:
+                ae_budgets[ae_name] = {}
+            
+            ae_budgets[ae_name][quarter] = amount
+            company_budgets[quarter] += amount
+        
+        has_current_data = len(budget_data) > 0
+        
+        conn.close()
+        
+        return render_template('budget_management_nord.html',
+                             ae_budgets=ae_budgets,
+                             company_budgets=company_budgets,
+                             current_year=current_year,
+                             has_current_data=has_current_data,
+                             title='Budget Management (Nord)')
+        
+    except Exception as e:
+        print(f"Error in budget_management_nord: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/sector-management-nord')
+def sector_management_nord():
+    """Sector Management with Nord Theme."""
+    try:
+        # Use same logic as original sector management
+        conn = get_db_connection()
+        
+        # Get all customers with their current sector assignments
+        customers_query = """
+        SELECT 
+            c.customer_id,
+            c.normalized_name,
+            c.original_name,
+            s.sector_name,
+            s.sector_group,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
+            MAX(sp.broadcast_month) as last_activity
+        FROM customers c
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        LEFT JOIN spots sp ON c.customer_id = sp.customer_id
+        WHERE c.normalized_name IS NOT NULL
+        GROUP BY c.customer_id, c.normalized_name, c.original_name, s.sector_name, s.sector_group
+        ORDER BY total_revenue DESC
+        """
+        
+        cursor = conn.execute(customers_query)
+        customers = [dict(row) for row in cursor.fetchall()]
+        
+        # Get all available sectors
+        sectors_query = """
+        SELECT sector_id, sector_name, sector_group
+        FROM sectors
+        ORDER BY sector_group, sector_name
+        """
+        
+        cursor = conn.execute(sectors_query)
+        sectors = [dict(row) for row in cursor.fetchall()]
+        
+        # Get sector statistics
+        sector_stats_query = """
+        SELECT 
+            s.sector_name,
+            s.sector_group,
+            COUNT(DISTINCT c.customer_id) as customer_count,
+            COUNT(sp.spot_id) as spot_count,
+            ROUND(SUM(sp.gross_rate), 2) as total_revenue
+        FROM sectors s
+        LEFT JOIN customers c ON s.sector_id = c.sector_id
+        LEFT JOIN spots sp ON c.customer_id = sp.customer_id
+        GROUP BY s.sector_id, s.sector_name, s.sector_group
+        ORDER BY total_revenue DESC
+        """
+        
+        cursor = conn.execute(sector_stats_query)
+        sector_stats = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        # Calculate summary statistics
+        total_customers = len(customers)
+        assigned_customers = len([c for c in customers if c['sector_name']])
+        unassigned_customers = total_customers - assigned_customers
+        total_sectors = len(sectors)
+        
+        data = {
+            'customers': customers,
+            'sectors': sectors,
+            'sector_stats': sector_stats,
+            'total_customers': total_customers,
+            'assigned_customers': assigned_customers,
+            'unassigned_customers': unassigned_customers,
+            'total_sectors': total_sectors
+        }
+        
+        return render_template('sector_management_nord.html',
+                             data=data,
+                             title='Sector Management (Nord)')
+        
+    except Exception as e:
+        print(f"Error in sector_management_nord: {str(e)}")
         return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
