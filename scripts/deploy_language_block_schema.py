@@ -21,7 +21,7 @@ class LanguageBlockSchemaDeployer:
     
     def __init__(self, db_connection: DatabaseConnection):
         self.db = db_connection
-        self.schema_file = Path(__file__).parent.parent / "paste.txt"
+        self.schema_file = Path(__file__).parent.parent / "src/database/schema-language-blocks.sql"
         self.backup_file = None
         
     def deploy_schema(self, create_backup: bool = True, validate: bool = True) -> Dict[str, Any]:

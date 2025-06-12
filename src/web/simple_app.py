@@ -1884,39 +1884,14 @@ def sector_management_old():
 def pipeline_revenue_management():
     """Pipeline Revenue Management page."""
     try:
-        # Get list of AEs from database first
-        conn = get_db_connection()
-        query = """
-        SELECT DISTINCT sales_person as ae_name,
-               COUNT(*) as spot_count,
-               ROUND(SUM(gross_rate), 2) as total_revenue
-        FROM spots 
-        WHERE sales_person IS NOT NULL 
-        AND sales_person != ''
-        AND gross_rate IS NOT NULL
-        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-        GROUP BY sales_person
-        ORDER BY total_revenue DESC
-        """
+        print("Pipeline Revenue: Starting route...")
         
-        cursor = conn.execute(query)
-        db_results = cursor.fetchall()
-        conn.close()
-        
-        # Convert DB results to dict for easier lookup
-        db_aes = {}
-        for row in db_results:
-            ae_name = row['ae_name']
-            db_aes[ae_name] = {
-                'spot_count': row['spot_count'],
-                'total_revenue': row['total_revenue'] or 0
-            }
-        
-        # Load AE configuration and create filtered list
+        # Get list of AEs from config in a simple way
         ae_config = load_ae_config()
         ae_list = []
         ae_id_counter = 1
         
+        # Create AE list from config
         for ae_name, config in ae_config.items():
             # Only include AEs that are active AND should be in review
             if config.get('active', True) and config.get('include_in_review', True):
@@ -1930,55 +1905,28 @@ def pipeline_revenue_management():
         # Sort by name for consistent ordering
         ae_list.sort(key=lambda x: x['name'])
         
-        # Create data structure expected by template
-        # Load or create session data
-        session_date = datetime.now().strftime('%Y-%m-%d')
-        session_file = os.path.join(os.path.dirname(__file__), '../../data/processed/review_sessions.json')
-        
-        # Load existing session data if available
-        session_data = {
-            'session_date': session_date,
-            'completed_aes': [],
-            'session_notes': {}
-        }
-        
-        if os.path.exists(session_file):
-            try:
-                with open(session_file, 'r') as f:
-                    all_sessions = json.load(f)
-                    if session_date in all_sessions:
-                        existing_session = all_sessions[session_date]
-                        session_data.update({
-                            'completed_aes': existing_session.get('completed_aes', []),
-                            'session_notes': existing_session.get('notes', {})
-                        })
-            except:
-                pass
-        
         data = {
             'session_date': datetime.now().strftime('%B %d, %Y'),
             'ae_list': ae_list,
-            'session': session_data
-        }
-        
-        return render_template('pipeline_revenue.html', 
-                             title="Pipeline Revenue Management", 
-                             data=data)
-    except Exception as e:
-        print(f"ERROR in pipeline_revenue_management: {e}")
-        # Return minimal data structure to prevent template errors
-        data = {
-            'session_date': datetime.now().strftime('%B %d, %Y'),
-            'ae_list': [],
             'session': {
                 'session_date': datetime.now().strftime('%Y-%m-%d'),
                 'completed_aes': [],
                 'session_notes': {}
             }
         }
+        
+        print(f"Pipeline Revenue: Data created successfully with {len(ae_list)} AEs")
         return render_template('pipeline_revenue.html', 
                              title="Pipeline Revenue Management", 
                              data=data)
+                             
+    except Exception as e:
+        print(f"ERROR in pipeline_revenue_management: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Ultra-minimal fallback
+        return f"<h1>Pipeline Revenue Management</h1><p>Error: {str(e)}</p>"
 
 @app.route('/api/aes')
 def get_aes():
@@ -4441,6 +4389,20 @@ def sector_management_nord():
     except Exception as e:
         print(f"Error in sector_management_nord: {str(e)}")
         return f"Error: {str(e)}", 500
+
+@app.route('/pipeline-revenue-test')
+def pipeline_revenue_test():
+    """Simple test route for pipeline revenue debugging."""
+    return """
+    <html>
+    <head><title>Pipeline Revenue Test</title></head>
+    <body>
+        <h1>Pipeline Revenue Test</h1>
+        <p>This route is working! The issue is not with Flask routing.</p>
+        <p><a href="/pipeline-revenue">Try the real pipeline revenue route</a></p>
+    </body>
+    </html>
+    """
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 

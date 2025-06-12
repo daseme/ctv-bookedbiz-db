@@ -1,4 +1,4 @@
-{% extends "nord_base.html" %}
+{% extends "base.html" %}
 
 {% block title %}{{ title }} - CTV Reports{% endblock %}
 
@@ -13,6 +13,9 @@
 {% endblock %}
 
 {% block extra_styles %}
+<!-- Include Nord CSS Module -->
+{% include 'nord_base.html' %}
+
 <style>
 /* Nord Theme Variables */
 :root {
@@ -378,10 +381,10 @@
     font-size: 13px;
 }
 
-/* Monthly Summary Cards with Nordic Ice Styling */
+/* Monthly Summary Cards with Nordic Ice Styling and Quarterly Summation */
 .monthly-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 24px;
     margin-bottom: 40px;
 }
@@ -410,7 +413,34 @@
 .quarter-card {
     background: linear-gradient(135deg, var(--nord5) 0%, var(--nord6) 100%);
     border: 2px solid var(--nord8);
+    border-left: 6px solid var(--nord8);
     box-shadow: 0 8px 24px rgba(136, 192, 208, 0.2);
+}
+
+.quarter-card .month-header {
+    background: transparent;
+    border-bottom: 2px solid var(--nord8);
+}
+
+.quarter-card .month-title {
+    color: var(--nord0);
+}
+
+.quarter-card .month-status {
+    background: var(--nord8);
+    color: var(--nord6);
+    font-weight: 600;
+}
+
+/* Empty Slot Styling */
+.empty-slot {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.empty-slot .month-header {
+    background: var(--nord4);
+    color: var(--nord2);
 }
 
 .month-header {
@@ -599,7 +629,7 @@
     letter-spacing: 0.8px;
 }
 
-.legend-past {
+.legend-closed {
     background: var(--nord3);
     color: var(--nord6);
 }
@@ -609,8 +639,55 @@
     color: var(--nord6);
 }
 
-.legend-future {
+.legend-open {
     background: var(--nord9);
+    color: var(--nord6);
+}
+
+/* Month Card Status Styling */
+.month-card.closed-month {
+    background: var(--nord4);
+    border-color: var(--nord3);
+    opacity: 0.6;
+    color: var(--nord2);
+}
+
+.month-card.closed-month:hover {
+    transform: none;
+    cursor: default;
+    box-shadow: 0 4px 16px rgba(46, 52, 64, 0.08);
+}
+
+.month-card.closed-month .metric-value {
+    color: var(--nord2);
+}
+
+.month-card.closed-month .month-status {
+    background: var(--nord3);
+    color: var(--nord6);
+}
+
+.month-card.current-month {
+    border: 2px solid var(--nord8);
+    background: linear-gradient(135deg, var(--nord6) 0%, rgba(136, 192, 208, 0.05) 100%);
+    box-shadow: 
+        0 0 0 2px rgba(136, 192, 208, 0.2),
+        0 4px 16px rgba(46, 52, 64, 0.1);
+}
+
+.month-card.current-month .month-status {
+    background: var(--nord8);
+    color: var(--nord6);
+    font-weight: 600;
+}
+
+.month-card.open-month {
+    border-color: var(--nord10);
+    background: linear-gradient(135deg, var(--nord6) 0%, rgba(94, 129, 172, 0.03) 100%);
+}
+
+.month-card.open-month .month-status {
+    background: var(--nord10);
     color: var(--nord6);
 }
 
@@ -872,6 +949,11 @@
         gap: 16px;
     }
     
+    /* Stack quarterly cards vertically on mobile */
+    .quarter-card {
+        order: 999;
+    }
+    
     .progress-stats {
         flex-direction: column;
         gap: 12px;
@@ -1001,19 +1083,31 @@
         </div>
     </div>
 
-    <!-- Month Status Legend -->
+    <!-- Status Legend -->
     <div class="status-legend">
         <div class="legend-item">
-            <span class="legend-badge legend-past">PAST</span>
-            <span>Historical months (Jan-May) - Closed for changes</span>
+            <span class="legend-badge legend-closed">CLOSED</span>
+            <span>Historical months - Closed in database, reference only</span>
         </div>
         <div class="legend-item">
             <span class="legend-badge legend-current">CURRENT</span>
-            <span>Current month (June) - Active for updates</span>
+            <span>Current month - Active for updates and planning</span>
         </div>
         <div class="legend-item">
-            <span class="legend-badge legend-future">FUTURE</span>
-            <span>Future months (July-Dec) - Open for pipeline planning</span>
+            <span class="legend-badge legend-open">OPEN</span>
+            <span>Future months - Open for pipeline planning and forecasting</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-badge" style="background: var(--nord14); color: var(--nord6);">✓ COMPLETE</span>
+            <span>Quarters - All months finished</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-badge" style="background: var(--nord8); color: var(--nord6);">IN PROGRESS</span>
+            <span>Quarters - Currently active quarter</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-badge" style="background: var(--nord15); color: var(--nord6);">PLANNED</span>
+            <span>Quarters - Future planning stage</span>
         </div>
     </div>
 
@@ -1115,7 +1209,7 @@ console.log('Pipeline Revenue Management (Nord) JavaScript loading...');
 let currentAE = null;
 let currentMonthlyData = [];
 let currentQuarterlyData = [];
-let sessionData = {{ data.session | tojson }};
+let sessionData = {{ data.session | tojson | safe }};
 let originalPipelineValues = {}; // Track original values for change detection
 
 // Initialize on page load
@@ -1190,52 +1284,101 @@ function displayAEStats(ae) {
     document.getElementById('total-revenue').textContent = totalRevenue;
 }
 
-function displayMonthlyCards(monthlyData, quarterlyData) {
+function displayMonthlyCards(monthlyData, quarterlyData = []) {
     const grid = document.getElementById('monthly-grid');
     const summaryDisplay = document.getElementById('month-summary-display');
-    
+
     if (!monthlyData || monthlyData.length === 0) {
         grid.style.display = 'none';
         summaryDisplay.style.display = 'flex';
         summaryDisplay.innerHTML = '<div>❄️ No monthly data available for this Account Executive</div>';
         return;
     }
-    
+
     grid.style.display = 'grid';
     summaryDisplay.style.display = 'none';
     grid.innerHTML = '';
-    
-    // Create month cards
-    monthlyData.forEach(month => {
-        const card = createMonthCard(month);
-        grid.appendChild(card);
+
+    // Define quarters with their months arranged in 4-column rows
+    const quarters = [
+        { name: 'Q1 2025', months: ['2025-01', '2025-02', '2025-03'], rowMonths: ['2025-01', '2025-02', '2025-03'] },
+        { name: 'Q2 2025', months: ['2025-04', '2025-05', '2025-06'], rowMonths: ['2025-04', '2025-05', '2025-06'] },
+        { name: 'Q3 2025', months: ['2025-07', '2025-08', '2025-09'], rowMonths: ['2025-07', '2025-08', '2025-09'] },
+        { name: 'Q4 2025', months: ['2025-10', '2025-11', '2025-12'], rowMonths: ['2025-10', '2025-11', '2025-12'] }
+    ];
+
+    quarters.forEach(quarter => {
+        // Add 3 monthly card slots for this quarter row
+        quarter.rowMonths.forEach(monthStr => {
+            if (monthStr) {
+                const month = monthlyData.find(m => m.month === monthStr);
+                if (month) {
+                    const card = createMonthCard(month);
+                    grid.appendChild(card);
+                } else {
+                    // Add empty placeholder if month data is missing
+                    const emptyCard = document.createElement('div');
+                    emptyCard.className = 'month-card empty-slot';
+                    emptyCard.innerHTML = '<div class="month-header"><div class="month-title">No Data</div></div>';
+                    grid.appendChild(emptyCard);
+                }
+            } else {
+                // Add empty placeholder for visual alignment
+                const emptyCard = document.createElement('div');
+                emptyCard.className = 'month-card empty-slot';
+                emptyCard.style.visibility = 'hidden';
+                grid.appendChild(emptyCard);
+            }
+        });
+
+        // Add quarterly summary card as the 4th column
+        const quarterData = quarterlyData.find(q => q.quarter_name === quarter.name);
+        if (quarterData) {
+            const quarterCard = createQuarterCard(quarterData);
+            grid.appendChild(quarterCard);
+        } else {
+            // Add empty placeholder if quarter data is missing
+            const emptyCard = document.createElement('div');
+            emptyCard.className = 'quarter-card empty-slot';
+            emptyCard.innerHTML = '<div class="month-header"><div class="month-title">No Quarter Data</div></div>';
+            grid.appendChild(emptyCard);
+        }
     });
 }
 
 function createMonthCard(month) {
     const card = document.createElement('div');
     card.className = 'month-card';
-    
-    // Determine if past, current, or future month
+
+    // Determine if closed, current, or open month
     const currentDate = new Date();
     const currentMonth = currentDate.getMonth() + 1;
     const currentYear = currentDate.getFullYear();
     const [monthYear, monthNum] = month.month.split('-');
     const monthNumber = parseInt(monthNum);
+
+    let monthStatus = 'open';
+    let statusText = 'Open';
     
     if (parseInt(monthYear) < currentYear || (parseInt(monthYear) === currentYear && monthNumber < currentMonth)) {
-        card.classList.add('past-month');
+        card.classList.add('closed-month');
+        monthStatus = 'closed';
+        statusText = 'Closed';
     } else if (parseInt(monthYear) === currentYear && monthNumber === currentMonth) {
-        card.classList.add('current-month');  
+        card.classList.add('current-month');
+        monthStatus = 'current';
+        statusText = 'Current';
     } else {
-        card.classList.add('future-month');
+        card.classList.add('open-month');
+        monthStatus = 'open';
+        statusText = 'Open';
     }
     
     card.innerHTML = `
         <div class="month-header">
             <div class="month-title">${month.month_display}</div>
-            <div class="month-status status-${month.pipeline_status}">
-                ${month.pipeline_status.replace('_', ' ')}
+            <div class="month-status status-${monthStatus}">
+                ${statusText}
             </div>
         </div>
         
@@ -1244,10 +1387,10 @@ function createMonthCard(month) {
                 <span class="metric-label">Booked Revenue:</span>
                 <span class="metric-value booked">${formatCurrency(month.booked_revenue)}</span>
             </div>
-            <div class="metric-row">
+                        <div class="metric-row">
                 <span class="metric-label">Current Pipeline:</span>
-                <span class="metric-value pipeline ${monthNumber < currentMonth ? 'disabled' : ''}" 
-                      ${monthNumber >= currentMonth ? `onclick="editPipeline('${month.month}', this)"` : ''} 
+                <span class="metric-value pipeline ${monthStatus === 'closed' ? 'disabled' : ''}"
+                      ${monthStatus !== 'closed' ? `onclick="editPipeline('${month.month}', this)"` : ''}
                       data-original="${month.current_pipeline}">
                     ${formatCurrency(month.current_pipeline)}
                 </span>
@@ -1266,9 +1409,129 @@ function createMonthCard(month) {
                 </span>
             </div>
         </div>
+        
+        <div class="card-actions" style="margin-top: 16px;">
+            <button class="btn btn-primary btn-sm" onclick="openCustomerModal('${month.month}')" 
+                    style="background: var(--nord8); color: var(--nord6); border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.3s;">
+                View Customers
+            </button>
+        </div>
     `;
     
     return card;
+}
+
+function createQuarterCard(quarter) {
+    const card = document.createElement('div');
+    card.className = 'quarter-card';
+
+    card.innerHTML = `
+        <div class="month-header">
+            <div class="month-title">${quarter.quarter_name}</div>
+            <div class="month-status">
+                QUARTER TOTAL
+            </div>
+        </div>
+
+        <div class="revenue-metrics">
+            <div class="metric-row">
+                <span class="metric-label">Booked Revenue:</span>
+                <span class="metric-value booked">${formatCurrency(quarter.booked_revenue)}</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Current Pipeline:</span>
+                <span class="metric-value" style="color: var(--nord8);">
+                    ${formatCurrency(quarter.current_pipeline)}
+                </span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Budget (ref):</span>
+                <span class="metric-value budget">${formatCurrency(quarter.budget)}</span>
+            </div>
+        </div>
+
+        <div class="gap-analysis">
+            <div class="gap-row gap-secondary">
+                <span>Budget Gap:</span>
+                <span class="gap-amount ${quarter.budget_gap >= 0 ? 'positive' : 'negative'}">
+                    ${quarter.budget_gap >= 0 ? '+' : '-'}${formatCurrency(Math.abs(quarter.budget_gap))}
+                </span>
+            </div>
+        </div>
+
+        <div class="quarter-status" style="margin-top: 16px; text-align: center; font-size: 14px;">
+            <strong>${quarter.month_count || 3} months</strong>
+            <div style="margin-top: 4px; ${getQuarterStatusStyle(quarter.quarter_name)}">
+                ${determineQuarterCompletion(quarter.quarter_name)}
+            </div>
+        </div>
+    `;
+
+    return card;
+}
+
+function determineQuarterCompletion(quarterName) {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1; // June = 6
+    const currentYear = currentDate.getFullYear(); // 2025
+    
+    const quarterMap = {
+        'Q1 2025': { startMonth: 1, endMonth: 3, year: 2025 },
+        'Q2 2025': { startMonth: 4, endMonth: 6, year: 2025 },
+        'Q3 2025': { startMonth: 7, endMonth: 9, year: 2025 },
+        'Q4 2025': { startMonth: 10, endMonth: 12, year: 2025 }
+    };
+    
+    const quarter = quarterMap[quarterName];
+    if (!quarter) return 'Unknown';
+    
+    // If the quarter's end month has passed, it's complete
+    if (currentYear > quarter.year || 
+        (currentYear === quarter.year && currentMonth > quarter.endMonth)) {
+        return '✓ Complete';
+    }
+    // If we're currently in the quarter, it's in progress
+    else if (currentYear === quarter.year && 
+             currentMonth >= quarter.startMonth && 
+             currentMonth <= quarter.endMonth) {
+        return 'In Progress';
+    }
+    // If the quarter hasn't started yet, it's planned
+    else {
+        return 'Planned';
+    }
+}
+
+function getQuarterStatusStyle(quarterName) {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1;
+    const currentYear = currentDate.getFullYear();
+    
+    const quarterMap = {
+        'Q1 2025': { startMonth: 1, endMonth: 3, year: 2025 },
+        'Q2 2025': { startMonth: 4, endMonth: 6, year: 2025 },
+        'Q3 2025': { startMonth: 7, endMonth: 9, year: 2025 },
+        'Q4 2025': { startMonth: 10, endMonth: 12, year: 2025 }
+    };
+    
+    const quarter = quarterMap[quarterName];
+    if (!quarter) return 'color: var(--nord2);';
+    
+    // If quarter is complete, show green
+    if (currentYear > quarter.year || 
+        (currentYear === quarter.year && currentMonth > quarter.endMonth)) {
+        return 'color: var(--nord14); font-weight: 600;'; // Green for complete
+    }
+    // If currently in the quarter, show blue for in progress
+    else if (currentYear === quarter.year && 
+             currentMonth >= quarter.startMonth && 
+             currentMonth <= quarter.endMonth) {
+        return 'color: var(--nord8); font-weight: 500;'; // Blue for in progress
+    }
+    // If quarter hasn't started yet, show muted purple for planned
+    else {
+        return 'color: var(--nord15); font-weight: 400;'; // Purple for planned
+    }
 }
 
 async function editPipeline(month, element) {
@@ -1453,31 +1716,90 @@ function showLoading(show) {
     }
 }
 
+// Customer Modal Functions
+async function openCustomerModal(month) {
+    try {
+        const response = await fetch(`/api/customers/${currentAE.ae_id}/${month}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            const data = result.data;
+            document.getElementById('modal-title').textContent = 
+                `${currentAE.name} - ${formatMonthYear(month)} (${data.total_customers} customers)`;
+            
+            populateCustomerTable('booked-deals', data.customers || []);
+            populateCustomerTable('pipeline-deals', []);
+            populateCustomerTable('all-deals', data.customers || []);
+            
+            document.getElementById('customer-modal').style.display = 'block';
+        } else {
+            showAlert('error', result.error || 'Failed to load customer data');
+        }
+    } catch (error) {
+        console.error('Error loading customer data:', error);
+        showAlert('error', 'Failed to load customer data');
+    }
+}
+
+function populateCustomerTable(tableId, customers) {
+    const tbody = document.getElementById(tableId);
+    tbody.innerHTML = '';
+    
+    if (customers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--nord2);">No customers found</td></tr>';
+        return;
+    }
+    
+    customers.forEach(customer => {
+        const row = document.createElement('tr');
+        
+        if (tableId === 'pipeline-deals') {
+            row.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--nord2);">No pipeline deals from historical data</td></tr>';
+        } else {
+            row.innerHTML = `
+                <td>${customer.customer_name || 'Unknown Customer'}</td>
+                <td>${customer.spot_count || 0} spots</td>
+                <td class="deal-amount">${formatCurrency(customer.total_revenue || 0)}</td>
+                <td>${customer.first_spot ? customer.first_spot.split(' ')[0] : 'N/A'}</td>
+                <td><span class="deal-status status-booked">Booked</span></td>
+            `;
+        }
+        
+        tbody.appendChild(row);
+    });
+}
+
 function closeCustomerModal() {
     document.getElementById('customer-modal').style.display = 'none';
+    document.getElementById('customer-search').value = '';
 }
 
 function switchTab(tabName) {
-    // Hide all tab contents
-    document.querySelectorAll('.tab-content').forEach(content => {
-        content.classList.remove('active');
-    });
-    
-    // Remove active class from all tabs
+    // Update tab buttons
     document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.remove('active');
     });
-    
-    // Show selected tab content
-    document.getElementById(`${tabName}-content`).classList.add('active');
-    
-    // Add active class to clicked tab
     event.target.classList.add('active');
+    
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.getElementById(`${tabName}-content`).classList.add('active');
 }
 
 function filterCustomerData(searchTerm) {
-    // Filter functionality for customer modal
-    console.log('Filtering customers by:', searchTerm);
+    const term = searchTerm.toLowerCase();
+    document.querySelectorAll('.deals-table tbody tr').forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(term) ? '' : 'none';
+    });
+}
+
+function formatMonthYear(monthStr) {
+    const [year, month] = monthStr.split('-');
+    const date = new Date(year, month - 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
 async function createNewReviewSnapshot() {
