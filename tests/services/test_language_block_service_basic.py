@@ -144,7 +144,7 @@ class BasicLanguageBlockTest:
         """Test assigning a single spot"""
         print("\n--- Testing Single Spot Assignment ---")
         
-        # Get one unassigned spot
+        # Get one unassigned spot (any type)
         cursor = self.conn.cursor()
         cursor.execute("""
             SELECT s.spot_id, s.bill_code, s.air_date, s.time_in, s.time_out, m.market_code
@@ -156,8 +156,6 @@ class BasicLanguageBlockTest:
               AND s.time_in IS NOT NULL 
               AND s.time_out IS NOT NULL 
               AND s.day_of_week IS NOT NULL
-              AND (s.revenue_type NOT IN ('Trade', 'Branded Content') OR s.revenue_type IS NULL)
-              AND (s.bill_code NOT LIKE '%PRODUCTION%' OR s.bill_code IS NULL)
             LIMIT 1
         """)
         

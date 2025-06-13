@@ -267,7 +267,11 @@ class LanguageBlockService:
         if not test_spot_ids:
             return {
                 'success': False,
-                'message': 'No unassigned spots found for testing'
+                'message': 'No unassigned spots found for testing',
+                'spots_tested': 0,
+                'stats': self.stats,
+                'success_rate': 0.0,
+                'spot_details': []
             }
         
         # Run assignment
@@ -302,8 +306,6 @@ class LanguageBlockService:
           AND time_in IS NOT NULL 
           AND time_out IS NOT NULL
           AND day_of_week IS NOT NULL
-          AND (revenue_type NOT IN ('Trade', 'Branded Content') OR revenue_type IS NULL)
-          AND (bill_code NOT LIKE '%PRODUCTION%' OR bill_code IS NULL)
         """
         
         cursor.execute(query, (spot_id,))
@@ -561,8 +563,6 @@ class LanguageBlockService:
           AND s.time_in IS NOT NULL
           AND s.time_out IS NOT NULL
           AND s.day_of_week IS NOT NULL
-          AND (s.revenue_type NOT IN ('Trade', 'Branded Content') OR s.revenue_type IS NULL)
-          AND (s.bill_code NOT LIKE '%PRODUCTION%' OR s.bill_code IS NULL)
         ORDER BY s.spot_id
         """
         
