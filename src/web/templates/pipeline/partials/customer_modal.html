@@ -1,0 +1,72 @@
+<!-- Enhanced Customer Details Modal -->
+<div id="customer-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-title">Customer Details</h3>
+            <span class="close" onclick="CustomerModal.close()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <input type="text" id="customer-search" class="search-box" 
+                   placeholder="Search customers and deals..." 
+                   oninput="CustomerModal.filterData(this.value)">
+            
+            <div class="tabs">
+                <button class="tab active" onclick="CustomerModal.switchTab('booked')">Booked Revenue</button>
+                <button class="tab" onclick="CustomerModal.switchTab('pipeline')">Pipeline</button>
+                <button class="tab" onclick="CustomerModal.switchTab('all')">All Deals</button>
+            </div>
+            
+            <div id="booked-content" class="tab-content active">
+                <table class="deals-table">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Spots</th>
+                            <th>Revenue</th>
+                            <th>First Spot</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="booked-deals">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="pipeline-content" class="tab-content">
+                <table class="deals-table">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Deal Description</th>
+                            <th>Amount</th>
+                            <th>Probability</th>
+                            <th>Expected Close</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pipeline-deals">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="all-content" class="tab-content">
+                <table class="deals-table">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Spots</th>
+                            <th>Revenue</th>
+                            <th>First Spot</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="all-deals">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

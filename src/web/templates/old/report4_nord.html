@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Enhanced Two-Tiered Sector Analysis (Nord Theme){% endblock %}
+
+{% block extra_styles %}
+{% include "nord_base.html" %}
+<style>
+/* Enhanced Nord Sector Analysis Styles */
+.nord-sector-groups-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+    margin: 24px 0;
+}
+
+.nord-sector-group-card {
+    background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+    border: 2px solid var(--border-color);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 16px var(--shadow-color);
+}
+
+.nord-sector-group-card:hover {
+    box-shadow: 0 12px 32px rgba(46, 52, 64, 0.15);
+    transform: translateY(-4px);
+}
+
+.nord-sector-group-card.outreach {
+    border-color: var(--nord8);
+    background: linear-gradient(135deg, rgba(136, 192, 208, 0.1) 0%, var(--bg-primary) 100%);
+}
+
+.nord-sector-group-card.commercial {
+    border-color: var(--nord14);
+    background: linear-gradient(135deg, rgba(163, 190, 140, 0.1) 0%, var(--bg-primary) 100%);
+}
+
+.nord-sector-group-card.political {
+    border-color: var(--nord12);
+    background: linear-gradient(135deg, rgba(208, 135, 112, 0.1) 0%, var(--bg-primary) 100%);
+}
+
+.nord-sector-group-card.unassigned {
+    border-color: var(--nord11);
+    background: linear-gradient(135deg, rgba(191, 97, 106, 0.1) 0%, var(--bg-primary) 100%);
+}
+
+.nord-sector-group-card.healthcare {
+    border-color: var(--nord15);
+    background: linear-gradient(135deg, rgba(180, 142, 173, 0.1) 0%, var(--bg-primary) 100%);
+}
+
+.nord-sector-group-card.financial {
+    border-color: var(--nord13);
+    background: linear-gradient(135deg, rgba(235, 203, 139, 0.1) 0%, var(--bg-primary) 100%);
+}
+
+.nord-sector-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.nord-sector-group-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+}
+
+.nord-sector-group-badge {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: white;
+    letter-spacing: 0.5px;
+}
+
+.nord-badge-outreach { background: var(--nord8); }
+.nord-badge-commercial { background: var(--nord14); }
+.nord-badge-political { background: var(--nord12); }
+.nord-badge-unassigned { background: var(--nord11); }
+.nord-badge-healthcare { background: var(--nord15); }
+.nord-badge-financial { background: var(--nord13); }
+
+.nord-sector-group-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.nord-sector-metric {
+    text-align: center;
+    padding: 16px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+}
+
+.nord-sector-metric:hover {
+    background: var(--bg-secondary);
+}
+
+.nord-sector-metric-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+.nord-sector-metric-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.nord-sector-revenue {
+    font-size: 22px !important;
+    color: var(--accent-primary) !important;
+}
+
+.nord-customers-preview {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.nord-customers-preview-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nord-customer-item {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.nord-customer-revenue {
+    font-weight: 600;
+    color: var(--accent-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.nord-detailed-sectors-section {
+    margin: 32px 0;
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    padding: 32px;
+    border: 1px solid var(--border-color);
+}
+
+.nord-sector-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.nord-sector-detail-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.nord-sector-detail-item:hover {
+    box-shadow: 0 8px 24px var(--shadow-color);
+    transform: translateY(-2px);
+}
+
+.nord-sector-detail-header {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    font-size: 16px;
+}
+
+.nord-sector-detail-group {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    padding: 4px 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.nord-assignment-status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+}
+
+.nord-status-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 16px var(--shadow-color);
+}
+
+.nord-status-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">🎯</span>
+            Sector Analysis Overview
+        </h2>
+    </div>
+    <div class="nord-alert info">
+        Enhanced two-tiered sector analysis showing revenue distribution across business categories: 
+        <strong>Outreach</strong> (Public Service), <strong>Commercial</strong> (Business), and <strong>Political</strong> (Campaign) sectors.
+    </div>
+</div>
+
+<!-- Sector Groups Overview -->
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📊</span>
+            Sector Performance Dashboard
+        </h2>
+    </div>
+    
+    <div class="nord-sector-groups-grid">
+        {% for group in data.sector_groups %}
+        <div class="nord-sector-group-card {{ group.group_name.lower() }}">
+            <div class="nord-sector-group-header">
+                <div class="nord-sector-group-name">{{ group.group_name }}</div>
+                <div class="nord-sector-group-badge nord-badge-{{ group.group_name.lower() }}">
+                    {{ group.customer_count }} clients
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                <div style="text-align: center; padding: 16px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Total Revenue</div>
+                    <div style="font-size: 22px; font-weight: 700; color: var(--accent-primary);">
+                        ${{ "{:,.0f}".format(group.total_revenue or 0) }}
+                    </div>
+                </div>
+                <div style="text-align: center; padding: 16px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Spot Count</div>
+                    <div style="font-size: 18px; font-weight: 700; color: var(--text-primary);">{{ "{:,}".format(group.spot_count or 0) }}</div>
+                </div>
+                <div style="text-align: center; padding: 16px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Avg Rate</div>
+                    <div style="font-size: 18px; font-weight: 700; color: var(--text-primary);">
+                        ${{ "{:,.0f}".format(group.avg_rate or 0) }}
+                    </div>
+                </div>
+                <div style="text-align: center; padding: 16px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Market Share</div>
+                    <div style="font-size: 18px; font-weight: 700; color: var(--text-primary);">{{ group.market_share_pct or 0 }}%</div>
+                </div>
+            </div>
+            
+            {% if group.top_customers %}
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <span>👥</span>
+                    Top Clients in {{ group.group_name }}
+                </div>
+                {% for customer in group.top_customers[:3] %}
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; padding: 4px 0;">
+                    <span>{{ customer.customer_name }}</span>
+                    <span style="font-weight: 600; color: var(--accent-primary);">${{ "{:,.0f}".format(customer.total_revenue) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Detailed Sector Breakdown -->
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">🔍</span>
+            Detailed Sector Breakdown
+        </h2>
+    </div>
+    
+    <div style="background: var(--bg-secondary); border-radius: 16px; padding: 32px; border: 1px solid var(--border-color);">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+            {% for sector in data.all_sectors %}
+            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; transition: all 0.3s ease;">
+                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 12px; font-size: 16px;">{{ sector.sector_name or 'Unassigned' }}</div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 4px 8px; background: var(--bg-secondary); border-radius: 4px; display: inline-block;">{{ sector.sector_group or 'No Group' }}</div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                    <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                        <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">Revenue</div>
+                        <div style="font-size: 14px; font-weight: 600; color: var(--accent-primary);">
+                            ${{ "{:,.0f}".format(sector.total_revenue or 0) }}
+                        </div>
+                    </div>
+                    <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                        <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">Customers</div>
+                        <div style="font-size: 14px; font-weight: 600; color: var(--text-primary);">{{ sector.customer_count or 0 }}</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Assignment Status -->
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📈</span>
+            Assignment Status Analysis
+        </h2>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+        <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; box-shadow: 0 4px 16px var(--shadow-color);">
+            <div style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+                <span>✅</span>
+                Assigned Customers
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="nord-stat-card">
+                    <div class="nord-stat-value">{{ data.assignment_summary.assigned_customers }}</div>
+                    <div class="nord-stat-label">Customers</div>
+                </div>
+                <div class="nord-stat-card">
+                    <div class="nord-stat-value">${{ "{:,.0f}".format(data.assignment_summary.assigned_revenue) }}</div>
+                    <div class="nord-stat-label">Revenue</div>
+                </div>
+            </div>
+            <div class="nord-alert success">
+                <strong>{{ data.assignment_summary.assigned_percentage }}%</strong> of revenue is properly categorized
+            </div>
+        </div>
+        
+        <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; box-shadow: 0 4px 16px var(--shadow-color);">
+            <div style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+                <span>⚠️</span>
+                Unassigned Customers
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="nord-stat-card">
+                    <div class="nord-stat-value">{{ data.assignment_summary.unassigned_customers }}</div>
+                    <div class="nord-stat-label">Customers</div>
+                </div>
+                <div class="nord-stat-card">
+                    <div class="nord-stat-value">${{ "{:,.0f}".format(data.assignment_summary.unassigned_revenue) }}</div>
+                    <div class="nord-stat-label">Revenue</div>
+                </div>
+            </div>
+            <div class="nord-alert warning">
+                <strong>{{ data.assignment_summary.unassigned_percentage }}%</strong> needs sector assignment
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Customers by Sector -->
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">🏆</span>
+            Top Customers by Sector
+        </h2>
+    </div>
+    
+    <table class="nord-table">
+        <thead>
+            <tr>
+                <th>Customer Name</th>
+                <th>Sector</th>
+                <th>Group</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Avg Rate</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in data.top_customers_by_sector[:15] %}
+            <tr>
+                <td style="font-weight: 500;">{{ customer.customer_name }}</td>
+                <td>
+                    <span style="padding: 2px 6px; background: var(--bg-secondary); border-radius: 4px; font-size: 11px;">
+                        {{ customer.sector_name or 'Unassigned' }}
+                    </span>
+                </td>
+                <td>
+                    {% if customer.sector_group %}
+                        {% if customer.sector_group == 'Outreach' %}
+                            <span style="background: var(--nord8); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">{{ customer.sector_group }}</span>
+                        {% elif customer.sector_group == 'Commercial' %}
+                            <span style="background: var(--nord14); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">{{ customer.sector_group }}</span>
+                        {% elif customer.sector_group == 'Political' %}
+                            <span style="background: var(--nord12); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">{{ customer.sector_group }}</span>
+                        {% else %}
+                            <span style="background: var(--nord11); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">{{ customer.sector_group }}</span>
+                        {% endif %}
+                    {% else %}
+                        <span style="background: var(--text-muted); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">Unassigned</span>
+                    {% endif %}
+                </td>
+                <td class="number">${{ "{:,.0f}".format(customer.total_revenue) }}</td>
+                <td class="number">{{ "{:,}".format(customer.spot_count) }}</td>
+                <td class="number">${{ "{:,.0f}".format(customer.avg_rate) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %} 

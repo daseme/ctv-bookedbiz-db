@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}The story of our revenue progression{% endblock %}
+
+{% block content %}
+<div class="insight-box">
+    <div class="insight-title">Performance Story Overview</div>
+    <div class="insight-text">
+        This report presents the quarterly performance analysis showing the story of revenue progression 
+        with year-over-year comparisons and key performance indicators.
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Current Year at a Glance</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Quarter</th>
+                <th>Year</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Average Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.quarterly_data %}
+            {% if row.year == data.current_year %}
+            <tr>
+                <td>{{ row.quarter }}</td>
+                <td>{{ row.year }}</td>
+                <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(row.total_revenue) if row.total_revenue else "0" }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.avg_rate) if row.avg_rate else "0" }}
+                </td>
+                <td>
+                    <span class="status-open">CURRENT</span>
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="annotation">
+        Current year quarters show preliminary data; revenue figures exclude trade.
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">This Year vs Last Year</div>
+    <div class="chart-container">
+        <div class="chart-title">Revenue Comparison by Quarter</div>
+        <div class="chart small">
+            <canvas id="yoyChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Historical Context</div>
+    <div class="chart-container">
+        <div class="chart-title">Revenue Progression Over Time</div>
+        <div class="chart">
+            <canvas id="historicalChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Top Performing Account Executives</div>
+    
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Account Executive</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Average Rate</th>
+                <th>Performance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ae in data.ae_performance[:10] %}
+            <tr>
+                <td>{{ ae.ae_name }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(ae.total_revenue) if ae.total_revenue else "0" }}
+                </td>
+                <td class="number">{{ "{:,}".format(ae.spot_count) if ae.spot_count else "0" }}</td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(ae.avg_rate) if ae.avg_rate else "0" }}
+                </td>
+                <td>
+                    {% if ae.total_revenue > 1000000 %}
+                        <span class="status-closed">EXCELLENT</span>
+                    {% elif ae.total_revenue > 500000 %}
+                        <span class="status-open">STRONG</span>
+                    {% else %}
+                        <span style="background-color: #faf089; color: #744210; font-size: 10px; padding: 2px 4px; border-radius: 3px; font-weight: 600;">DEVELOPING</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="annotation">
+        Performance rankings based on total revenue generated across all available data.
+    </div>
+</div>
+
+<!-- Hidden data for JavaScript -->
+<script id="chart-data" type="application/json">
+{{ data | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Get data from the hidden script tag
+const dataScript = document.getElementById('chart-data');
+const reportData = JSON.parse(dataScript.textContent);
+
+// Group data by year
+const yearData = {};
+reportData.quarterly_data.forEach(row => {
+    if (!yearData[row.year]) {
+        yearData[row.year] = {};
+    }
+    yearData[row.year][row.quarter] = row.total_revenue || 0;
+});
+
+const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+const years = Object.keys(yearData).sort();
+const currentYear = reportData.current_year.toString();
+const lastYear = (reportData.current_year - 1).toString();
+
+// Year-over-Year Comparison Chart
+if (years.includes(currentYear) && years.includes(lastYear)) {
+    const ctx1 = document.getElementById('yoyChart').getContext('2d');
+    new Chart(ctx1, {
+        type: 'line',
+        data: {
+            labels: quarters,
+            datasets: [
+                {
+                    label: lastYear,
+                    data: quarters.map(q => yearData[lastYear][q] || 0),
+                    backgroundColor: 'rgba(107, 114, 128, 0.2)',
+                    borderColor: 'rgba(107, 114, 128, 1)',
+                    borderWidth: 2,
+                    fill: false
+                },
+                {
+                    label: currentYear,
+                    data: quarters.map(q => yearData[currentYear][q] || 0),
+                    backgroundColor: 'rgba(66, 153, 225, 0.2)',
+                    borderColor: 'rgba(66, 153, 225, 1)',
+                    borderWidth: 3,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + (value / 1000).toFixed(0) + 'K';
+                        }
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Historical Context Chart
+const ctx2 = document.getElementById('historicalChart').getContext('2d');
+const datasets = years.map((year, index) => {
+    const colors = ['rgba(66, 153, 225, 0.6)', 'rgba(72, 187, 120, 0.6)', 'rgba(245, 101, 101, 0.6)', 'rgba(246, 173, 85, 0.6)', 'rgba(159, 122, 234, 0.6)'];
+    return {
+        label: year,
+        data: quarters.map(q => yearData[year][q] || 0),
+        backgroundColor: colors[index % colors.length],
+        borderColor: colors[index % colors.length].replace('0.6', '1'),
+        borderWidth: 1
+    };
+});
+
+new Chart(ctx2, {
+    type: 'bar',
+    data: {
+        labels: quarters,
+        datasets: datasets
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '$' + (value / 1000).toFixed(0) + 'K';
+                    }
+                }
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %} 

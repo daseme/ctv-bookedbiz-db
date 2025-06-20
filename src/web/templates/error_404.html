@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>404 - Page Not Found | CTV Business Intelligence</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        /* Nord Color Palette */
+        :root {
+            --nord0: #2e3440;
+            --nord1: #3b4252;
+            --nord2: #434c5e;
+            --nord3: #4c566a;
+            --nord4: #d8dee9;
+            --nord5: #e5e9f0;
+            --nord6: #eceff4;
+            --nord7: #8fbcbb;
+            --nord8: #88c0d0;
+            --nord9: #81a1c1;
+            --nord10: #5e81ac;
+            --nord11: #bf616a;
+            --nord12: #d08770;
+            --nord13: #ebcb8b;
+            --nord14: #a3be8c;
+            --nord15: #b48ead;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, var(--nord0) 0%, var(--nord1) 100%);
+            min-height: 100vh;
+            color: var(--nord6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.6;
+        }
+
+        .error-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+        }
+
+        .logo-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            opacity: 0.8;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(8px);
+            background: rgba(236, 239, 244, 0.1);
+            padding: 6px;
+        }
+
+        .logo-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        .error-icon {
+            font-size: 120px;
+            margin-bottom: 32px;
+            display: block;
+            filter: drop-shadow(0 8px 16px rgba(46, 52, 64, 0.3));
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .error-code {
+            font-size: 72px;
+            font-weight: 800;
+            color: var(--nord8);
+            margin-bottom: 16px;
+            text-shadow: 0 4px 8px rgba(46, 52, 64, 0.3);
+            letter-spacing: -2px;
+        }
+
+        .error-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--nord6);
+            margin-bottom: 16px;
+            text-shadow: 0 2px 4px rgba(46, 52, 64, 0.3);
+        }
+
+        .error-message {
+            font-size: 18px;
+            color: var(--nord4);
+            margin-bottom: 40px;
+            opacity: 0.9;
+            line-height: 1.7;
+        }
+
+        .error-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .nord-btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-transform: uppercase;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+
+        .nord-btn-primary {
+            background: linear-gradient(135deg, var(--nord8) 0%, var(--nord9) 100%);
+            color: var(--nord6);
+            box-shadow: 0 4px 12px rgba(136, 192, 208, 0.3);
+        }
+
+        .nord-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(136, 192, 208, 0.4);
+            background: linear-gradient(135deg, var(--nord9) 0%, var(--nord10) 100%);
+        }
+
+        .nord-btn-secondary {
+            background: rgba(216, 222, 233, 0.1);
+            color: var(--nord4);
+            border: 2px solid rgba(216, 222, 233, 0.2);
+            backdrop-filter: blur(8px);
+        }
+
+        .nord-btn-secondary:hover {
+            background: rgba(216, 222, 233, 0.2);
+            border-color: var(--nord8);
+            color: var(--nord6);
+            transform: translateY(-2px);
+        }
+
+        .helpful-links {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid rgba(216, 222, 233, 0.1);
+        }
+
+        .helpful-links h3 {
+            font-size: 16px;
+            color: var(--nord6);
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        .link-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .helpful-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: rgba(216, 222, 233, 0.05);
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--nord4);
+            font-size: 14px;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .helpful-link:hover {
+            background: rgba(216, 222, 233, 0.1);
+            color: var(--nord6);
+            border-color: rgba(136, 192, 208, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .helpful-link .icon {
+            font-size: 16px;
+            opacity: 0.7;
+        }
+
+        /* Background decoration */
+        .error-container::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: 
+                radial-gradient(circle at 30% 20%, rgba(143, 188, 187, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 70% 80%, rgba(129, 161, 193, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+            animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .error-container {
+                padding: 20px;
+            }
+
+            .logo-container {
+                width: 50px;
+                height: 50px;
+                top: 16px;
+                right: 16px;
+            }
+
+            .error-code {
+                font-size: 56px;
+            }
+
+            .error-title {
+                font-size: 24px;
+            }
+
+            .error-message {
+                font-size: 16px;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .nord-btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .link-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .error-icon {
+                font-size: 80px;
+            }
+
+            .error-code {
+                font-size: 48px;
+            }
+
+            .error-title {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="logo-container">
+            <img src="/static/logo.png" alt="CTV Logo">
+        </div>
+
+        <div class="error-icon">🧭</div>
+        <div class="error-code">404</div>
+        <h1 class="error-title">Page Not Found</h1>
+        <p class="error-message">
+            The page you're looking for seems to have wandered off into the Nordic wilderness. 
+            Don't worry, we'll help you find your way back to familiar territory.
+        </p>
+
+        <div class="error-actions">
+            <div class="action-buttons">
+                <a href="/" class="nord-btn nord-btn-primary">
+                    🏠 Return Home
+                </a>
+                <button onclick="history.back()" class="nord-btn nord-btn-secondary">
+                    ← Go Back
+                </button>
+            </div>
+
+            <div class="helpful-links">
+                <h3>Popular Destinations</h3>
+                <div class="link-grid">
+                    <a href="/reports/revenue-dashboard-customer" class="helpful-link">
+                        <span class="icon">📊</span>
+                        Revenue Dashboard
+                    </a>
+                    <a href="/budget/" class="helpful-link">
+                        <span class="icon">💰</span>
+                        Budget Management
+                    </a>
+                    <a href="/reports/pipeline-revenue" class="helpful-link">
+                        <span class="icon">🔮</span>
+                        Pipeline Management
+                    </a>
+                    <a href="/health" class="helpful-link">
+                        <span class="icon">🏥</span>
+                        System Health
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

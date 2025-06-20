@@ -68,26 +68,26 @@ class SQLiteSpotRepository(SpotRepository, BaseService):
         return None
     
     def find_by_customer_and_date_range(self, customer_id: int, start_date: date, end_date: date) -> List[Spot]:
-        """Find spots for a customer within a date range."""
+        """Find spots for a customer within a date range using broadcast_month."""
         conn = self.db.connect()
         query = """
         SELECT * FROM spots 
-        WHERE customer_id = ? AND air_date BETWEEN ? AND ?
-        ORDER BY air_date
+        WHERE customer_id = ? AND broadcast_month BETWEEN ? AND ?
+        ORDER BY broadcast_month
         """
         cursor = conn.execute(query, (customer_id, start_date, end_date))
         
         return [self._row_to_spot(row) for row in cursor.fetchall()]
     
     def get_revenue_by_ae_and_month(self, ae_name: str, year: int, month: int) -> Decimal:
-        """Get total revenue for an AE in a specific month."""
+        """Get total revenue for an AE in a specific month using broadcast_month."""
         conn = self.db.connect()
         query = """
         SELECT COALESCE(SUM(gross_rate), 0) as total_revenue
         FROM spots 
         WHERE sales_person = ? 
-        AND strftime('%Y', air_date) = ? 
-        AND strftime('%m', air_date) = ?
+        AND strftime('%Y', broadcast_month) = ? 
+        AND strftime('%m', broadcast_month) = ?
         AND (revenue_type != 'Trade' OR revenue_type IS NULL)
         """
         
@@ -97,11 +97,11 @@ class SQLiteSpotRepository(SpotRepository, BaseService):
         return Decimal(str(result['total_revenue'])) if result['total_revenue'] else Decimal('0')
     
     def delete_future_data(self, cutoff_date: date) -> int:
-        """Delete non-historical data after cutoff date."""
+        """Delete non-historical data after cutoff date using broadcast_month."""
         with self.safe_transaction() as conn:
             query = """
             DELETE FROM spots 
-            WHERE air_date > ? AND is_historical = 0
+            WHERE broadcast_month > ? AND is_historical = 0
             """
             
             cursor = conn.execute(query, (cutoff_date,))
@@ -127,7 +127,7 @@ class SQLiteSpotRepository(SpotRepository, BaseService):
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
         
-        query += " ORDER BY air_date"
+        query += " ORDER BY broadcast_month"
         
         cursor = conn.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]

@@ -1,0 +1,580 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Enhanced Two-Tiered Sector Analysis: Outreach (Public Service) / Commercial (Business) / Political (Campaign){% endblock %}
+
+{% block extra_styles %}
+<style>
+/* Enhanced Sector Analysis Styles */
+.sector-groups-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin: 24px 0;
+}
+
+.sector-group-card {
+    background: #f8fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.sector-group-card:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.sector-group-card.outreach {
+    border-color: #4299e1;
+    background: linear-gradient(135deg, #ebf8ff 0%, #f7fafc 100%);
+}
+
+.sector-group-card.commercial {
+    border-color: #38a169;
+    background: linear-gradient(135deg, #f0fff4 0%, #f7fafc 100%);
+}
+
+.sector-group-card.political {
+    border-color: #ed8936;
+    background: linear-gradient(135deg, #fffaf0 0%, #f7fafc 100%);
+}
+
+.sector-group-card.unassigned {
+    border-color: #e53e3e;
+    background: linear-gradient(135deg, #fed7d7 0%, #f7fafc 100%);
+}
+
+.sector-group-card.healthcare {
+    border-color: #805ad5;
+    background: linear-gradient(135deg, #faf5ff 0%, #f7fafc 100%);
+}
+
+.sector-group-card.financial {
+    border-color: #d69e2e;
+    background: linear-gradient(135deg, #fffff0 0%, #f7fafc 100%);
+}
+
+.sector-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.sector-group-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.sector-group-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: white;
+}
+
+.badge-outreach { background: #4299e1; }
+.badge-commercial { background: #38a169; }
+.badge-political { background: #ed8936; }
+.badge-unassigned { background: #e53e3e; }
+.badge-healthcare { background: #805ad5; }
+.badge-financial { background: #d69e2e; }
+
+.sector-group-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.sector-metric {
+    text-align: center;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
+}
+
+.sector-metric-label {
+    font-size: 11px;
+    color: #718096;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+}
+
+.sector-metric-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.sector-revenue {
+    font-size: 20px !important;
+    color: #38a169 !important;
+}
+
+.customers-preview {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.customers-preview-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4a5568;
+    margin-bottom: 8px;
+}
+
+.customer-item {
+    font-size: 12px;
+    color: #718096;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.customer-revenue {
+    font-weight: 600;
+    color: #38a169;
+}
+
+.detailed-sectors-section {
+    margin: 32px 0;
+    background: #f7fafc;
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.sector-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.sector-detail-item {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.sector-detail-header {
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 8px;
+}
+
+.sector-detail-group {
+    font-size: 12px;
+    color: #718096;
+    margin-bottom: 4px;
+}
+
+.assignment-status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+}
+
+.status-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.status-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 16px;
+}
+
+.status-metric {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.status-label {
+    color: #718096;
+}
+
+.status-value {
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.status-value.positive {
+    color: #38a169;
+}
+
+/* Year Selection Controls */
+.controls-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+.controls-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.control-group label {
+    font-weight: 600;
+    color: #4a5568;
+    margin: 0;
+}
+
+.control-group select {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    color: #374151;
+    cursor: pointer;
+}
+
+.control-group select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.control-info {
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.current-year {
+    font-weight: 500;
+    color: #374151;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Year Selection Controls -->
+<div class="controls-section">
+    <div class="controls-row">
+        <div class="control-group">
+            <label for="year-select">Year:</label>
+            <select id="year-select" onchange="changeYear()">
+                {% for year in data.available_years %}
+                <option value="{{ year }}" {% if year == data.selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="control-info">
+            <span class="current-year">Viewing data for {{ data.selected_year }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="insight-box">
+    <div class="insight-title">Enhanced Sector Analysis Dashboard - {{ data.selected_year }}</div>
+    <div class="insight-text">
+        Two-tiered sector organization showing Outreach (public service), Commercial (business), and Political (campaign) messaging. 
+        Revenue assignment status: {{ "{:.1f}".format(data.sector_status.revenue_assignment_percentage) }}% of revenue 
+        (${{ "{:,.0f}".format(data.sector_status.assigned_revenue) }} of ${{ "{:,.0f}".format(data.sector_status.total_revenue) }}) 
+        is properly categorized across {{ data.sector_status.assigned_customers }} customers.
+    </div>
+</div>
+
+<!-- Sector Group Overview -->
+<div class="story-section">
+    <div class="section-title">Primary Sector Groups Overview</div>
+    
+    <div class="sector-groups-grid">
+        {% for group in data.sector_groups %}
+        <div class="sector-group-card {{ group.sector_group.lower() }}">
+            <div class="sector-group-header">
+                <div class="sector-group-name">{{ group.sector_group }}</div>
+                <div class="sector-group-badge badge-{{ group.sector_group.lower() }}">
+                    {{ "{:.1f}".format(group.revenue_percentage) }}%
+                </div>
+            </div>
+            
+            <div class="sector-group-metrics">
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Revenue</div>
+                    <div class="sector-metric-value sector-revenue">
+                        ${{ "{:,.0f}".format(group.total_revenue) }}
+                    </div>
+                </div>
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Customers</div>
+                    <div class="sector-metric-value">
+                        {{ "{:,}".format(group.customer_count) }}
+                    </div>
+                </div>
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Spots</div>
+                    <div class="sector-metric-value">
+                        {{ "{:,}".format(group.spot_count) }}
+                    </div>
+                </div>
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Avg Rate</div>
+                    <div class="sector-metric-value">
+                        ${{ "{:,.0f}".format(group.avg_rate) }}
+                    </div>
+                </div>
+            </div>
+            
+            {% if data.customers_by_group[group.sector_group] %}
+            <div class="customers-preview">
+                <div class="customers-preview-title">Top Customers:</div>
+                {% for customer in data.customers_by_group[group.sector_group][:3] %}
+                <div class="customer-item">
+                    <span>{{ customer.normalized_name[:25] }}{% if customer.normalized_name|length > 25 %}...{% endif %}</span>
+                    <span class="customer-revenue">${{ "{:,.0f}".format(customer.total_revenue) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Assignment Status Overview -->
+<div class="story-section">
+    <div class="section-title">Assignment Progress</div>
+    
+    <div class="assignment-status-grid">
+        <div class="status-card">
+            <div class="status-title">Customer Assignment Status</div>
+            <div class="status-metric">
+                <span class="status-label">Assigned Customers:</span>
+                <span class="status-value positive">{{ "{:,}".format(data.sector_status.assigned_customers) }}</span>
+            </div>
+            <div class="status-metric">
+                <span class="status-label">Total Customers:</span>
+                <span class="status-value">{{ "{:,}".format(data.sector_status.total_customers) }}</span>
+            </div>
+            <div class="status-metric">
+                <span class="status-label">Assignment Rate:</span>
+                <span class="status-value positive">{{ "{:.1f}".format(data.sector_status.assignment_percentage) }}%</span>
+            </div>
+        </div>
+        
+        <div class="status-card">
+            <div class="status-title">Revenue Assignment Status</div>
+            <div class="status-metric">
+                <span class="status-label">Assigned Revenue:</span>
+                <span class="status-value positive">${{ "{:,.0f}".format(data.sector_status.assigned_revenue) }}</span>
+            </div>
+            <div class="status-metric">
+                <span class="status-label">Total Revenue:</span>
+                <span class="status-value">${{ "{:,.0f}".format(data.sector_status.total_revenue) }}</span>
+            </div>
+            <div class="status-metric">
+                <span class="status-label">Coverage Rate:</span>
+                <span class="status-value positive">{{ "{:.1f}".format(data.sector_status.revenue_assignment_percentage) }}%</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Sector Breakdown -->
+<div class="story-section">
+    <div class="section-title">Detailed Sector Breakdown</div>
+    
+    <div class="detailed-sectors-section">
+        <div class="sector-details-grid">
+            {% for sector in data.detailed_sectors %}
+            <div class="sector-detail-item">
+                <div class="sector-detail-header">{{ sector.sector_name }}</div>
+                <div class="sector-detail-group">{{ sector.sector_group }} Group</div>
+                <div class="sector-metric">
+                    <div class="sector-metric-label">Revenue</div>
+                    <div class="sector-metric-value">${{ "{:,.0f}".format(sector.total_revenue) }}</div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                    <div style="font-size: 11px; color: #718096;">
+                        {{ "{:,}".format(sector.customer_count) }} customers
+                    </div>
+                    <div style="font-size: 11px; color: #718096;">
+                        {{ "{:,}".format(sector.spot_count) }} spots
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Top Unassigned Customers -->
+{% if data.unassigned_customers %}
+<div class="story-section">
+    <div class="section-title">Top Unassigned Customers (Candidates for Sector Assignment)</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Customer</th>
+                <th class="number">Spots</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Avg Rate</th>
+                <th>First Spot</th>
+                <th>Last Spot</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in data.unassigned_customers %}
+            <tr>
+                <td><strong>{{ customer.customer_name }}</strong></td>
+                <td class="number">{{ "{:,}".format(customer.spot_count) }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(customer.total_revenue) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(customer.avg_rate) }}
+                </td>
+                <td>{{ customer.first_spot_date }}</td>
+                <td>{{ customer.last_spot_date }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="annotation">
+        Priority customers for sector assignment based on revenue impact.
+    </div>
+</div>
+{% endif %}
+
+<!-- Quarterly Performance Context -->
+<div class="story-section">
+    <div class="section-title">Quarterly Context</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Quarter</th>
+                <th>Year</th>
+                <th class="number">Spots</th>
+                <th class="number">Revenue</th>
+                <th class="number">Avg Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for quarter in data.quarterly_data %}
+            <tr>
+                <td><strong>{{ quarter.quarter }}</strong></td>
+                <td>{{ quarter.year }}</td>
+                <td class="number">{{ "{:,}".format(quarter.spot_count) }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(quarter.total_revenue) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(quarter.avg_rate) }}
+                </td>
+                <td>
+                    <span class="status-badge {{ quarter.status.lower() }}">
+                        {{ quarter.status }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Account Executive Performance -->
+<div class="story-section">
+    <div class="section-title">Account Executive Performance</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Account Executive</th>
+                <th class="number">Spots</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Avg Rate</th>
+                <th>Period Active</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ae in data.ae_performance %}
+            <tr>
+                <td><strong>{{ ae.ae_name }}</strong></td>
+                <td class="number">{{ "{:,}".format(ae.spot_count) }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(ae.total_revenue) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(ae.avg_rate) }}
+                </td>
+                <td>{{ ae.first_spot_date }} to {{ ae.last_spot_date }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+console.log('Report4 JavaScript loading...');
+
+// Primary function for onchange attribute
+function changeYear() {
+    console.log('changeYear() called');
+    const yearSelect = document.getElementById('year-select');
+    console.log('yearSelect element:', yearSelect);
+    
+    if (yearSelect) {
+        const selectedYear = yearSelect.value;
+        console.log('Selected year:', selectedYear);
+        const newUrl = window.location.pathname + '?year=' + selectedYear;
+        console.log('Navigating to:', newUrl);
+        window.location.href = newUrl;
+    } else {
+        console.error('year-select element not found!');
+    }
+}
+
+// DOM ready handler as backup
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM ready, setting up year handler...');
+    const yearSelect = document.getElementById('year-select');
+    
+    if (yearSelect) {
+        console.log('Found year-select element, current value:', yearSelect.value);
+        
+        // Add event listener as backup to onchange attribute
+        yearSelect.addEventListener('change', function() {
+            console.log('Event listener triggered');
+            changeYear();
+        });
+        
+        console.log('Year selection setup complete');
+    } else {
+        console.error('year-select element not found in DOM ready!');
+    }
+});
+
+console.log('Report4 JavaScript loaded');
+</script>
+{% endblock %} 

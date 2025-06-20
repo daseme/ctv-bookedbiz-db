@@ -1,0 +1,282 @@
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(46, 52, 64, 0.8);
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    background: var(--nord6);
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 20px;
+    width: 90%;
+    max-width: 1000px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(46, 52, 64, 0.3);
+}
+
+.modal-header {
+    background: linear-gradient(135deg, var(--nord1) 0%, var(--nord2) 100%);
+    color: var(--nord6);
+    padding: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-title {
+    margin: 0;
+}
+
+.close {
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    color: var(--nord6);
+}
+
+.close:hover {
+    opacity: 0.7;
+}
+
+.modal-body {
+    padding: 24px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.search-box {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid var(--nord5);
+    border-radius: 10px;
+    background: var(--nord6);
+    color: var(--nord0);
+    margin-bottom: 20px;
+}
+
+.tabs {
+    display: flex;
+    border-bottom: 2px solid var(--nord5);
+    margin-bottom: 20px;
+}
+
+.tab {
+    padding: 12px 24px;
+    background: none;
+    border: none;
+    color: var(--nord2);
+    cursor: pointer;
+    font-weight: 600;
+    border-bottom: 3px solid transparent;
+}
+
+.tab.active {
+    color: var(--nord8);
+    border-bottom-color: var(--nord8);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.deals-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.deals-table th,
+.deals-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--nord5);
+}
+
+.deals-table th {
+    background: var(--nord5);
+    font-weight: 700;
+    color: var(--nord0);
+}
+
+.deal-amount {
+    font-weight: 700;
+    color: var(--decay-positive);
+}
+
+.deal-status {
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.status-booked {
+    background: var(--decay-positive);
+    color: var(--nord6);
+}
+
+.status-pipeline {
+    background: var(--nord8);
+    color: var(--nord6);
+}
+
+/* Decay Timeline Modal */
+.decay-timeline-modal {
+    display: none;
+    position: fixed;
+    z-index: 1001;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(46, 52, 64, 0.8);
+    backdrop-filter: blur(4px);
+}
+
+.decay-timeline-content {
+    background: var(--nord6);
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 20px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(46, 52, 64, 0.3);
+    border: 2px solid var(--nord5);
+}
+
+.timeline-header {
+    background: linear-gradient(135deg, var(--nord1) 0%, var(--nord2) 100%);
+    color: var(--nord6);
+    padding: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.timeline-body {
+    padding: 24px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.timeline-event {
+    display: flex;
+    align-items: flex-start;
+    padding: 16px;
+    margin-bottom: 16px;
+    background: var(--nord5);
+    border-radius: 12px;
+    border-left: 4px solid var(--decay-neutral);
+}
+
+.timeline-event.revenue-booked,
+.timeline-event.revenue_booked {
+    border-left-color: var(--decay-positive);
+}
+
+.timeline-event.revenue-removed,
+.timeline-event.revenue_removed {
+    border-left-color: var(--decay-negative);
+}
+
+.timeline-event.calibration,
+.timeline-event.calibration_reset,
+.timeline-event.manual_adjustment {
+    border-left-color: var(--calibration-color);
+}
+
+.timeline-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 16px;
+    font-weight: 700;
+    color: var(--nord6);
+    font-size: 14px;
+}
+
+.timeline-icon.revenue-booked,
+.timeline-icon.revenue_booked {
+    background: var(--decay-positive);
+}
+
+.timeline-icon.revenue-removed,
+.timeline-icon.revenue_removed {
+    background: var(--decay-negative);
+}
+
+.timeline-icon.calibration,
+.timeline-icon.calibration_reset,
+.timeline-icon.manual_adjustment {
+    background: var(--calibration-color);
+}
+
+.timeline-details {
+    flex: 1;
+}
+
+.timeline-title {
+    font-weight: 700;
+    color: var(--nord0);
+    margin-bottom: 4px;
+}
+
+.timeline-description {
+    color: var(--nord2);
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.timeline-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--nord3);
+}
+
+/* Responsive Design for Modals */
+@media (max-width: 768px) {
+    .decay-timeline-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+    
+    .deals-table th,
+    .deals-table td {
+        padding: 8px;
+        font-size: 14px;
+    }
+    
+    .timeline-event {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .timeline-icon {
+        margin-right: 0;
+        margin-bottom: 8px;
+    }
+}

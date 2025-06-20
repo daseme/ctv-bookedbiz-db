@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}The story of our revenue progression (Nord Theme){% endblock %}
+
+{% block extra_styles %}
+{% include "nord_base.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📖</span>
+            Performance Story Overview
+        </h2>
+    </div>
+    <div class="nord-alert info">
+        This report presents the quarterly performance analysis showing the story of revenue progression 
+        with year-over-year comparisons and key performance indicators.
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">⭐</span>
+            Current Year at a Glance
+        </h2>
+    </div>
+    
+    <table class="nord-table">
+        <thead>
+            <tr>
+                <th>Quarter</th>
+                <th>Year</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Average Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.quarterly_data %}
+            {% if row.year == data.current_year %}
+            <tr>
+                <td>{{ row.quarter }}</td>
+                <td>{{ row.year }}</td>
+                <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.total_revenue) if row.total_revenue else "0" }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.avg_rate) if row.avg_rate else "0" }}
+                </td>
+                <td>
+                    <span style="background: var(--accent-info); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">CURRENT</span>
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div class="nord-alert info" style="margin-top: 16px;">
+        <strong>Note:</strong> Current year quarters show preliminary data; revenue figures exclude trade.
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📊</span>
+            This Year vs Last Year
+        </h2>
+    </div>
+    
+    <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; height: 350px;">
+        <canvas id="yoyChart" style="max-height: 310px;"></canvas>
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📈</span>
+            Historical Context
+        </h2>
+    </div>
+    
+    <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; height: 400px;">
+        <canvas id="historicalChart" style="max-height: 360px;"></canvas>
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">🏆</span>
+            Top Performing Account Executives
+        </h2>
+    </div>
+    
+    <table class="nord-table">
+        <thead>
+            <tr>
+                <th>Account Executive</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Average Rate</th>
+                <th>Performance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ae in data.ae_performance[:10] %}
+            <tr>
+                <td style="font-weight: 500;">{{ ae.ae_name }}</td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(ae.total_revenue) if ae.total_revenue else "0" }}
+                </td>
+                <td class="number">{{ "{:,}".format(ae.spot_count) if ae.spot_count else "0" }}</td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(ae.avg_rate) if ae.avg_rate else "0" }}
+                </td>
+                <td>
+                    {% if ae.total_revenue > 1000000 %}
+                        <span style="background: var(--accent-success); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">EXCELLENT</span>
+                    {% elif ae.total_revenue > 500000 %}
+                        <span style="background: var(--accent-info); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">STRONG</span>
+                    {% else %}
+                        <span style="background: var(--accent-warning); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">DEVELOPING</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div class="nord-alert info" style="margin-top: 16px;">
+        <strong>Note:</strong> Performance rankings based on total revenue generated across all available data.
+    </div>
+</div>
+
+<!-- Hidden data for JavaScript -->
+<script id="chart-data" type="application/json">
+{{ data | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Get data from the hidden script tag
+const dataScript = document.getElementById('chart-data');
+const reportData = JSON.parse(dataScript.textContent);
+
+// Group data by year
+const yearData = {};
+reportData.quarterly_data.forEach(row => {
+    if (!yearData[row.year]) {
+        yearData[row.year] = {};
+    }
+    yearData[row.year][row.quarter] = row.total_revenue || 0;
+});
+
+const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+const years = Object.keys(yearData).sort();
+const currentYear = reportData.current_year.toString();
+const lastYear = (reportData.current_year - 1).toString();
+
+// Nord color palette
+const nordColors = {
+    current: 'rgba(94, 129, 172, 0.8)',    // Nord 10 - Dark Blue
+    last: 'rgba(143, 188, 187, 0.8)',      // Nord 7 - Frost Teal
+    historical: [
+        'rgba(94, 129, 172, 0.8)',         // Nord 10
+        'rgba(136, 192, 208, 0.8)',        // Nord 8  
+        'rgba(163, 190, 140, 0.8)',        // Nord 14
+        'rgba(235, 203, 139, 0.8)',        // Nord 13
+        'rgba(208, 135, 112, 0.8)',        // Nord 12
+        'rgba(180, 142, 173, 0.8)'         // Nord 15
+    ]
+};
+
+// Year-over-Year Comparison Chart
+if (years.includes(currentYear) && years.includes(lastYear)) {
+    const ctx1 = document.getElementById('yoyChart').getContext('2d');
+    new Chart(ctx1, {
+        type: 'line',
+        data: {
+            labels: quarters,
+            datasets: [
+                {
+                    label: lastYear,
+                    data: quarters.map(q => yearData[lastYear][q] || 0),
+                    backgroundColor: nordColors.last.replace('0.8', '0.1'),
+                    borderColor: nordColors.last.replace('0.8', '1'),
+                    borderWidth: 3,
+                    fill: false,
+                    tension: 0.4,
+                    pointBackgroundColor: nordColors.last.replace('0.8', '1'),
+                    pointBorderWidth: 2,
+                    pointRadius: 6
+                },
+                {
+                    label: currentYear,
+                    data: quarters.map(q => yearData[currentYear][q] || 0),
+                    backgroundColor: nordColors.current.replace('0.8', '0.1'),
+                    borderColor: nordColors.current.replace('0.8', '1'),
+                    borderWidth: 4,
+                    fill: false,
+                    tension: 0.4,
+                    pointBackgroundColor: nordColors.current.replace('0.8', '1'),
+                    pointBorderWidth: 2,
+                    pointRadius: 8
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: {
+                        color: '#4c566a',
+                        font: {
+                            family: 'Inter',
+                            size: 14
+                        }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(46, 52, 64, 0.95)',
+                    titleColor: '#eceff4',
+                    bodyColor: '#d8dee9',
+                    borderColor: '#5e81ac',
+                    borderWidth: 1,
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(216, 222, 233, 0.3)'
+                    },
+                    ticks: {
+                        color: '#4c566a',
+                        font: {
+                            family: 'Inter'
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(216, 222, 233, 0.3)'
+                    },
+                    ticks: {
+                        color: '#4c566a',
+                        font: {
+                            family: 'Inter'
+                        },
+                        callback: function(value) {
+                            return '$' + (value / 1000).toFixed(0) + 'K';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Historical Context Chart
+const ctx2 = document.getElementById('historicalChart').getContext('2d');
+const datasets = years.map((year, index) => {
+    return {
+        label: year,
+        data: quarters.map(q => yearData[year][q] || 0),
+        backgroundColor: nordColors.historical[index % nordColors.historical.length],
+        borderColor: nordColors.historical[index % nordColors.historical.length].replace('0.8', '1'),
+        borderWidth: 2,
+        borderRadius: 4
+    };
+});
+
+new Chart(ctx2, {
+    type: 'bar',
+    data: {
+        labels: quarters,
+        datasets: datasets
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: {
+                    color: '#4c566a',
+                    font: {
+                        family: 'Inter'
+                    }
+                }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(46, 52, 64, 0.95)',
+                titleColor: '#eceff4',
+                bodyColor: '#d8dee9',
+                borderColor: '#5e81ac',
+                borderWidth: 1,
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                grid: {
+                    color: 'rgba(216, 222, 233, 0.3)'
+                },
+                ticks: {
+                    color: '#4c566a',
+                    font: {
+                        family: 'Inter'
+                    }
+                }
+            },
+            y: {
+                beginAtZero: true,
+                grid: {
+                    color: 'rgba(216, 222, 233, 0.3)'
+                },
+                ticks: {
+                    color: '#4c566a',
+                    font: {
+                        family: 'Inter'
+                    },
+                    callback: function(value) {
+                        return '$' + (value / 1000).toFixed(0) + 'K';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %} 

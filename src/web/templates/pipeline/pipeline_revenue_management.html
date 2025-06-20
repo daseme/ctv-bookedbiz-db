@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title|default('Pipeline Revenue Management') }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title|default('Pipeline Revenue Management') }}{% endblock %}
+{% block header_subtitle %}Nordic pipeline management with real-time decay tracking{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-link">Executive</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Pipeline Revenue Management</span>
+{% endblock %}
+
+{% block extra_styles %}
+<!-- Include Nord CSS Module -->
+{% include 'nord_base.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline-decay-theme.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline-components.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline-modals.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="pipeline-container">
+    <!-- Enhanced Header Section -->
+    <div class="pipeline-header">
+        <div class="header-content">
+            <div class="header-info">
+                <h1>❄️ Pipeline Revenue Management</h1>
+                <p class="subtitle">Nordic ice-themed pipeline with real-time decay tracking</p>
+            </div>
+            <div class="session-info">
+                <div class="session-date">Review Session: {{ data.session_date|default('No session date') }}</div>
+                <div class="session-progress" id="session-progress">
+                    <span id="completed-count">{{ (data.session.completed_aes|default([]))|length }}</span> 
+                    of {{ (data.ae_list|default([]))|length }} AEs Reviewed
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enhanced AE Selection Bar -->
+    <div class="ae-selector-bar">
+        <div class="selector-content">
+            <div class="ae-selection">
+                <label for="ae-selector">Account Executive:</label>
+                <select id="ae-selector" class="ae-dropdown">
+                    <option value="">Select an AE to review...</option>
+                    {% if data.ae_list %}
+                        {% for ae in data.ae_list %}
+                        <option value="{{ ae.ae_id|default('') }}" 
+                                data-name="{{ ae.name|default('Unknown AE') }}" 
+                                data-decay="{{ (ae.decay_enabled|default(false))|lower }}">
+                            {{ ae.name|default('Unknown AE') }}{% if ae.has_decay_activity %} ⚡{% endif %}
+                        </option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="" disabled>No AEs available</option>
+                    {% endif %}
+                </select>
+            </div>
+            
+            <!-- Enhanced Progress Since Review with Decay Info -->
+            <div id="progress-since-review" class="review-session-panel" style="display: none;">
+                <div class="progress-header">
+                    <h3>Progress Since Last Review</h3>
+                    <div class="review-date" id="last-review-date"></div>
+                </div>
+                <div class="progress-content">
+                    <div class="progress-message" id="progress-message"></div>
+                    <div class="progress-stats">
+                        <div class="progress-stat positive">
+                            <div class="progress-value" id="revenue-progress">$0</div>
+                            <div class="progress-label">New Revenue Booked</div>
+                        </div>
+                        <div class="progress-stat positive">
+                            <div class="progress-value" id="pipeline-reduction">$0</div>
+                            <div class="progress-label">Automatic Decay</div>
+                        </div>
+                        <div class="progress-stat">
+                            <div class="progress-value" id="decay-events-count">0</div>
+                            <div class="progress-label">Decay Events</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="calibration-controls">
+                    <button type="button" class="btn-calibrate" onclick="PipelineController.startBulkCalibration()">
+                        Start Calibration Session
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="PipelineController.viewDecayAnalytics()">
+                        View Decay Analytics
+                    </button>
+                </div>
+            </div>
+
+            <div class="ae-stats" id="ae-stats" style="display: none;">
+                <div class="stat-item">
+                    <div class="stat-value" id="total-revenue">-</div>
+                    <div class="stat-label">Total Revenue</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="ytd-attainment">-</div>
+                    <div class="stat-label">YTD Attainment</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="avg-deal-size">-</div>
+                    <div class="stat-label">Avg Deal Size</div>
+                </div>
+                <div class="stat-item" id="decay-status-stat" style="display: none;">
+                    <div class="stat-value" id="decay-activity">-</div>
+                    <div class="stat-label">Decay Activity</div>
+                </div>
+            </div>
+            
+            <div class="completion-indicator">
+                <div class="status-dots" id="status-dots">
+                    {% if data.ae_list %}
+                        {% for ae in data.ae_list %}
+                        <div class="status-dot{% if ae.has_decay_activity %} decay-active{% endif %}" 
+                             data-ae-id="{{ ae.ae_id|default('') }}" 
+                             title="{{ ae.name|default('Unknown AE') }}{% if ae.has_decay_activity %} (Decay Active){% endif %}"></div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Decay Analytics Dashboard -->
+    <div id="decay-analytics" class="decay-analytics">
+        <h3>❄️ Decay Analytics Dashboard</h3>
+        <div class="analytics-grid" id="analytics-grid">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+
+    <!-- Enhanced Status Legend -->
+    <div class="status-legend">
+        <div class="legend-item">
+            <span class="legend-badge legend-closed">CLOSED</span>
+            <span>Historical months - Closed in database, reference only</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-badge legend-current">CURRENT</span>
+            <span>Current month - Active for updates and planning</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-badge legend-open">OPEN</span>
+            <span>Future months - Open for pipeline planning and forecasting</span>
+        </div>
+        <div class="legend-item">
+            <span class="decay-badge positive">DECAY+</span>
+            <span>Beneficial decay - Revenue booked reducing pipeline</span>
+        </div>
+        <div class="legend-item">
+            <span class="decay-badge negative">DECAY-</span>
+            <span>Problem decay - Revenue lost increasing pipeline need</span>
+        </div>
+        <div class="legend-item">
+            <span class="decay-badge neutral">CALIBRATED</span>
+            <span>Recently calibrated - Fresh baseline set</span>
+        </div>
+    </div>
+
+    <!-- Enhanced Monthly Revenue Cards -->
+    <div id="monthly-grid" class="monthly-grid" style="display: none;">
+        <!-- Cards will be populated dynamically with decay information -->
+    </div>
+
+    <!-- Month Summary Display -->
+    <div class="month-summary-display" id="month-summary-display">
+        <div>
+            ❄️ Select an Account Executive to view their Nordic pipeline analysis with real-time decay tracking
+        </div>
+    </div>
+</div>
+
+<!-- Include Modal Templates -->
+{% include 'pipeline/partials/customer_modal.html' %}
+{% include 'pipeline/partials/decay_timeline_modal.html' %}
+
+<!-- Alert Container -->
+<div id="alert-container" style="position: fixed; top: 20px; right: 20px; z-index: 1001;">
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pipeline-config.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pipeline-api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pipeline-ui.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pipeline-decay.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pipeline-controller.js') }}"></script>
+
+<!-- Step 1: Template prepares data for JavaScript -->
+<script>
+/* eslint-disable */
+// @ts-nocheck
+// VS Code: This script block contains Jinja2 template syntax that will be processed server-side
+// The resulting JavaScript will be valid, but VS Code can't validate template syntax
+
+// TEMPLATE RESPONSIBILITY: Prepare debug info and session data
+// This runs at page render time, so template variables are available
+window.PIPELINE_DEBUG = {
+    enabled: {{ config.DEBUG|default(false)|tojson|safe }},
+    sessionDataLength: {{ (data.session|default({})|tojson|safe)|length }},
+    hasSessionData: {{ (data.session is defined and data.session)|tojson|safe }},
+    templateRenderTime: new Date().toISOString(),
+    aeListCount: {{ (data.ae_list|default([]))|length }}
+};
+
+// Pre-render the session data string for JavaScript to parse
+window.PIPELINE_SESSION_RAW = '{{ (data.session|default({})|tojson|safe)|replace("'", "\\'") }}';
+/* eslint-enable */
+</script>
+
+<!-- Step 2: Pure JavaScript handles all logic -->
+<script>
+// JAVASCRIPT RESPONSIBILITY: All application logic
+// This is pure JavaScript - no template mixing, VS Code is happy
+
+// Initialize the application with comprehensive error handling
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Enhanced Pipeline Revenue Management page loaded');
+    
+    // Step 2a: Default fallback session data
+    const defaultSessionData = {
+        completed_aes: [],
+        session_date: null,
+        session_id: null,
+        ae_list: []
+    };
+    
+    let sessionData = defaultSessionData;
+    
+    // Step 2b: Safely parse session data (now from window variable)
+    try {
+        const rawSessionData = window.PIPELINE_SESSION_RAW;
+        
+        // Validate that we have actual data
+        if (rawSessionData && rawSessionData !== '{}' && rawSessionData !== 'null') {
+            sessionData = JSON.parse(rawSessionData);
+            console.log('Session data loaded successfully');
+            
+            // Step 2c: Debug logging (pure JavaScript conditional)
+            if (window.PIPELINE_DEBUG.enabled) {
+                console.log('Session summary:', {
+                    has_completed_aes: !!(sessionData.completed_aes && sessionData.completed_aes.length),
+                    has_session_date: !!sessionData.session_date,
+                    has_session_id: !!sessionData.session_id,
+                    data_keys: Object.keys(sessionData),
+                    ae_count_from_template: window.PIPELINE_DEBUG.aeListCount,
+                    template_render_time: window.PIPELINE_DEBUG.templateRenderTime
+                });
+            }
+        } else {
+            console.warn('No session data available, using defaults');
+            
+            if (window.PIPELINE_DEBUG.enabled) {
+                console.log('Debug info - no session data:', {
+                    raw_data_length: window.PIPELINE_DEBUG.sessionDataLength,
+                    has_session_data_flag: window.PIPELINE_DEBUG.hasSessionData,
+                    ae_list_count: window.PIPELINE_DEBUG.aeListCount
+                });
+            }
+        }
+    } catch (jsonError) {
+        console.error('Failed to parse session data JSON:', jsonError.message);
+        
+        // Step 2d: Enhanced error reporting based on debug mode
+        if (window.PIPELINE_DEBUG.enabled) {
+            console.group('🐛 DEBUG: Session Data Parse Error');
+            console.warn('Raw session data length:', window.PIPELINE_DEBUG.sessionDataLength + ' characters');
+            console.warn('Template reported hasSessionData:', window.PIPELINE_DEBUG.hasSessionData);
+            console.warn('AE list count from template:', window.PIPELINE_DEBUG.aeListCount);
+            console.warn('Template render time:', window.PIPELINE_DEBUG.templateRenderTime);
+            console.warn('JSON Parse Error Details:', {
+                name: jsonError.name,
+                message: jsonError.message,
+                // Don't log the actual malformed JSON for security
+                raw_data_preview: window.PIPELINE_SESSION_RAW.substring(0, 100) + '...'
+            });
+            console.groupEnd();
+        } else {
+            console.warn('Session data parsing failed. Enable DEBUG mode for detailed information.');
+        }
+        
+        // sessionData remains as defaultSessionData
+    }
+    
+    // Step 2e: Ensure required properties exist
+    sessionData = {
+        ...defaultSessionData,
+        ...sessionData,
+        completed_aes: sessionData.completed_aes || [],
+        session_date: sessionData.session_date || new Date().toISOString().split('T')[0],
+        session_id: sessionData.session_id || `session_${Date.now()}`
+    };
+    
+    // Step 2f: Dependency checks (unchanged, pure JavaScript)
+    if (typeof window.PipelineController === 'undefined') {
+        console.error('PipelineController is not loaded! Check that pipeline-controller.js is included.');
+        
+        const alertContainer = document.getElementById('alert-container');
+        if (alertContainer) {
+            const errorAlert = document.createElement('div');
+            errorAlert.className = 'alert alert-error';
+            errorAlert.textContent = 'Application failed to load. Please refresh the page.';
+            alertContainer.appendChild(errorAlert);
+        }
+        return;
+    }
+    
+    if (typeof window.PipelineUtils === 'undefined') {
+        console.error('PipelineUtils is not loaded! Check that pipeline-config.js is included.');
+        return;
+    }
+    
+    // Step 2g: Initialize the controller with error handling
+    try {
+        if (window.PIPELINE_DEBUG.enabled) {
+            console.log('🚀 Initializing PipelineController with data:', {
+                session_id: sessionData.session_id,
+                completed_aes_count: sessionData.completed_aes.length,
+                has_session_date: !!sessionData.session_date
+            });
+        }
+        
+        PipelineController.init(sessionData);
+        console.log('✅ PipelineController initialized successfully');
+    } catch (initError) {
+        console.error('❌ Failed to initialize PipelineController:', initError);
+        
+        // Try fallback initialization
+        try {
+            console.log('🔄 Attempting fallback initialization...');
+            PipelineController.init(defaultSessionData);
+            console.log('✅ Fallback initialization successful');
+        } catch (fallbackError) {
+            console.error('❌ Fallback initialization also failed:', fallbackError);
+            
+            // Last resort: show error message to user
+            const alertContainer = document.getElementById('alert-container');
+            if (alertContainer) {
+                const errorAlert = document.createElement('div');
+                errorAlert.className = 'alert alert-error';
+                errorAlert.textContent = 'Application initialization failed. Some features may not work properly.';
+                alertContainer.appendChild(errorAlert);
+                
+                setTimeout(() => {
+                    if (errorAlert.parentNode) {
+                        errorAlert.parentNode.removeChild(errorAlert);
+                    }
+                }, 10000);
+            }
+        }
+    }
+    
+    // Step 2h: DOM safety checks
+    const criticalElements = [
+        'ae-selector',
+        'monthly-grid', 
+        'session-progress',
+        'alert-container'
+    ];
+    
+    const missingElements = criticalElements.filter(id => !document.getElementById(id));
+    if (missingElements.length > 0) {
+        console.warn('⚠️ Missing critical DOM elements:', missingElements);
+        
+        if (window.PIPELINE_DEBUG.enabled) {
+            console.log('🔍 Available elements:', criticalElements.filter(id => document.getElementById(id)));
+        }
+    }
+    
+    console.log('🏁 Pipeline Revenue Management initialization complete');
+});
+
+// Step 3: Global error handlers (unchanged, pure JavaScript)
+window.addEventListener('unhandledrejection', function(event) {
+    console.error('🚨 Unhandled promise rejection in Pipeline app:', event.reason);
+    
+    if (event.reason && event.reason.message && event.reason.message.includes('fetch')) {
+        const alertContainer = document.getElementById('alert-container');
+        if (alertContainer && window.PipelineUI) {
+            PipelineUI.showAlert('error', 'Network error occurred. Please check your connection and try again.');
+        }
+    }
+});
+
+window.addEventListener('error', function(event) {
+    if (event.filename && (
+        event.filename.includes('pipeline-') || 
+        event.message.includes('Pipeline') ||
+        event.message.includes('pipeline')
+    )) {
+        console.error('🚨 Pipeline JavaScript error:', {
+            message: event.message,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno
+        });
+    }
+});
+</script>
+{% endblock %}

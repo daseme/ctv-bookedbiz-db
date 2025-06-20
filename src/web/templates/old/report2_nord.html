@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Budget vs Current Expectations vs Actual Performance (Nord Theme){% endblock %}
+
+{% block extra_styles %}
+{% include "nord_base.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📊</span>
+            Expectation Tracking Overview
+        </h2>
+    </div>
+    <div class="nord-alert info">
+        This report tracks management expectations against actual performance, providing insights into 
+        quarterly revenue trends and Account Executive performance against targets.
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📈</span>
+            Quarterly Performance Analysis
+        </h2>
+    </div>
+    
+    <table class="nord-table">
+        <thead>
+            <tr>
+                <th>Quarter</th>
+                <th>Year</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Average Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.quarterly_data %}
+            <tr>
+                <td>{{ row.quarter }}</td>
+                <td>{{ row.year }}</td>
+                <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.total_revenue) if row.total_revenue else "0" }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.avg_rate) if row.avg_rate else "0" }}
+                </td>
+                <td>
+                    {% if row.status == 'CLOSED' %}
+                        <span style="background: var(--accent-success); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">CLOSED</span>
+                    {% else %}
+                        <span style="background: var(--accent-warning); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">{{ row.status }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div class="nord-alert info" style="margin-top: 16px;">
+        <strong>Note:</strong> Current quarters show preliminary data; historical quarters show final results.
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">📊</span>
+            Quarterly Revenue Progression
+        </h2>
+    </div>
+    
+    <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; height: 400px;">
+        <canvas id="quarterlyChart" style="max-height: 360px;"></canvas>
+    </div>
+</div>
+
+<div class="nord-section">
+    <div class="nord-section-header">
+        <h2 class="nord-section-title">
+            <span class="nord-section-icon">👥</span>
+            Account Executive Performance
+        </h2>
+    </div>
+    
+    <div class="nord-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
+        {% for ae in data.ae_performance[:6] %}
+        <div class="nord-stat-card" style="padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0;">{{ ae.ae_name }}</h3>
+                {% if ae.total_revenue > 1000000 %}
+                    <span style="padding: 4px 12px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--accent-success); color: white;">TOP PERFORMER</span>
+                {% elif ae.total_revenue > 500000 %}
+                    <span style="padding: 4px 12px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--accent-info); color: white;">STRONG</span>
+                {% else %}
+                    <span style="padding: 4px 12px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--accent-warning); color: white;">DEVELOPING</span>
+                {% endif %}
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                <div style="text-align: center; padding: 12px; background: var(--bg-primary); border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Total Revenue</div>
+                    <div style="font-size: 18px; font-weight: 700; color: var(--accent-primary);">
+                        ${{ "{:,.0f}".format(ae.total_revenue) if ae.total_revenue else "0" }}
+                    </div>
+                </div>
+                <div style="text-align: center; padding: 12px; background: var(--bg-primary); border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Spot Count</div>
+                    <div style="font-size: 18px; font-weight: 700; color: var(--accent-primary);">{{ "{:,}".format(ae.spot_count) if ae.spot_count else "0" }}</div>
+                </div>
+                <div style="text-align: center; padding: 12px; background: var(--bg-primary); border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Avg Rate</div>
+                    <div style="font-size: 18px; font-weight: 700; color: var(--accent-primary);">
+                        ${{ "{:,.0f}".format(ae.avg_rate) if ae.avg_rate else "0" }}
+                    </div>
+                </div>
+                <div style="text-align: center; padding: 12px; background: var(--bg-primary); border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Active Period</div>
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">
+                        {% if ae.first_spot_date and ae.last_spot_date %}
+                            {{ ae.first_spot_date[:7] }} to {{ ae.last_spot_date[:7] }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Hidden data for JavaScript -->
+<script id="chart-data" type="application/json">
+{{ data | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Get data from the hidden script tag
+const dataScript = document.getElementById('chart-data');
+const reportData = JSON.parse(dataScript.textContent);
+
+// Quarterly Revenue Chart with Nord colors
+const ctx = document.getElementById('quarterlyChart').getContext('2d');
+
+// Group data by year for comparison
+const yearData = {};
+reportData.quarterly_data.forEach(row => {
+    if (!yearData[row.year]) {
+        yearData[row.year] = {};
+    }
+    yearData[row.year][row.quarter] = row.total_revenue || 0;
+});
+
+const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+const years = Object.keys(yearData).sort();
+
+// Nord color palette for datasets
+const nordColors = [
+    'rgba(94, 129, 172, 0.8)',   // Nord 10 - Dark Blue
+    'rgba(136, 192, 208, 0.8)',  // Nord 8 - Light Blue  
+    'rgba(163, 190, 140, 0.8)',  // Nord 14 - Green
+    'rgba(235, 203, 139, 0.8)',  // Nord 13 - Yellow
+    'rgba(208, 135, 112, 0.8)'   // Nord 12 - Orange
+];
+
+const datasets = years.map((year, index) => {
+    return {
+        label: year,
+        data: quarters.map(q => yearData[year][q] || 0),
+        backgroundColor: nordColors[index % nordColors.length],
+        borderColor: nordColors[index % nordColors.length].replace('0.8', '1'),
+        borderWidth: 2,
+        borderRadius: 4
+    };
+});
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: quarters,
+        datasets: datasets
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: {
+                    color: '#4c566a',
+                    font: {
+                        family: 'Inter'
+                    }
+                }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(46, 52, 64, 0.95)',
+                titleColor: '#eceff4',
+                bodyColor: '#d8dee9',
+                borderColor: '#5e81ac',
+                borderWidth: 1,
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                grid: {
+                    color: 'rgba(216, 222, 233, 0.3)'
+                },
+                ticks: {
+                    color: '#4c566a',
+                    font: {
+                        family: 'Inter'
+                    }
+                }
+            },
+            y: {
+                beginAtZero: true,
+                grid: {
+                    color: 'rgba(216, 222, 233, 0.3)'
+                },
+                ticks: {
+                    color: '#4c566a',
+                    font: {
+                        family: 'Inter'
+                    },
+                    callback: function(value) {
+                        return '$' + (value / 1000).toFixed(0) + 'K';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %} 

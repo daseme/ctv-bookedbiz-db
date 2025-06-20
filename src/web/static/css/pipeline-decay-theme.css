@@ -1,0 +1,211 @@
+/* Enhanced Nord Theme with Decay Indicators */
+:root {
+    /* Existing Nord colors */
+    --nord0: #2e3440; --nord1: #3b4252; --nord2: #434c5e; --nord3: #4c566a;
+    --nord4: #d8dee9; --nord5: #e5e9f0; --nord6: #eceff4;
+    --nord7: #8fbcbb; --nord8: #88c0d0; --nord9: #81a1c1; --nord10: #5e81ac;
+    --nord11: #bf616a; --nord12: #d08770; --nord13: #ebcb8b; --nord14: #a3be8c; --nord15: #b48ead;
+    
+    /* New decay-specific colors */
+    --decay-positive: var(--nord14); /* Green for beneficial decay */
+    --decay-negative: var(--nord11); /* Red for problematic decay */
+    --decay-neutral: var(--nord8);   /* Blue for neutral decay */
+    --calibration-color: var(--nord15); /* Purple for calibration events */
+}
+
+/* Decay Status Indicator */
+.decay-indicator {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--nord5);
+    transition: all 0.3s ease;
+}
+
+.decay-indicator.active {
+    background: var(--decay-neutral);
+    box-shadow: 0 0 8px rgba(136, 192, 208, 0.6);
+    animation: decayPulse 2s infinite;
+}
+
+.decay-indicator.positive {
+    background: var(--decay-positive);
+    box-shadow: 0 0 8px rgba(163, 190, 140, 0.6);
+}
+
+.decay-indicator.negative {
+    background: var(--decay-negative);
+    box-shadow: 0 0 8px rgba(191, 97, 106, 0.6);
+}
+
+@keyframes decayPulse {
+    0%, 100% { 
+        opacity: 1; 
+        transform: scale(1); 
+    }
+    50% { 
+        opacity: 0.7; 
+        transform: scale(1.3); 
+    }
+}
+
+/* Decay Badges */
+.decay-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.decay-badge.positive {
+    background: var(--decay-positive);
+    color: var(--nord6);
+}
+
+.decay-badge.negative {
+    background: var(--decay-negative);
+    color: var(--nord6);
+}
+
+.decay-badge.neutral {
+    background: var(--decay-neutral);
+    color: var(--nord6);
+}
+
+/* Status Legend */
+.status-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: var(--nord5);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+    font-size: 12px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.legend-badge {
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+.legend-closed {
+    background: var(--nord3);
+    color: var(--nord6);
+}
+
+.legend-current {
+    background: var(--nord8);
+    color: var(--nord6);
+}
+
+.legend-open {
+    background: var(--nord14);
+    color: var(--nord6);
+}
+
+/* Alert System */
+.alert {
+    padding: 12px 20px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    animation: slideIn 0.3s ease;
+}
+
+.alert-success {
+    background: var(--decay-positive);
+    color: var(--nord6);
+}
+
+.alert-error {
+    background: var(--decay-negative);
+    color: var(--nord6);
+}
+
+.alert-decay {
+    background: linear-gradient(135deg, var(--decay-neutral) 0%, var(--nord8) 100%);
+    color: var(--nord6);
+    border: 2px solid rgba(136, 192, 208, 0.3);
+}
+
+.alert-calibration {
+    background: linear-gradient(135deg, var(--calibration-color) 0%, var(--nord15) 100%);
+    color: var(--nord6);
+    border: 2px solid rgba(180, 142, 173, 0.3);
+}
+
+@keyframes slideIn {
+    from { 
+        transform: translateX(100%); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translateX(0); 
+        opacity: 1; 
+    }
+}
+
+/* Loading State */
+.pipeline-container.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Decay Analytics Dashboard */
+.decay-analytics {
+    background: var(--nord6);
+    border: 2px solid var(--nord5);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 24px;
+    display: none;
+}
+
+.decay-analytics.visible {
+    display: block;
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.analytics-card {
+    background: linear-gradient(135deg, var(--nord5) 0%, var(--nord6) 100%);
+    border: 1px solid var(--nord4);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+}
+
+.analytics-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--nord0);
+    margin-bottom: 8px;
+}
+
+.analytics-label {
+    font-size: 12px;
+    color: var(--nord2);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+}

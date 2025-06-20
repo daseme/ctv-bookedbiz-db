@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Monthly breakdown with key performance indicators{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<a href="#" onclick="document.querySelector('.nav-section.operational .nav-dropdown').style.opacity='1'">Operational</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Monthly Revenue Summary</span>
+{% endblock %}
+
+{% block content %}
+<div class="insight-box">
+    <div class="insight-title">Monthly Revenue Overview</div>
+    <div class="insight-text">
+        This report shows monthly revenue summary with total spot counts, revenue totals, and average rates.
+        All figures exclude trade revenue to focus on actual monetary transactions.
+    </div>
+</div>
+
+<!-- Date Range Selector -->
+<div class="story-section">
+    <div class="section-title">Date Range Filter</div>
+    <form method="GET" style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: 600; color: #2d3748;">From:</label>
+            <select name="from_month" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white;">
+                <option value="">All</option>
+                {% for month_num, month_name in [('01', 'January'), ('02', 'February'), ('03', 'March'), ('04', 'April'), ('05', 'May'), ('06', 'June'), ('07', 'July'), ('08', 'August'), ('09', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')] %}
+                <option value="{{ month_num }}" {% if request.args.get('from_month') == month_num %}selected{% endif %}>{{ month_name }}</option>
+                {% endfor %}
+            </select>
+            <select name="from_year" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white;">
+                <option value="">All</option>
+                {% for year in data.available_years %}
+                <option value="{{ year }}" {% if request.args.get('from_year') == year|string %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: 600; color: #2d3748;">To:</label>
+            <select name="to_month" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white;">
+                <option value="">All</option>
+                {% for month_num, month_name in [('01', 'January'), ('02', 'February'), ('03', 'March'), ('04', 'April'), ('05', 'May'), ('06', 'June'), ('07', 'July'), ('08', 'August'), ('09', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')] %}
+                <option value="{{ month_num }}" {% if request.args.get('to_month') == month_num %}selected{% endif %}>{{ month_name }}</option>
+                {% endfor %}
+            </select>
+            <select name="to_year" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white;">
+                <option value="">All</option>
+                {% for year in data.available_years %}
+                <option value="{{ year }}" {% if request.args.get('to_year') == year|string %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <button type="submit" style="background: #4299e1; color: white; padding: 8px 16px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">
+            Apply Filter
+        </button>
+        
+        <a href="/report1" style="background: #e2e8f0; color: #4a5568; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: 600; transition: background-color 0.2s;">
+            Clear
+        </a>
+    </form>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Monthly Revenue Summary</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Month</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Average Rate</th>
+                <th class="number">Min Rate</th>
+                <th class="number">Max Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.monthly_data %}
+            <tr{% if row.formatted_month == '*** TOTAL ***' %} style="background-color: #f7fafc; font-weight: 600; border-top: 2px solid #2d3748;"{% endif %}>
+                <td>{{ row.formatted_month }}</td>
+                <td class="number">{{ "{:,}".format(row.spot_count or 0) }}</td>
+                <td class="number {% if row.formatted_month != '*** TOTAL ***' %}positive{% else %}neutral{% endif %}">
+                    ${{ "{:,.0f}".format(row.total_revenue or 0) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.avg_rate or 0) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.min_rate or 0) }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.max_rate or 0) }}
+                </td>
+                <td>
+                    {% if row.status == 'CLOSED' %}
+                        <span class="status-closed">CLOSED</span>
+                    {% elif row.status == 'OPEN' %}
+                        <span class="status-open">OPEN</span>
+                    {% else %}
+                        <span class="status-unknown">{{ row.status }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="annotation">
+        Excludes trade revenue. Total row shows aggregate across all months with data.
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="section-title">Quarterly Overview</div>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Quarter</th>
+                <th>Year</th>
+                <th class="number">Spot Count</th>
+                <th class="number">Total Revenue</th>
+                <th class="number">Average Rate</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.quarterly_data %}
+            <tr>
+                <td>{{ row.quarter }}</td>
+                <td>{{ row.year }}</td>
+                <td class="number">{{ "{:,}".format(row.spot_count) if row.spot_count else "0" }}</td>
+                <td class="number positive">
+                    ${{ "{:,.0f}".format(row.total_revenue) if row.total_revenue else "0" }}
+                </td>
+                <td class="number">
+                    ${{ "{:,.0f}".format(row.avg_rate) if row.avg_rate else "0" }}
+                </td>
+                <td>
+                    {% if row.status == 'CLOSED' %}
+                        <span class="status-closed">CLOSED</span>
+                    {% else %}
+                        <span class="status-open">{{ row.status }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="annotation">
+        Quarter status indicates whether all months in the quarter are officially closed.
+    </div>
+</div>
+
+<!-- Client Analytics Section -->
+<div class="story-section">
+    <div class="section-title">
+        Client Analytics Overview
+        <button id="toggleClientDetails" onclick="toggleClientDetails()" style="float: right; background: #4299e1; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+            + Show Details
+        </button>
+    </div>
+    
+    <!-- Client Summary Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="insight-box" style="text-align: center; min-height: auto;">
+            <div style="font-size: 24px; font-weight: 700; color: #2563eb;">{{ "{:,}".format(data.client_summary.total_clients or 0) }}</div>
+            <div style="font-size: 14px; color: #6b7280;">Total Clients</div>
+        </div>
+        <div class="insight-box" style="text-align: center; min-height: auto;">
+            <div style="font-size: 24px; font-weight: 700; color: #059669;">${{ "{:,.0f}".format(data.client_summary.avg_revenue_per_client or 0) }}</div>
+            <div style="font-size: 14px; color: #6b7280;">Avg Revenue per Client</div>
+        </div>
+        <div class="insight-box" style="text-align: center; min-height: auto;">
+            <div style="font-size: 24px; font-weight: 700; color: #dc2626;">${{ "{:,.0f}".format(data.client_summary.max_client_revenue or 0) }}</div>
+            <div style="font-size: 14px; color: #6b7280;">Top Client Revenue</div>
+        </div>
+    </div>
+    
+    <div id="clientDetails" style="display: none;">
+        <!-- Monthly Client Metrics -->
+        <div style="margin-bottom: 32px;">
+            <h3 style="margin-bottom: 16px; color: #2d3748;">Clients Per Month</h3>
+            <table class="metrics-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="number">Client Count</th>
+                        <th class="number">Total Revenue</th>
+                        <th class="number">Avg Revenue/Client</th>
+                        <th class="number">Avg Spot Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data.client_monthly_data %}
+                    <tr>
+                        <td>{{ row.formatted_month }}</td>
+                        <td class="number">{{ "{:,}".format(row.client_count or 0) }}</td>
+                        <td class="number positive">${{ "{:,.0f}".format(row.total_revenue or 0) }}</td>
+                        <td class="number">${{ "{:,.0f}".format(row.avg_revenue_per_client or 0) }}</td>
+                        <td class="number">${{ "{:,.0f}".format(row.avg_spot_rate or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Top 5 Revenue Clients -->
+        <div style="margin-bottom: 32px;">
+            <h3 style="margin-bottom: 16px; color: #2d3748;">Top 5 Revenue Clients</h3>
+            <table class="metrics-table">
+                <thead>
+                    <tr>
+                        <th>Client Name</th>
+                        <th class="number">Total Revenue</th>
+                        <th class="number">Spot Count</th>
+                        <th class="number">Avg Spot Rate</th>
+                        <th class="number">Active Months</th>
+                        <th>Period</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for client in data.top_clients_data %}
+                    <tr>
+                        <td><strong>{{ client.client_name }}</strong></td>
+                        <td class="number positive">${{ "{:,.0f}".format(client.total_revenue or 0) }}</td>
+                        <td class="number">{{ "{:,}".format(client.spot_count or 0) }}</td>
+                        <td class="number">${{ "{:,.0f}".format(client.avg_spot_rate or 0) }}</td>
+                        <td class="number">{{ client.active_months or 0 }}</td>
+                        <td style="font-size: 12px;">{{ client.first_month }} - {{ client.last_month }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- All Clients Searchable List -->
+        <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="color: #2d3748; margin: 0;">All Clients</h3>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <input type="text" id="clientSearch" placeholder="Search clients..." 
+                           style="padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; width: 200px;"
+                           oninput="filterClients()">
+                    <select id="sortClients" onchange="sortClients()" 
+                            style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <option value="revenue">Sort by Revenue</option>
+                        <option value="name">Sort by Name</option>
+                        <option value="spots">Sort by Spot Count</option>
+                        <option value="rate">Sort by Avg Rate</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px;">
+                <table class="metrics-table" id="allClientsTable">
+                    <thead style="position: sticky; top: 0; background: white; z-index: 10;">
+                        <tr>
+                            <th>Client Name</th>
+                            <th class="number">Revenue</th>
+                            <th class="number">Spots</th>
+                            <th class="number">Avg Rate</th>
+                            <th class="number">Months</th>
+                            <th>AE</th>
+                            <th>Period</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientsTableBody">
+                        {% for client in data.all_clients_data %}
+                        <tr data-client-name="{{ client.client_name|lower }}" 
+                            data-revenue="{{ client.total_revenue or 0 }}" 
+                            data-spots="{{ client.spot_count or 0 }}" 
+                            data-rate="{{ client.avg_spot_rate or 0 }}"
+                            data-ae="{{ client.ae_name|lower }}">
+                            <td><strong>{{ client.client_name }}</strong></td>
+                            <td class="number positive">${{ "{:,.0f}".format(client.total_revenue or 0) }}</td>
+                            <td class="number">{{ "{:,}".format(client.spot_count or 0) }}</td>
+                            <td class="number">${{ "{:,.0f}".format(client.avg_spot_rate or 0) }}</td>
+                            <td class="number">{{ client.active_months or 0 }}</td>
+                            <td style="font-size: 12px;">{{ client.ae_name }}</td>
+                            <td style="font-size: 12px;">{{ client.first_month }} - {{ client.last_month }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
+                Showing {{ data.all_clients_data|length }} clients (limited to top 100 by revenue)
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="chart-container">
+        <div class="chart-title">Monthly Revenue Trend</div>
+        <div class="chart">
+            <canvas id="monthlyChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="story-section">
+    <div class="chart-container">
+        <div class="chart-title">Spot Count by Month</div>
+        <div class="chart small">
+            <canvas id="spotCountChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden data for JavaScript -->
+<script id="chart-data" type="application/json">
+{{ data.monthly_data | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Get data from the hidden script tag
+const dataScript = document.getElementById('chart-data');
+const monthlyData = JSON.parse(dataScript.textContent);
+const chartData = monthlyData.filter(row => row.formatted_month !== '*** TOTAL ***');
+
+// Monthly Revenue Chart
+const ctx1 = document.getElementById('monthlyChart').getContext('2d');
+new Chart(ctx1, {
+    type: 'bar',
+    data: {
+        labels: chartData.map(row => row.formatted_month),
+        datasets: [{
+            label: 'Total Revenue',
+            data: chartData.map(row => row.total_revenue || 0),
+            backgroundColor: 'rgba(66, 153, 225, 0.6)',
+            borderColor: 'rgba(66, 153, 225, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '$' + value.toLocaleString();
+                    }
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'Revenue: $' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Spot Count Chart
+const ctx2 = document.getElementById('spotCountChart').getContext('2d');
+new Chart(ctx2, {
+    type: 'line',
+    data: {
+        labels: chartData.map(row => row.formatted_month),
+        datasets: [{
+            label: 'Spot Count',
+            data: chartData.map(row => row.spot_count || 0),
+            backgroundColor: 'rgba(72, 187, 120, 0.2)',
+            borderColor: 'rgba(72, 187, 120, 1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'Spots: ' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Client Analytics JavaScript Functions
+function toggleClientDetails() {
+    const details = document.getElementById('clientDetails');
+    const button = document.getElementById('toggleClientDetails');
+    
+    if (details.style.display === 'none' || details.style.display === '') {
+        details.style.display = 'block';
+        button.textContent = '- Hide Details';
+        button.style.background = '#dc2626';
+    } else {
+        details.style.display = 'none';
+        button.textContent = '+ Show Details';
+        button.style.background = '#4299e1';
+    }
+}
+
+function filterClients() {
+    const searchTerm = document.getElementById('clientSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('#clientsTableBody tr');
+    
+    rows.forEach(row => {
+        const clientName = row.getAttribute('data-client-name');
+        const ae = row.getAttribute('data-ae');
+        const text = row.textContent.toLowerCase();
+        
+        if (clientName.includes(searchTerm) || ae.includes(searchTerm) || text.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function sortClients() {
+    const sortBy = document.getElementById('sortClients').value;
+    const tbody = document.getElementById('clientsTableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    rows.sort((a, b) => {
+        let aValue, bValue;
+        
+        switch (sortBy) {
+            case 'name':
+                aValue = a.getAttribute('data-client-name');
+                bValue = b.getAttribute('data-client-name');
+                return aValue.localeCompare(bValue);
+            
+            case 'revenue':
+                aValue = parseFloat(a.getAttribute('data-revenue'));
+                bValue = parseFloat(b.getAttribute('data-revenue'));
+                return bValue - aValue; // Descending
+            
+            case 'spots':
+                aValue = parseInt(a.getAttribute('data-spots'));
+                bValue = parseInt(b.getAttribute('data-spots'));
+                return bValue - aValue; // Descending
+            
+            case 'rate':
+                aValue = parseFloat(a.getAttribute('data-rate'));
+                bValue = parseFloat(b.getAttribute('data-rate'));
+                return bValue - aValue; // Descending
+            
+            default:
+                return 0;
+        }
+    });
+    
+    // Clear tbody and re-append sorted rows
+    tbody.innerHTML = '';
+    rows.forEach(row => tbody.appendChild(row));
+}
+</script>
+{% endblock %} 
