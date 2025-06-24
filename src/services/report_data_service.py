@@ -343,7 +343,6 @@ class ReportDataService:
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
             AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
             AND s.gross_rate > 0
-
         """
         
         params = [str(year)]
@@ -507,18 +506,24 @@ class ReportDataService:
     def _get_ae_performance_data(self, db_connection, filters: ReportFilters) -> List[AEPerformanceData]:
         """Get AE performance data from database using broadcast_month."""
         query = """
-        SELECT 
-            sales_person as ae_name,
-            COUNT(*) as spot_count,
-            ROUND(SUM(gross_rate), 2) as total_revenue,
-            ROUND(AVG(gross_rate), 2) as avg_rate,
-            MIN(air_date) as first_spot_date,
-            MAX(air_date) as last_spot_date
-        FROM spots
-        WHERE sales_person IS NOT NULL 
-        AND sales_person != ''
-        AND gross_rate IS NOT NULL
-        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        SELECT
+            c.customer_id,
+            COALESCE(a.agency_name || ' : ', '') || c.normalized_name as customer,
+            COALESCE(s.sales_person, 'Unknown') as ae,
+            COALESCE(s.revenue_type, 'Regular') as revenue_type,
+            sect.sector_name as sector,
+            strftime('%m', s.broadcast_month) as month,
+            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) as gross_revenue,
+            ROUND(SUM(COALESCE(s.station_net, 0)), 2) as net_revenue
+        FROM spots s
+        LEFT JOIN customers c ON s.customer_id = c.customer_id
+        LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+        WHERE strftime('%Y', s.broadcast_month) = ?
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
+        AND s.gross_rate > 0
+
         """
         
         params = []
