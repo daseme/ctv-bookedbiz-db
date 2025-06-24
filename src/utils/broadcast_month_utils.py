@@ -390,6 +390,14 @@ def is_valid_broadcast_month(broadcast_month: str) -> bool:
     parser = BroadcastMonthParser()
     return parser.validate_broadcast_month_format(broadcast_month)
 
+def normalize_broadcast_day(dt: datetime) -> datetime:
+    """
+    Normalize broadcast date to either 1st or 15th.
+
+    • Day 1–15 → 1st
+    • Day 16–31 → 15th
+    """
+    return dt.replace(day=1) if dt.day <= 15 else dt.replace(day=15)
 
 # Test and example usage
 if __name__ == "__main__":

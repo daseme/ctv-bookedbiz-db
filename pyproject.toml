@@ -13,6 +13,8 @@ dependencies = [
     "pandas>=2.0.0",
     "psutil>=7.0.0",
     "lxml>=5.4.0",
+    "asgiref>=3.8.1",
+    "uvicorn>=0.34.3",
 ]
 requires-python = ">=3.10"
 

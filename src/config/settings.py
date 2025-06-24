@@ -59,11 +59,13 @@ def get_settings(environment: Optional[str] = None) -> Settings:
     # Determine project root
     project_root = Path(os.getenv('PROJECT_ROOT', Path(__file__).parent.parent.parent))
     
-    # Database configuration
-    default_db_path = project_root / 'ctv-bookedbiz-db' / 'data' / 'database' / 'production.db'
+    # Database configuration  
+    default_db_path = Path("/mnt/c/Users/Kurt/Crossings TV Dropbox/kurt olmstead/Financial/Sales/WeeklyReports/ctv-bookedbiz-db/data/database/production.db")
+    print(f"Debug: default_db_path = {default_db_path}")  # Add this line
     database = DatabaseConfig(
         db_path=os.getenv('DB_PATH', str(default_db_path))
     )
+    print(f"Debug: final db_path = {database.db_path}")  # Add this line
     
     # Web configuration
     web = WebConfig(

@@ -15,6 +15,9 @@ from pathlib import Path
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
+from utils.broadcast_month_utils import normalize_broadcast_day
+
+
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -390,6 +393,14 @@ class EnhancedProductionExcelImporter:
             
             # CRITICAL FIX: Pre-load caches before processing
             self._preload_database_caches()
+
+            # Step 1.5: Delete existing data for broadcast months (non-historical)
+            with sqlite3.connect(self.database_path) as conn:
+                deleted_count = self._delete_broadcast_month_data(
+                    list(self.stats["broadcast_months_found"]), conn
+                )
+                print(f"🧹 Pre-cleaned {deleted_count:,} existing spot rows")
+
             
             # Step 2: Process in single transaction for better performance
             progress = ProgressTracker(total_rows)
@@ -487,52 +498,54 @@ class EnhancedProductionExcelImporter:
         print(f"✅ Column mapping validated and confirmed")
         print(f"📋 Mapped {len(self.column_indexes)} columns for import")
     
-    def _process_sequential_fixed(self, worksheet, total_rows: int, batch_id: Optional[str], progress: ProgressTracker, limit: Optional[int]) -> int:
-        """CRITICAL FIX: Process rows in single transaction with proper error handling."""
-        
-        # CRITICAL FIX: Use single database connection for entire import
-        db_conn = sqlite3.connect(self.database_path)
-        db_conn.execute("PRAGMA foreign_keys = ON")
-        db_conn.execute("PRAGMA journal_mode=WAL")  # Better for concurrent access
-        
-        try:
-            # CRITICAL FIX: Single large transaction
-            db_conn.execute("BEGIN IMMEDIATE")
-            
-            # CRITICAL FIX: Prepare INSERT statement once
-            insert_query = self._prepare_insert_statement()
-            
-            row_count = 0
-            for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
-                if limit and row_count >= limit:
-                    break
-                
-                if not any(cell for cell in row):
-                    continue
-                
-                # CRITICAL FIX: Use prepared statement with better error handling
-                success = self._process_row_fixed(row, row_num, db_conn, insert_query, batch_id)
-                progress.update(imported=success)
-                row_count += 1
-                
-                # CRITICAL FIX: Commit periodically for large imports
-                if row_count % 10000 == 0:
-                    db_conn.commit()
-                    db_conn.execute("BEGIN IMMEDIATE")
-                    print(f"\n✓ Committed {row_count:,} records...")
-            
-            # Final commit
-            db_conn.commit()
-            print(f"\n✅ Final commit: {progress.imported:,} records imported successfully")
-            
-        except Exception as e:
-            db_conn.rollback()
-            print(f"\n❌ Transaction rolled back: {e}")
-            raise
-        finally:
-            db_conn.close()
-        
+    def _process_sequential_fixed(
+        self,
+        worksheet,
+        total_rows: int,
+        batch_id: Optional[str],
+        progress: ProgressTracker,
+        limit: Optional[int],
+    ) -> int:
+        """
+        DEBUG-ONLY version.
+        • Parses/validates each row (via _parse_row_fixed)  
+        • Updates progress counters  
+        • DOES NOT write to the database  
+        • Returns the number of rows that would have been imported
+        """
+
+        row_count = 0
+
+        for row_num, row in enumerate(
+            worksheet.iter_rows(min_row=2, values_only=True), start=2
+        ):
+            if limit and row_count >= limit:
+                break
+
+            if not any(cell for cell in row):  # skip blank rows
+                continue
+
+            try:
+                # Re-use existing parsing / validation logic.
+                spot_data = self._parse_row_fixed(row)
+
+                if spot_data:
+                    progress.update(imported=True)
+                    row_count += 1
+                else:
+                    progress.update(imported=False)
+
+            except Exception as e:
+                # Record error but continue parsing.
+                self._record_error(f"Row {row_num}", str(e))
+                progress.update(imported=False)
+
+        # Final debug summary
+        print(f"\n✅ Parsed {row_count:,} rows (no inserts executed)")
+
+        # progress.imported == row_count
         return progress.imported
+
     
     def _prepare_insert_statement(self):
         """CRITICAL FIX: Prepare INSERT statement with known columns."""
@@ -552,85 +565,82 @@ class EnhancedProductionExcelImporter:
         field_names = ', '.join(columns)
         
         return f"INSERT INTO spots ({field_names}) VALUES ({placeholders})", columns
-    
-    def _process_row_fixed(self, row: tuple, row_num: int, db_conn: sqlite3.Connection, insert_query: tuple, batch_id: Optional[str] = None) -> bool:
+
+
+    def _process_row_fixed(
+        self,
+        row: tuple,
+        row_num: int,
+        db_conn: sqlite3.Connection,
+        insert_query: tuple,
+        batch_id: Optional[str] = None,
+    ) -> bool:
         """
-        CRITICAL FIX: Process a single row with proper error handling and prepared statements.
-        
-        Args:
-            row: Excel row data
-            row_num: Row number for error reporting
-            db_conn: Database connection
-            insert_query: Prepared INSERT statement tuple (query, columns)
-            batch_id: Optional batch ID for tracking
-            
-        Returns:
-            True if row was successfully imported
+        Process a single Excel row, normalize broadcast_month, and perform cached inserts.
         """
         try:
             query, columns = insert_query
-            
-            # Extract all fields using column mapping
+
+            # -------------------- Parse + convert --------------------
             spot_data = {}
-            
             for field_name, col_idx in self.column_indexes.items():
                 if col_idx < len(row):
-                    raw_value = row[col_idx]
-                    converted_value = self._convert_value(field_name, raw_value)
-                    spot_data[field_name] = converted_value
-            
-            # Validate required fields
-            if not spot_data.get('bill_code') or not spot_data.get('air_date'):
+                    spot_data[field_name] = self._convert_value(field_name, row[col_idx])
+
+            # Required fields
+            if not spot_data.get("bill_code") or not spot_data.get("air_date"):
                 return False
-            
-            # Track broadcast months found
-            if spot_data.get('broadcast_month'):
+
+            # -------------------- Normalize broadcast_month --------------------
+            if spot_data.get("broadcast_month"):
+                bm = spot_data["broadcast_month"]
+                if isinstance(bm, (datetime, date)):
+                    spot_data["broadcast_month"] = normalize_broadcast_day(
+                        bm if isinstance(bm, datetime) else datetime.combine(bm, datetime.min.time())
+                    )
+
+                # Track stats (after normalization)
                 try:
                     from utils.broadcast_month_utils import BroadcastMonthParser
-                    parser = BroadcastMonthParser()
-                    display_month = parser.parse_excel_date_to_broadcast_month(spot_data['broadcast_month'])
-                    self.stats['broadcast_months_found'].add(display_month)
-                except:
-                    pass  # Don't fail import on month parsing
-            
-            # Parse bill code for agency/customer
-            agency_name, customer_name = self._parse_bill_code(spot_data['bill_code'])
-            
-            # CRITICAL FIX: Use cached lookups instead of database queries
+                    display = BroadcastMonthParser().parse_excel_date_to_broadcast_month(
+                        spot_data["broadcast_month"]
+                    )
+                    self.stats["broadcast_months_found"].add(display)
+                except Exception:
+                    pass  # non-fatal
+
+            # -------------------- Agency / Customer --------------------
+            agency_name, customer_name = self._parse_bill_code(spot_data["bill_code"])
             if agency_name:
-                spot_data['agency_id'] = self._get_or_create_agency_cached(agency_name)
-            
-            spot_data['customer_id'] = self._get_or_create_customer_cached(customer_name)
-            
-            # Handle market mapping with cache
-            if spot_data.get('market_name'):
-                spot_data['market_id'] = self._get_market_id_cached(spot_data['market_name'])
-            
-            # Add metadata
-            spot_data['source_file'] = Path(self.database_path).name
-            spot_data['load_date'] = datetime.now()
-            spot_data['is_historical'] = 0
-            spot_data['import_batch_id'] = batch_id
-            
-            # CRITICAL FIX: Build values array in exact column order
-            values = []
-            for col in columns:
-                values.append(spot_data.get(col))
-            
-            # CRITICAL FIX: Execute with proper error handling
-            try:
-                db_conn.execute(query, values)
-                return True
-            except sqlite3.IntegrityError as e:
-                self._record_error(f"Row {row_num}", f"Database integrity error: {e}")
-                return False
-            except sqlite3.Error as e:
-                self._record_error(f"Row {row_num}", f"Database error: {e}")
-                return False
-            
+                spot_data["agency_id"] = self._get_or_create_agency_cached(agency_name)
+            spot_data["customer_id"] = self._get_or_create_customer_cached(customer_name)
+
+            # Market cache
+            if spot_data.get("market_name"):
+                spot_data["market_id"] = self._get_market_id_cached(spot_data["market_name"])
+
+            # -------------------- Metadata --------------------
+            spot_data.update(
+                {
+                    "source_file": Path(self.database_path).name,
+                    "load_date": datetime.now(),
+                    "is_historical": 0,
+                    "import_batch_id": batch_id,
+                }
+            )
+
+            # -------------------- Execute insert --------------------
+            values = [spot_data.get(col) for col in columns]
+            db_conn.execute(query, values)
+            return True
+
+        except (sqlite3.IntegrityError, sqlite3.Error) as db_err:
+            self._record_error(f"Row {row_num}", f"Database error: {db_err}")
+            return False
         except Exception as e:
             self._record_error(f"Row {row_num}", f"Processing error: {e}")
             return False
+
     
     def _get_or_create_agency_cached(self, agency_name: str) -> int:
         """CRITICAL FIX: Get or create agency using cache."""
@@ -699,26 +709,29 @@ class EnhancedProductionExcelImporter:
         """Convert values with proper type handling for SQLite."""
         if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
             return None
-        
+
         try:
-            # Date fields
             if field_name in ['air_date', 'end_date']:
                 return self._convert_date(raw_value)
-            
-            # Financial fields (use float for SQLite, allow negatives)
+
+            elif field_name == 'broadcast_month':
+                date_val = self._convert_date(raw_value)
+                if date_val:
+                    return datetime(date_val.year, date_val.month, 1)
+                return None
+
             elif field_name in ['gross_rate', 'station_net', 'spot_value', 'broker_fees']:
                 return self._convert_float(raw_value)
-            
-            # Integer fields
+
             elif field_name in ['sequence_number', 'line_number', 'priority']:
                 return self._convert_integer(raw_value)
-            
-            # String fields
+
             else:
                 return self._convert_string(raw_value)
-                
+
         except Exception:
             return None
+
     
     def _convert_date(self, value: Any) -> Optional[date]:
         """Convert date values."""

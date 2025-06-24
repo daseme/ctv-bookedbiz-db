@@ -139,7 +139,7 @@ class ReportDataService:
             total_from_dicts = sum(row['total'] for row in revenue_data_dicts)
             logger.info(f"DEBUG: Total from dicts: {total_from_dicts}")
             
-            stats = calculate_statistics(revenue_data_dicts)
+            #stats = calculate_statistics(revenue_data_dicts)
             logger.info(f"DEBUG: Stats total_revenue: {stats['total_revenue']}")
 
             # Log processing time
@@ -326,22 +326,24 @@ class ReportDataService:
         
         # Build base query with proper date handling using broadcast_month - fetch BOTH gross and net
         base_query = """
-        SELECT
-            c.customer_id,
-            c.normalized_name as customer,
-            COALESCE(s.sales_person, 'Unknown') as ae,
-            COALESCE(s.revenue_type, 'Regular') as revenue_type,
-            sect.sector_name as sector,
-            strftime('%m', s.broadcast_month) as month,
-            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) as gross_revenue,
-            ROUND(SUM(COALESCE(s.station_net, 0)), 2) as net_revenue
-        FROM spots s
-        LEFT JOIN customers c ON s.customer_id = c.customer_id
-        LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
-        WHERE strftime('%Y', s.broadcast_month) = ?
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
-        AND s.gross_rate > 0
+            SELECT
+                c.customer_id,
+                COALESCE(a.agency_name || ' : ', '') || c.normalized_name as customer,
+                COALESCE(s.sales_person, 'Unknown') as ae,
+                COALESCE(s.revenue_type, 'Regular') as revenue_type,
+                sect.sector_name as sector,
+                strftime('%m', s.broadcast_month) as month,
+                ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) as gross_revenue,
+                ROUND(SUM(COALESCE(s.station_net, 0)), 2) as net_revenue
+            FROM spots s
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            WHERE strftime('%Y', s.broadcast_month) = ?
+            AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+            AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
+            AND s.gross_rate > 0
+
         """
         
         params = [str(year)]

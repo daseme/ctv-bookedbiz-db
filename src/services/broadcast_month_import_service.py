@@ -20,6 +20,8 @@ from services.month_closure_service import MonthClosureService, ValidationResult
 from services.import_integration_utilities import extract_display_months_from_excel, validate_excel_for_import
 from utils.broadcast_month_utils import BroadcastMonthParser, extract_broadcast_months_from_excel
 from services.base_service import BaseService
+from utils.broadcast_month_utils import normalize_broadcast_day
+
 
 
 logger = logging.getLogger(__name__)
@@ -239,32 +241,43 @@ class BroadcastMonthImportService(BaseService):
             logger.error(f"Failed to create import batch record: {e}")
             raise BroadcastMonthImportError(f"Failed to create import batch: {e}")
     
+
     def _delete_broadcast_month_data(self, display_months: List[str], conn) -> int:
-        """
-        Delete existing data for broadcast months.
-        Works with datetime format in database.
-        """
+        """Delete all non-historical data for specified broadcast months."""
         total_deleted = 0
-        
+
         for display_month in display_months:
-            # Get all datetime values for this display month
-            datetime_values = self.closure_service._get_datetime_values_for_month(display_month)
-            
-            if datetime_values:
-                # Delete spots for all datetime values in this month
-                placeholders = ', '.join(['?' for _ in datetime_values])
-                cursor = conn.execute(
-                    f"DELETE FROM spots WHERE broadcast_month IN ({placeholders}) AND is_historical = 0",
-                    datetime_values
-                )
-                
-                deleted_count = cursor.rowcount
-                total_deleted += deleted_count
-                
-                logger.debug(f"Deleted {deleted_count} spots for {display_month} ({len(datetime_values)} datetime values)")
-        
+            try:
+                normalized_month = datetime.strptime(display_month, "%b-%y").strftime("%Y-%m")
+            except ValueError:
+                normalized_month = display_month  # Assume already in YYYY-MM if parsing fails
+
+            cursor = conn.execute(
+                """
+                DELETE FROM spots
+                WHERE strftime('%Y-%m', broadcast_month) = ?
+                AND is_historical = 0
+                """,
+                (normalized_month,)
+            )
+            deleted = cursor.rowcount
+            print(f"   🗑️  Deleted {deleted:,} spots for {display_month} ({normalized_month})")
+            total_deleted += deleted
+
         return total_deleted
-    
+
+
+    def _capture_broadcast_month(self, raw_value):
+        """Capture normalized broadcast month into stats."""
+        if raw_value:
+            try:
+                dt = normalize_broadcast_day(raw_value)
+                label = dt.strftime("%b-%y")
+                self.stats["broadcast_months_found"].add(label)
+            except Exception:
+                pass
+
+   
     def _import_excel_data(self, excel_file: str, batch_id: str, conn) -> int:
         """
         CRITICAL FIX: Import Excel data using a transaction-compatible approach.
@@ -468,8 +481,17 @@ class BroadcastMonthImportService(BaseService):
                                         spot_data[field_name] = float(raw_value) if raw_value else None
                                     except:
                                         spot_data[field_name] = None
+                                elif field_name == 'broadcast_month':
+                                    try:
+                                        raw_date = raw_value.date() if hasattr(raw_value, 'date') else raw_value
+                                        spot_data[field_name] = normalize_broadcast_day(raw_date)
+                                    except Exception as e:
+                                        print(f"⚠️ Failed to normalize broadcast_month on row {row_num}: {e}")
+                                        skipped_count += 1
+                                        continue
                                 else:
                                     spot_data[field_name] = str(raw_value).strip() if raw_value else None
+
                     
                     # Insert spot record
                     fields = list(spot_data.keys())
@@ -601,7 +623,6 @@ class BroadcastMonthImportService(BaseService):
         except Exception as e:
             logger.error(f"Failed to cleanup imports: {e}")
             return 0
-
 
 # Convenience functions for simple usage
 def execute_import(excel_file: str, 

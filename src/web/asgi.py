@@ -24,3 +24,6 @@ flask_app = create_development_app()
 
 # Convert to ASGI
 asgi_app = WsgiToAsgi(flask_app)
+
+# Export the ASGI application
+app = asgi_app
