@@ -58,9 +58,15 @@ def get_settings(environment: Optional[str] = None) -> Settings:
     
     # Determine project root
     project_root = Path(os.getenv('PROJECT_ROOT', Path(__file__).parent.parent.parent))
+
+    # Add these debug lines:
+    print(f"Debug: PROJECT_ROOT env var = {os.getenv('PROJECT_ROOT')}")
+    print(f"Debug: DB_PATH env var = {os.getenv('DB_PATH')}")
+    print(f"Debug: DATA_PATH env var = {os.getenv('DATA_PATH')}")
+    print(f"Debug: project_root calculated = {project_root}")
     
     # Database configuration  
-    default_db_path = Path("/mnt/c/Users/Kurt/Crossings TV Dropbox/kurt olmstead/Financial/Sales/WeeklyReports/ctv-bookedbiz-db/data/database/production.db")
+    default_db_path = project_root / "data" / "database" / "production.db"
     print(f"Debug: default_db_path = {default_db_path}")  # Add this line
     database = DatabaseConfig(
         db_path=os.getenv('DB_PATH', str(default_db_path))
@@ -77,7 +83,7 @@ def get_settings(environment: Optional[str] = None) -> Settings:
     )
     
     # Services configuration
-    default_data_path = project_root / 'ctv-bookedbiz-db' / 'data' / 'processed'
+    default_data_path = project_root / 'data' / 'processed'
     services = ServicesConfig(
         data_path=os.getenv('DATA_PATH', str(default_data_path)),
         cache_enabled=os.getenv('CACHE_ENABLED', 'true').lower() == 'true',

@@ -244,6 +244,24 @@ def pipeline_revenue_management():
         return render_template('error_500.html', 
                              message="Error loading pipeline management"), 500
 
+@reports_bp.route('/language-blocks')
+@log_requests
+@handle_request_errors
+def language_blocks_report():
+    """Language Block Performance Report with Nordic design."""
+    try:
+        template_data = {
+            'title': "Language Block Performance Report",
+            'description': "Comprehensive analysis of language-specific advertising blocks"
+        }
+        
+        logger.info("Rendering language blocks report template")
+        return render_template('language_blocks_report.html', **template_data)
+        
+    except Exception as e:
+        logger.error(f"Error rendering language blocks report: {e}")
+        return render_template('error_500.html', 
+                             message="Error loading language blocks report"), 500
 
 # Error handlers for this blueprint
 @reports_bp.errorhandler(404)

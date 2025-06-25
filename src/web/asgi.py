@@ -12,8 +12,8 @@ sys.path.insert(0, str(project_root / 'src'))
 
 # Set environment variables
 os.environ.setdefault('PROJECT_ROOT', str(project_root))
-os.environ.setdefault('DB_PATH', str(project_root / 'ctv-bookedbiz-db' / 'data' / 'database' / 'production.db'))
-os.environ.setdefault('DATA_PATH', str(project_root / 'ctv-bookedbiz-db' / 'data' / 'processed'))
+os.environ.setdefault('DB_PATH', str(project_root / 'data' / 'database' / 'production.db'))
+os.environ.setdefault('DATA_PATH', str(project_root / 'data' / 'processed'))
 
 # Import the Flask app and create ASGI adapter
 from web.app import create_development_app

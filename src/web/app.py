@@ -12,6 +12,7 @@ from services.factory import initialize_services
 from config.settings import get_settings
 from web.blueprints import initialize_blueprints
 
+
 logger = logging.getLogger(__name__)
 
 

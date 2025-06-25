@@ -1,0 +1,1054 @@
+{% extends "base.html" %}
+
+{% block title %}Language Block Performance Report - CTV Booked Biz{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<a href="/reports">Reports</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Language Block Performance</span>
+{% endblock %}
+
+{% block header_title %}❄️ Language Block Performance Report{% endblock %}
+{% block header_subtitle %}Comprehensive analysis of language-specific advertising blocks with Nordic design excellence{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* Nordic Language Block Styles */
+    .language-block-container {
+        background: linear-gradient(135deg, var(--nord6) 0%, #f8fafc 100%);
+        border-radius: 16px;
+        padding: 32px;
+        margin: 24px 0;
+        box-shadow: 0 8px 32px rgba(46, 52, 64, 0.1);
+        border: 2px solid var(--nord5);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .language-block-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--nord7), var(--nord8), var(--nord9));
+    }
+    
+    .language-metric-card {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 16px 0;
+        box-shadow: 0 4px 16px rgba(46, 52, 64, 0.05);
+        border: 1px solid var(--nord5);
+        transition: all 0.3s ease;
+    }
+    
+    .language-metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(46, 52, 64, 0.1);
+        border-color: var(--nord8);
+    }
+    
+    .language-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin: 32px 0;
+    }
+    
+    .language-stat-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(46, 52, 64, 0.05);
+        border: 1px solid var(--nord5);
+        transition: all 0.3s ease;
+    }
+    
+    .language-stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(46, 52, 64, 0.1);
+        border-color: var(--nord8);
+    }
+    
+    .language-stat-icon {
+        font-size: 32px;
+        margin-bottom: 12px;
+        display: block;
+    }
+    
+    .language-stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--nord0);
+        margin: 8px 0;
+    }
+    
+    .language-stat-label {
+        font-size: 14px;
+        color: var(--nord3);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .language-performance-table {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 16px rgba(46, 52, 64, 0.05);
+        border: 1px solid var(--nord5);
+        margin: 24px 0;
+    }
+    
+    .language-performance-table table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .language-performance-table th {
+        background: linear-gradient(135deg, var(--nord0) 0%, var(--nord1) 100%);
+        color: var(--nord6);
+        padding: 16px 12px;
+        font-weight: 600;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid var(--nord2);
+    }
+    
+    .language-performance-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--nord5);
+        font-size: 14px;
+    }
+    
+    .language-performance-table tbody tr:hover {
+        background: linear-gradient(135deg, var(--nord6) 0%, #f8fafc 100%);
+    }
+    
+    .language-performance-table .number {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        font-weight: 500;
+    }
+    
+    .language-performance-table .currency {
+        color: var(--nord14);
+        font-weight: 600;
+    }
+    
+    .language-tag {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin: 2px;
+    }
+    
+    .language-tag.vietnamese {
+        background: linear-gradient(135deg, var(--nord11) 0%, var(--nord12) 100%);
+        color: var(--nord6);
+    }
+    
+    .language-tag.mandarin {
+        background: linear-gradient(135deg, var(--nord13) 0%, var(--nord12) 100%);
+        color: var(--nord0);
+    }
+    
+    .language-tag.cantonese {
+        background: linear-gradient(135deg, var(--nord14) 0%, var(--nord7) 100%);
+        color: var(--nord6);
+    }
+    
+    .language-tag.korean {
+        background: linear-gradient(135deg, var(--nord15) 0%, var(--nord9) 100%);
+        color: var(--nord6);
+    }
+    
+    .language-tag.default {
+        background: linear-gradient(135deg, var(--nord8) 0%, var(--nord9) 100%);
+        color: var(--nord6);
+    }
+    
+    .loading-spinner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 200px;
+        color: var(--nord3);
+    }
+    
+    .loading-spinner::before {
+        content: '';
+        width: 40px;
+        height: 40px;
+        border: 4px solid var(--nord5);
+        border-top: 4px solid var(--nord8);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .error-message {
+        background: linear-gradient(135deg, var(--nord11) 0%, var(--nord12) 100%);
+        color: var(--nord6);
+        padding: 16px 20px;
+        border-radius: 8px;
+        margin: 16px 0;
+        font-weight: 500;
+    }
+    
+    .refresh-button {
+        background: linear-gradient(135deg, var(--nord8) 0%, var(--nord9) 100%);
+        color: var(--nord6);
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(136, 192, 208, 0.3);
+    }
+    
+    .refresh-button:hover {
+        background: linear-gradient(135deg, var(--nord9) 0%, var(--nord10) 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(136, 192, 208, 0.4);
+    }
+    
+    .insights-section {
+        background: linear-gradient(135deg, var(--nord6) 0%, #f0f9ff 100%);
+        border-radius: 16px;
+        padding: 28px;
+        margin: 32px 0;
+        border: 2px solid var(--nord8);
+        box-shadow: 0 8px 32px rgba(136, 192, 208, 0.1);
+    }
+    
+    .insights-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--nord0);
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .insights-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .insight-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid var(--nord8);
+        box-shadow: 0 4px 16px rgba(136, 192, 208, 0.1);
+    }
+    
+    .insight-card h4 {
+        color: var(--nord0);
+        margin: 0 0 12px 0;
+        font-size: 16px;
+        font-weight: 600;
+    }
+    
+    .insight-card p {
+        color: var(--nord3);
+        margin: 0;
+        line-height: 1.6;
+    }
+    
+    .insight-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--nord8);
+        margin: 8px 0;
+    }
+    
+    /* Filter Controls */
+    .filter-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        align-items: end;
+        margin-bottom: 20px;
+        padding: 24px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(46, 52, 64, 0.05);
+    }
+    
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .filter-group label {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--nord0);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .filter-select {
+        padding: 10px 16px;
+        border: 2px solid var(--nord5);
+        border-radius: 8px;
+        background: white;
+        color: var(--nord0);
+        font-size: 14px;
+        font-family: inherit;
+        min-width: 150px;
+        transition: all 0.3s ease;
+    }
+    
+    .filter-select:focus {
+        outline: none;
+        border-color: var(--nord8);
+        box-shadow: 0 0 0 3px rgba(136, 192, 208, 0.2);
+    }
+    
+    .filter-select:disabled {
+        background: var(--nord6);
+        color: var(--nord3);
+        cursor: not-allowed;
+    }
+    
+    .filter-button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .filter-button:not(.secondary) {
+        background: linear-gradient(135deg, var(--nord8) 0%, var(--nord9) 100%);
+        color: var(--nord6);
+        box-shadow: 0 4px 12px rgba(136, 192, 208, 0.3);
+    }
+    
+    .filter-button:not(.secondary):hover {
+        background: linear-gradient(135deg, var(--nord9) 0%, var(--nord10) 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(136, 192, 208, 0.4);
+    }
+    
+    .filter-button.secondary {
+        background: var(--nord5);
+        color: var(--nord0);
+        border: 2px solid var(--nord4);
+    }
+    
+    .filter-button.secondary:hover {
+        background: var(--nord4);
+        transform: translateY(-2px);
+    }
+    
+    .active-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 16px;
+    }
+    
+    .active-filter-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background: linear-gradient(135deg, var(--nord8) 0%, var(--nord9) 100%);
+        color: var(--nord6);
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .active-filter-tag .remove-filter {
+        cursor: pointer;
+        margin-left: 4px;
+        font-size: 16px;
+        opacity: 0.8;
+        transition: opacity 0.3s ease;
+    }
+    
+    .active-filter-tag .remove-filter:hover {
+        opacity: 1;
+    }
+    
+    @media (max-width: 768px) {
+        .filter-controls {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .filter-group {
+            width: 100%;
+        }
+        
+        .filter-select {
+            min-width: auto;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="app" class="language-block-app">
+    <!-- Filter Controls -->
+    <div class="language-block-container">
+        <h2 class="section-title">🔍 Filter Controls</h2>
+        <div class="filter-controls">
+            <div class="filter-group">
+                <label for="year-select">Year:</label>
+                <select id="year-select" class="filter-select">
+                    <option value="">All Years</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="month-select">Month:</label>
+                <select id="month-select" class="filter-select" disabled>
+                    <option value="">All Months</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <button id="apply-filters" class="filter-button">Apply Filters</button>
+                <button id="clear-filters" class="filter-button secondary">Clear Filters</button>
+            </div>
+        </div>
+        <div id="active-filters" class="active-filters"></div>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="language-block-container">
+        <h2 class="section-title">📊 Performance Overview</h2>
+        <div id="summary-stats" class="language-stats-grid">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <!-- Language Performance -->
+    <div class="language-block-container">
+        <h2 class="section-title">🌐 Language Performance Analysis</h2>
+        <div id="language-performance" class="language-performance-table">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <!-- Top Performers -->
+    <div class="language-block-container">
+        <h2 class="section-title">🏆 Top Performing Language Blocks</h2>
+        <div id="top-performers" class="language-performance-table">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <!-- Market Performance -->
+    <div class="language-block-container">
+        <h2 class="section-title">🏢 Market Performance</h2>
+        <div id="market-performance" class="language-performance-table">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <!-- Time Slot Analysis -->
+    <div class="language-block-container">
+        <h2 class="section-title">⏰ Time Slot Performance</h2>
+        <div id="time-slot-performance" class="language-performance-table">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <!-- Insights -->
+    <div class="insights-section">
+        <h2 class="insights-title">💡 Key Insights & Recommendations</h2>
+        <div id="insights-content" class="insights-grid">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <!-- Refresh Button -->
+    <div style="text-align: center; margin: 32px 0;">
+        <button class="refresh-button" onclick="refreshAllData()">
+            🔄 Refresh Data
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Enhanced Language Block Performance Dashboard with Filtering
+class LanguageBlockDashboard {
+    constructor() {
+        this.baseUrl = '/api/language-blocks';
+        this.currentFilters = {
+            year: null,
+            month: null
+        };
+        this.availablePeriods = null;
+        
+        this.initializeControls();
+        this.loadAvailablePeriods();
+    }
+
+    initializeControls() {
+        // Set up event listeners
+        document.getElementById('year-select').addEventListener('change', this.onYearChange.bind(this));
+        document.getElementById('month-select').addEventListener('change', this.onMonthChange.bind(this));
+        document.getElementById('apply-filters').addEventListener('click', this.applyFilters.bind(this));
+        document.getElementById('clear-filters').addEventListener('click', this.clearFilters.bind(this));
+    }
+
+    async loadAvailablePeriods() {
+        try {
+            const response = await fetch(`${this.baseUrl}/metadata/available-periods`);
+            const data = await response.json();
+            
+            if (data.available_years && data.months_by_year) {
+                this.availablePeriods = data;
+                this.populateYearOptions();
+                
+                // Set default to current year if available
+                const currentYear = data.current_year;
+                if (data.available_years.includes(currentYear)) {
+                    document.getElementById('year-select').value = currentYear;
+                    this.onYearChange();
+                }
+                
+                // Load initial data
+                this.loadAllData();
+            } else {
+                throw new Error('No periods data received');
+            }
+        } catch (error) {
+            console.error('Error loading available periods:', error);
+            this.showError('Failed to load available periods');
+        }
+    }
+
+    populateYearOptions() {
+        const yearSelect = document.getElementById('year-select');
+        const years = this.availablePeriods.available_years;
+        
+        // Clear existing options except "All Years"
+        yearSelect.innerHTML = '<option value="">All Years</option>';
+        
+        years.forEach(year => {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearSelect.appendChild(option);
+        });
+    }
+
+    onYearChange() {
+        const yearSelect = document.getElementById('year-select');
+        const monthSelect = document.getElementById('month-select');
+        const selectedYear = yearSelect.value;
+        
+        // Clear month selection
+        monthSelect.innerHTML = '<option value="">All Months</option>';
+        
+        if (selectedYear && this.availablePeriods.months_by_year[selectedYear]) {
+            // Enable month selector and populate with available months
+            monthSelect.disabled = false;
+            
+            const months = this.availablePeriods.months_by_year[selectedYear];
+            const monthNames = [
+                '', 'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            
+            months.forEach(month => {
+                const option = document.createElement('option');
+                option.value = month;
+                option.textContent = `${monthNames[month]} ${selectedYear}`;
+                monthSelect.appendChild(option);
+            });
+        } else {
+            // Disable month selector if no year selected
+            monthSelect.disabled = true;
+        }
+    }
+
+    onMonthChange() {
+        // Month change handler - could auto-apply or just prepare
+    }
+
+    applyFilters() {
+        const yearSelect = document.getElementById('year-select');
+        const monthSelect = document.getElementById('month-select');
+        
+        this.currentFilters = {
+            year: yearSelect.value ? parseInt(yearSelect.value) : null,
+            month: monthSelect.value ? parseInt(monthSelect.value) : null
+        };
+        
+        this.updateActiveFiltersDisplay();
+        this.loadAllData();
+    }
+
+    clearFilters() {
+        document.getElementById('year-select').value = '';
+        document.getElementById('month-select').value = '';
+        document.getElementById('month-select').disabled = true;
+        
+        this.currentFilters = {
+            year: null,
+            month: null
+        };
+        
+        this.updateActiveFiltersDisplay();
+        this.loadAllData();
+    }
+
+    updateActiveFiltersDisplay() {
+        const activeFiltersDiv = document.getElementById('active-filters');
+        let filtersHtml = '';
+        
+        if (this.currentFilters.year) {
+            const monthName = this.currentFilters.month ? 
+                ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][this.currentFilters.month] : 
+                '';
+            const filterText = this.currentFilters.month ? 
+                `${monthName} ${this.currentFilters.year}` : 
+                `Year ${this.currentFilters.year}`;
+                
+            filtersHtml += `
+                <div class="active-filter-tag">
+                    📅 ${filterText}
+                    <span class="remove-filter" onclick="dashboard.clearFilters()">×</span>
+                </div>
+            `;
+        }
+        
+        activeFiltersDiv.innerHTML = filtersHtml;
+    }
+
+    buildQueryParams() {
+        const params = new URLSearchParams();
+        
+        if (this.currentFilters.year) {
+            params.append('year', this.currentFilters.year);
+        }
+        
+        if (this.currentFilters.month) {
+            params.append('month', this.currentFilters.month);
+        }
+        
+        return params.toString();
+    }
+
+    async loadAllData() {
+        try {
+            await Promise.all([
+                this.loadSummaryStats(),
+                this.loadLanguagePerformance(),
+                this.loadTopPerformers(),
+                this.loadMarketPerformance(),
+                this.loadTimeSlotPerformance(),
+                this.loadInsights()
+            ]);
+        } catch (error) {
+            console.error('Error loading dashboard data:', error);
+            this.showError('Failed to load dashboard data');
+        }
+    }
+
+    async loadSummaryStats() {
+        try {
+            const queryParams = this.buildQueryParams();
+            const url = `${this.baseUrl}/summary${queryParams ? '?' + queryParams : ''}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.summary) {
+                this.renderSummaryStats(data.summary, data.filters);
+            } else {
+                throw new Error('No summary data received');
+            }
+        } catch (error) {
+            console.error('Error loading summary stats:', error);
+            document.getElementById('summary-stats').innerHTML = '<div class="error-message">Failed to load summary statistics</div>';
+        }
+    }
+
+    async loadLanguagePerformance() {
+        try {
+            const queryParams = this.buildQueryParams();
+            const url = `${this.baseUrl}/language-performance${queryParams ? '?' + queryParams : ''}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.language_performance) {
+                this.renderLanguagePerformance(data.language_performance);
+            } else {
+                throw new Error('No language performance data received');
+            }
+        } catch (error) {
+            console.error('Error loading language performance:', error);
+            document.getElementById('language-performance').innerHTML = '<div class="error-message">Failed to load language performance data</div>';
+        }
+    }
+
+    async loadTopPerformers() {
+        try {
+            const queryParams = this.buildQueryParams();
+            const url = `${this.baseUrl}/top-performers?limit=10${queryParams ? '&' + queryParams : ''}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.top_performers) {
+                this.renderTopPerformers(data.top_performers);
+            } else {
+                throw new Error('No top performers data received');
+            }
+        } catch (error) {
+            console.error('Error loading top performers:', error);
+            document.getElementById('top-performers').innerHTML = '<div class="error-message">Failed to load top performers data</div>';
+        }
+    }
+
+    async loadMarketPerformance() {
+        try {
+            const queryParams = this.buildQueryParams();
+            const url = `${this.baseUrl}/market-performance${queryParams ? '?' + queryParams : ''}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.market_performance) {
+                this.renderMarketPerformance(data.market_performance);
+            } else {
+                throw new Error('No market performance data received');
+            }
+        } catch (error) {
+            console.error('Error loading market performance:', error);
+            document.getElementById('market-performance').innerHTML = '<div class="error-message">Failed to load market performance data</div>';
+        }
+    }
+
+    async loadTimeSlotPerformance() {
+        try {
+            const queryParams = this.buildQueryParams();
+            const url = `${this.baseUrl}/time-slot-performance${queryParams ? '?' + queryParams : ''}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.time_slot_performance) {
+                this.renderTimeSlotPerformance(data.time_slot_performance);
+            } else {
+                throw new Error('No time slot performance data received');
+            }
+        } catch (error) {
+            console.error('Error loading time slot performance:', error);
+            document.getElementById('time-slot-performance').innerHTML = '<div class="error-message">Failed to load time slot performance data</div>';
+        }
+    }
+
+    async loadInsights() {
+        try {
+            const queryParams = this.buildQueryParams();
+            const url = `${this.baseUrl}/insights${queryParams ? '?' + queryParams : ''}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            this.renderInsights(data);
+        } catch (error) {
+            console.error('Error loading insights:', error);
+            document.getElementById('insights-content').innerHTML = '<div class="error-message">Failed to load insights data</div>';
+        }
+    }
+
+    renderSummaryStats(summary, filters) {
+        const filterInfo = filters && (filters.year || filters.month) ? 
+            `<div style="font-size: 12px; color: var(--nord3); margin-top: 8px;">Filtered data</div>` : '';
+        
+        const statsHtml = `
+            <div class="language-stat-card">
+                <span class="language-stat-icon">📊</span>
+                <div class="language-stat-value">${summary.total_blocks}</div>
+                <div class="language-stat-label">Total Blocks</div>
+                ${filterInfo}
+            </div>
+            <div class="language-stat-card">
+                <span class="language-stat-icon">🌐</span>
+                <div class="language-stat-value">${summary.total_languages}</div>
+                <div class="language-stat-label">Languages</div>
+            </div>
+            <div class="language-stat-card">
+                <span class="language-stat-icon">🏢</span>
+                <div class="language-stat-value">${summary.total_markets}</div>
+                <div class="language-stat-label">Markets</div>
+            </div>
+            <div class="language-stat-card">
+                <span class="language-stat-icon">💰</span>
+                <div class="language-stat-value">$${this.formatCurrency(summary.total_revenue)}</div>
+                <div class="language-stat-label">Total Revenue</div>
+            </div>
+            <div class="language-stat-card">
+                <span class="language-stat-icon">📺</span>
+                <div class="language-stat-value">${this.formatNumber(summary.total_spots)}</div>
+                <div class="language-stat-label">Total Spots</div>
+            </div>
+            <div class="language-stat-card">
+                <span class="language-stat-icon">📈</span>
+                <div class="language-stat-value">$${this.formatCurrency(summary.avg_revenue_per_block_month)}</div>
+                <div class="language-stat-label">Avg Revenue/Block</div>
+            </div>
+        `;
+        document.getElementById('summary-stats').innerHTML = statsHtml;
+    }
+
+    renderLanguagePerformance(languages) {
+        const tableHtml = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Language</th>
+                        <th>Blocks</th>
+                        <th>Total Revenue</th>
+                        <th>Total Spots</th>
+                        <th>Revenue/Spot</th>
+                        <th>Avg Revenue/Block</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${languages.map(lang => `
+                        <tr>
+                            <td>
+                                <span class="language-tag ${this.getLanguageClass(lang.language_name)}">${lang.language_name}</span>
+                            </td>
+                            <td class="number">${lang.block_count}</td>
+                            <td class="number currency">$${this.formatCurrency(lang.total_revenue)}</td>
+                            <td class="number">${this.formatNumber(lang.total_spots)}</td>
+                            <td class="number currency">$${this.formatCurrency(lang.revenue_per_spot)}</td>
+                            <td class="number currency">$${this.formatCurrency(lang.avg_revenue_per_block)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        document.getElementById('language-performance').innerHTML = tableHtml;
+    }
+
+    renderTopPerformers(performers) {
+        const tableHtml = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Block Name</th>
+                        <th>Language</th>
+                        <th>Market</th>
+                        <th>Time Slot</th>
+                        <th>Revenue</th>
+                        <th>Spots</th>
+                        <th>Active Months</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${performers.map(block => `
+                        <tr>
+                            <td>${block.block_name}</td>
+                            <td>
+                                <span class="language-tag ${this.getLanguageClass(block.language_name)}">${block.language_name}</span>
+                            </td>
+                            <td>${block.market_display_name}</td>
+                            <td>${block.day_part || ''} ${block.time_slot || ''}</td>
+                            <td class="number currency">$${this.formatCurrency(block.total_revenue)}</td>
+                            <td class="number">${this.formatNumber(block.total_spots)}</td>
+                            <td class="number">${block.active_months}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        document.getElementById('top-performers').innerHTML = tableHtml;
+    }
+
+    renderMarketPerformance(markets) {
+        const tableHtml = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Market</th>
+                        <th>Code</th>
+                        <th>Blocks</th>
+                        <th>Languages</th>
+                        <th>Revenue</th>
+                        <th>Spots</th>
+                        <th>Avg Revenue/Block</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${markets.map(market => `
+                        <tr>
+                            <td>${market.market_display_name}</td>
+                            <td><strong>${market.market_code}</strong></td>
+                            <td class="number">${market.block_count}</td>
+                            <td class="number">${market.language_count}</td>
+                            <td class="number currency">$${this.formatCurrency(market.total_revenue)}</td>
+                            <td class="number">${this.formatNumber(market.total_spots)}</td>
+                            <td class="number currency">$${this.formatCurrency(market.avg_revenue_per_block)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        document.getElementById('market-performance').innerHTML = tableHtml;
+    }
+
+    renderTimeSlotPerformance(timeSlots) {
+        const tableHtml = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time Slot</th>
+                        <th>Blocks</th>
+                        <th>Revenue</th>
+                        <th>Spots</th>
+                        <th>Revenue/Spot</th>
+                        <th>Avg Revenue/Block</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${timeSlots.map(slot => `
+                        <tr>
+                            <td><strong>${slot.day_part}</strong></td>
+                            <td class="number">${slot.block_count}</td>
+                            <td class="number currency">$${this.formatCurrency(slot.total_revenue)}</td>
+                            <td class="number">${this.formatNumber(slot.total_spots)}</td>
+                            <td class="number currency">$${this.formatCurrency(slot.revenue_per_spot)}</td>
+                            <td class="number currency">$${this.formatCurrency(slot.avg_revenue_per_block)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        document.getElementById('time-slot-performance').innerHTML = tableHtml;
+    }
+
+    renderInsights(data) {
+        let insightsHtml = '';
+        
+        if (data.most_profitable_language) {
+            const lang = data.most_profitable_language;
+            insightsHtml += `
+                <div class="insight-card">
+                    <h4>💎 Most Profitable Language</h4>
+                    <div class="insight-value">${lang.language_name}</div>
+                    <p>$${this.formatCurrency(lang.revenue_per_spot)} per spot with ${this.formatNumber(lang.total_spots)} spots generating $${this.formatCurrency(lang.total_revenue)} total revenue.</p>
+                </div>
+            `;
+        }
+        
+        if (data.busiest_time_slot) {
+            const slot = data.busiest_time_slot;
+            insightsHtml += `
+                <div class="insight-card">
+                    <h4>⏰ Busiest Time Slot</h4>
+                    <div class="insight-value">${slot.day_part}</div>
+                    <p>${this.formatNumber(slot.total_spots)} spots across ${slot.block_count} blocks, generating $${this.formatCurrency(slot.total_revenue)} in revenue.</p>
+                </div>
+            `;
+        }
+        
+        if (data.growth_opportunities && data.growth_opportunities.length > 0) {
+            insightsHtml += `
+                <div class="insight-card">
+                    <h4>🚀 Growth Opportunities</h4>
+                    <div class="insight-value">${data.growth_opportunities.length} Languages</div>
+                    <p>Languages with expansion potential: ${data.growth_opportunities.map(opp => `${opp.language_name} ($${this.formatCurrency(opp.current_revenue)} in ${opp.current_markets} markets)`).join(', ')}</p>
+                </div>
+            `;
+        }
+        
+        const filterText = this.currentFilters.year ? 
+            (this.currentFilters.month ? 
+                `${['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][this.currentFilters.month]} ${this.currentFilters.year}` : 
+                `${this.currentFilters.year}`) : 
+            'all periods';
+        
+        insightsHtml += `
+            <div class="insight-card">
+                <h4>📊 Analysis Period</h4>
+                <div class="insight-value">${filterText}</div>
+                <p>Insights generated from ${filterText} data. Use filters above to analyze different time periods.</p>
+            </div>
+        `;
+        
+        if (!insightsHtml) {
+            insightsHtml = '<div class="insight-card"><h4>No insights available</h4><p>Unable to generate insights from current data.</p></div>';
+        }
+        
+        document.getElementById('insights-content').innerHTML = insightsHtml;
+    }
+
+    getLanguageClass(language) {
+        const languageMap = {
+            'Vietnamese': 'vietnamese',
+            'Mandarin': 'mandarin',
+            'Cantonese': 'cantonese',
+            'Korean': 'korean',
+            'South Asian': 'default',
+            'Tagalog': 'default',
+            'Japanese': 'default'
+        };
+        return languageMap[language] || 'default';
+    }
+
+    formatCurrency(amount) {
+        if (amount === null || amount === undefined) return '0';
+        return new Intl.NumberFormat('en-US').format(Math.round(amount));
+    }
+
+    formatNumber(num) {
+        if (num === null || num === undefined) return '0';
+        return new Intl.NumberFormat('en-US').format(num);
+    }
+
+    showError(message) {
+        const errorHtml = `<div class="error-message">${message}</div>`;
+        document.getElementById('summary-stats').innerHTML = errorHtml;
+    }
+}
+
+// Initialize dashboard when page loads
+let dashboard;
+document.addEventListener('DOMContentLoaded', function() {
+    dashboard = new LanguageBlockDashboard();
+});
+
+// Refresh function
+function refreshAllData() {
+    if (dashboard) {
+        dashboard.loadAllData();
+    }
+}
+</script>
+{% endblock %}
