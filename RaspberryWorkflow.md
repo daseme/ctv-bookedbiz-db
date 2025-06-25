@@ -12,6 +12,7 @@ This document outlines the collaborative development workflow for the CTV Booked
 - **Code Repository**: GitHub (`daseme/ctv-bookedbiz-db`)
 - **Database**: SQLite (production.db) synced via Dropbox
 - **Development Environment**: VS Code Remote-SSH
+- **Service Management**: systemd service for Flask app
 
 ### Directory Structure
 ```
@@ -23,6 +24,7 @@ This document outlines the collaborative development workflow for the CTV Booked
 │       └── production.db     # Local copy of database
 ├── db_sync.py               # Database sync utility
 ├── requirements.txt         # Python dependencies
+├── runserver.sh             # Flask app startup script
 └── [your Flask app files]
 ```
 
@@ -52,6 +54,9 @@ git pull
 
 # 5. Get latest database
 python db_sync.py download
+
+# 6. Check if Flask app service is running
+sudo systemctl status flaskapp
 ```
 
 #### During Development
@@ -65,6 +70,9 @@ python db_sync.py backup
 # Install new dependencies if needed
 uv pip install package-name
 uv pip freeze > requirements.txt
+
+# Restart Flask app after code changes
+sudo systemctl restart flaskapp
 ```
 
 #### Ending Work Session
@@ -77,11 +85,51 @@ git add .
 git commit -m "Description of changes"
 git push
 
-# 3. Exit Pi
+# 3. Restart Flask app service to pick up changes
+sudo systemctl restart flaskapp
+
+# 4. Exit Pi
 exit
 ```
 
-### 2. Database Management
+### 2. Flask App Service Management
+
+The Flask application runs as a systemd service that automatically starts on boot and restarts if it crashes.
+
+#### Service Commands
+```bash
+# Check service status
+sudo systemctl status flaskapp
+
+# Start the service
+sudo systemctl start flaskapp
+
+# Stop the service
+sudo systemctl stop flaskapp
+
+# Restart the service (after code changes)
+sudo systemctl restart flaskapp
+
+# View recent logs
+sudo journalctl -u flaskapp -n 50
+
+# Follow logs in real-time
+sudo journalctl -u flaskapp -f
+
+# Enable service to start on boot (already configured)
+sudo systemctl enable flaskapp
+
+# Disable service from starting on boot
+sudo systemctl disable flaskapp
+```
+
+#### Service Management Workflow
+1. **After code changes**: Always restart the service with `sudo systemctl restart flaskapp`
+2. **Debugging issues**: Check logs with `sudo journalctl -u flaskapp -n 50`
+3. **Service runs automatically**: No need to manually start after Pi reboots
+4. **Service auto-restarts**: If the app crashes, systemd will restart it automatically
+
+### 3. Database Management
 
 #### Database Sync Commands
 ```bash
@@ -110,7 +158,7 @@ python db_sync.py list [folder-path]
 3. **Upload regularly** during development: `python db_sync.py upload`
 4. **Coordinate with team** - communicate when making major database changes
 
-### 3. VS Code Remote Development
+### 4. VS Code Remote Development
 
 #### Initial Setup (One-time per developer)
 1. Install VS Code extensions:
@@ -136,11 +184,12 @@ python db_sync.py list [folder-path]
 3. **Select Python Interpreter**: Ctrl+Shift+P → "Python: Select Interpreter" → `.venv/bin/python`
 4. **Develop** with full VS Code features (IntelliSense, debugging, etc.)
 
-### 4. Collaboration Guidelines
+### 5. Collaboration Guidelines
 
 #### Code Collaboration
 - **Use descriptive commit messages**
 - **Pull before push** to avoid conflicts
+- **Restart Flask service** after pushing changes: `sudo systemctl restart flaskapp`
 - **Communicate major changes** in advance
 - **Use feature branches** for larger changes:
   ```bash
@@ -167,7 +216,7 @@ sudo chgrp -R ctv-dev /opt/apps/ctv-bookedbiz-db
 sudo chmod -R g+rw /opt/apps/ctv-bookedbiz-db
 ```
 
-### 5. Environment Configuration
+### 6. Environment Configuration
 
 #### Environment Variables (.env)
 ```env
@@ -184,9 +233,24 @@ FLASK_ENV=development
 - **Update requirements**: `uv pip freeze > requirements.txt`
 - **Install from requirements**: `uv pip install -r requirements.txt`
 
-### 6. Troubleshooting
+### 7. Troubleshooting
 
 #### Common Issues
+
+**Flask App Service Issues**:
+```bash
+# Check service status
+sudo systemctl status flaskapp
+
+# View detailed logs
+sudo journalctl -u flaskapp -n 100
+
+# Restart service
+sudo systemctl restart flaskapp
+
+# Test if app is accessible
+curl http://localhost:8000
+```
 
 **VS Code Remote-SSH Connection Issues**:
 ```bash
@@ -233,25 +297,28 @@ which python
 python --version
 ```
 
-### 7. Security Notes
+### 8. Security Notes
 
 - **Tailscale VPN**: All connections are encrypted and authenticated
 - **SSH Keys**: Use SSH keys for authentication (no passwords)
 - **Environment Variables**: Keep sensitive data in `.env` (never commit)
 - **Regular Backups**: Database is automatically backed up with timestamps
 - **Access Control**: Only team members have Pi access via SSH keys
+- **Service Security**: Flask service runs as `daseme` user with minimal privileges
 
-### 8. Maintenance
+### 9. Maintenance
 
 #### Regular Tasks
 - **Weekly**: Review and clean up old database backups
 - **Monthly**: Update system packages: `sudo apt update && sudo apt upgrade`
 - **As Needed**: Update Python dependencies: `uv pip install --upgrade package-name`
+- **Service Health**: Monitor Flask app service logs periodically
 
 #### Monitoring
 - **Database Size**: Check `python db_sync.py info` for database growth
 - **Disk Space**: Monitor Pi storage with `df -h`
 - **Dropbox Usage**: Monitor Dropbox storage limits
+- **Service Status**: Check Flask app health with `sudo systemctl status flaskapp`
 
 ---
 
@@ -274,6 +341,11 @@ git add .                     # Stage changes
 git commit -m "message"       # Commit changes
 git push                      # Push to GitHub
 
+# Flask service management
+sudo systemctl status flaskapp    # Check status
+sudo systemctl restart flaskapp   # Restart after changes
+sudo journalctl -u flaskapp -n 50 # View logs
+
 # VS Code connection
 ssh pi-ctv                    # Terminal connection
 # VS Code: Ctrl+Shift+P → "Remote-SSH: Connect to Host"
@@ -284,5 +356,10 @@ ssh pi-ctv                    # Terminal connection
 - **Database**: `data/database/production.db`
 - **Python Environment**: `.venv/bin/python`
 - **Dropbox Sync**: `/Apps/ctv-bookedbiz-db/data/database/production.db`
+- **Service Config**: `/etc/systemd/system/flaskapp.service`
 
-This workflow ensures smooth collaboration while maintaining data integrity and code quality. Happy coding! 🚀
+### Important URLs
+- **Flask App**: `http://100.81.73.46:8000` (via Tailscale)
+- **Local Access**: `http://localhost:8000` (when on Pi)
+
+This workflow ensures smooth collaboration while maintaining data integrity, code quality, and reliable service deployment. Happy coding! 🚀
