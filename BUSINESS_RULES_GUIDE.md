@@ -67,29 +67,44 @@ The Language Block Assignment Business Rules system delivers **dual value**: aut
 
 ## Business Rules Framework (Updated)
 
-### **Rule 1: Direct Response Sales (MEDIA Sector)**
-- **Scope**: MEDIA sector spots (all content types)
+### **Rule 1: Direct Response Agency Exclusion (NEW)**
+- **Scope**: All spots from direct response agencies (WorldLink, etc.)
+- **Logic**: Direct response agencies target broad audiences and should NOT be assigned to language blocks
+- **Implementation**: Check agency name first, before any other assignment logic
+- **Revenue Impact**: All agency activity (positive revenue + negative broker fees) nets to "Direct Response"
+- **Result**: Prevents incorrect language block assignments and ensures proper revenue categorization
+- **Analytics**: Enables accurate direct response performance tracking
+
+### **Rule 2: Direct Response Sales (MEDIA Sector)**
+- **Scope**: MEDIA sector spots (all content types) - EXCLUDING direct response agencies
 - **Logic**: Broad-reach campaigns require multi-language coverage
 - **Result**: Majority of MEDIA sector automated assignments
 - **Analytics**: Enables infomercial performance tracking across languages
 
-### **Rule 2: Nonprofit Awareness (NPO Sector, 5+ Hours)**
-- **Scope**: NPO sector spots with extended duration
+### **Rule 3: Nonprofit Awareness (NPO Sector, 5+ Hours)**
+- **Scope**: NPO sector spots with extended duration - EXCLUDING direct response agencies
 - **Logic**: Long-form awareness campaigns span multiple blocks
 - **Result**: Extended NPO content automated assignments
 - **Analytics**: Tracks nonprofit campaign reach and effectiveness
 
-### **Rule 3: Extended Content Blocks (12+ Hours)**
-- **Scope**: Any content type with 12+ hour duration
+### **Rule 4: Extended Content Blocks (12+ Hours)**
+- **Scope**: Any content type with 12+ hour duration - EXCLUDING direct response agencies
 - **Logic**: Extended content inherently crosses multiple programming blocks
 - **Result**: Long-form content automated assignments
 - **Analytics**: Identifies programming patterns and content scheduling
 
-### **Rule 4: Government Public Service (GOV Sector)**
-- **Scope**: Government sector spots (all content types)
+### **Rule 5: Government Public Service (GOV Sector)**
+- **Scope**: Government sector spots (all content types) - EXCLUDING direct response agencies
 - **Logic**: Public service content requires community-wide reach
 - **Result**: Government content automated assignments
 - **Analytics**: Tracks public service programming distribution
+
+### **Rule 6: Customer Intent Assignment Logic (UPDATED)**
+- **Single Block Overlap**: Always assign to that language block
+- **Multi-Block with Language Match**: Assign to matching language block
+- **Multi-Block Time-Specific**: Assign to primary block based on time overlap
+- **Multi-Block Indifferent**: **DO NOT ASSIGN** - leave unassigned for non-language revenue categorization
+- **Prevents**: NULL block_id assignments that create "Unknown Language" issues
 
 ---
 
