@@ -379,41 +379,58 @@ class LanguageBlockService:
         return overlapping_blocks
     
     def _create_assignment(self, spot: SpotData, schedule_id: int, 
-                          blocks: List[LanguageBlock]) -> AssignmentResult:
-        """Create assignment based on spot and overlapping blocks"""
-        
-        if len(blocks) == 1:
-            # Single block assignment
-            block = blocks[0]
-            intent = self._analyze_single_block_intent(spot, block)
+                            blocks: List[LanguageBlock]) -> AssignmentResult:
+            """Create assignment based on spot and overlapping blocks"""
             
-            return AssignmentResult(
-                spot_id=spot.spot_id,
-                success=True,
-                schedule_id=schedule_id,
-                block_id=block.block_id,
-                customer_intent=intent,
-                spans_multiple_blocks=False,
-                primary_block_id=block.block_id,
-                requires_attention=intent == CustomerIntent.TIME_SPECIFIC
-            )
-        
-        else:
-            # Multi-block assignment
-            intent = self._analyze_multi_block_intent(spot, blocks)
-            primary_block = self._select_primary_block(spot, blocks)
+            if len(blocks) == 1:
+                # Single block assignment
+                block = blocks[0]
+                intent = self._analyze_single_block_intent(spot, block)
+                
+                return AssignmentResult(
+                    spot_id=spot.spot_id,
+                    success=True,
+                    schedule_id=schedule_id,
+                    block_id=block.block_id,
+                    customer_intent=intent,
+                    spans_multiple_blocks=False,
+                    primary_block_id=block.block_id,
+                    requires_attention=intent == CustomerIntent.TIME_SPECIFIC
+                )
             
-            return AssignmentResult(
-                spot_id=spot.spot_id,
-                success=True,
-                schedule_id=schedule_id,
-                block_id=None,  # NULL for multi-block
-                customer_intent=intent,
-                spans_multiple_blocks=True,
-                blocks_spanned=[b.block_id for b in blocks],
-                primary_block_id=primary_block.block_id if primary_block else None,
-                requires_attention=len(blocks) > 3
-            )
+            else:
+                # Multi-block assignment - FIXED: Don't assign if indifferent
+                intent = self._analyze_multi_block_intent(spot, blocks)
+                primary_block = self._select_primary_block(spot, blocks)
+                
+                # FIXED: If customer intent is indifferent, don't create language block assignment
+                # Let it remain unassigned and appear in non-language revenue
+                if intent == CustomerIntent.INDIFFERENT:
+                    return AssignmentResult(
+                        spot_id=spot.spot_id,
+                        success=True,
+                        schedule_id=schedule_id,
+                        block_id=None,  # Will not be saved to database
+                        customer_intent=intent,
+                        spans_multiple_blocks=True,
+                        blocks_spanned=[b.block_id for b in blocks],
+                        primary_block_id=primary_block.block_id if primary_block else None,
+                        requires_attention=True,
+                        alert_reason="Indifferent intent - left unassigned for non-language categorization"
+                    )
+                
+                # For TIME_SPECIFIC multi-block, assign to primary block
+                return AssignmentResult(
+                    spot_id=spot.spot_id,
+                    success=True,
+                    schedule_id=schedule_id,
+                    block_id=primary_block.block_id if primary_block else None,
+                    customer_intent=intent,
+                    spans_multiple_blocks=True,
+                    blocks_spanned=[b.block_id for b in blocks],
+                    primary_block_id=primary_block.block_id if primary_block else None,
+                    requires_attention=len(blocks) > 3
+                )
     
     def _analyze_single_block_intent(self, spot: SpotData, block: LanguageBlock) -> CustomerIntent:
         """Analyze customer intent for single block assignment"""

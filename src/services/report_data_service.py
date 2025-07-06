@@ -342,7 +342,6 @@ class ReportDataService:
             WHERE strftime('%Y', s.broadcast_month) = ?
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
             AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
-            AND s.gross_rate > 0
         """
         
         params = [str(year)]
@@ -522,8 +521,6 @@ class ReportDataService:
         WHERE strftime('%Y', s.broadcast_month) = ?
         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
-        AND s.gross_rate > 0
-
         """
         
         params = []
