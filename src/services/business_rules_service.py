@@ -101,7 +101,7 @@ class BusinessRulesService:
     
     def evaluate_spot(self, spot_data: SpotData) -> BusinessRuleResult:
         """
-        Evaluate a single spot against business rules
+        Evaluate a single spot against business rules with enhanced exclusion logic
         
         Args:
             spot_data: SpotData object containing spot information
@@ -109,7 +109,19 @@ class BusinessRulesService:
         Returns:
             BusinessRuleResult indicating if and how the spot should be handled
         """
-        # Check rules in priority order
+        # STEP 1: Check if spot should be excluded from assignment
+        should_exclude, exclusion_reason = self._should_exclude_from_assignment(spot_data)
+        if should_exclude:
+            self.logger.debug(f"Spot {spot_data.spot_id} excluded: {exclusion_reason}")
+            return BusinessRuleResult(
+                spot_id=spot_data.spot_id,
+                rule_applied=None,
+                auto_resolved=False,
+                requires_attention=False,
+                notes=f"Excluded: {exclusion_reason}"
+            )
+        
+        # STEP 2: Check rules in priority order (existing logic)
         for rule in sorted(self.rules, key=lambda r: r.priority):
             if self._spot_matches_rule(spot_data, rule):
                 self.logger.debug(f"Spot {spot_data.spot_id} matches rule: {rule.name}")
@@ -140,7 +152,7 @@ class BusinessRulesService:
                         notes=f"Flagged for review: {rule.description}"
                     )
         
-        # No rule matched - return for standard assignment
+        # STEP 3: No rule matched - return for standard assignment (existing logic)
         self.stats.total_evaluated += 1
         return BusinessRuleResult(
             spot_id=spot_data.spot_id,
@@ -173,7 +185,33 @@ class BusinessRulesService:
             return False
         
         return True
-    
+
+    def _should_exclude_from_assignment(self, spot_data: SpotData) -> tuple[bool, str]:
+        """Check if spot should be excluded from assignment processing"""
+        
+        # Exclude production/editing jobs (by keyword only)
+        production_keywords = ['PRODUCTION', 'PROD', 'EDIT', 'DEMO', 'TEST', 'PROOF', 'DRAFT', 'SAMPLE']
+        if any(keyword in spot_data.bill_code.upper() for keyword in production_keywords):
+            return True, "Production/editing job - not airtime"
+        
+        # Exclude zero-revenue spots (likely billing/data issues)
+        if spot_data.gross_rate == 0 or spot_data.gross_rate is None:
+            return True, "Zero revenue - likely billing or data issue"
+        
+        # Exclude future spots without market assignment (scheduled but not ready)
+        if (hasattr(spot_data, 'air_date') and spot_data.air_date and
+            spot_data.air_date > '2025-01-01' and 
+            spot_data.market_id is None):
+            return True, "Future spot - market not assigned yet"
+        
+        # Exclude spots with critical missing data
+        if (spot_data.market_id is None or 
+            spot_data.time_in is None or 
+            spot_data.time_out is None):
+            return True, "Missing critical assignment data"
+        
+        return False, None
+
     def get_spot_data_from_db(self, spot_id: int) -> Optional[SpotData]:
         """
         Get spot data from database for business rule evaluation
