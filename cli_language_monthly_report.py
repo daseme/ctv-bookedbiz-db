@@ -9,15 +9,17 @@ user-selectable years, and timestamped output files.
 Features:
 - Complete language block analysis
 - Government revenue deep dive with rate tiers
+- Other Non-Language revenue deep dive with sector analysis
 - Agency performance tracking
+- Customer and sales team performance
 - Roadblock strategy analysis
-- Strategic recommendations
+- Strategic recommendations for all revenue segments
 
 Usage Examples:
-    # Basic report
+    # Basic report with all deep dive analyses
     python revenue_report_generator.py 2024
 
-    # Report with government focus
+    # Report with government and other non-language focus
     python revenue_report_generator.py 2024 --government-focus
 
     # Report with target comparison
@@ -25,6 +27,9 @@ Usage Examples:
 
     # Save only to file (no stdout)
     python revenue_report_generator.py 2024 --output file
+    
+    # Faster generation without deep dive analyses
+    python revenue_report_generator.py 2024 --exclude-government
 """
 
 import sqlite3
@@ -332,6 +337,242 @@ class RevenueReportGenerator:
             'roadblocks': roadblocks
         }
     
+    def get_other_nonlang_data(self, spots_pattern: str) -> dict:
+        """Get detailed 'Other Non-Language' revenue data breakdown"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Other Non-Language overview
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_spots,
+                SUM(s.gross_rate) as total_revenue,
+                AVG(s.gross_rate) as avg_rate,
+                COUNT(DISTINCT s.customer_id) as unique_customers,
+                COUNT(DISTINCT s.agency_id) as unique_agencies,
+                COUNT(DISTINCT s.air_date) as active_days,
+                COUNT(DISTINCT s.sales_person) as sales_people
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.broadcast_month LIKE ? AND s.gross_rate != 0 AND slb.spot_id IS NULL
+              AND NOT (
+                  (a.agency_name = 'WorldLink' OR s.bill_code LIKE 'WorldLink%' OR s.bill_code = 'WorldLink Broker Fees (DO NOT INVOICE)')
+                  OR (sect.sector_name LIKE '%MEDIA%' OR sect.sector_code = 'MEDIA')
+                  OR (s.spot_type = 'PRD')
+                  OR (sect.sector_name LIKE '%GOV%' OR sect.sector_code = 'GOV')
+                  OR (sect.sector_name LIKE '%NPO%' OR sect.sector_code = 'NPO')
+                  OR (s.spot_type = 'SVC')
+                  OR (s.bill_code LIKE '%BROKER%' OR s.bill_code LIKE '%DO NOT INVOICE%')
+              )
+        """, (f'{spots_pattern}%',))
+        
+        overview = cursor.fetchone()
+        
+        # Break down by sector
+        cursor.execute("""
+            SELECT 
+                COALESCE(sect.sector_name, 'No Sector') as sector_name,
+                COALESCE(sect.sector_code, 'NONE') as sector_code,
+                COUNT(*) as spots,
+                SUM(s.gross_rate) as revenue,
+                AVG(s.gross_rate) as avg_rate,
+                COUNT(DISTINCT s.customer_id) as unique_customers
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.broadcast_month LIKE ? AND s.gross_rate != 0 AND slb.spot_id IS NULL
+              AND NOT (
+                  (a.agency_name = 'WorldLink' OR s.bill_code LIKE 'WorldLink%' OR s.bill_code = 'WorldLink Broker Fees (DO NOT INVOICE)')
+                  OR (sect.sector_name LIKE '%MEDIA%' OR sect.sector_code = 'MEDIA')
+                  OR (s.spot_type = 'PRD')
+                  OR (sect.sector_name LIKE '%GOV%' OR sect.sector_code = 'GOV')
+                  OR (sect.sector_name LIKE '%NPO%' OR sect.sector_code = 'NPO')
+                  OR (s.spot_type = 'SVC')
+                  OR (s.bill_code LIKE '%BROKER%' OR s.bill_code LIKE '%DO NOT INVOICE%')
+              )
+            GROUP BY sect.sector_name, sect.sector_code
+            HAVING revenue > 0
+            ORDER BY revenue DESC
+        """, (f'{spots_pattern}%',))
+        
+        sectors = cursor.fetchall()
+        
+        # Rate tier analysis
+        cursor.execute("""
+            SELECT 
+                CASE 
+                    WHEN s.gross_rate >= 200 THEN 'Premium ($200+)'
+                    WHEN s.gross_rate >= 100 THEN 'High ($100-$199)'
+                    WHEN s.gross_rate >= 50 THEN 'Standard ($50-$99)'
+                    WHEN s.gross_rate >= 25 THEN 'Value ($25-$49)'
+                    ELSE 'Discount (<$25)'
+                END as rate_tier,
+                COUNT(*) as spots,
+                SUM(s.gross_rate) as revenue,
+                AVG(s.gross_rate) as avg_rate
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.broadcast_month LIKE ? AND s.gross_rate != 0 AND slb.spot_id IS NULL
+              AND NOT (
+                  (a.agency_name = 'WorldLink' OR s.bill_code LIKE 'WorldLink%' OR s.bill_code = 'WorldLink Broker Fees (DO NOT INVOICE)')
+                  OR (sect.sector_name LIKE '%MEDIA%' OR sect.sector_code = 'MEDIA')
+                  OR (s.spot_type = 'PRD')
+                  OR (sect.sector_name LIKE '%GOV%' OR sect.sector_code = 'GOV')
+                  OR (sect.sector_name LIKE '%NPO%' OR sect.sector_code = 'NPO')
+                  OR (s.spot_type = 'SVC')
+                  OR (s.bill_code LIKE '%BROKER%' OR s.bill_code LIKE '%DO NOT INVOICE%')
+              )
+            GROUP BY rate_tier
+            ORDER BY avg_rate DESC
+        """, (f'{spots_pattern}%',))
+        
+        rate_tiers = cursor.fetchall()
+        
+        # Agency analysis
+        cursor.execute("""
+            SELECT 
+                COALESCE(a.agency_name, 'Direct Buy') as agency_name,
+                COUNT(*) as spots,
+                SUM(s.gross_rate) as revenue,
+                AVG(s.gross_rate) as avg_rate,
+                COUNT(DISTINCT s.customer_id) as unique_clients
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.broadcast_month LIKE ? AND s.gross_rate != 0 AND slb.spot_id IS NULL
+              AND NOT (
+                  (a.agency_name = 'WorldLink' OR s.bill_code LIKE 'WorldLink%' OR s.bill_code = 'WorldLink Broker Fees (DO NOT INVOICE)')
+                  OR (sect.sector_name LIKE '%MEDIA%' OR sect.sector_code = 'MEDIA')
+                  OR (s.spot_type = 'PRD')
+                  OR (sect.sector_name LIKE '%GOV%' OR sect.sector_code = 'GOV')
+                  OR (sect.sector_name LIKE '%NPO%' OR sect.sector_code = 'NPO')
+                  OR (s.spot_type = 'SVC')
+                  OR (s.bill_code LIKE '%BROKER%' OR s.bill_code LIKE '%DO NOT INVOICE%')
+              )
+            GROUP BY agency_name
+            HAVING revenue > 0
+            ORDER BY revenue DESC
+            LIMIT 15
+        """, (f'{spots_pattern}%',))
+        
+        agencies = cursor.fetchall()
+        
+        # Customer analysis
+        cursor.execute("""
+            SELECT 
+                c.normalized_name,
+                COALESCE(sect.sector_name, 'No Sector') as sector_name,
+                COUNT(*) as spots,
+                SUM(s.gross_rate) as revenue,
+                AVG(s.gross_rate) as avg_rate,
+                MIN(s.air_date) as first_air_date,
+                MAX(s.air_date) as last_air_date,
+                COUNT(DISTINCT s.air_date) as active_days
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.broadcast_month LIKE ? AND s.gross_rate != 0 AND slb.spot_id IS NULL
+              AND NOT (
+                  (a.agency_name = 'WorldLink' OR s.bill_code LIKE 'WorldLink%' OR s.bill_code = 'WorldLink Broker Fees (DO NOT INVOICE)')
+                  OR (sect.sector_name LIKE '%MEDIA%' OR sect.sector_code = 'MEDIA')
+                  OR (s.spot_type = 'PRD')
+                  OR (sect.sector_name LIKE '%GOV%' OR sect.sector_code = 'GOV')
+                  OR (sect.sector_name LIKE '%NPO%' OR sect.sector_code = 'NPO')
+                  OR (s.spot_type = 'SVC')
+                  OR (s.bill_code LIKE '%BROKER%' OR s.bill_code LIKE '%DO NOT INVOICE%')
+              )
+            GROUP BY c.normalized_name, sect.sector_name
+            HAVING revenue > 0
+            ORDER BY revenue DESC
+            LIMIT 15
+        """, (f'{spots_pattern}%',))
+        
+        customers = cursor.fetchall()
+        
+        # Sales person analysis
+        cursor.execute("""
+            SELECT 
+                COALESCE(s.sales_person, 'Unknown') as sales_person,
+                COUNT(*) as spots,
+                SUM(s.gross_rate) as revenue,
+                AVG(s.gross_rate) as avg_rate,
+                COUNT(DISTINCT s.customer_id) as unique_customers
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.broadcast_month LIKE ? AND s.gross_rate != 0 AND slb.spot_id IS NULL
+              AND NOT (
+                  (a.agency_name = 'WorldLink' OR s.bill_code LIKE 'WorldLink%' OR s.bill_code = 'WorldLink Broker Fees (DO NOT INVOICE)')
+                  OR (sect.sector_name LIKE '%MEDIA%' OR sect.sector_code = 'MEDIA')
+                  OR (s.spot_type = 'PRD')
+                  OR (sect.sector_name LIKE '%GOV%' OR sect.sector_code = 'GOV')
+                  OR (sect.sector_name LIKE '%NPO%' OR sect.sector_code = 'NPO')
+                  OR (s.spot_type = 'SVC')
+                  OR (s.bill_code LIKE '%BROKER%' OR s.bill_code LIKE '%DO NOT INVOICE%')
+              )
+            GROUP BY s.sales_person
+            HAVING revenue > 0
+            ORDER BY revenue DESC
+            LIMIT 10
+        """, (f'{spots_pattern}%',))
+        
+        sales_people = cursor.fetchall()
+        
+        # Spot type analysis
+        cursor.execute("""
+            SELECT 
+                COALESCE(s.spot_type, 'Unknown') as spot_type,
+                COUNT(*) as spots,
+                SUM(s.gross_rate) as revenue,
+                AVG(s.gross_rate) as avg_rate
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.broadcast_month LIKE ? AND s.gross_rate != 0 AND slb.spot_id IS NULL
+              AND NOT (
+                  (a.agency_name = 'WorldLink' OR s.bill_code LIKE 'WorldLink%' OR s.bill_code = 'WorldLink Broker Fees (DO NOT INVOICE)')
+                  OR (sect.sector_name LIKE '%MEDIA%' OR sect.sector_code = 'MEDIA')
+                  OR (s.spot_type = 'PRD')
+                  OR (sect.sector_name LIKE '%GOV%' OR sect.sector_code = 'GOV')
+                  OR (sect.sector_name LIKE '%NPO%' OR sect.sector_code = 'NPO')
+                  OR (s.spot_type = 'SVC')
+                  OR (s.bill_code LIKE '%BROKER%' OR s.bill_code LIKE '%DO NOT INVOICE%')
+              )
+            GROUP BY s.spot_type
+            HAVING revenue > 0
+            ORDER BY revenue DESC
+        """, (f'{spots_pattern}%',))
+        
+        spot_types = cursor.fetchall()
+        
+        conn.close()
+        
+        return {
+            'overview': overview,
+            'sectors': sectors,
+            'rate_tiers': rate_tiers,
+            'agencies': agencies,
+            'customers': customers,
+            'sales_people': sales_people,
+            'spot_types': spot_types
+        }
+    
     def generate_report(self, year: int, target_revenue: Optional[float] = None) -> str:
         """Generate the complete revenue report"""
         self.report_lines = []
@@ -468,6 +709,25 @@ class RevenueReportGenerator:
                         if gov_data['rate_tiers']:
                             top_tier = max(gov_data['rate_tiers'], key=lambda x: x[2])  # Max by revenue
                             self.add_line(f"   • Top rate tier: {top_tier[0]} (${top_tier[2]:,.0f})")
+                
+                # Other Non-Language monthly insight
+                other_revenue = sum(cat_revenue for category, cat_revenue in nonlang_results if category == 'Other Non-Language')
+                if other_revenue > 0:
+                    other_pct = (other_revenue / nonlang_total * 100) if nonlang_total > 0 else 0
+                    self.add_line(f"🏢 **Other Non-Language Impact:** ${other_revenue:,.2f} ({other_pct:.1f}% of non-language revenue)")
+                    
+                    # Quick other non-language analysis for this month
+                    other_data = self.get_other_nonlang_data(spots_pattern)
+                    if other_data['overview'] and other_data['overview'][0] > 0:
+                        overview = other_data['overview']
+                        avg_rate = overview[1] / overview[0] if overview[0] > 0 else 0
+                        self.add_line(f"   • {overview[0]:,} spots at ${avg_rate:.2f}/spot average")
+                        self.add_line(f"   • {overview[3]:,} unique customers, {overview[6]:,} sales people")
+                        
+                        # Show top sector for this month
+                        if other_data['sectors']:
+                            top_sector = max(other_data['sectors'], key=lambda x: x[3])  # Max by revenue
+                            self.add_line(f"   • Top sector: {top_sector[0]} (${top_sector[3]:,.0f})")
                 
                 self.add_line()
             
@@ -631,6 +891,7 @@ class RevenueReportGenerator:
         # Aggregate non-language data across all months
         year_nonlang_data = {}
         year_nonlang_total = 0
+        year_government_total = 0  # Track government separately
         
         for closed_month, closed_date, closed_by in closed_months:
             if closed_month not in month_map:
@@ -650,9 +911,14 @@ class RevenueReportGenerator:
                     year_nonlang_data[category] = 0
                 year_nonlang_data[category] += cat_revenue
                 year_nonlang_total += cat_revenue
+                
+                # Track government separately
+                if category == 'Government':
+                    year_government_total += cat_revenue
         
         if year_nonlang_data:
             self.add_line(f"**Total Non-Language Revenue:** ${year_nonlang_total:,.2f}")
+            self.add_line(f"**Government Revenue:** ${year_government_total:,.2f} ({(year_government_total/year_nonlang_total*100):.1f}% of non-language)" if year_nonlang_total > 0 else "**Government Revenue:** ${year_government_total:,.2f}")
             self.add_line()
             
             # Sort categories by revenue
@@ -662,11 +928,20 @@ class RevenueReportGenerator:
             
             for category, cat_revenue in sorted_categories:
                 revenue_pct = (cat_revenue / year_nonlang_total * 100) if year_nonlang_total > 0 else 0
-                self.add_table_row([
-                    category,
-                    f"${cat_revenue:,.2f}",
-                    f"{revenue_pct:.1f}%"
-                ])
+                
+                # Highlight government row
+                if category == 'Government':
+                    self.add_table_row([
+                        f"**{category}**",
+                        f"**${cat_revenue:,.2f}**",
+                        f"**{revenue_pct:.1f}%**"
+                    ])
+                else:
+                    self.add_table_row([
+                        category,
+                        f"${cat_revenue:,.2f}",
+                        f"{revenue_pct:.1f}%"
+                    ])
             
             self.add_line()
             
@@ -685,8 +960,19 @@ class RevenueReportGenerator:
                 if len(sorted_categories) > 1:
                     top_3_pct = sum(cat[1] for cat in sorted_categories[:3]) / year_nonlang_total * 100
                     self.add_line(f"📊 **Top 3 Categories:** {top_3_pct:.1f}% of non-language revenue")
+                
+                # Government-specific insight
+                if year_government_total > 0:
+                    gov_pct = (year_government_total / year_nonlang_total * 100)
+                    if gov_pct > 40:
+                        self.add_line(f"🏛️ **Government Dominance:** Government represents {gov_pct:.1f}% of non-language revenue")
+                    elif gov_pct > 20:
+                        self.add_line(f"🏛️ **Government Significance:** Government is a major revenue driver at {gov_pct:.1f}%")
+                    else:
+                        self.add_line(f"🏛️ **Government Opportunity:** Government at {gov_pct:.1f}% has growth potential")
             
             self.add_line()
+            
         else:
             self.add_line("⚠️ **No non-language revenue data found for this period.**")
             self.add_line()
@@ -973,6 +1259,375 @@ class RevenueReportGenerator:
             self.add_line("⚠️ **No government revenue data found for this period.**")
             self.add_line()
         
+        # Other Non-Language Deep Dive Analysis
+        self.add_header(f"🏢 {year} Other Non-Language Revenue Deep Dive", 2)
+        
+        # Aggregate other non-language data across all months
+        year_other_data = {
+            'total_spots': 0,
+            'total_revenue': 0,
+            'unique_customers': set(),
+            'unique_agencies': set(),
+            'active_days': set(),
+            'sales_people': set(),
+            'sectors': {},
+            'rate_tiers': {},
+            'agencies': {},
+            'customers': {},
+            'sales_people_dict': {},
+            'spot_types': {}
+        }
+        
+        for closed_month, closed_date, closed_by in closed_months:
+            if closed_month not in month_map:
+                continue
+                
+            spots_pattern = month_map[closed_month]
+            spots, revenue = self.get_month_revenue_data(spots_pattern)
+            
+            if spots == 0:
+                continue
+            
+            # Get other non-language data for this month
+            other_data = self.get_other_nonlang_data(spots_pattern)
+            
+            if other_data['overview'] and other_data['overview'][0] > 0:
+                # Aggregate overview data
+                overview = other_data['overview']
+                year_other_data['total_spots'] += overview[0]
+                year_other_data['total_revenue'] += overview[1]
+                year_other_data['unique_customers'].update([f"{closed_month}_{i}" for i in range(overview[3])])
+                year_other_data['unique_agencies'].update([f"{closed_month}_{i}" for i in range(overview[4])])
+                year_other_data['active_days'].update([f"{closed_month}_{i}" for i in range(overview[5])])
+                year_other_data['sales_people'].update([f"{closed_month}_{i}" for i in range(overview[6])])
+                
+                # Aggregate sectors
+                for sector_name, sector_code, spots_count, sector_revenue, avg_rate, unique_customers in other_data['sectors']:
+                    if sector_name not in year_other_data['sectors']:
+                        year_other_data['sectors'][sector_name] = {'spots': 0, 'revenue': 0, 'customers': 0}
+                    year_other_data['sectors'][sector_name]['spots'] += spots_count
+                    year_other_data['sectors'][sector_name]['revenue'] += sector_revenue
+                    year_other_data['sectors'][sector_name]['customers'] += unique_customers
+                
+                # Aggregate rate tiers
+                for tier, spots_count, tier_revenue, avg_rate in other_data['rate_tiers']:
+                    if tier not in year_other_data['rate_tiers']:
+                        year_other_data['rate_tiers'][tier] = {'spots': 0, 'revenue': 0}
+                    year_other_data['rate_tiers'][tier]['spots'] += spots_count
+                    year_other_data['rate_tiers'][tier]['revenue'] += tier_revenue
+                
+                # Aggregate agencies
+                for agency, spots_count, agency_revenue, avg_rate, unique_clients in other_data['agencies']:
+                    if agency not in year_other_data['agencies']:
+                        year_other_data['agencies'][agency] = {'spots': 0, 'revenue': 0, 'clients': 0}
+                    year_other_data['agencies'][agency]['spots'] += spots_count
+                    year_other_data['agencies'][agency]['revenue'] += agency_revenue
+                    year_other_data['agencies'][agency]['clients'] += unique_clients
+                
+                # Aggregate customers
+                for customer, sector_name, spots_count, customer_revenue, avg_rate, first_air, last_air, active_days in other_data['customers']:
+                    if customer not in year_other_data['customers']:
+                        year_other_data['customers'][customer] = {'spots': 0, 'revenue': 0, 'sector': sector_name}
+                    year_other_data['customers'][customer]['spots'] += spots_count
+                    year_other_data['customers'][customer]['revenue'] += customer_revenue
+                
+                # Aggregate sales people
+                for sales_person, spots_count, sp_revenue, avg_rate, unique_customers in other_data['sales_people']:
+                    if sales_person not in year_other_data['sales_people_dict']:
+                        year_other_data['sales_people_dict'][sales_person] = {'spots': 0, 'revenue': 0, 'customers': 0}
+                    year_other_data['sales_people_dict'][sales_person]['spots'] += spots_count
+                    year_other_data['sales_people_dict'][sales_person]['revenue'] += sp_revenue
+                    year_other_data['sales_people_dict'][sales_person]['customers'] += unique_customers
+                
+                # Aggregate spot types
+                for spot_type, spots_count, st_revenue, avg_rate in other_data['spot_types']:
+                    if spot_type not in year_other_data['spot_types']:
+                        year_other_data['spot_types'][spot_type] = {'spots': 0, 'revenue': 0}
+                    year_other_data['spot_types'][spot_type]['spots'] += spots_count
+                    year_other_data['spot_types'][spot_type]['revenue'] += st_revenue
+        
+        if year_other_data['total_revenue'] > 0:
+            other_total_revenue = year_other_data['total_revenue']
+            other_total_spots = year_other_data['total_spots']
+            other_avg_rate = other_total_revenue / other_total_spots if other_total_spots > 0 else 0
+            
+            self.add_line(f"**Total Other Non-Language Revenue:** ${other_total_revenue:,.2f} ({other_total_spots:,} spots)")
+            self.add_line(f"**Average Rate:** ${other_avg_rate:.2f}/spot")
+            self.add_line(f"**Share of Non-Language:** {(other_total_revenue / year_nonlang_total * 100):.1f}%" if year_nonlang_total > 0 else "**Share of Non-Language:** N/A")
+            self.add_line(f"**Business Diversity:** {len(year_other_data['sectors'])} sectors, {len(year_other_data['agencies'])} agencies")
+            self.add_line()
+            
+            # Sector analysis
+            self.add_header("🏭 Sector Breakdown Analysis", 3)
+            
+            if year_other_data['sectors']:
+                self.add_table_row(["Sector", "Revenue", "Spots", "Avg Rate", "% of Other"], True)
+                
+                sorted_sectors = sorted(year_other_data['sectors'].items(), 
+                                      key=lambda x: x[1]['revenue'], reverse=True)
+                
+                for sector, data in sorted_sectors:
+                    sector_avg = data['revenue'] / data['spots'] if data['spots'] > 0 else 0
+                    sector_pct = (data['revenue'] / other_total_revenue * 100) if other_total_revenue > 0 else 0
+                    
+                    self.add_table_row([
+                        sector,
+                        f"${data['revenue']:,.0f}",
+                        f"{data['spots']:,}",
+                        f"${sector_avg:.2f}",
+                        f"{sector_pct:.1f}%"
+                    ])
+                
+                self.add_line()
+                
+                # Sector insights
+                top_sector = sorted_sectors[0]
+                self.add_line(f"🥇 **Top Sector:** {top_sector[0]} (${top_sector[1]['revenue']:,.0f} - {(top_sector[1]['revenue']/other_total_revenue*100):.1f}% of other revenue)")
+                
+                # Check for sector concentration
+                if len(sorted_sectors) > 1:
+                    top_3_revenue = sum(data['revenue'] for sector, data in sorted_sectors[:3])
+                    sector_concentration = (top_3_revenue / other_total_revenue * 100) if other_total_revenue > 0 else 0
+                    self.add_line(f"📊 **Sector Concentration:** Top 3 sectors represent {sector_concentration:.1f}% of other revenue")
+                
+                self.add_line()
+            
+            # Rate tier analysis
+            self.add_header("💰 Rate Tier Analysis", 3)
+            
+            if year_other_data['rate_tiers']:
+                self.add_table_row(["Rate Tier", "Spots", "Revenue", "Avg Rate", "% of Other"], True)
+                
+                sorted_tiers = sorted(year_other_data['rate_tiers'].items(), 
+                                    key=lambda x: x[1]['revenue'], reverse=True)
+                
+                for tier, data in sorted_tiers:
+                    tier_avg = data['revenue'] / data['spots'] if data['spots'] > 0 else 0
+                    tier_pct = (data['revenue'] / other_total_revenue * 100) if other_total_revenue > 0 else 0
+                    
+                    self.add_table_row([
+                        tier,
+                        f"{data['spots']:,}",
+                        f"${data['revenue']:,.0f}",
+                        f"${tier_avg:.2f}",
+                        f"{tier_pct:.1f}%"
+                    ])
+                
+                self.add_line()
+                
+                # Rate tier insights
+                top_tier = sorted_tiers[0]
+                self.add_line(f"🥇 **Top Rate Tier:** {top_tier[0]} (${top_tier[1]['revenue']:,.0f} - {(top_tier[1]['revenue']/other_total_revenue*100):.1f}% of other revenue)")
+                
+                # Check rate distribution
+                premium_revenue = sum(data['revenue'] for tier, data in sorted_tiers if 'Premium' in tier or 'High' in tier)
+                discount_revenue = sum(data['revenue'] for tier, data in sorted_tiers if 'Discount' in tier or 'Value' in tier)
+                
+                if premium_revenue > discount_revenue:
+                    self.add_line(f"💎 **Premium Focus:** ${premium_revenue:,.0f} in premium rates vs ${discount_revenue:,.0f} in discount rates")
+                else:
+                    self.add_line(f"💰 **Volume Focus:** ${discount_revenue:,.0f} in discount rates vs ${premium_revenue:,.0f} in premium rates")
+                
+                self.add_line()
+            
+            # Agency analysis
+            self.add_header("🏢 Agency Performance", 3)
+            
+            if year_other_data['agencies']:
+                self.add_table_row(["Agency", "Revenue", "Spots", "Avg Rate", "Clients"], True)
+                
+                sorted_agencies = sorted(year_other_data['agencies'].items(), 
+                                       key=lambda x: x[1]['revenue'], reverse=True)
+                
+                for agency, data in sorted_agencies[:10]:  # Top 10
+                    agency_avg = data['revenue'] / data['spots'] if data['spots'] > 0 else 0
+                    
+                    self.add_table_row([
+                        agency,
+                        f"${data['revenue']:,.0f}",
+                        f"{data['spots']:,}",
+                        f"${agency_avg:.2f}",
+                        f"{data['clients']:,}"
+                    ])
+                
+                self.add_line()
+                
+                # Agency insights
+                top_agency = sorted_agencies[0]
+                agency_market_share = (top_agency[1]['revenue'] / other_total_revenue * 100)
+                self.add_line(f"🏆 **Top Agency:** {top_agency[0]} (${top_agency[1]['revenue']:,.0f} - {agency_market_share:.1f}% market share)")
+                
+                # Direct vs Agency buy analysis
+                direct_revenue = sum(data['revenue'] for agency, data in sorted_agencies if 'Direct' in agency)
+                agency_revenue = other_total_revenue - direct_revenue
+                
+                if direct_revenue > 0:
+                    direct_pct = (direct_revenue / other_total_revenue * 100)
+                    self.add_line(f"🎯 **Direct vs Agency:** {direct_pct:.1f}% direct buy, {100-direct_pct:.1f}% agency")
+                
+                self.add_line()
+            
+            # Customer analysis
+            self.add_header("🏬 Top Customers", 3)
+            
+            if year_other_data['customers']:
+                self.add_table_row(["Customer", "Sector", "Revenue", "Spots", "Avg Rate"], True)
+                
+                sorted_customers = sorted(year_other_data['customers'].items(), 
+                                        key=lambda x: x[1]['revenue'], reverse=True)
+                
+                for customer, data in sorted_customers[:10]:  # Top 10
+                    customer_avg = data['revenue'] / data['spots'] if data['spots'] > 0 else 0
+                    
+                    self.add_table_row([
+                        customer,
+                        data['sector'],
+                        f"${data['revenue']:,.0f}",
+                        f"{data['spots']:,}",
+                        f"${customer_avg:.2f}"
+                    ])
+                
+                self.add_line()
+                
+                # Customer insights
+                top_customer = sorted_customers[0]
+                customer_share = (top_customer[1]['revenue'] / other_total_revenue * 100)
+                self.add_line(f"👑 **Top Customer:** {top_customer[0]} (${top_customer[1]['revenue']:,.0f} - {customer_share:.1f}% of other revenue)")
+                
+                self.add_line()
+            
+            # Sales person analysis
+            self.add_header("🎯 Sales Team Performance", 3)
+            
+            if year_other_data['sales_people_dict']:
+                self.add_table_row(["Sales Person", "Revenue", "Spots", "Avg Rate", "Customers"], True)
+                
+                sorted_sales = sorted(year_other_data['sales_people_dict'].items(), 
+                                    key=lambda x: x[1]['revenue'], reverse=True)
+                
+                for sales_person, data in sorted_sales[:10]:  # Top 10
+                    sp_avg = data['revenue'] / data['spots'] if data['spots'] > 0 else 0
+                    
+                    self.add_table_row([
+                        sales_person,
+                        f"${data['revenue']:,.0f}",
+                        f"{data['spots']:,}",
+                        f"${sp_avg:.2f}",
+                        f"{data['customers']:,}"
+                    ])
+                
+                self.add_line()
+                
+                # Sales insights
+                top_sales = sorted_sales[0]
+                sales_share = (top_sales[1]['revenue'] / other_total_revenue * 100)
+                self.add_line(f"🏆 **Top Sales Person:** {top_sales[0]} (${top_sales[1]['revenue']:,.0f} - {sales_share:.1f}% of other revenue)")
+                
+                # Sales team concentration
+                if len(sorted_sales) > 3:
+                    top_3_sales_revenue = sum(data['revenue'] for sp, data in sorted_sales[:3])
+                    sales_concentration = (top_3_sales_revenue / other_total_revenue * 100) if other_total_revenue > 0 else 0
+                    self.add_line(f"📊 **Sales Concentration:** Top 3 sales people generate {sales_concentration:.1f}% of other revenue")
+                
+                self.add_line()
+            
+            # Spot type analysis
+            self.add_header("📺 Spot Type Analysis", 3)
+            
+            if year_other_data['spot_types']:
+                self.add_table_row(["Spot Type", "Spots", "Revenue", "Avg Rate", "% of Other"], True)
+                
+                sorted_spot_types = sorted(year_other_data['spot_types'].items(), 
+                                         key=lambda x: x[1]['revenue'], reverse=True)
+                
+                for spot_type, data in sorted_spot_types:
+                    st_avg = data['revenue'] / data['spots'] if data['spots'] > 0 else 0
+                    st_pct = (data['revenue'] / other_total_revenue * 100) if other_total_revenue > 0 else 0
+                    
+                    self.add_table_row([
+                        spot_type,
+                        f"{data['spots']:,}",
+                        f"${data['revenue']:,.0f}",
+                        f"${st_avg:.2f}",
+                        f"{st_pct:.1f}%"
+                    ])
+                
+                self.add_line()
+                
+                # Spot type insights
+                top_spot_type = sorted_spot_types[0]
+                self.add_line(f"📺 **Top Spot Type:** {top_spot_type[0]} (${top_spot_type[1]['revenue']:,.0f} - {(top_spot_type[1]['revenue']/other_total_revenue*100):.1f}% of other revenue)")
+                
+                self.add_line()
+            
+            # Strategic recommendations
+            self.add_header("🎯 Other Non-Language Strategy Recommendations", 3)
+            
+            recommendations = []
+            
+            # Sector recommendations
+            if year_other_data['sectors']:
+                sorted_sectors = sorted(year_other_data['sectors'].items(), 
+                                      key=lambda x: x[1]['revenue'], reverse=True)
+                top_sectors = [sector for sector, data in sorted_sectors[:3]]
+                recommendations.append(f"🏭 **Focus on Top Sectors:** Prioritize {', '.join(top_sectors)} for growth")
+            
+            # Rate tier recommendations
+            if year_other_data['rate_tiers']:
+                sorted_tiers = sorted(year_other_data['rate_tiers'].items(), 
+                                    key=lambda x: x[1]['revenue'], reverse=True)
+                top_tier = sorted_tiers[0]
+                
+                if 'Premium' in top_tier[0] or 'High' in top_tier[0]:
+                    recommendations.append("💎 **Premium Strategy:** Focus on high-value accounts and premium inventory")
+                elif 'Discount' in top_tier[0] or 'Value' in top_tier[0]:
+                    recommendations.append("💰 **Volume Strategy:** Leverage competitive pricing for market share")
+                else:
+                    recommendations.append("⚖️ **Balanced Strategy:** Maintain mix of premium and value positioning")
+            
+            # Agency recommendations
+            if year_other_data['agencies']:
+                sorted_agencies = sorted(year_other_data['agencies'].items(), 
+                                       key=lambda x: x[1]['revenue'], reverse=True)
+                direct_revenue = sum(data['revenue'] for agency, data in sorted_agencies if 'Direct' in agency)
+                direct_pct = (direct_revenue / other_total_revenue * 100) if other_total_revenue > 0 else 0
+                
+                if direct_pct > 50:
+                    recommendations.append("🎯 **Direct Sales Focus:** Strong direct buy relationships - enhance account management")
+                else:
+                    top_agencies = [agency for agency, data in sorted_agencies[:3] if 'Direct' not in agency]
+                    if top_agencies:
+                        recommendations.append(f"🏢 **Agency Partnership:** Strengthen relationships with {', '.join(top_agencies)}")
+            
+            # Sales team recommendations
+            if year_other_data['sales_people_dict']:
+                sorted_sales = sorted(year_other_data['sales_people_dict'].items(), 
+                                    key=lambda x: x[1]['revenue'], reverse=True)
+                if len(sorted_sales) > 3:
+                    top_3_sales_revenue = sum(data['revenue'] for sp, data in sorted_sales[:3])
+                    sales_concentration = (top_3_sales_revenue / other_total_revenue * 100) if other_total_revenue > 0 else 0
+                    
+                    if sales_concentration > 60:
+                        recommendations.append("📊 **Sales Distribution:** High concentration - develop broader sales capabilities")
+                    else:
+                        recommendations.append("🎯 **Sales Optimization:** Well-distributed sales performance - focus on top performers")
+            
+            # Revenue opportunity
+            if other_total_revenue > 0:
+                recommendations.append(f"💡 **Revenue Opportunity:** Other non-language represents ${other_total_revenue:,.0f} - identify growth patterns")
+            
+            # Business intelligence
+            recommendations.append("📈 **Business Intelligence:** Analyze sector trends for strategic positioning")
+            
+            for i, rec in enumerate(recommendations, 1):
+                self.add_line(f"{i}. {rec}")
+            
+            self.add_line()
+            
+        else:
+            self.add_line("⚠️ **No other non-language revenue data found for this period.**")
+            self.add_line()
+        
         # Year-end revenue split
         self.add_header(f"💰 {year} Revenue Split Analysis", 2)
         
@@ -1054,6 +1709,8 @@ class RevenueReportGenerator:
             self.add_line(f"🎲 **Revenue Diversification:** {diversification_level} ({diversification_score:.1f}% minimum category)")
         
         self.add_line()
+        
+        self.add_line()
         self.add_header("🔧 Report Features", 2)
         self.add_line("✅ Complete language block revenue coverage")
         self.add_line("✅ Proper WorldLink categorization as Direct Response")
@@ -1066,6 +1723,11 @@ class RevenueReportGenerator:
         self.add_line("✅ **NEW: Government roadblock strategy analysis**")
         self.add_line("✅ **NEW: Government vs language block efficiency comparison**")
         self.add_line("✅ **NEW: Strategic recommendations for government sales**")
+        self.add_line("✅ **NEW: Other Non-Language revenue deep dive analysis**")
+        self.add_line("✅ **NEW: Other Non-Language sector breakdown and rate tiers**")
+        self.add_line("✅ **NEW: Other Non-Language agency and customer performance**")
+        self.add_line("✅ **NEW: Sales team performance analysis**")
+        self.add_line("✅ **NEW: Strategic recommendations for business development**")
         
         return "\n".join(self.report_lines)
     
@@ -1136,6 +1798,11 @@ def main():
                 print("   • Agency performance tracking")
                 print("   • Roadblock strategy analysis")
                 print("   • Strategic recommendations")
+                print("🏢 Other Non-Language analysis includes:")
+                print("   • Sector breakdown and rate tiers")
+                print("   • Agency and customer performance")
+                print("   • Sales team performance")
+                print("   • Strategic business development recommendations")
             
     except Exception as e:
         print(f"❌ Error generating report: {e}")

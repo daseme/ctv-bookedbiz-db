@@ -15,6 +15,8 @@ dependencies = [
     "lxml>=5.4.0",
     "asgiref>=3.8.1",
     "uvicorn>=0.34.3",
+    "dropbox",
+    "python-dotenv",
 ]
 requires-python = ">=3.10"
 
