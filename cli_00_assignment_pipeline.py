@@ -6,12 +6,25 @@ Assignment Pipeline Orchestrator
 Coordinates language block and business rules assignment in the proper sequence.
 This script orchestrates the existing CLI scripts while maintaining separation of concerns.
 
+Features:
+- Real-time progress bars (requires: pip install tqdm)
+- Incremental processing for new data
+- Comprehensive error handling and rollback
+- Detailed progress tracking and reporting
+
 Usage:
     python cli_00_assignment_pipeline.py --year 2025           # Assign all spots for year
     python cli_00_assignment_pipeline.py --test 100            # Test with 100 spots
     python cli_00_assignment_pipeline.py --batch 5000          # Process 5000 spots
+    python cli_00_assignment_pipeline.py --recent              # Process recently added spots (last 3 days)
+    python cli_00_assignment_pipeline.py --since-date 2025-01-01  # Process spots since specific date
+    python cli_00_assignment_pipeline.py --last-week           # Process spots from last 7 days
+    python cli_00_assignment_pipeline.py --last-month          # Process spots from last 30 days
     python cli_00_assignment_pipeline.py --status              # Show current status
-    python cli_00_assignment_pipeline.py --dry-run --year 2025 # Preview what would happen
+    python cli_00_assignment_pipeline.py --dry-run --recent    # Preview what would happen
+
+Installation:
+    pip install tqdm  # For progress bars (optional but recommended)
 """
 
 import argparse
@@ -19,9 +32,18 @@ import subprocess
 import sys
 import sqlite3
 import logging
+import re
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+
+# Progress bar support
+try:
+    from tqdm import tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+    print("💡 For progress bars, install tqdm: pip install tqdm")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -50,9 +72,138 @@ class AssignmentPipeline:
         self.dry_run = dry_run
         self.logger = logging.getLogger(self.__class__.__name__)
         
+        # Progress tracking
+        self.progress_bars = {}
+        self.use_progress = HAS_TQDM and not dry_run
+        
         # Validate database connection
         if not self._validate_database():
             raise ValueError(f"Cannot connect to database: {db_path}")
+    
+    def _get_total_spots_to_process(self, year: Optional[int] = None, batch: Optional[int] = None,
+                                   test: Optional[int] = None, recent: bool = False,
+                                   since_date: Optional[str] = None, last_week: bool = False,
+                                   last_month: bool = False) -> int:
+        """Get total number of spots that will be processed"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            if test:
+                return min(test, self._get_total_unassigned_spots())
+            elif batch:
+                return min(batch, self._get_total_unassigned_spots())
+            elif recent or since_date or last_week or last_month:
+                scope_stats = self._get_scope_stats(recent, since_date, last_week, last_month)
+                return scope_stats['unassigned_spots']
+            elif year:
+                # Get unassigned spots for specific year
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM spots s
+                    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+                    WHERE slb.spot_id IS NULL
+                      AND s.broadcast_month LIKE ?
+                      AND s.market_id IS NOT NULL
+                      AND s.time_in IS NOT NULL
+                      AND s.time_out IS NOT NULL
+                      AND s.day_of_week IS NOT NULL
+                """, (f'{year}-%',))
+                return cursor.fetchone()[0]
+            else:
+                return self._get_total_unassigned_spots()
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get total spots count: {e}")
+            return 0
+        finally:
+            conn.close()
+    
+    def _get_total_unassigned_spots(self) -> int:
+        """Get total unassigned spots"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM spots s
+                LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+                WHERE slb.spot_id IS NULL
+                  AND s.market_id IS NOT NULL
+                  AND s.time_in IS NOT NULL
+                  AND s.time_out IS NOT NULL
+                  AND s.day_of_week IS NOT NULL
+            """)
+            return cursor.fetchone()[0]
+        except Exception as e:
+            self.logger.error(f"Failed to get total unassigned spots: {e}")
+            return 0
+        finally:
+            conn.close()
+    
+    def _create_progress_bar(self, stage: str, total: int, desc: str = None) -> Optional[Any]:
+        """Create a progress bar for a stage"""
+        if not self.use_progress or total <= 0:
+            return None
+            
+        desc = desc or f"{stage}"
+        pbar = tqdm(
+            total=total,
+            desc=desc,
+            unit="spots",
+            unit_scale=True,
+            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} spots [{elapsed}<{remaining}, {rate_fmt}]'
+        )
+        self.progress_bars[stage] = pbar
+        return pbar
+    
+    def _update_progress_from_output(self, stage: str, line: str) -> bool:
+        """Update progress bar from subprocess output line"""
+        if not self.use_progress or stage not in self.progress_bars:
+            return False
+            
+        pbar = self.progress_bars[stage]
+        
+        # Look for progress indicators in the output
+        patterns = [
+            r'Processed\s+(\d+)[\s/]+(\d+)\s+spots',  # "Processed 1000/50000 spots"
+            r'Processing\s+(\d+)[\s/]+(\d+)',         # "Processing 1000/50000"
+            r'Imported\s+(\d+):,\s+records',          # "Imported 1000:, records"
+            r'(\d+)\s+spots\s+processed',             # "1000 spots processed"
+            r'Assigned:\s+(\d+)',                     # "Assigned: 1000"
+            r'Processed:\s+(\d+)',                    # "Processed: 1000"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                if len(match.groups()) >= 2:
+                    # Has both current and total
+                    current = int(match.group(1))
+                    total = int(match.group(2))
+                    pbar.total = total
+                    pbar.n = current
+                else:
+                    # Only has current count
+                    current = int(match.group(1))
+                    pbar.n = current
+                
+                pbar.refresh()
+                return True
+        
+        return False
+    
+    def _close_progress_bar(self, stage: str):
+        """Close and cleanup progress bar"""
+        if stage in self.progress_bars:
+            pbar = self.progress_bars[stage]
+            pbar.close()
+            del self.progress_bars[stage]
+    
+    def _cleanup_progress_bars(self):
+        """Clean up all progress bars"""
+        for stage in list(self.progress_bars.keys()):
+            self._close_progress_bar(stage)
     
     def _validate_database(self) -> bool:
         """Validate database connection"""
@@ -66,7 +217,9 @@ class AssignmentPipeline:
             return False
     
     def execute_pipeline(self, year: Optional[int] = None, batch: Optional[int] = None, 
-                        test: Optional[int] = None) -> PipelineResult:
+                        test: Optional[int] = None, recent: bool = False, 
+                        since_date: Optional[str] = None, last_week: bool = False, 
+                        last_month: bool = False) -> PipelineResult:
         """Execute the complete assignment pipeline"""
         start_time = datetime.now()
         
@@ -75,13 +228,44 @@ class AssignmentPipeline:
             
             # Get initial stats
             initial_stats = self._get_assignment_stats()
-            self.logger.info(f"📊 Initial state: {initial_stats['unassigned_spots']:,} unassigned spots")
+            
+            # Get scope-specific stats and total spots to process
+            if recent or since_date or last_week or last_month:
+                scope_stats = self._get_scope_stats(recent, since_date, last_week, last_month)
+                total_spots_to_process = scope_stats['unassigned_spots']
+                self.logger.info(f"📊 Scope: {scope_stats['unassigned_spots']:,} unassigned spots to process")
+                self.logger.info(f"📊 Total state: {initial_stats['unassigned_spots']:,} total unassigned spots")
+            else:
+                scope_stats = initial_stats
+                total_spots_to_process = self._get_total_spots_to_process(year, batch, test, recent, since_date, last_week, last_month)
+                self.logger.info(f"📊 Initial state: {initial_stats['unassigned_spots']:,} unassigned spots")
+                self.logger.info(f"📊 Will process: {total_spots_to_process:,} spots")
+            
+            # Check if this is a large operation and warn user
+            if year and initial_stats['unassigned_spots'] > 100000:
+                self.logger.warning(f"⚠️  Large operation detected: {initial_stats['unassigned_spots']:,} spots")
+                self.logger.warning("💡 Consider using --recent or --since-date for incremental processing")
+                self.logger.warning("🔄 This operation may take several hours...")
+                
+                if not self.dry_run:
+                    import time
+                    self.logger.info("⏳ Starting in 5 seconds... (Ctrl+C to cancel)")
+                    time.sleep(5)
+            
+            # Create overall progress tracking
+            if self.use_progress and total_spots_to_process > 0:
+                print(f"\n📊 Processing {total_spots_to_process:,} spots across 2 stages...")
             
             # Stage 1: Language Block Assignment
             self.logger.info("🎯 STAGE 1: Language Block Assignment")
-            stage1_result = self._run_stage1(year, batch, test)
+            stage1_progress = self._create_progress_bar("stage1", total_spots_to_process, "🎯 Stage 1: Language Blocks")
+            
+            stage1_result = self._run_stage1(year, batch, test, recent, since_date, last_week, last_month)
+            
+            self._close_progress_bar("stage1")
             
             if not stage1_result['success']:
+                self._cleanup_progress_bars()
                 return PipelineResult(
                     success=False,
                     error_message=f"Stage 1 failed: {stage1_result.get('error', 'Unknown error')}",
@@ -90,9 +274,17 @@ class AssignmentPipeline:
             
             # Stage 2: Business Rules Assignment
             self.logger.info("🎯 STAGE 2: Business Rules Assignment")
-            stage2_result = self._run_stage2(year, batch, test)
+            
+            # Estimate remaining spots for stage 2
+            remaining_spots = total_spots_to_process - stage1_result.get('stats', {}).get('assigned', 0)
+            stage2_progress = self._create_progress_bar("stage2", max(remaining_spots, 0), "🎯 Stage 2: Business Rules")
+            
+            stage2_result = self._run_stage2(year, batch, test, recent, since_date, last_week, last_month)
+            
+            self._close_progress_bar("stage2")
             
             if not stage2_result['success']:
+                self._cleanup_progress_bars()
                 return PipelineResult(
                     success=False,
                     stage1_stats=stage1_result.get('stats'),
@@ -106,7 +298,7 @@ class AssignmentPipeline:
             # Calculate totals
             total_processed = (stage1_result.get('stats', {}).get('processed', 0) + 
                              stage2_result.get('stats', {}).get('processed', 0))
-            total_assigned = (initial_stats['assigned_spots'] - final_stats['assigned_spots'])
+            total_assigned = (final_stats['assigned_spots'] - initial_stats['assigned_spots'])
             
             execution_time = (datetime.now() - start_time).total_seconds()
             
@@ -123,8 +315,18 @@ class AssignmentPipeline:
             self._log_final_results(result, initial_stats, final_stats)
             return result
             
+        except KeyboardInterrupt:
+            self.logger.warning("⏹️  Pipeline interrupted by user")
+            self._cleanup_progress_bars()
+            return PipelineResult(
+                success=False,
+                error_message="Pipeline interrupted by user",
+                execution_time=(datetime.now() - start_time).total_seconds(),
+                dry_run=self.dry_run
+            )
         except Exception as e:
             self.logger.error(f"Pipeline execution failed: {e}")
+            self._cleanup_progress_bars()
             return PipelineResult(
                 success=False,
                 error_message=str(e),
@@ -133,15 +335,30 @@ class AssignmentPipeline:
             )
     
     def _run_stage1(self, year: Optional[int], batch: Optional[int], 
-                   test: Optional[int]) -> Dict[str, Any]:
+                   test: Optional[int], recent: bool = False, 
+                   since_date: Optional[str] = None, last_week: bool = False, 
+                   last_month: bool = False) -> Dict[str, Any]:
         """Run language block assignment (Stage 1)"""
         cmd = ["python", "cli_01_assign_language_blocks.py", "--database", self.db_path]
         
-        # Add appropriate arguments
+        # Add appropriate arguments based on scope
         if test:
             cmd.extend(["--test", str(test)])
         elif batch:
             cmd.extend(["--batch", str(batch)])
+        elif recent or since_date or last_week or last_month:
+            # For incremental processing, get count and use batch mode
+            scope_stats = self._get_scope_stats(recent, since_date, last_week, last_month)
+            spots_to_process = scope_stats['unassigned_spots']
+            if spots_to_process > 0:
+                cmd.extend(["--batch", str(spots_to_process)])
+            else:
+                # No spots to process
+                return {
+                    'success': True,
+                    'stats': {'processed': 0, 'assigned': 0, 'errors': 0},
+                    'message': 'No spots to process in scope'
+                }
         elif year:
             cmd.extend([f"--all-{year}"])
         else:
@@ -158,15 +375,21 @@ class AssignmentPipeline:
         return self._execute_cli_script(cmd, "Stage 1")
     
     def _run_stage2(self, year: Optional[int], batch: Optional[int], 
-                   test: Optional[int]) -> Dict[str, Any]:
+                   test: Optional[int], recent: bool = False, 
+                   since_date: Optional[str] = None, last_week: bool = False, 
+                   last_month: bool = False) -> Dict[str, Any]:
         """Run business rules assignment (Stage 2)"""
         cmd = ["python", "cli_02_assign_business_rules.py"]
         
-        # Add appropriate arguments
+        # Add appropriate arguments based on scope
         if test:
             cmd.extend(["--limit", str(test)])
         elif batch:
             cmd.extend(["--limit", str(batch)])
+        elif recent or since_date or last_week or last_month:
+            # For incremental processing, let it process remaining unassigned
+            # The business rules script will naturally only pick up what's left
+            pass
         elif year:
             # Business rules script processes remaining unassigned spots
             pass
@@ -184,34 +407,72 @@ class AssignmentPipeline:
         return self._execute_cli_script(cmd, "Stage 2")
     
     def _execute_cli_script(self, cmd: List[str], stage_name: str) -> Dict[str, Any]:
-        """Execute a CLI script and parse results"""
+        """Execute a CLI script and parse results with real-time progress tracking"""
         try:
             self.logger.info(f"Executing: {' '.join(cmd)}")
             
-            result = subprocess.run(
+            # Determine which stage for progress tracking
+            stage_key = "stage1" if "cli_01" in cmd[1] else "stage2"
+            
+            # Start subprocess with real-time output
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=3600  # 1 hour timeout
+                bufsize=1,
+                universal_newlines=True
             )
             
-            if result.returncode != 0:
-                self.logger.error(f"{stage_name} failed with exit code {result.returncode}")
-                self.logger.error(f"STDERR: {result.stderr}")
+            output_lines = []
+            
+            # Read output line by line for real-time progress updates
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                    
+                line = line.strip()
+                if line:
+                    output_lines.append(line)
+                    
+                    # Update progress bar if possible
+                    if self.use_progress:
+                        self._update_progress_from_output(stage_key, line)
+                    
+                    # Also log important lines
+                    if any(keyword in line.lower() for keyword in ['error', 'warning', 'completed', 'failed']):
+                        self.logger.info(f"{stage_name}: {line}")
+            
+            # Wait for process to complete and get return code
+            return_code = process.wait()
+            
+            if return_code != 0:
+                self.logger.error(f"{stage_name} failed with exit code {return_code}")
                 return {
                     'success': False,
-                    'error': result.stderr or "Unknown error",
-                    'exit_code': result.returncode
+                    'error': f"Process failed with exit code {return_code}",
+                    'exit_code': return_code,
+                    'output': '\n'.join(output_lines)
                 }
             
-            # Parse output for statistics (basic implementation)
-            stats = self._parse_cli_output(result.stdout)
+            # Parse output for statistics
+            stats = self._parse_cli_output('\n'.join(output_lines))
+            
+            # Complete progress bar if still active
+            if stage_key in self.progress_bars:
+                pbar = self.progress_bars[stage_key]
+                if stats.get('processed', 0) > 0:
+                    pbar.n = stats['processed']
+                elif stats.get('assigned', 0) > 0:
+                    pbar.n = stats['assigned']
+                pbar.refresh()
             
             self.logger.info(f"{stage_name} completed successfully")
             return {
                 'success': True,
                 'stats': stats,
-                'output': result.stdout
+                'output': '\n'.join(output_lines)
             }
             
         except subprocess.TimeoutExpired:
@@ -283,6 +544,81 @@ class AssignmentPipeline:
                 'total_spots': 0,
                 'assigned_spots': 0,
                 'unassigned_spots': 0
+            }
+    
+    def _get_scope_stats(self, recent: bool = False, since_date: Optional[str] = None, 
+                        last_week: bool = False, last_month: bool = False) -> Dict[str, Any]:
+        """Get assignment statistics for a specific scope"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Build the date filter condition
+            date_condition = ""
+            params = []
+            
+            if recent:
+                # Recent = last 3 days (adjustable)
+                date_condition = "AND s.load_date >= DATE('now', '-3 days')"
+            elif since_date:
+                date_condition = "AND s.load_date >= DATE(?)"
+                params.append(since_date)
+            elif last_week:
+                date_condition = "AND s.load_date >= DATE('now', '-7 days')"
+            elif last_month:
+                date_condition = "AND s.load_date >= DATE('now', '-30 days')"
+            
+            # Get unassigned spots in scope
+            # Note: Using load_date to identify when spots were added to database
+            query = f"""
+            SELECT COUNT(*) 
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            WHERE slb.spot_id IS NULL
+              AND s.market_id IS NOT NULL
+              AND s.time_in IS NOT NULL
+              AND s.time_out IS NOT NULL
+              AND s.day_of_week IS NOT NULL
+              {date_condition}
+            """
+            
+            cursor.execute(query, params)
+            unassigned_spots = cursor.fetchone()[0]
+            
+            # Get total spots in scope
+            total_query = f"""
+            SELECT COUNT(*) 
+            FROM spots s
+            WHERE s.market_id IS NOT NULL
+              AND s.time_in IS NOT NULL
+              AND s.time_out IS NOT NULL
+              AND s.day_of_week IS NOT NULL
+              {date_condition}
+            """
+            
+            cursor.execute(total_query, params)
+            total_spots = cursor.fetchone()[0]
+            
+            assigned_spots = total_spots - unassigned_spots
+            
+            conn.close()
+            
+            return {
+                'total_spots': total_spots,
+                'assigned_spots': assigned_spots,
+                'unassigned_spots': unassigned_spots,
+                'scope': 'recent' if recent else 'since_date' if since_date else 'last_week' if last_week else 'last_month' if last_month else 'all'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get scope stats: {e}")
+            # Fall back to checking if load_date column exists
+            self.logger.warning("Note: Scope filtering requires a load_date column in spots table")
+            return {
+                'total_spots': 0,
+                'assigned_spots': 0,
+                'unassigned_spots': 0,
+                'scope': 'error'
             }
     
     def _log_final_results(self, result: PipelineResult, initial_stats: Dict[str, Any], 
@@ -360,6 +696,10 @@ def main():
     mode_group.add_argument("--year", type=int, help="Assign all spots for specified year (e.g., 2025)")
     mode_group.add_argument("--test", type=int, metavar="N", help="Test pipeline with N spots")
     mode_group.add_argument("--batch", type=int, metavar="N", help="Process N spots in pipeline")
+    mode_group.add_argument("--recent", action="store_true", help="Process recently added unassigned spots")
+    mode_group.add_argument("--since-date", type=str, help="Process spots added since date (YYYY-MM-DD)")
+    mode_group.add_argument("--last-week", action="store_true", help="Process spots from last 7 days")
+    mode_group.add_argument("--last-month", action="store_true", help="Process spots from last 30 days")
     mode_group.add_argument("--status", action="store_true", help="Show current pipeline status")
     
     args = parser.parse_args()
@@ -386,6 +726,13 @@ def main():
                 for rule, count in status['business_rules'].items():
                     print(f"   • {rule}: {count:,}")
             
+            # Show scope-specific stats if available
+            if hasattr(args, 'recent') and args.recent:
+                scope_stats = pipeline._get_scope_stats(recent=True)
+                print(f"\n🔍 RECENT SCOPE (last 3 days):")
+                print(f"   • Total spots: {scope_stats['total_spots']:,}")
+                print(f"   • Unassigned spots: {scope_stats['unassigned_spots']:,}")
+        
         else:
             # Execute pipeline
             if args.dry_run:
@@ -394,7 +741,11 @@ def main():
             result = pipeline.execute_pipeline(
                 year=args.year,
                 batch=args.batch,
-                test=args.test
+                test=args.test,
+                recent=getattr(args, 'recent', False),
+                since_date=getattr(args, 'since_date', None),
+                last_week=getattr(args, 'last_week', False),
+                last_month=getattr(args, 'last_month', False)
             )
             
             if result.success:

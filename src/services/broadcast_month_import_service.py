@@ -92,6 +92,22 @@ class BroadcastMonthImportService(BaseService):
             logger.error(error_msg)
             raise BroadcastMonthImportError(error_msg)
     
+    def _lookup_market_id(self, market_name: str, conn) -> Optional[int]:
+        """Look up market_id from market_name/market_code"""
+        if not market_name:
+            return None
+            
+        cursor = conn.execute("""
+            SELECT market_id FROM markets 
+            WHERE market_code = ? 
+            OR market_name = ? 
+            OR (? = 'Admin' AND market_code = 'ADMIN')
+            OR (? = 'Admin' AND market_name = 'ADMINISTRATIVE')
+        """, (market_name, market_name, market_name, market_name))
+        
+        result = cursor.fetchone()
+        return result[0] if result else None
+
     def execute_month_replacement(self, 
                                 excel_file: str, 
                                 import_mode: str, 
@@ -391,6 +407,7 @@ class BroadcastMonthImportService(BaseService):
             # Pre-load some lookup data to avoid repeated queries
             agency_cache = {}
             customer_cache = {}
+            market_cache = {}
             
             for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
                 if not any(cell for cell in row):
@@ -464,10 +481,31 @@ class BroadcastMonthImportService(BaseService):
                         'is_historical': 0,
                         'import_batch_id': batch_id
                     }
-                    
+                    # ADD THIS BLOCK - Market ID lookup
+                    market_name = None
+                    if 'market_name' in column_indexes and column_indexes['market_name'] < len(row):
+                        market_name = row[column_indexes['market_name']]
+                        
+                    if market_name:
+                        market_name = str(market_name).strip()
+                        
+                        # Use cache for market lookups
+                        if market_name in market_cache:
+                            market_id = market_cache[market_name]
+                        else:
+                            market_id = self._lookup_market_id(market_name, conn)
+                            market_cache[market_name] = market_id
+                            
+                        # Add to spot_data
+                        spot_data['market_name'] = market_name
+                        spot_data['market_id'] = market_id
+                        
+                        if not market_id:
+                            print(f"⚠️ Could not find market_id for market_name: {market_name}")
+                    # END ADD BLOCK
                     # Add other fields from Excel
                     for field_name, col_idx in column_indexes.items():
-                        if field_name not in ['bill_code'] and col_idx < len(row):
+                        if field_name not in ['bill_code', 'market_name'] and col_idx < len(row):
                             raw_value = row[col_idx]
                             if raw_value is not None:
                                 # Basic type conversion

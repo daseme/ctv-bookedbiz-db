@@ -161,26 +161,50 @@ python3 programming_intelligence_dashboard.py --all
 
 ## 🔄 **Data Import Workflows**
 
-### **Monthly Process (Most Common)**
+### **Complete Data Processing Pipeline**
+
+The system follows a comprehensive 3-step process from raw data to fully assigned language blocks:
+
+1. **🚀 Transfer Raw Data** - SCP files to server
+2. **💾 Import to Database** - Process Excel files into database
+3. **🎯 Assign Language Blocks** - Run automated assignment pipeline
+
+---
+
+### **Step 1: Transfer Raw Data to Server**
+
+```bash
+# Transfer Excel files from local machine to server
+scp "C:\Users\Kurt\Crossings TV Dropbox\kurt olmstead\Financial\Sales\WeeklyReports\ctv-bookedbiz-db\data\raw\2025-Jan-Jun.xlsx" daseme@raspberrypi:/opt/apps/ctv-bookedbiz-db/data/raw/
+
+# General pattern
+scp "path/to/your/file.xlsx" user@server:/opt/apps/ctv-bookedbiz-db/data/raw/
+```
+
+---
+
+### **Step 2: Database Import Workflows**
+
+#### **Monthly Process (Most Common)**
 ```bash
 # Smart monthly import - automatically skips closed months
 uv run python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx --year 2025 --closed-by "Kurt"
 ```
 
-### **Weekly Updates**
+#### **Weekly Updates**
 ```bash
 # Update open months with latest bookings
 uv run python src/cli/weekly_update.py data/raw/weekly_update.xlsx --dry-run
 uv run python src/cli/weekly_update.py data/raw/weekly_update.xlsx
 ```
 
-### **Historical Import**
+#### **Historical Import**
 ```bash
 # Complete year import with automatic month closure
 uv run python src/cli/bulk_import_historical.py data/raw/2024.xlsx --year 2024 --closed-by "Kurt"
 ```
 
-### **Month Management**
+#### **Month Management**
 ```bash
 # Close individual month
 uv run python src/cli/close_month.py "Jun-25" --closed-by "Kurt"
@@ -190,6 +214,158 @@ uv run python src/cli/close_month.py --status "Jun-25"
 
 # List all closed months
 uv run python src/cli/close_month.py --list
+```
+
+---
+
+### **Step 3: Language Block Assignment Pipeline**
+
+After importing new data, run the assignment pipeline to assign language blocks to new spots.
+
+#### **🎯 Quick Start (Recommended)**
+
+Process only recently added data:
+
+```bash
+# Process spots added in the last 3 days
+uv run python cli_00_assignment_pipeline.py --recent
+
+# Process spots added since a specific date
+uv run python cli_00_assignment_pipeline.py --since-date 2025-07-01
+```
+
+#### **🔍 Testing First**
+
+Always test with dry-run mode:
+
+```bash
+# Preview what would happen without making changes
+uv run python cli_00_assignment_pipeline.py --dry-run --recent
+
+# Test with a small batch
+uv run python cli_00_assignment_pipeline.py --test 100
+```
+
+#### **📊 Assignment Options**
+
+| Command | Description | Use Case |
+|---------|-------------|----------|
+| `--recent` | Process last 3 days of data | Daily/weekly data imports |
+| `--since-date 2025-01-01` | Process since specific date | Target specific import date |
+| `--last-week` | Process last 7 days | Weekly processing |
+| `--last-month` | Process last 30 days | Monthly processing |
+| `--batch 5000` | Process specific number of spots | Controlled batch processing |
+| `--test 100` | Test with 100 spots | Validation and testing |
+| `--year 2025` | Process all spots for year | Full year processing (use carefully!) |
+
+#### **📈 Check Status**
+
+```bash
+# Overall assignment status
+uv run python cli_00_assignment_pipeline.py --status
+
+# Individual script status
+uv run python cli_01_assign_language_blocks.py --status
+uv run python cli_02_assign_business_rules.py --stats
+```
+
+---
+
+### **🏆 Complete Workflow Example**
+
+Here's a typical workflow when you receive new data:
+
+```bash
+# 1. Transfer new data file
+scp "C:\path\to\new-data.xlsx" daseme@raspberrypi:/opt/apps/ctv-bookedbiz-db/data/raw/
+
+# 2. SSH to server
+ssh daseme@raspberrypi
+cd /opt/apps/ctv-bookedbiz-db
+
+# 3. Import new data
+uv run python src/importers/smart_monthly_import.py data/raw/new-data.xlsx --year 2025 --closed-by "Kurt"
+
+# 4. Test assignment (dry run)
+uv run python cli_00_assignment_pipeline.py --dry-run --recent
+
+# 5. Run assignment on new data
+uv run python cli_00_assignment_pipeline.py --recent
+
+# 6. Check results
+uv run python cli_00_assignment_pipeline.py --status
+```
+
+---
+
+### **🎯 Assignment Pipeline Details**
+
+The assignment pipeline (`cli_00_assignment_pipeline.py`) orchestrates two stages:
+
+#### **Stage 1: Language Block Assignment**
+- Assigns spots to specific language programming blocks
+- Handles single-block and multi-block scenarios
+- Analyzes customer intent (language-specific vs. time-specific)
+
+#### **Stage 2: Business Rules Assignment**
+- Processes spots that don't fit standard language blocks
+- Handles special cases: government, political, media, NPO
+- Applies duration-based rules for long-form content
+
+---
+
+### **💡 Best Practices**
+
+#### **🎯 Process Incrementally**
+- Always use `--recent` or `--since-date` for new data
+- Avoid `--year` unless you need to reprocess everything
+- Large operations can take hours
+
+#### **🔍 Test First**
+- Use `--dry-run` to preview changes
+- Test with `--test 100` on new data
+- Check `--status` before and after
+
+#### **📊 Monitor Progress**
+- The pipeline shows progress during execution
+- Check logs for any errors or warnings
+- Use `--status` to verify completion
+
+#### **⚠️ Handle Errors**
+- If a stage fails, the pipeline stops
+- Check error messages for guidance
+- You can rerun without losing progress
+
+---
+
+### **🔧 Troubleshooting**
+
+**Pipeline seems stuck?**
+- Large operations take time (check log timestamps)
+- Use Ctrl+C to stop if needed
+- Try smaller batches with `--batch` option
+
+**No spots processed?**
+- Check that new data was actually imported
+- Verify date ranges with `--status`
+- Ensure spots have required fields (market_id, time_in, time_out)
+
+**Assignment failures?**
+- Check that programming schedules exist for your markets
+- Verify language blocks are configured
+- Review error messages in the output
+
+---
+
+### **📋 Data Requirements**
+
+For successful assignment, spots need:
+- `market_id` (not null)
+- `time_in` and `time_out` (not null)
+- `day_of_week` (not null)
+- Valid `air_date`
+
+The pipeline automatically filters out spots missing these required fields.
 ```
 
 ---
