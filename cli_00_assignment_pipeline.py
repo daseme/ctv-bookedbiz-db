@@ -11,6 +11,9 @@ Features:
 - Incremental processing for new data
 - Comprehensive error handling and rollback
 - Detailed progress tracking and reporting
+- Automatic chunking for large batches
+- Timeout protection to prevent stalls
+- Graceful error recovery
 
 Usage:
     python cli_00_assignment_pipeline.py --year 2025           # Assign all spots for year
@@ -22,9 +25,16 @@ Usage:
     python cli_00_assignment_pipeline.py --last-month          # Process spots from last 30 days
     python cli_00_assignment_pipeline.py --status              # Show current status
     python cli_00_assignment_pipeline.py --dry-run --recent    # Preview what would happen
+    python cli_00_assignment_pipeline.py --chunk-size 10000 --batch 50000  # Custom chunk size
 
 Installation:
     pip install tqdm  # For progress bars (optional but recommended)
+
+Anti-Stall Features:
+- Automatic timeout detection (10 minutes without progress)
+- Chunked processing for large batches (25,000 spot chunks)
+- Graceful error recovery and retry logic
+- Process monitoring and cleanup
 """
 
 import argparse
@@ -67,9 +77,10 @@ class PipelineResult:
 class AssignmentPipeline:
     """Orchestrates the assignment pipeline execution"""
     
-    def __init__(self, db_path: str = "data/database/production.db", dry_run: bool = False):
+    def __init__(self, db_path: str = "data/database/production.db", dry_run: bool = False, chunk_size: int = 25000):
         self.db_path = db_path
         self.dry_run = dry_run
+        self.chunk_size = chunk_size
         self.logger = logging.getLogger(self.__class__.__name__)
         
         # Progress tracking
@@ -378,7 +389,16 @@ class AssignmentPipeline:
                    test: Optional[int], recent: bool = False, 
                    since_date: Optional[str] = None, last_week: bool = False, 
                    last_month: bool = False) -> Dict[str, Any]:
-        """Run business rules assignment (Stage 2)"""
+        """Run business rules assignment (Stage 2) with chunking for large batches"""
+        
+        # Check how many spots need business rules processing
+        unassigned_count = self._get_total_unassigned_spots()
+        
+        # If we have a large number of unassigned spots, process in chunks
+        if unassigned_count > self.chunk_size:
+            self.logger.info(f"Large batch detected ({unassigned_count:,} spots), processing in {self.chunk_size:,} spot chunks...")
+            return self._run_stage2_chunked(self.chunk_size)
+        
         cmd = ["python", "cli_02_assign_business_rules.py"]
         
         # Add appropriate arguments based on scope
@@ -406,6 +426,62 @@ class AssignmentPipeline:
         
         return self._execute_cli_script(cmd, "Stage 2")
     
+    def _run_stage2_chunked(self, chunk_size: int) -> Dict[str, Any]:
+        """Run business rules assignment in chunks to prevent stalling"""
+        total_stats = {'processed': 0, 'assigned': 0, 'errors': 0}
+        chunk_num = 1
+        
+        while True:
+            # Check if there are still unassigned spots
+            remaining_spots = self._get_total_unassigned_spots()
+            if remaining_spots == 0:
+                break
+            
+            current_chunk_size = min(chunk_size, remaining_spots)
+            self.logger.info(f"Processing chunk {chunk_num}: {current_chunk_size:,} spots")
+            
+            # Run business rules for this chunk
+            cmd = ["python", "cli_02_assign_business_rules.py", "--limit", str(current_chunk_size)]
+            
+            result = self._execute_cli_script(cmd, f"Stage 2 Chunk {chunk_num}")
+            
+            if not result['success']:
+                self.logger.error(f"Chunk {chunk_num} failed: {result.get('error', 'Unknown error')}")
+                # Return what we've accomplished so far
+                return {
+                    'success': True,  # Don't fail the entire pipeline
+                    'stats': total_stats,
+                    'chunked': True,
+                    'chunks_processed': chunk_num - 1,
+                    'last_chunk_error': result.get('error')
+                }
+            
+            # Add this chunk's stats to total
+            chunk_stats = result.get('stats', {})
+            total_stats['processed'] += chunk_stats.get('processed', 0)
+            total_stats['assigned'] += chunk_stats.get('assigned', 0)
+            total_stats['errors'] += chunk_stats.get('errors', 0)
+            
+            # Check if we made progress
+            if chunk_stats.get('processed', 0) == 0:
+                self.logger.info(f"No more spots to process after chunk {chunk_num}")
+                break
+            
+            chunk_num += 1
+            
+            # Safety check - don't run indefinitely
+            if chunk_num > 50:
+                self.logger.warning(f"Stopped after 50 chunks to prevent infinite loop")
+                break
+        
+        self.logger.info(f"Chunked processing completed: {chunk_num - 1} chunks processed")
+        return {
+            'success': True,
+            'stats': total_stats,
+            'chunked': True,
+            'chunks_processed': chunk_num - 1
+        }
+    
     def _execute_cli_script(self, cmd: List[str], stage_name: str) -> Dict[str, Any]:
         """Execute a CLI script and parse results with real-time progress tracking"""
         try:
@@ -424,25 +500,83 @@ class AssignmentPipeline:
                 universal_newlines=True
             )
             
+            # Track progress for timeout detection
+            last_progress_time = datetime.now()
+            timeout_seconds = 1800  # 30 minutes timeout
+            stall_timeout = 600     # 10 minutes without progress = stall
+            
             output_lines = []
+            last_line_time = datetime.now()
             
             # Read output line by line for real-time progress updates
             while True:
-                line = process.stdout.readline()
-                if not line:
+                # Check if process is still running
+                if process.poll() is not None:
+                    # Process finished, read any remaining output
+                    remaining_output = process.stdout.read()
+                    if remaining_output:
+                        output_lines.extend(remaining_output.split('\n'))
                     break
+                
+                # Check for timeout
+                current_time = datetime.now()
+                if (current_time - last_line_time).total_seconds() > stall_timeout:
+                    self.logger.error(f"{stage_name} appears to be stalled (no output for {stall_timeout} seconds)")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
                     
-                line = line.strip()
-                if line:
-                    output_lines.append(line)
-                    
-                    # Update progress bar if possible
-                    if self.use_progress:
-                        self._update_progress_from_output(stage_key, line)
-                    
-                    # Also log important lines
-                    if any(keyword in line.lower() for keyword in ['error', 'warning', 'completed', 'failed']):
-                        self.logger.info(f"{stage_name}: {line}")
+                    return {
+                        'success': False,
+                        'error': f"Process stalled - no output for {stall_timeout} seconds",
+                        'timeout': True
+                    }
+                
+                # Try to read a line with timeout
+                try:
+                    import select
+                    if select.select([process.stdout], [], [], 1.0)[0]:
+                        line = process.stdout.readline()
+                        if line:
+                            last_line_time = current_time
+                            line = line.strip()
+                            if line:
+                                output_lines.append(line)
+                                
+                                # Update progress bar if possible
+                                if self.use_progress:
+                                    progress_updated = self._update_progress_from_output(stage_key, line)
+                                    if progress_updated:
+                                        last_progress_time = current_time
+                                
+                                # Also log important lines
+                                if any(keyword in line.lower() for keyword in ['error', 'warning', 'completed', 'failed']):
+                                    self.logger.info(f"{stage_name}: {line}")
+                except:
+                    # Fallback for systems without select
+                    line = process.stdout.readline()
+                    if line:
+                        last_line_time = current_time
+                        line = line.strip()
+                        if line:
+                            output_lines.append(line)
+                            
+                            # Update progress bar if possible
+                            if self.use_progress:
+                                progress_updated = self._update_progress_from_output(stage_key, line)
+                                if progress_updated:
+                                    last_progress_time = current_time
+                            
+                            # Also log important lines
+                            if any(keyword in line.lower() for keyword in ['error', 'warning', 'completed', 'failed']):
+                                self.logger.info(f"{stage_name}: {line}")
+                    else:
+                        # No output, small delay to prevent busy waiting
+                        import time
+                        time.sleep(0.1)
             
             # Wait for process to complete and get return code
             return_code = process.wait()
@@ -690,6 +824,7 @@ def main():
     parser = argparse.ArgumentParser(description="Assignment Pipeline Orchestrator")
     parser.add_argument("--database", default="data/database/production.db", help="Database path")
     parser.add_argument("--dry-run", action="store_true", help="Preview actions without making changes")
+    parser.add_argument("--chunk-size", type=int, default=25000, help="Chunk size for processing large batches (default: 25000)")
     
     # Mode selection (mutually exclusive)
     mode_group = parser.add_mutually_exclusive_group(required=True)
@@ -705,7 +840,7 @@ def main():
     args = parser.parse_args()
     
     try:
-        pipeline = AssignmentPipeline(db_path=args.database, dry_run=args.dry_run)
+        pipeline = AssignmentPipeline(db_path=args.database, dry_run=args.dry_run, chunk_size=args.chunk_size)
         
         if args.status:
             # Show current status

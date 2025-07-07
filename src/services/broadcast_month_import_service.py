@@ -4,6 +4,7 @@ Broadcast month import service for managing month-based data imports.
 Orchestrates the complete import workflow with validation, deletion, and import.
 """
 
+import re
 import sys
 import logging
 import uuid
@@ -263,37 +264,22 @@ class BroadcastMonthImportService(BaseService):
         total_deleted = 0
 
         for display_month in display_months:
-            try:
-                normalized_month = datetime.strptime(display_month, "%b-%y").strftime("%Y-%m")
-            except ValueError:
-                normalized_month = display_month  # Assume already in YYYY-MM if parsing fails
-
+            # display_month should already be in "mmm-yy" format like "Jan-24"
             cursor = conn.execute(
                 """
                 DELETE FROM spots
-                WHERE strftime('%Y-%m', broadcast_month) = ?
+                WHERE broadcast_month = ?
                 AND is_historical = 0
                 """,
-                (normalized_month,)
+                (display_month,)
             )
             deleted = cursor.rowcount
-            print(f"   🗑️  Deleted {deleted:,} spots for {display_month} ({normalized_month})")
+            print(f"   🗑️  Deleted {deleted:,} spots for {display_month}")
             total_deleted += deleted
 
         return total_deleted
 
 
-    def _capture_broadcast_month(self, raw_value):
-        """Capture normalized broadcast month into stats."""
-        if raw_value:
-            try:
-                dt = normalize_broadcast_day(raw_value)
-                label = dt.strftime("%b-%y")
-                self.stats["broadcast_months_found"].add(label)
-            except Exception:
-                pass
-
-   
     def _import_excel_data(self, excel_file: str, batch_id: str, conn) -> int:
         """
         CRITICAL FIX: Import Excel data using a transaction-compatible approach.
@@ -522,14 +508,42 @@ class BroadcastMonthImportService(BaseService):
                                 elif field_name == 'broadcast_month':
                                     try:
                                         raw_date = raw_value.date() if hasattr(raw_value, 'date') else raw_value
-                                        spot_data[field_name] = normalize_broadcast_day(raw_date)
+                                        # Convert to mmm-yy format instead of storing as date
+                                        if hasattr(raw_date, 'strftime'):
+                                            spot_data[field_name] = raw_date.strftime("%b-%y")
+                                        else:
+                                            # Handle string dates - MORE ROBUST VERSION
+                                            if isinstance(raw_date, str):
+                                                # Try common date formats
+                                                for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"]:
+                                                    try:
+                                                        parsed_date = datetime.strptime(raw_date, fmt).date()
+                                                        spot_data[field_name] = parsed_date.strftime("%b-%y")
+                                                        break
+                                                    except ValueError:
+                                                        continue
+                                                else:
+                                                    # If no format worked, try the original normalize_broadcast_day
+                                                    normalized = normalize_broadcast_day(raw_date)
+                                                    spot_data[field_name] = normalized.strftime("%b-%y") if hasattr(normalized, 'strftime') else str(normalized)
+                                            else:
+                                                # Not a string, try to convert directly
+                                                parsed_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
+                                                spot_data[field_name] = parsed_date.strftime("%b-%y")
                                     except Exception as e:
-                                        print(f"⚠️ Failed to normalize broadcast_month on row {row_num}: {e}")
+                                        print(f"⚠️ Failed to format broadcast_month on row {row_num}: {e}")
                                         skipped_count += 1
                                         continue
                                 else:
                                     spot_data[field_name] = str(raw_value).strip() if raw_value else None
 
+                    # After processing broadcast_month, validate format
+                    if spot_data.get('broadcast_month'):
+                        
+                        if not re.match(r'^[A-Z][a-z]{2}-\d{2}$', spot_data['broadcast_month']):
+                            print(f"❌ Invalid broadcast_month format: {spot_data['broadcast_month']}")
+                            skipped_count += 1
+                            continue
                     
                     # Insert spot record
                     fields = list(spot_data.keys())
