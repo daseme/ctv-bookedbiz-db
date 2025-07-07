@@ -3,10 +3,12 @@
 Fixed Revenue Report Generator - Direct Response Extraction + Multi-Language Separation
 ======================================================================================
 
+Updated for new broadcast_month format: mmm-yy (e.g., Jan-24, Feb-25)
+
 Fixes:
 1. Direct Response extracted regardless of language blocks (~$387K WorldLink revenue)
 2. Separated Multi-Language (Cross-Audience) as its own revenue category
-3. Proper month aggregation (handles both monthly and daily broadcast_month formats)
+3. Updated for new mmm-yy broadcast_month format (no more datetime parsing)
 4. Restored annual language performance grid from original
 
 Usage:
@@ -43,62 +45,52 @@ class FixedRevenueReportGenerator:
             self.add_line(separator)
     
     def get_broadcast_months_aggregated(self, year: int) -> List[Tuple[str, str]]:
-        """Get broadcast months properly aggregated by month"""
+        """Get broadcast months in new mmm-yy format"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Extract year-month and aggregate, handling both formats
+        # Get all broadcast months for the year in mmm-yy format
+        year_suffix = str(year)[2:]  # Convert 2024 to "24"
         cursor.execute("""
-            SELECT 
-                CASE 
-                    -- Handle YYYY-MM-DD format (extract year-month)
-                    WHEN broadcast_month LIKE '____-__-__' THEN substr(broadcast_month, 1, 7)
-                    -- Handle YYYY-MM-DD HH:MM:SS format (extract year-month)  
-                    WHEN broadcast_month LIKE '____-__-__ __:__:__' THEN substr(broadcast_month, 1, 7)
-                    -- Handle other formats
-                    ELSE substr(broadcast_month, 1, 7)
-                END as year_month,
-                MIN(broadcast_month) as sample_date
+            SELECT DISTINCT 
+                broadcast_month,
+                broadcast_month as sample_date
             FROM spots 
             WHERE broadcast_month LIKE ?
-            GROUP BY year_month
-            ORDER BY year_month
-        """, (f'{year}%',))
+            ORDER BY 
+                CASE substr(broadcast_month, 1, 3)
+                    WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+                    WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+                    WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+                    WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+                END
+        """, (f'%-{year_suffix}',))
         
         result = cursor.fetchall()
         conn.close()
         return result
     
-    def get_month_display_name(self, year_month: str) -> str:
-        """Convert YYYY-MM to display name"""
-        try:
-            year, month = year_month.split('-')
-            month_names = {
-                '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
-                '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
-                '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
-            }
-            return f"{month_names[month]}-{year[2:]}"
-        except:
-            return year_month
+    def get_month_display_name(self, month_str: str) -> str:
+        """Return month string as-is since it's already in mmm-yy format"""
+        return month_str
     
-    def get_month_revenue_data_aggregated(self, year_month: str) -> Tuple:
-        """Get revenue data for a year-month (aggregated across all days)"""
+    def get_month_revenue_data_aggregated(self, month_str: str) -> Tuple:
+        """Get revenue data for a specific month in mmm-yy format"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute("""
             SELECT COUNT(*) as spots, SUM(gross_rate) as revenue
             FROM spots 
-            WHERE substr(broadcast_month, 1, 7) = ? AND gross_rate != 0
-        """, (year_month,))
+            WHERE broadcast_month = ? AND gross_rate != 0
+        """, (month_str,))
         
         result = cursor.fetchone()
         conn.close()
         return result if result else (0, 0)
     
-    def get_language_block_data_aggregated(self, year_month: str) -> Tuple:
-        """Get language block revenue data aggregated by month"""
+    def get_language_block_data_aggregated(self, month_str: str) -> Tuple:
+        """Get language block revenue data for a specific month in mmm-yy format"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -109,8 +101,8 @@ class FixedRevenueReportGenerator:
                 SUM(s.gross_rate) as total_lang_revenue
             FROM spots s
             JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-            WHERE substr(s.broadcast_month, 1, 7) = ? AND s.gross_rate != 0
-        """, (year_month,))
+            WHERE s.broadcast_month = ? AND s.gross_rate != 0
+        """, (month_str,))
         
         lang_total_result = cursor.fetchone()
         total_lang_spots, total_lang_revenue = lang_total_result if lang_total_result else (0, 0)
@@ -134,19 +126,19 @@ class FixedRevenueReportGenerator:
             JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
             LEFT JOIN language_blocks lb ON slb.block_id = lb.block_id
             LEFT JOIN languages l ON lb.language_id = l.language_id
-            WHERE substr(s.broadcast_month, 1, 7) = ?
+            WHERE s.broadcast_month = ?
             GROUP BY language_name
             HAVING SUM(s.gross_rate) != 0
             ORDER BY revenue DESC
-        """, (year_month,))
+        """, (month_str,))
         
         lang_results = cursor.fetchall()
         conn.close()
         
         return total_lang_spots, total_lang_revenue, lang_results
     
-    def get_non_language_data_aggregated(self, year_month: str) -> List[Tuple]:
-        """Get non-language revenue data aggregated by month - FIXED Direct Response Logic"""
+    def get_non_language_data_aggregated(self, month_str: str) -> List[Tuple]:
+        """Get non-language revenue data for a specific month in mmm-yy format - FIXED Direct Response Logic"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -178,13 +170,13 @@ class FixedRevenueReportGenerator:
             LEFT JOIN customers c ON s.customer_id = c.customer_id
             LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
             LEFT JOIN agencies a ON s.agency_id = a.agency_id
-            WHERE substr(s.broadcast_month, 1, 7) = ?
+            WHERE s.broadcast_month = ?
               AND (s.gross_rate != 0 OR s.broker_fees != 0)
               AND slb.spot_id IS NULL  -- Only non-language spots
             GROUP BY category
             HAVING revenue != 0
             ORDER BY revenue DESC
-        """, (year_month,))
+        """, (month_str,))
         
         result = cursor.fetchall()
         conn.close()
@@ -195,6 +187,7 @@ class FixedRevenueReportGenerator:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        year_suffix = str(year)[2:]  # Convert 2024 to "24"
         cursor.execute("""
             SELECT 
                 CASE 
@@ -216,7 +209,7 @@ class FixedRevenueReportGenerator:
               AND s.gross_rate > 0
             GROUP BY language_name
             ORDER BY revenue DESC
-        """, (f'{year}%',))
+        """, (f'%-{year_suffix}',))
         
         results = cursor.fetchall()
         conn.close()
@@ -239,6 +232,7 @@ class FixedRevenueReportGenerator:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        year_suffix = str(year)[2:]  # Convert 2024 to "24"
         cursor.execute("""
             SELECT 
                 CASE 
@@ -273,7 +267,7 @@ class FixedRevenueReportGenerator:
             GROUP BY category
             HAVING revenue != 0
             ORDER BY revenue DESC
-        """, (f'{year}%',))
+        """, (f'%-{year_suffix}',))
         
         results = cursor.fetchall()
         conn.close()
@@ -290,6 +284,8 @@ class FixedRevenueReportGenerator:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        year_suffix = str(year)[2:]  # Convert 2024 to "24"
+        
         # Get Direct Response revenue FIRST (regardless of language blocks)
         cursor.execute("""
             SELECT 
@@ -302,7 +298,7 @@ class FixedRevenueReportGenerator:
               AND ((a.agency_name LIKE '%WorldLink%' AND s.gross_rate > 0)
                    OR (s.bill_code LIKE '%WorldLink%' AND s.gross_rate > 0)
                    OR (s.revenue_type = 'Direct Response' AND s.gross_rate > 0))
-        """, (f'{year}%',))
+        """, (f'%-{year_suffix}',))
         
         direct_response_result = cursor.fetchone()
         direct_response_revenue, direct_response_spots = direct_response_result if direct_response_result else (0, 0)
@@ -321,7 +317,7 @@ class FixedRevenueReportGenerator:
               AND NOT ((a.agency_name LIKE '%WorldLink%' AND s.gross_rate > 0)
                        OR (s.bill_code LIKE '%WorldLink%' AND s.gross_rate > 0)
                        OR (s.revenue_type = 'Direct Response' AND s.gross_rate > 0))
-        """, (f'{year}%',))
+        """, (f'%-{year_suffix}',))
         
         multi_lang_result = cursor.fetchone()
         multi_lang_revenue, multi_lang_spots = multi_lang_result if multi_lang_result else (0, 0)
@@ -340,7 +336,7 @@ class FixedRevenueReportGenerator:
               AND NOT ((a.agency_name LIKE '%WorldLink%' AND s.gross_rate > 0)
                        OR (s.bill_code LIKE '%WorldLink%' AND s.gross_rate > 0)
                        OR (s.revenue_type = 'Direct Response' AND s.gross_rate > 0))
-        """, (f'{year}%',))
+        """, (f'%-{year_suffix}',))
         
         other_lang_result = cursor.fetchone()
         other_lang_revenue, other_lang_spots = other_lang_result if other_lang_result else (0, 0)
@@ -359,7 +355,7 @@ class FixedRevenueReportGenerator:
               AND NOT ((a.agency_name LIKE '%WorldLink%' AND s.gross_rate > 0)
                        OR (s.bill_code LIKE '%WorldLink%' AND s.gross_rate > 0)
                        OR (s.revenue_type = 'Direct Response' AND s.gross_rate > 0))
-        """, (f'{year}%',))
+        """, (f'%-{year_suffix}',))
         
         nonlang_result = cursor.fetchone()
         nonlang_revenue, nonlang_spots = nonlang_result if nonlang_result else (0, 0)
@@ -391,7 +387,7 @@ class FixedRevenueReportGenerator:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.add_header(f"📊 {year} Revenue Report - FIXED", 1)
         self.add_line(f"**Generated:** {timestamp}")
-        self.add_line(f"**Report Type:** Complete Revenue Analysis with Direct Response Extracted")
+        self.add_line(f"**Report Type:** Complete Revenue Analysis with Direct Response Extracted (mmm-yy format)")
         self.add_line()
         
         # Get aggregated broadcast months
@@ -407,8 +403,8 @@ class FixedRevenueReportGenerator:
         total_spots = 0
         
         # Calculate totals
-        for year_month, sample_date in broadcast_months:
-            spots, revenue = self.get_month_revenue_data_aggregated(year_month)
+        for month_str, sample_date in broadcast_months:
+            spots, revenue = self.get_month_revenue_data_aggregated(month_str)
             if spots > 0:
                 year_total += revenue
                 total_spots += spots
@@ -427,23 +423,23 @@ class FixedRevenueReportGenerator:
         
         self.add_line()
         
-        # Monthly breakdown (abbreviated for space)
+        # Monthly breakdown (using new mmm-yy format)
         self.add_header("📅 Monthly Revenue Breakdown", 2)
         
-        for year_month, sample_date in broadcast_months:
-            spots, revenue = self.get_month_revenue_data_aggregated(year_month)
+        for month_str, sample_date in broadcast_months:
+            spots, revenue = self.get_month_revenue_data_aggregated(month_str)
             
             if spots == 0:
                 continue
             
-            display_name = self.get_month_display_name(year_month)
+            display_name = self.get_month_display_name(month_str)
             self.add_header(f"{display_name} - ${revenue:,.2f}", 3)
             
             # Language block data
-            total_lang_spots, total_lang_revenue, lang_results = self.get_language_block_data_aggregated(year_month)
+            total_lang_spots, total_lang_revenue, lang_results = self.get_language_block_data_aggregated(month_str)
             
             # Non-language data
-            nonlang_results = self.get_non_language_data_aggregated(year_month)
+            nonlang_results = self.get_non_language_data_aggregated(month_str)
             nonlang_total = sum(cat_revenue for _, cat_revenue in nonlang_results)
             
             # Revenue split
@@ -589,7 +585,7 @@ class FixedRevenueReportGenerator:
         self.add_line("✅ **Direct Response Extracted**: WorldLink revenue properly separated (~$387K)")
         self.add_line("✅ **Language Block Exclusion**: Direct Response excluded from language categories")
         self.add_line("✅ **Multi-Language Separated**: Cross-audience advertising shown separately")
-        self.add_line("✅ **Month Aggregation Fixed**: Proper monthly aggregation (no more daily duplicates)")
+        self.add_line("✅ **New Format Support**: Updated for mmm-yy broadcast_month format")
         
         return "\n".join(self.report_lines)
     
@@ -611,7 +607,7 @@ class FixedRevenueReportGenerator:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate fixed revenue reports with Direct Response properly extracted')
+    parser = argparse.ArgumentParser(description='Generate fixed revenue reports with Direct Response extracted (mmm-yy format)')
     parser.add_argument('year', type=int, help='Year to generate report for (e.g., 2024)')
     parser.add_argument('--target', type=float, help='Target revenue amount for comparison')
     parser.add_argument('--db-path', default='./data/database/production.db', help='Path to database file')
@@ -629,7 +625,7 @@ def main():
         print("   • Direct Response extracted (~$387K WorldLink revenue)")
         print("   • Direct Response excluded from language block categories")
         print("   • Multi-Language (Cross-Audience) separated")
-        print("   • Proper month aggregation (no more daily duplicates)")
+        print("   • Updated for new mmm-yy broadcast_month format")
         
         content = generator.generate_report(args.year, args.target)
         
