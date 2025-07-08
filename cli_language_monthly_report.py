@@ -64,6 +64,7 @@ class YearData:
     total_revenue: float
     direct_response: Tuple[int, float, int]  # spots, revenue, bonus
     multi_language: Tuple[int, float, int]
+    chinese: Tuple[int, float, int]  # NEW: Chinese prime time category
     branded_content: Tuple[int, float, int]
     services: Tuple[int, float, int]
     other_nonlanguage: Tuple[int, float, int]
@@ -241,6 +242,7 @@ class MultiYearRevenueReport:
             # Get all data for the year
             total_spots, total_revenue = self.get_total_validation(year)
             direct_response = self.get_direct_response(year)
+            chinese = self.get_chinese(year)
             multi_language = self.get_multi_language(year)
             branded_content = self.get_branded_content(year)
             services = self.get_services(year)
@@ -253,6 +255,7 @@ class MultiYearRevenueReport:
                 total_revenue=total_revenue,
                 direct_response=direct_response,
                 multi_language=multi_language,
+                chinese=chinese,
                 branded_content=branded_content,
                 services=services,
                 other_nonlanguage=other_nonlanguage,
@@ -335,11 +338,14 @@ class MultiYearRevenueReport:
         return results[0] if results else (0, 0.0, 0)
     
     def get_individual_languages(self, year: int) -> List[Tuple[str, int, float, int]]:
-        """Get individual language breakdown for a single year"""
+        """Get individual language breakdown for a single year - combines Mandarin and Cantonese as 'Chinese'"""
         year_suffix = self.get_year_suffix(year)
         query = """
         SELECT 
-            COALESCE(l.language_name, 'Unknown Language') as language,
+            CASE 
+                WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+                ELSE COALESCE(l.language_name, 'Unknown Language')
+            END as language,
             COUNT(*) as spots,
             SUM(COALESCE(s.gross_rate, 0)) as revenue,
             COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots
@@ -355,14 +361,50 @@ class MultiYearRevenueReport:
                (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NOT NULL))
           AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
           AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        GROUP BY l.language_name
+        GROUP BY CASE 
+                WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+                ELSE COALESCE(l.language_name, 'Unknown Language')
+            END
         ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
         """
         
         return self.run_query(query, (f'%-{year_suffix}',))
     
+    def get_chinese(self, year: int) -> Tuple[int, float, int]:
+        """Get Chinese Prime Time data for a single year - M-F 7pm-11:59pm + Weekend 8pm-11:59pm"""
+        year_suffix = self.get_year_suffix(year)
+        query = """
+        SELECT 
+            COUNT(*) as spots,
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots
+        FROM spots s
+        JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+        LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        WHERE s.broadcast_month LIKE ?
+          AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+          AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+          AND (
+            -- Chinese Prime Time M-F 7pm-11:59pm
+            (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
+             AND s.day_of_week IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'))
+            OR
+            -- Chinese Weekend 8pm-11:59pm  
+            (s.time_in >= '20:00:00' AND s.time_out <= '23:59:59'
+             AND s.day_of_week IN ('Saturday', 'Sunday'))
+          )
+          AND (slb.spans_multiple_blocks = 1 OR 
+               (slb.spans_multiple_blocks = 0 AND slb.block_id IS NULL) OR 
+               (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NULL))
+          AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
+          AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
+        """
+        
+        results = self.run_query(query, (f'%-{year_suffix}',))
+        return results[0] if results else (0, 0.0, 0)
+    
     def get_multi_language(self, year: int) -> Tuple[int, float, int]:
-        """Get Multi-Language (Cross-Audience) data for a single year"""
+        """Get Multi-Language (Cross-Audience) data for a single year - EXCLUDING Chinese Prime Time"""
         year_suffix = self.get_year_suffix(year)
         query = """
         SELECT 
@@ -380,17 +422,25 @@ class MultiYearRevenueReport:
                (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NULL))
           AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
           AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
+          -- EXCLUDE Chinese Prime Time (M-F 7pm-11:59pm + Weekend 8pm-11:59pm)
+          AND NOT (
+            (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
+             AND s.day_of_week IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'))
+            OR
+            (s.time_in >= '20:00:00' AND s.time_out <= '23:59:59'
+             AND s.day_of_week IN ('Saturday', 'Sunday'))
+          )
         """
         
         results = self.run_query(query, (f'%-{year_suffix}',))
         return results[0] if results else (0, 0.0, 0)
     
     def get_branded_content(self, year: int) -> Tuple[int, float, int]:
-        """Get Branded Content (PRD) data for a single year"""
+        """Get Branded Content (PRD) data for a single year - NOT actual spots"""
         year_suffix = self.get_year_suffix(year)
         query = """
         SELECT 
-            COUNT(*) as spots,
+            0 as spots,
             SUM(COALESCE(s.gross_rate, 0)) as revenue,
             0 as bonus_spots
         FROM spots s
@@ -409,11 +459,11 @@ class MultiYearRevenueReport:
         return results[0] if results else (0, 0.0, 0)
     
     def get_services(self, year: int) -> Tuple[int, float, int]:
-        """Get Services (SVC) data for a single year"""
+        """Get Services (SVC) data for a single year - NOT actual spots"""
         year_suffix = self.get_year_suffix(year)
         query = """
         SELECT 
-            COUNT(*) as spots,
+            0 as spots,
             SUM(COALESCE(s.gross_rate, 0)) as revenue,
             0 as bonus_spots
         FROM spots s
@@ -554,14 +604,30 @@ class MultiYearRevenueReport:
             # Aggregate all categories across years
             combined_categories = self._aggregate_categories(year_data)
             
-            lines.append("| Category | Revenue | % | Spots | Bonus Spots | Avg/Spot |")
-            lines.append("|----------|---------|---|-------|-------------|----------|")
+            lines.append("| Category | Revenue | % | Spots | Bonus Spots | Total Spots | Avg/Spot |")
+            lines.append("|----------|---------|---|-------|-------------|-------------|----------|")
+            
+            category_total_revenue = 0
+            category_total_spots = 0
+            category_total_bonus = 0
             
             for cat_name, revenue, spots, bonus in combined_categories:
                 if revenue > 0:
                     pct = (revenue / total_revenue * 100) if total_revenue > 0 else 0
-                    avg_spot = revenue / spots if spots > 0 else 0
-                    lines.append(f"| {cat_name} | ${revenue:,.2f} | {pct:.1f}% | {spots:,} | {bonus:,} | ${avg_spot:.2f} |")
+                    total_spots_cat = spots + bonus
+                    avg_spot = revenue / total_spots_cat if total_spots_cat > 0 else 0
+                    avg_spot_str = f"${avg_spot:.2f}" if total_spots_cat > 0 else "N/A"
+                    lines.append(f"| {cat_name} | ${revenue:,.2f} | {pct:.1f}% | {spots:,} | {bonus:,} | {total_spots_cat:,} | {avg_spot_str} |")
+                    
+                    category_total_revenue += revenue
+                    category_total_spots += spots
+                    category_total_bonus += bonus
+            
+            # Add total row
+            total_total_spots = category_total_spots + category_total_bonus
+            avg_total = category_total_revenue / total_total_spots if total_total_spots > 0 else 0
+            lines.append("|----------|---------|---|-------|-------------|-------------|----------|")
+            lines.append(f"| **TOTAL** | **${category_total_revenue:,.2f}** | **100.0%** | **{category_total_spots:,}** | **{category_total_bonus:,}** | **{total_total_spots:,}** | **${avg_total:.2f}** |")
             
             lines.append("")
             
@@ -578,14 +644,30 @@ class MultiYearRevenueReport:
                     # Year-specific breakdown
                     year_categories = self._get_year_categories(data)
                     
-                    lines.append("| Category | Revenue | % | Spots | Bonus Spots | Avg/Spot |")
-                    lines.append("|----------|---------|---|-------|-------------|----------|")
+                    lines.append("| Category | Revenue | % | Spots | Bonus Spots | Total Spots | Avg/Spot |")
+                    lines.append("|----------|---------|---|-------|-------------|-------------|----------|")
+                    
+                    year_total_revenue = 0
+                    year_total_spots = 0
+                    year_total_bonus = 0
                     
                     for cat_name, revenue, spots, bonus in year_categories:
                         if revenue > 0:
                             pct = (revenue / data.total_revenue * 100) if data.total_revenue > 0 else 0
-                            avg_spot = revenue / spots if spots > 0 else 0
-                            lines.append(f"| {cat_name} | ${revenue:,.2f} | {pct:.1f}% | {spots:,} | {bonus:,} | ${avg_spot:.2f} |")
+                            total_spots_cat = spots + bonus
+                            avg_spot = revenue / total_spots_cat if total_spots_cat > 0 else 0
+                            avg_spot_str = f"${avg_spot:.2f}" if total_spots_cat > 0 else "N/A"
+                            lines.append(f"| {cat_name} | ${revenue:,.2f} | {pct:.1f}% | {spots:,} | {bonus:,} | {total_spots_cat:,} | {avg_spot_str} |")
+                            
+                            year_total_revenue += revenue
+                            year_total_spots += spots
+                            year_total_bonus += bonus
+                    
+                    # Add total row for year
+                    year_total_total_spots = year_total_spots + year_total_bonus
+                    year_avg_total = year_total_revenue / year_total_total_spots if year_total_total_spots > 0 else 0
+                    lines.append("|----------|---------|---|-------|-------------|-------------|----------|")
+                    lines.append(f"| **TOTAL** | **${year_total_revenue:,.2f}** | **100.0%** | **{year_total_spots:,}** | **{year_total_bonus:,}** | **{year_total_total_spots:,}** | **${year_avg_total:.2f}** |")
                     
                     lines.append("")
             
@@ -596,19 +678,51 @@ class MultiYearRevenueReport:
             # Aggregate languages across all years
             combined_languages = self._aggregate_languages(year_data)
             
-            if combined_languages:
+            # Get Chinese Prime Time data to include in language analysis
+            agg_chinese = [0, 0.0, 0]  # spots, revenue, bonus
+            for data in year_data.values():
+                agg_chinese[0] += data.chinese[0]
+                agg_chinese[1] += data.chinese[1]
+                agg_chinese[2] += data.chinese[2]
+            
+            if combined_languages or agg_chinese[1] > 0:
                 lines.append(f"### Combined Language Performance ({time_period.description})")
                 lines.append("")
-                lines.append("| Language | Revenue | % of Total | Spots | Bonus Spots | Avg/Spot |")
-                lines.append("|----------|---------|------------|-------|-------------|----------|")
+                lines.append("| Language | Revenue | % of Total | Spots | Bonus Spots | Total Spots | Avg/Spot |")
+                lines.append("|----------|---------|------------|-------|-------------|-------------|----------|")
                 
-                lang_total_revenue = sum(row[2] for row in combined_languages)
+                # Create combined list including Chinese Prime Time
+                all_language_data = []
                 
+                # Add Chinese Prime Time if it has revenue
+                if agg_chinese[1] > 0:
+                    all_language_data.append(("Chinese Prime Time", agg_chinese[0], agg_chinese[1], agg_chinese[2]))
+                
+                # Add regular languages
                 for lang_name, spots, revenue, bonus_spots in combined_languages:
                     if revenue > 0:
-                        lang_pct = (revenue / lang_total_revenue * 100) if lang_total_revenue > 0 else 0
-                        avg_spot = revenue / spots if spots > 0 else 0
-                        lines.append(f"| {lang_name} | ${revenue:,.2f} | {lang_pct:.1f}% | {spots:,} | {bonus_spots:,} | ${avg_spot:.2f} |")
+                        all_language_data.append((lang_name, spots, revenue, bonus_spots))
+                
+                # Sort by revenue
+                all_language_data.sort(key=lambda x: x[2], reverse=True)
+                
+                # Calculate total for percentage
+                lang_total_revenue = sum(row[2] for row in all_language_data)
+                lang_total_spots = sum(row[1] for row in all_language_data)
+                lang_total_bonus = sum(row[3] for row in all_language_data)
+                
+                # Display each language
+                for lang_name, spots, revenue, bonus_spots in all_language_data:
+                    lang_pct = (revenue / lang_total_revenue * 100) if lang_total_revenue > 0 else 0
+                    total_spots_lang = spots + bonus_spots
+                    avg_spot = revenue / total_spots_lang if total_spots_lang > 0 else 0
+                    lines.append(f"| {lang_name} | ${revenue:,.2f} | {lang_pct:.1f}% | {spots:,} | {bonus_spots:,} | {total_spots_lang:,} | ${avg_spot:.2f} |")
+                
+                # Add total row
+                lang_total_total_spots = lang_total_spots + lang_total_bonus
+                lang_avg_total = lang_total_revenue / lang_total_total_spots if lang_total_total_spots > 0 else 0
+                lines.append("|----------|---------|------------|-------|-------------|-------------|----------|")
+                lines.append(f"| **TOTAL** | **${lang_total_revenue:,.2f}** | **100.0%** | **{lang_total_spots:,}** | **{lang_total_bonus:,}** | **{lang_total_total_spots:,}** | **${lang_avg_total:.2f}** |")
                 
                 lines.append("")
             
@@ -660,6 +774,27 @@ class MultiYearRevenueReport:
             lines.append("- ✅ Includes BNS spots even with NULL revenue")
             lines.append("- ✅ Consistent categorization across time periods")
             lines.append("")
+            lines.append("### Category Definitions")
+            lines.append("- ✅ **Individual Language Blocks:** Spots assigned to specific language blocks")
+            lines.append("- ✅ **Chinese Prime Time:** Multi-language spots during M-F 7pm-11:59pm + Weekend 8pm-11:59pm (Chinese audience focus)")
+            lines.append("- ✅ **Multi-Language (Cross-Audience):** Multi-language spots outside Chinese prime time")
+            lines.append("- ✅ **Direct Response:** WorldLink agency spots")
+            lines.append("- ✅ **Other Non-Language:** Non-language spots (excluding PRD/SVC)")
+            lines.append("- ✅ **Branded Content (PRD):** 0 spots (revenue only - not ads)")
+            lines.append("- ✅ **Services (SVC):** 0 spots (revenue only - not ads)")
+            lines.append("")
+            lines.append("### Chinese Prime Time Logic")
+            lines.append("- ✅ **Weekday Chinese:** Monday-Friday 7pm-11:59pm")
+            lines.append("- ✅ **Weekend Chinese:** Saturday-Sunday 8pm-11:59pm")
+            lines.append("- ✅ **Multi-language spots only:** Spans multiple blocks or no specific language assignment")
+            lines.append("")
+            lines.append("### Spot Count Logic")
+            lines.append("- ✅ **Branded Content (PRD):** 0 spots (revenue only - not ads)")
+            lines.append("- ✅ **Services (SVC):** 0 spots (revenue only - not ads)")
+            lines.append("- ✅ **All Other Categories:** Actual spot counts from database")
+            lines.append("- ✅ **Total Spots:** Regular spots + Bonus spots")
+            lines.append("- ✅ **Avg/Spot Rate:** Revenue ÷ Total Spots (includes bonus spots in calculation)")
+            lines.append("")
             
             logger.info(f"Report generation completed successfully for {time_period}")
             return "\n".join(lines)
@@ -673,6 +808,7 @@ class MultiYearRevenueReport:
         # Initialize aggregated totals
         agg_individual_lang = [0, 0.0, 0]  # spots, revenue, bonus
         agg_multi_lang = [0, 0.0, 0]
+        agg_chinese = [0, 0.0, 0]  # NEW: Chinese prime time
         agg_direct_response = [0, 0.0, 0]
         agg_other_nonlang = [0, 0.0, 0]
         agg_branded_content = [0, 0.0, 0]
@@ -693,6 +829,10 @@ class MultiYearRevenueReport:
             agg_multi_lang[1] += data.multi_language[1]
             agg_multi_lang[2] += data.multi_language[2]
             
+            agg_chinese[0] += data.chinese[0]
+            agg_chinese[1] += data.chinese[1]
+            agg_chinese[2] += data.chinese[2]
+            
             agg_direct_response[0] += data.direct_response[0]
             agg_direct_response[1] += data.direct_response[1]
             agg_direct_response[2] += data.direct_response[2]
@@ -712,6 +852,7 @@ class MultiYearRevenueReport:
         # Create categories list
         categories = [
             ("Individual Language Blocks", agg_individual_lang[1], agg_individual_lang[0], agg_individual_lang[2]),
+            ("Chinese Prime Time (M-F 7pm-11:59pm + Weekend 8pm-11:59pm)", agg_chinese[1], agg_chinese[0], agg_chinese[2]),
             ("Multi-Language (Cross-Audience)", agg_multi_lang[1], agg_multi_lang[0], agg_multi_lang[2]),
             ("Direct Response", agg_direct_response[1], agg_direct_response[0], agg_direct_response[2]),
             ("Other Non-Language", agg_other_nonlang[1], agg_other_nonlang[0], agg_other_nonlang[2]),
@@ -731,6 +872,7 @@ class MultiYearRevenueReport:
         
         categories = [
             ("Individual Language Blocks", lang_revenue, lang_spots, lang_bonus),
+            ("Chinese Prime Time (M-F 7pm-11:59pm + Weekend 8pm-11:59pm)", data.chinese[1], data.chinese[0], data.chinese[2]),
             ("Multi-Language (Cross-Audience)", data.multi_language[1], data.multi_language[0], data.multi_language[2]),
             ("Direct Response", data.direct_response[1], data.direct_response[0], data.direct_response[2]),
             ("Other Non-Language", data.other_nonlanguage[1], data.other_nonlanguage[0], data.other_nonlanguage[2]),
