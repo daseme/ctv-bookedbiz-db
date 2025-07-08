@@ -117,31 +117,6 @@ class ReportDataService:
                 metadata=metadata
             )
             
-            # After getting revenue_data, add debug logging:
-            logger.info(f"DEBUG: Number of revenue records: {len(revenue_data)}")
-            total_from_rows = sum(row.total for row in revenue_data)
-            logger.info(f"DEBUG: Total from CustomerMonthlyRow objects: {total_from_rows}")
-            logger.info(f"DEBUG: Type: {type(total_from_rows)}")
-            
-            # Calculate statistics based on selected revenue field
-            revenue_field = filters.revenue_field if filters.revenue_field else 'gross'
-            revenue_data_dicts = []
-            for row in revenue_data:
-                row_dict = row.to_dict()
-                # Override 'total' with the selected revenue field total
-                if revenue_field == 'net':
-                    row_dict['total'] = float(row.total_net)
-                else:
-                    row_dict['total'] = float(row.total_gross)
-                revenue_data_dicts.append(row_dict)
-            
-            # Debug the dict totals
-            total_from_dicts = sum(row['total'] for row in revenue_data_dicts)
-            logger.info(f"DEBUG: Total from dicts: {total_from_dicts}")
-            
-            #stats = calculate_statistics(revenue_data_dicts)
-            logger.info(f"DEBUG: Stats total_revenue: {stats['total_revenue']}")
-
             # Log processing time
             logger.info(f"Monthly revenue report generated in {processing_time:.1f}ms")
             return report_data
@@ -324,6 +299,10 @@ class ReportDataService:
     ) -> List[CustomerMonthlyRow]:
         """Get customer monthly revenue breakdown from database."""
         
+        # FIXED: Use pattern matching for mmm-yy format instead of strftime
+        # Convert year to yy format (e.g., 2025 -> '25')
+        year_suffix = str(year)[-2:]  # Get last 2 digits
+        
         # Build base query with proper date handling using broadcast_month - fetch BOTH gross and net
         base_query = """
             SELECT
@@ -332,19 +311,33 @@ class ReportDataService:
                 COALESCE(s.sales_person, 'Unknown') as ae,
                 COALESCE(s.revenue_type, 'Regular') as revenue_type,
                 sect.sector_name as sector,
-                strftime('%m', s.broadcast_month) as month,
+                CASE 
+                    WHEN s.broadcast_month LIKE 'Jan-%' THEN '01'
+                    WHEN s.broadcast_month LIKE 'Feb-%' THEN '02'
+                    WHEN s.broadcast_month LIKE 'Mar-%' THEN '03'
+                    WHEN s.broadcast_month LIKE 'Apr-%' THEN '04'
+                    WHEN s.broadcast_month LIKE 'May-%' THEN '05'
+                    WHEN s.broadcast_month LIKE 'Jun-%' THEN '06'
+                    WHEN s.broadcast_month LIKE 'Jul-%' THEN '07'
+                    WHEN s.broadcast_month LIKE 'Aug-%' THEN '08'
+                    WHEN s.broadcast_month LIKE 'Sep-%' THEN '09'
+                    WHEN s.broadcast_month LIKE 'Oct-%' THEN '10'
+                    WHEN s.broadcast_month LIKE 'Nov-%' THEN '11'
+                    WHEN s.broadcast_month LIKE 'Dec-%' THEN '12'
+                END as month,
                 ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) as gross_revenue,
                 ROUND(SUM(COALESCE(s.station_net, 0)), 2) as net_revenue
             FROM spots s
             LEFT JOIN customers c ON s.customer_id = c.customer_id
             LEFT JOIN agencies a ON s.agency_id = a.agency_id
             LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
-            WHERE strftime('%Y', s.broadcast_month) = ?
+            WHERE s.broadcast_month LIKE ?
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
             AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
         """
         
-        params = [str(year)]
+        # FIXED: Use pattern matching for year filter
+        params = [f"%-{year_suffix}"]  # e.g., '%-25' for 2025
         
         # Add filters
         if filters.customer_search:
@@ -425,11 +418,23 @@ class ReportDataService:
     @lru_cache(maxsize=128)
     def _get_available_years(self, db_connection) -> List[int]:
         """Get list of available years from database using broadcast_month."""
+        # FIXED: Extract year from mmm-yy format using pattern matching
         query = """
-        SELECT DISTINCT strftime('%Y', broadcast_month) as year
+        SELECT DISTINCT 
+            CASE 
+                WHEN broadcast_month LIKE '%-23' THEN 2023
+                WHEN broadcast_month LIKE '%-24' THEN 2024
+                WHEN broadcast_month LIKE '%-25' THEN 2025
+                WHEN broadcast_month LIKE '%-26' THEN 2026
+                WHEN broadcast_month LIKE '%-27' THEN 2027
+                WHEN broadcast_month LIKE '%-28' THEN 2028
+                WHEN broadcast_month LIKE '%-29' THEN 2029
+                WHEN broadcast_month LIKE '%-30' THEN 2030
+            END as year
         FROM spots 
         WHERE broadcast_month IS NOT NULL
         AND broadcast_month != ''
+        AND broadcast_month LIKE '%-__'
         ORDER BY year DESC
         """
         
@@ -437,11 +442,8 @@ class ReportDataService:
         cursor = conn.execute(query)
         years = []
         for row in cursor.fetchall():
-            if row[0] is not None and row[0] != '':
-                try:
-                    years.append(int(row[0]))
-                except (ValueError, TypeError):
-                    continue  # Skip invalid years
+            if row[0] is not None:
+                years.append(int(row[0]))
         conn.close()
         
         # Remove duplicates and sort
@@ -490,7 +492,7 @@ class ReportDataService:
         WHERE broadcast_month LIKE ?
         """
         
-        # Format: 'Jan-25', 'Feb-25', etc.
+        # FIXED: Use pattern matching for mmm-yy format
         year_suffix = str(year)[-2:]  # Get last 2 digits of year
         pattern = f"%-{year_suffix}"
         
@@ -506,37 +508,37 @@ class ReportDataService:
         """Get AE performance data from database using broadcast_month."""
         query = """
         SELECT
-            c.customer_id,
-            COALESCE(a.agency_name || ' : ', '') || c.normalized_name as customer,
-            COALESCE(s.sales_person, 'Unknown') as ae,
-            COALESCE(s.revenue_type, 'Regular') as revenue_type,
-            sect.sector_name as sector,
-            strftime('%m', s.broadcast_month) as month,
-            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) as gross_revenue,
-            ROUND(SUM(COALESCE(s.station_net, 0)), 2) as net_revenue
+            s.sales_person,
+            COUNT(*) as spot_count,
+            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) as total_revenue,
+            ROUND(AVG(COALESCE(s.gross_rate, 0)), 2) as avg_rate,
+            MIN(s.air_date) as first_spot_date,
+            MAX(s.air_date) as last_spot_date
         FROM spots s
         LEFT JOIN customers c ON s.customer_id = c.customer_id
         LEFT JOIN agencies a ON s.agency_id = a.agency_id
         LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
-        WHERE strftime('%Y', s.broadcast_month) = ?
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
         """
         
         params = []
         
-        # Add date filters using broadcast_month
+        # FIXED: Use pattern matching for year filter
+        if filters.year:
+            year_suffix = str(filters.year)[-2:]
+            query += " AND s.broadcast_month LIKE ?"
+            params.append(f"%-{year_suffix}")
+        
+        # Add date filters using air_date (these work with actual dates)
         if filters.start_date:
-            query += " AND broadcast_month >= ?"
+            query += " AND s.air_date >= ?"
             params.append(filters.start_date)
         if filters.end_date:
-            query += " AND broadcast_month <= ?"
+            query += " AND s.air_date <= ?"
             params.append(filters.end_date)
-        if filters.year:
-            query += " AND strftime('%Y', broadcast_month) = ?"
-            params.append(str(filters.year))
         
-        query += " GROUP BY sales_person ORDER BY total_revenue DESC"
+        query += " GROUP BY s.sales_person ORDER BY total_revenue DESC"
         
         conn = db_connection.connect()
         cursor = conn.execute(query, params)
@@ -560,12 +562,21 @@ class ReportDataService:
         query = """
         SELECT 
             CASE 
-                WHEN strftime('%m', broadcast_month) IN ('01', '02', '03') THEN 'Q1'
-                WHEN strftime('%m', broadcast_month) IN ('04', '05', '06') THEN 'Q2'
-                WHEN strftime('%m', broadcast_month) IN ('07', '08', '09') THEN 'Q3'
-                WHEN strftime('%m', broadcast_month) IN ('10', '11', '12') THEN 'Q4'
+                WHEN broadcast_month LIKE 'Jan-%' OR broadcast_month LIKE 'Feb-%' OR broadcast_month LIKE 'Mar-%' THEN 'Q1'
+                WHEN broadcast_month LIKE 'Apr-%' OR broadcast_month LIKE 'May-%' OR broadcast_month LIKE 'Jun-%' THEN 'Q2'
+                WHEN broadcast_month LIKE 'Jul-%' OR broadcast_month LIKE 'Aug-%' OR broadcast_month LIKE 'Sep-%' THEN 'Q3'
+                WHEN broadcast_month LIKE 'Oct-%' OR broadcast_month LIKE 'Nov-%' OR broadcast_month LIKE 'Dec-%' THEN 'Q4'
             END as quarter,
-            strftime('%Y', broadcast_month) as year,
+            CASE 
+                WHEN broadcast_month LIKE '%-23' THEN 2023
+                WHEN broadcast_month LIKE '%-24' THEN 2024
+                WHEN broadcast_month LIKE '%-25' THEN 2025
+                WHEN broadcast_month LIKE '%-26' THEN 2026
+                WHEN broadcast_month LIKE '%-27' THEN 2027
+                WHEN broadcast_month LIKE '%-28' THEN 2028
+                WHEN broadcast_month LIKE '%-29' THEN 2029
+                WHEN broadcast_month LIKE '%-30' THEN 2030
+            END as year,
             COUNT(*) as spot_count,
             ROUND(SUM(gross_rate), 2) as total_revenue,
             ROUND(AVG(gross_rate), 2) as avg_rate
@@ -577,8 +588,9 @@ class ReportDataService:
         
         params = []
         if filters.year:
-            query += " AND strftime('%Y', broadcast_month) = ?"
-            params.append(str(filters.year))
+            year_suffix = str(filters.year)[-2:]
+            query += " AND broadcast_month LIKE ?"
+            params.append(f"%-{year_suffix}")
         
         query += " GROUP BY quarter, year ORDER BY year DESC, quarter"
         
@@ -616,8 +628,9 @@ class ReportDataService:
         
         params = []
         if filters.year:
-            query += " AND strftime('%Y', sp.broadcast_month) = ?"
-            params.append(str(filters.year))
+            year_suffix = str(filters.year)[-2:]
+            query += " AND sp.broadcast_month LIKE ?"
+            params.append(f"%-{year_suffix}")
         
         query += " GROUP BY s.sector_id, s.sector_name, s.sector_code ORDER BY total_revenue DESC"
         
@@ -654,8 +667,9 @@ class ReportDataService:
         
         params = []
         if filters.year:
-            query += " AND strftime('%Y', sp.broadcast_month) = ?"
-            params.append(str(filters.year))
+            year_suffix = str(filters.year)[-2:]
+            query += " AND sp.broadcast_month LIKE ?"
+            params.append(f"%-{year_suffix}")
         
         query += " GROUP BY s.sector_id, c.customer_id ORDER BY s.sector_name, total_revenue DESC"
         
