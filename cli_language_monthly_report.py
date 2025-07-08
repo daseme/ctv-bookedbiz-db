@@ -67,7 +67,8 @@ class YearData:
     chinese: Tuple[int, float, int]  # NEW: Chinese prime time category
     branded_content: Tuple[int, float, int]
     services: Tuple[int, float, int]
-    other_nonlanguage: Tuple[int, float, int]
+    overnight_shopping: Tuple[int, float, int]  # NEW: NKB only
+    other_nonlanguage: Tuple[int, float, int]  # Updated: excludes NKB
     individual_languages: List[Tuple[str, int, float, int]]  # name, spots, revenue, bonus
 
 
@@ -246,6 +247,7 @@ class MultiYearRevenueReport:
             multi_language = self.get_multi_language(year)
             branded_content = self.get_branded_content(year)
             services = self.get_services(year)
+            overnight_shopping = self.get_overnight_shopping(year)
             other_nonlanguage = self.get_other_nonlanguage(year)
             individual_languages = self.get_individual_languages(year)
             
@@ -258,6 +260,7 @@ class MultiYearRevenueReport:
                 chinese=chinese,
                 branded_content=branded_content,
                 services=services,
+                overnight_shopping=overnight_shopping,
                 other_nonlanguage=other_nonlanguage,
                 individual_languages=individual_languages
             )
@@ -481,8 +484,8 @@ class MultiYearRevenueReport:
         results = self.run_query(query, (f'%-{year_suffix}',))
         return results[0] if results else (0, 0.0, 0)
     
-    def get_other_nonlanguage(self, year: int) -> Tuple[int, float, int]:
-        """Get Other Non-Language data for a single year"""
+    def get_overnight_shopping(self, year: int) -> Tuple[int, float, int]:
+        """Get Overnight Shopping data for a single year (NKB only)"""
         year_suffix = self.get_year_suffix(year)
         query = """
         SELECT 
@@ -492,6 +495,7 @@ class MultiYearRevenueReport:
         FROM spots s
         LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
         LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        LEFT JOIN customers c ON s.customer_id = c.customer_id
         WHERE s.broadcast_month LIKE ?
           AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
           AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
@@ -499,6 +503,40 @@ class MultiYearRevenueReport:
           AND (s.spot_type NOT IN ('PRD', 'SVC') OR s.spot_type IS NULL OR s.spot_type = '')
           AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
           AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
+          -- ONLY NKB spots
+          AND (
+            COALESCE(c.normalized_name, '') LIKE '%NKB%' 
+            OR COALESCE(s.bill_code, '') LIKE '%NKB%'
+            OR COALESCE(a.agency_name, '') LIKE '%NKB%'
+          )
+        """
+        
+        results = self.run_query(query, (f'%-{year_suffix}',))
+        return results[0] if results else (0, 0.0, 0)
+    
+    def get_other_nonlanguage(self, year: int) -> Tuple[int, float, int]:
+        """Get Other Non-Language data for a single year (EXCLUDING NKB overnight shopping)"""
+        year_suffix = self.get_year_suffix(year)
+        query = """
+        SELECT 
+            COUNT(*) as spots,
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots
+        FROM spots s
+        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+        LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        LEFT JOIN customers c ON s.customer_id = c.customer_id
+        WHERE s.broadcast_month LIKE ?
+          AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+          AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+          AND slb.spot_id IS NULL
+          AND (s.spot_type NOT IN ('PRD', 'SVC') OR s.spot_type IS NULL OR s.spot_type = '')
+          AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
+          AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
+          -- EXCLUDE NKB spots (they go to overnight shopping)
+          AND COALESCE(c.normalized_name, '') NOT LIKE '%NKB%'
+          AND COALESCE(s.bill_code, '') NOT LIKE '%NKB%'
+          AND COALESCE(a.agency_name, '') NOT LIKE '%NKB%'
         """
         
         results = self.run_query(query, (f'%-{year_suffix}',))
@@ -779,7 +817,8 @@ class MultiYearRevenueReport:
             lines.append("- ✅ **Chinese Prime Time:** Multi-language spots during M-F 7pm-11:59pm + Weekend 8pm-11:59pm (Chinese audience focus)")
             lines.append("- ✅ **Multi-Language (Cross-Audience):** Multi-language spots outside Chinese prime time")
             lines.append("- ✅ **Direct Response:** WorldLink agency spots")
-            lines.append("- ✅ **Other Non-Language:** Non-language spots (excluding PRD/SVC)")
+            lines.append("- ✅ **Overnight Shopping:** NKB shopping channel only")
+            lines.append("- ✅ **Other Non-Language:** Non-language block spots (excluding NKB, PRD, SVC)")
             lines.append("- ✅ **Branded Content (PRD):** 0 spots (revenue only - not ads)")
             lines.append("- ✅ **Services (SVC):** 0 spots (revenue only - not ads)")
             lines.append("")
@@ -787,6 +826,17 @@ class MultiYearRevenueReport:
             lines.append("- ✅ **Weekday Chinese:** Monday-Friday 7pm-11:59pm")
             lines.append("- ✅ **Weekend Chinese:** Saturday-Sunday 8pm-11:59pm")
             lines.append("- ✅ **Multi-language spots only:** Spans multiple blocks or no specific language assignment")
+            lines.append("")
+            lines.append("### Overnight Shopping Logic")
+            lines.append("- ✅ **NKB Only:** Only NKB:Shop LC overnight shopping programming")
+            lines.append("- ✅ **Schedule:** 7-day week operation (M-Su)")
+            lines.append("- ✅ **Time Pattern:** Early morning start (6:00:00+)")
+            lines.append("- ✅ **Revenue:** Approximately $66.7K in 2024")
+            lines.append("")
+            lines.append("### Other Non-Language Logic")
+            lines.append("- ✅ **Excludes NKB:** NKB spots moved to Overnight Shopping category")
+            lines.append("- ✅ **Includes:** IW Group/CMS, Fujisankei, and other miscellaneous non-language spots")
+            lines.append("- ✅ **Investigation needed:** Remaining spots to be analyzed separately")
             lines.append("")
             lines.append("### Spot Count Logic")
             lines.append("- ✅ **Branded Content (PRD):** 0 spots (revenue only - not ads)")
@@ -810,7 +860,8 @@ class MultiYearRevenueReport:
         agg_multi_lang = [0, 0.0, 0]
         agg_chinese = [0, 0.0, 0]  # NEW: Chinese prime time
         agg_direct_response = [0, 0.0, 0]
-        agg_other_nonlang = [0, 0.0, 0]
+        agg_overnight_shopping = [0, 0.0, 0]  # NEW: NKB only
+        agg_other_nonlang = [0, 0.0, 0]  # Updated: excludes NKB
         agg_branded_content = [0, 0.0, 0]
         agg_services = [0, 0.0, 0]
         
@@ -837,6 +888,10 @@ class MultiYearRevenueReport:
             agg_direct_response[1] += data.direct_response[1]
             agg_direct_response[2] += data.direct_response[2]
             
+            agg_overnight_shopping[0] += data.overnight_shopping[0]
+            agg_overnight_shopping[1] += data.overnight_shopping[1]
+            agg_overnight_shopping[2] += data.overnight_shopping[2]
+            
             agg_other_nonlang[0] += data.other_nonlanguage[0]
             agg_other_nonlang[1] += data.other_nonlanguage[1]
             agg_other_nonlang[2] += data.other_nonlanguage[2]
@@ -855,6 +910,7 @@ class MultiYearRevenueReport:
             ("Chinese Prime Time (M-F 7pm-11:59pm + Weekend 8pm-11:59pm)", agg_chinese[1], agg_chinese[0], agg_chinese[2]),
             ("Multi-Language (Cross-Audience)", agg_multi_lang[1], agg_multi_lang[0], agg_multi_lang[2]),
             ("Direct Response", agg_direct_response[1], agg_direct_response[0], agg_direct_response[2]),
+            ("Overnight Shopping", agg_overnight_shopping[1], agg_overnight_shopping[0], agg_overnight_shopping[2]),
             ("Other Non-Language", agg_other_nonlang[1], agg_other_nonlang[0], agg_other_nonlang[2]),
             ("Branded Content", agg_branded_content[1], agg_branded_content[0], agg_branded_content[2]),
             ("Services", agg_services[1], agg_services[0], agg_services[2]),
@@ -875,6 +931,7 @@ class MultiYearRevenueReport:
             ("Chinese Prime Time (M-F 7pm-11:59pm + Weekend 8pm-11:59pm)", data.chinese[1], data.chinese[0], data.chinese[2]),
             ("Multi-Language (Cross-Audience)", data.multi_language[1], data.multi_language[0], data.multi_language[2]),
             ("Direct Response", data.direct_response[1], data.direct_response[0], data.direct_response[2]),
+            ("Overnight Shopping", data.overnight_shopping[1], data.overnight_shopping[0], data.overnight_shopping[2]),
             ("Other Non-Language", data.other_nonlanguage[1], data.other_nonlanguage[0], data.other_nonlanguage[2]),
             ("Branded Content", data.branded_content[1], data.branded_content[0], data.branded_content[2]),
             ("Services", data.services[1], data.services[0], data.services[2]),
