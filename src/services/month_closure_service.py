@@ -59,32 +59,25 @@ class MonthClosureService(BaseService):
         self.parser = BroadcastMonthParser()
     
     def _get_datetime_values_for_month(self, broadcast_month_display: str) -> List[str]:
-        """Get all datetime values in database that match a display format month."""
+        """Get all broadcast_month values that match a display format month."""
         if not self.parser.validate_broadcast_month_format(broadcast_month_display):
             return []
-        
+
         try:
-            # Extract year and month from display format
-            year = self.parser.extract_year_from_broadcast_month(broadcast_month_display)
-            month_name = broadcast_month_display.split('-')[0]
-            month_num = self.parser.MONTH_NAME_TO_NUM[month_name]
-            
-            # Find all datetime values in database for this year/month
-            with self.safe_connection() as conn:  # ✅ Fixed
+            # Since broadcast_month is now stored in mmm-yy format, just return the exact match
+            with self.safe_connection() as conn:
                 cursor = conn.execute("""
                     SELECT DISTINCT broadcast_month 
                     FROM spots 
-                    WHERE broadcast_month IS NOT NULL
-                    AND strftime('%Y', broadcast_month) = ?
-                    AND strftime('%m', broadcast_month) = ?
-                """, (str(year), f"{month_num:02d}"))
+                    WHERE broadcast_month = ?
+                """, (broadcast_month_display,))
                 
-                datetime_values = [row[0] for row in cursor.fetchall()]
-                logger.debug(f"Found {len(datetime_values)} datetime values for {broadcast_month_display}")
-                return datetime_values
+                values = [row[0] for row in cursor.fetchall()]
+                logger.debug(f"Found {len(values)} values for {broadcast_month_display}")
+                return values
                 
         except Exception as e:
-            logger.error(f"Error finding datetime values for {broadcast_month_display}: {e}")
+            logger.error(f"Error finding values for {broadcast_month_display}: {e}")
             return []
 
     def close_broadcast_month_with_connection(self, broadcast_month_display: str, closed_by: str, conn: sqlite3.Connection, notes: str = None) -> bool:
@@ -100,21 +93,15 @@ class MonthClosureService(BaseService):
         if cursor.fetchone():
             raise MonthClosureError(f"Month '{broadcast_month_display}' is already closed")
         
-        # Get datetime values using provided connection
-        year = self.parser.extract_year_from_broadcast_month(broadcast_month_display)
-        month_name = broadcast_month_display.split('-')[0]
-        month_num = self.parser.MONTH_NAME_TO_NUM[month_name]
-        
+        # Check if data exists for this month
         cursor = conn.execute("""
-            SELECT DISTINCT broadcast_month 
+            SELECT COUNT(*) 
             FROM spots 
-            WHERE broadcast_month IS NOT NULL
-            AND strftime('%Y', broadcast_month) = ?
-            AND strftime('%m', broadcast_month) = ?
-        """, (str(year), f"{month_num:02d}"))
+            WHERE broadcast_month = ?
+        """, (broadcast_month_display,))
         
-        datetime_values = [row[0] for row in cursor.fetchall()]
-        if not datetime_values:
+        spot_count = cursor.fetchone()[0]
+        if spot_count == 0:
             raise MonthClosureError(f"Cannot close '{broadcast_month_display}': No data exists for this month")
         
         # Insert closure record using provided connection
@@ -124,14 +111,13 @@ class MonthClosureService(BaseService):
         """, (broadcast_month_display, date.today(), closed_by, notes))
         
         # Mark spots as historical
-        updated_count = 0
-        for datetime_value in datetime_values:
-            cursor = conn.execute("""
-                UPDATE spots 
-                SET is_historical = 1 
-                WHERE broadcast_month = ?
-            """, (datetime_value,))
-            updated_count += cursor.rowcount
+        cursor = conn.execute("""
+            UPDATE spots 
+            SET is_historical = 1 
+            WHERE broadcast_month = ?
+        """, (broadcast_month_display,))
+        
+        updated_count = cursor.rowcount
         
         logger.info(f"Closed '{broadcast_month_display}' within transaction: {updated_count} spots marked historical")
         return True
@@ -416,44 +402,32 @@ class MonthClosureService(BaseService):
             return 0
     
     def get_month_statistics(self, broadcast_month_display: str) -> dict:
-        """
-        Get detailed statistics for a broadcast month.
-        
-        Args:
-            broadcast_month_display: Month to get statistics for in 'Mmm-YY' format
-            
-        Returns:
-            Dictionary with month statistics
-        """
+        """Get detailed statistics for a broadcast month."""
         try:
-            # Get all datetime values for this display month
-            datetime_values = self._get_datetime_values_for_month(broadcast_month_display)
-            
-            if not datetime_values:
-                return {
-                    'broadcast_month': broadcast_month_display,
-                    'total_spots': 0,
-                    'spots_with_revenue': 0,
-                    'total_revenue': 0.0,
-                    'avg_revenue': 0.0,
-                    'min_revenue': 0.0,
-                    'max_revenue': 0.0,
-                    'unique_customers': 0,
-                    'is_closed': self.is_month_closed(broadcast_month_display),
-                    'closure_info': self.get_month_closure_info(broadcast_month_display)
-                }
-            
             with self.safe_connection() as conn:       
-                # Basic spot count for all datetime values in this month
-                placeholders = ', '.join(['?' for _ in datetime_values])
+                # Basic spot count - direct lookup now
                 cursor = conn.execute(
-                    f"SELECT COUNT(*) FROM spots WHERE broadcast_month IN ({placeholders})",
-                    datetime_values
+                    "SELECT COUNT(*) FROM spots WHERE broadcast_month = ?",
+                    (broadcast_month_display,)
                 )
                 total_spots = cursor.fetchone()[0]
                 
+                if total_spots == 0:
+                    return {
+                        'broadcast_month': broadcast_month_display,
+                        'total_spots': 0,
+                        'spots_with_revenue': 0,
+                        'total_revenue': 0.0,
+                        'avg_revenue': 0.0,
+                        'min_revenue': 0.0,
+                        'max_revenue': 0.0,
+                        'unique_customers': 0,
+                        'is_closed': self.is_month_closed(broadcast_month_display),
+                        'closure_info': self.get_month_closure_info(broadcast_month_display)
+                    }
+                
                 # Revenue statistics
-                cursor = conn.execute(f"""
+                cursor = conn.execute("""
                     SELECT 
                         COUNT(*) as spots_with_revenue,
                         SUM(gross_rate) as total_revenue,
@@ -461,17 +435,17 @@ class MonthClosureService(BaseService):
                         MIN(gross_rate) as min_revenue,
                         MAX(gross_rate) as max_revenue
                     FROM spots 
-                    WHERE broadcast_month IN ({placeholders}) AND gross_rate IS NOT NULL
-                """, datetime_values)
+                    WHERE broadcast_month = ? AND gross_rate IS NOT NULL
+                """, (broadcast_month_display,))
                 
                 revenue_row = cursor.fetchone()
                 
                 # Customer count
-                cursor = conn.execute(f"""
+                cursor = conn.execute("""
                     SELECT COUNT(DISTINCT customer_id) 
                     FROM spots 
-                    WHERE broadcast_month IN ({placeholders}) AND customer_id IS NOT NULL
-                """, datetime_values)
+                    WHERE broadcast_month = ? AND customer_id IS NOT NULL
+                """, (broadcast_month_display,))
                 
                 unique_customers = cursor.fetchone()[0]
             
@@ -487,7 +461,6 @@ class MonthClosureService(BaseService):
                 'min_revenue': float(revenue_row[3]) if revenue_row[3] else 0.0,
                 'max_revenue': float(revenue_row[4]) if revenue_row[4] else 0.0,
                 'unique_customers': unique_customers,
-                'datetime_values_count': len(datetime_values),
                 'is_closed': closure_info is not None,
                 'closure_info': closure_info
             }

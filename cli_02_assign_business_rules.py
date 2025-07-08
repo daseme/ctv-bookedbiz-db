@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
 """
-Fixed Business Rules Assignment Script
-=====================================
+Enhanced Business Rules Assignment Script with Better Progress Tracking
+======================================================================
 
-Fixed version that properly handles the CHECK constraint for spots that span multiple blocks.
-This version correctly populates the blocks_spanned column when spans_multiple_blocks = 1.
+Your existing file with improved progress tracking, timing, and monitoring.
 """
 
 import sqlite3
 import sys
+import logging
+import time
+import psutil  # ADD THIS IMPORT
+from tqdm import tqdm
 sys.path.append('src')
 from services.business_rules_service import BusinessRulesService
 from datetime import datetime
 
+# Setup logging - ENHANCED
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - 🔧 Stage 2: %(message)s')
+logger = logging.getLogger(__name__)
+
 def assign_business_rules_spots(limit=None):
-    """Assign unassigned spots using business rules"""
+    """Assign unassigned spots using business rules - ENHANCED WITH PROGRESS TRACKING"""
+    # ADD THIS - Start timing
+    start_time = time.time()
+    logger.info("🚀 Starting business rules assignment")
+    
     conn = sqlite3.connect('./data/database/production.db')
     service = BusinessRulesService(conn)
     
@@ -44,10 +55,27 @@ def assign_business_rules_spots(limit=None):
     cursor.execute(query)
     spot_ids = [row[0] for row in cursor.fetchall()]
     
-    print(f"🚀 Assigning {len(spot_ids)} spots using business rules...")
+    # ENHANCED LOGGING
+    total_spots = len(spot_ids)
+    logger.info(f"📊 Found {total_spots:,} spots to process")
+    
+    if total_spots == 0:
+        logger.info("✅ No spots need business rules assignment")
+        return {'assigned': 0, 'errors': 0}
+    
+    # ADD THIS - Progress bar setup
+    progress_bar = tqdm(
+        total=total_spots,
+        desc="🔧 Business Rules",
+        unit="spots",
+        unit_scale=True,
+        dynamic_ncols=True,
+        bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} spots [{elapsed}<{remaining}, {rate_fmt}]'
+    )
     
     stats = {'assigned': 0, 'errors': 0}
     
+    # ENHANCED PROCESSING LOOP
     for i, spot_id in enumerate(spot_ids):
         try:
             spot_data = service.get_spot_data_from_db(spot_id)
@@ -78,22 +106,59 @@ def assign_business_rules_spots(limit=None):
                     ))
                     stats['assigned'] += 1
             
+            # UPDATE PROGRESS BAR
+            progress_bar.update(1)
+            
+            # ENHANCED LOGGING - Every 1000 spots
             if (i + 1) % 1000 == 0:
-                print(f"   Processed {i + 1}/{len(spot_ids)} spots...")
+                elapsed = time.time() - start_time
+                rate = (i + 1) / elapsed
+                
+                # Get memory usage
+                memory_info = get_memory_usage()
+                
+                logger.info(
+                    f"📦 Processed {i + 1:,}/{total_spots:,} spots "
+                    f"({(i + 1)/total_spots*100:.1f}%) in {elapsed:.1f}s "
+                    f"({rate:.1f} spots/s) "
+                    f"[Assigned: {stats['assigned']:,}, Errors: {stats['errors']:,}] "
+                    f"[Memory: {memory_info['process_mb']:.1f}MB, System: {memory_info['system_pct']:.1f}%]"
+                )
+                
                 conn.commit()
                 
         except Exception as e:
-            print(f"   Error processing spot {spot_id}: {e}")
+            logger.error(f"Error processing spot {spot_id}: {e}")
             stats['errors'] += 1
+    
+    # CLOSE PROGRESS BAR
+    progress_bar.close()
     
     conn.commit()
     conn.close()
     
-    print(f"✅ Assignment complete!")
-    print(f"   • Assigned: {stats['assigned']:,} spots")
-    print(f"   • Errors: {stats['errors']:,} spots")
+    # ENHANCED COMPLETION LOGGING
+    total_time = time.time() - start_time
+    logger.info(f"✅ Assignment complete in {total_time:.1f}s!")
+    logger.info(f"📊 Final stats: Assigned {stats['assigned']:,}, Errors {stats['errors']:,}")
+    logger.info(f"⚡ Average rate: {total_spots/total_time:.1f} spots/second")
     
     return stats
+
+def get_memory_usage():
+    """Get current memory usage statistics"""
+    try:
+        process = psutil.Process()
+        memory = process.memory_info()
+        system_memory = psutil.virtual_memory()
+        
+        return {
+            'process_mb': memory.rss / 1024 / 1024,
+            'system_pct': system_memory.percent,
+            'system_available_gb': system_memory.available / 1024 / 1024 / 1024
+        }
+    except:
+        return {'process_mb': 0, 'system_pct': 0, 'system_available_gb': 0}
 
 def get_blocks_spanned_for_spot(cursor, spot_data):
     """
@@ -124,12 +189,14 @@ def get_blocks_spanned_for_spot(cursor, spot_data):
             return 'multiple_blocks'
             
     except Exception as e:
-        print(f"   Warning: Could not determine blocks for market {spot_data.market_id}: {e}")
+        logger.warning(f"Could not determine blocks for market {spot_data.market_id}: {e}")
         # Return a safe default that satisfies the constraint
         return 'multiple_blocks'
 
 def get_assignment_stats():
     """Get current assignment statistics"""
+    logger.info("📊 Gathering assignment statistics...")
+    
     conn = sqlite3.connect('./data/database/production.db')
     cursor = conn.cursor()
     
@@ -156,16 +223,16 @@ def get_assignment_stats():
     
     conn.close()
     
-    print(f"\n📊 ASSIGNMENT STATISTICS:")
-    print(f"   • Total spots: {total_spots:,}")
-    print(f"   • Assigned spots: {assigned_spots:,} ({assigned_spots/total_spots*100:.1f}%)")
-    print(f"   • Business rule assignments: {business_rule_spots:,} ({business_rule_spots/total_spots*100:.1f}%)")
-    print(f"   • Unassigned spots: {total_spots - assigned_spots:,}")
+    logger.info(f"📊 ASSIGNMENT STATISTICS:")
+    logger.info(f"   • Total spots: {total_spots:,}")
+    logger.info(f"   • Assigned spots: {assigned_spots:,} ({assigned_spots/total_spots*100:.1f}%)")
+    logger.info(f"   • Business rule assignments: {business_rule_spots:,} ({business_rule_spots/total_spots*100:.1f}%)")
+    logger.info(f"   • Unassigned spots: {total_spots - assigned_spots:,}")
     
     if rule_breakdown:
-        print(f"\n🎯 BUSINESS RULE BREAKDOWN:")
+        logger.info(f"🎯 BUSINESS RULE BREAKDOWN:")
         for rule_type, count in rule_breakdown.items():
-            print(f"   • {rule_type}: {count:,}")
+            logger.info(f"   • {rule_type}: {count:,}")
     
     return {
         'total_spots': total_spots,

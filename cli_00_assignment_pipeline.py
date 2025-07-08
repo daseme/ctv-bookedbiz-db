@@ -1,40 +1,18 @@
 #!/usr/bin/env python3
 """
-Assignment Pipeline Orchestrator
-===============================
+Fixed Assignment Pipeline Orchestrator
+=====================================
 
-Coordinates language block and business rules assignment in the proper sequence.
-This script orchestrates the existing CLI scripts while maintaining separation of concerns.
-
-Features:
-- Real-time progress bars (requires: pip install tqdm)
-- Incremental processing for new data
-- Comprehensive error handling and rollback
-- Detailed progress tracking and reporting
-- Automatic chunking for large batches
-- Timeout protection to prevent stalls
-- Graceful error recovery
+Fixed version that properly handles the MMM-YY broadcast_month format in your database.
 
 Usage:
-    python cli_00_assignment_pipeline.py --year 2025           # Assign all spots for year
-    python cli_00_assignment_pipeline.py --test 100            # Test with 100 spots
-    python cli_00_assignment_pipeline.py --batch 5000          # Process 5000 spots
-    python cli_00_assignment_pipeline.py --recent              # Process recently added spots (last 3 days)
-    python cli_00_assignment_pipeline.py --since-date 2025-01-01  # Process spots since specific date
-    python cli_00_assignment_pipeline.py --last-week           # Process spots from last 7 days
-    python cli_00_assignment_pipeline.py --last-month          # Process spots from last 30 days
-    python cli_00_assignment_pipeline.py --status              # Show current status
-    python cli_00_assignment_pipeline.py --dry-run --recent    # Preview what would happen
-    python cli_00_assignment_pipeline.py --chunk-size 10000 --batch 50000  # Custom chunk size
-
-Installation:
-    pip install tqdm  # For progress bars (optional but recommended)
-
-Anti-Stall Features:
-- Automatic timeout detection (10 minutes without progress)
-- Chunked processing for large batches (25,000 spot chunks)
-- Graceful error recovery and retry logic
-- Process monitoring and cleanup
+    python cli_00_assignment_pipeline_fixed.py --year 2023           # Assign all spots for year 2023
+    python cli_00_assignment_pipeline_fixed.py --year 2024           # Assign all spots for year 2024
+    python cli_00_assignment_pipeline_fixed.py --year 2025           # Assign all spots for year 2025
+    python cli_00_assignment_pipeline_fixed.py --test 100            # Test with 100 spots
+    python cli_00_assignment_pipeline_fixed.py --batch 5000          # Process 5000 spots
+    python cli_00_assignment_pipeline_fixed.py --recent              # Process recently added spots
+    python cli_00_assignment_pipeline_fixed.py --status              # Show current status
 """
 
 import argparse
@@ -91,15 +69,63 @@ class AssignmentPipeline:
         if not self._validate_database():
             raise ValueError(f"Cannot connect to database: {db_path}")
     
+    def _get_year_broadcast_month_patterns(self, year: int) -> List[str]:
+        """Get broadcast_month patterns for a given year (handles MMM-YY format)"""
+        # Convert 4-digit year to 2-digit year
+        year_suffix = str(year)[-2:]  # Get last 2 digits (e.g., 2023 -> 23)
+        
+        # All possible month patterns
+        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
+        patterns = [f"{month}-{year_suffix}" for month in months]
+        return patterns
+    
+    def _get_year_unassigned_count(self, year: int) -> int:
+        """Get count of unassigned spots for a specific year (handles MMM-YY format)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get broadcast month patterns for this year
+            patterns = self._get_year_broadcast_month_patterns(year)
+            
+            # Create WHERE clause for all patterns
+            pattern_clauses = " OR ".join([f"s.broadcast_month = ?" for _ in patterns])
+            
+            query = f"""
+                SELECT COUNT(*) 
+                FROM spots s
+                LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+                WHERE slb.spot_id IS NULL
+                  AND ({pattern_clauses})
+                  AND s.market_id IS NOT NULL
+                  AND s.time_in IS NOT NULL
+                  AND s.time_out IS NOT NULL
+                  AND s.day_of_week IS NOT NULL
+            """
+            
+            cursor.execute(query, patterns)
+            result = cursor.fetchone()[0]
+            
+            # Debug logging
+            self.logger.info(f"Year {year} patterns: {patterns}")
+            self.logger.info(f"Found {result:,} unassigned spots for year {year}")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get year {year} unassigned count: {e}")
+            return 0
+        finally:
+            conn.close()
+    
     def _get_total_spots_to_process(self, year: Optional[int] = None, batch: Optional[int] = None,
                                    test: Optional[int] = None, recent: bool = False,
                                    since_date: Optional[str] = None, last_week: bool = False,
                                    last_month: bool = False) -> int:
         """Get total number of spots that will be processed"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
             if test:
                 return min(test, self._get_total_unassigned_spots())
             elif batch:
@@ -108,27 +134,14 @@ class AssignmentPipeline:
                 scope_stats = self._get_scope_stats(recent, since_date, last_week, last_month)
                 return scope_stats['unassigned_spots']
             elif year:
-                # Get unassigned spots for specific year
-                cursor.execute("""
-                    SELECT COUNT(*) 
-                    FROM spots s
-                    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-                    WHERE slb.spot_id IS NULL
-                      AND s.broadcast_month LIKE ?
-                      AND s.market_id IS NOT NULL
-                      AND s.time_in IS NOT NULL
-                      AND s.time_out IS NOT NULL
-                      AND s.day_of_week IS NOT NULL
-                """, (f'{year}-%',))
-                return cursor.fetchone()[0]
+                # Get unassigned spots for specific year using MMM-YY format
+                return self._get_year_unassigned_count(year)
             else:
                 return self._get_total_unassigned_spots()
                 
         except Exception as e:
             self.logger.error(f"Failed to get total spots count: {e}")
             return 0
-        finally:
-            conn.close()
     
     def _get_total_unassigned_spots(self) -> int:
         """Get total unassigned spots"""
@@ -349,7 +362,7 @@ class AssignmentPipeline:
                    test: Optional[int], recent: bool = False, 
                    since_date: Optional[str] = None, last_week: bool = False, 
                    last_month: bool = False) -> Dict[str, Any]:
-        """Run language block assignment (Stage 1)"""
+        """Run language block assignment (Stage 1) - FIXED for MMM-YY format"""
         cmd = ["python", "cli_01_assign_language_blocks.py", "--database", self.db_path]
         
         # Add appropriate arguments based on scope
@@ -371,7 +384,22 @@ class AssignmentPipeline:
                     'message': 'No spots to process in scope'
                 }
         elif year:
-            cmd.extend([f"--all-{year}"])
+            # For year-based processing, get the count and use batch mode
+            # since the cli_language_assignment.py script only supports --all-2024 and --all-2025
+            year_spots = self._get_year_unassigned_count(year)
+            if year_spots > 0:
+                if year in [2024, 2025]:
+                    cmd.extend([f"--all-{year}"])
+                else:
+                    # For other years (like 2023), use batch mode with the count
+                    self.logger.info(f"Using batch mode for year {year} with {year_spots:,} spots")
+                    cmd.extend(["--batch", str(year_spots)])
+            else:
+                return {
+                    'success': True,
+                    'stats': {'processed': 0, 'assigned': 0, 'errors': 0},
+                    'message': f'No unassigned spots found for year {year}'
+                }
         else:
             cmd.append("--status")
         
@@ -488,7 +516,7 @@ class AssignmentPipeline:
             self.logger.info(f"Executing: {' '.join(cmd)}")
             
             # Determine which stage for progress tracking
-            stage_key = "stage1" if "cli_01" in cmd[1] else "stage2"
+            stage_key = "stage1" if "cli_01_assign_language_blocks.py" in cmd[1] else "stage2"
             
             # Start subprocess with real-time output
             process = subprocess.Popen(
@@ -807,6 +835,26 @@ class AssignmentPipeline:
         """)
         business_rules = dict(cursor.fetchall())
         
+        # Get breakdown by year (handling MMM-YY format)
+        cursor.execute("""
+            SELECT 
+                CASE 
+                    WHEN broadcast_month LIKE '%-23' THEN '2023'
+                    WHEN broadcast_month LIKE '%-24' THEN '2024'
+                    WHEN broadcast_month LIKE '%-25' THEN '2025'
+                    ELSE 'Other'
+                END as year,
+                COUNT(*) as total_spots,
+                COUNT(slb.spot_id) as assigned_spots,
+                COUNT(*) - COUNT(slb.spot_id) as unassigned_spots
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            WHERE s.broadcast_month IS NOT NULL
+            GROUP BY year
+            ORDER BY year DESC
+        """)
+        year_breakdown = cursor.fetchall()
+        
         conn.close()
         
         return {
@@ -815,20 +863,20 @@ class AssignmentPipeline:
             'unassigned_spots': stats['unassigned_spots'],
             'assignment_percentage': (stats['assigned_spots'] / stats['total_spots'] * 100) if stats['total_spots'] > 0 else 0,
             'assignment_methods': assignment_methods,
-            'business_rules': business_rules
+            'business_rules': business_rules,
+            'year_breakdown': year_breakdown
         }
 
 
 def main():
     """Main CLI interface"""
-    parser = argparse.ArgumentParser(description="Assignment Pipeline Orchestrator")
+    parser = argparse.ArgumentParser(description="Fixed Assignment Pipeline Orchestrator")
     parser.add_argument("--database", default="data/database/production.db", help="Database path")
     parser.add_argument("--dry-run", action="store_true", help="Preview actions without making changes")
-    parser.add_argument("--chunk-size", type=int, default=25000, help="Chunk size for processing large batches (default: 25000)")
     
     # Mode selection (mutually exclusive)
     mode_group = parser.add_mutually_exclusive_group(required=True)
-    mode_group.add_argument("--year", type=int, help="Assign all spots for specified year (e.g., 2025)")
+    mode_group.add_argument("--year", type=int, help="Assign all spots for specified year (e.g., 2023, 2024, 2025)")
     mode_group.add_argument("--test", type=int, metavar="N", help="Test pipeline with N spots")
     mode_group.add_argument("--batch", type=int, metavar="N", help="Process N spots in pipeline")
     mode_group.add_argument("--recent", action="store_true", help="Process recently added unassigned spots")
@@ -840,7 +888,9 @@ def main():
     args = parser.parse_args()
     
     try:
-        pipeline = AssignmentPipeline(db_path=args.database, dry_run=args.dry_run, chunk_size=args.chunk_size)
+        # Handle missing chunk_size gracefully
+        chunk_size = getattr(args, 'chunk_size', 25000)
+        pipeline = AssignmentPipeline(db_path=args.database, dry_run=args.dry_run, chunk_size=chunk_size)
         
         if args.status:
             # Show current status
@@ -861,12 +911,11 @@ def main():
                 for rule, count in status['business_rules'].items():
                     print(f"   • {rule}: {count:,}")
             
-            # Show scope-specific stats if available
-            if hasattr(args, 'recent') and args.recent:
-                scope_stats = pipeline._get_scope_stats(recent=True)
-                print(f"\n🔍 RECENT SCOPE (last 3 days):")
-                print(f"   • Total spots: {scope_stats['total_spots']:,}")
-                print(f"   • Unassigned spots: {scope_stats['unassigned_spots']:,}")
+            if status['year_breakdown']:
+                print(f"\n📅 YEAR BREAKDOWN:")
+                for year, total, assigned, unassigned in status['year_breakdown']:
+                    percentage = (assigned / total * 100) if total > 0 else 0
+                    print(f"   • {year}: {total:,} total, {assigned:,} assigned ({percentage:.1f}%), {unassigned:,} unassigned")
         
         else:
             # Execute pipeline

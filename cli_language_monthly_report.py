@@ -10,6 +10,7 @@ Fixes:
 2. Separated Multi-Language (Cross-Audience) as its own revenue category
 3. Updated for new mmm-yy broadcast_month format (no more datetime parsing)
 4. Restored annual language performance grid from original
+5. Fixed tuple unpacking errors in get_month_revenue_data_aggregated
 
 Usage:
     python fixed_revenue_report.py 2024
@@ -74,20 +75,29 @@ class FixedRevenueReportGenerator:
         """Return month string as-is since it's already in mmm-yy format"""
         return month_str
     
-    def get_month_revenue_data_aggregated(self, month_str: str) -> Tuple:
+    def get_month_revenue_data_aggregated(self, month_str: str) -> Tuple[int, int, int, float]:
         """Get revenue data for a specific month in mmm-yy format"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT COUNT(*) as spots, SUM(gross_rate) as revenue
+            SELECT 
+                COUNT(*) as total_spots,
+                COUNT(CASE WHEN gross_rate > 0 THEN 1 END) as revenue_spots,
+                COUNT(CASE WHEN spot_type = 'BNS' THEN 1 END) as bonus_spots,
+                SUM(CASE WHEN gross_rate > 0 THEN gross_rate ELSE 0 END) as revenue
             FROM spots 
-            WHERE broadcast_month = ? AND gross_rate != 0
+            WHERE broadcast_month = ?
         """, (month_str,))
         
         result = cursor.fetchone()
         conn.close()
-        return result if result else (0, 0)
+        
+        if result:
+            total_spots, revenue_spots, bonus_spots, revenue = result
+            return (total_spots or 0, revenue_spots or 0, bonus_spots or 0, revenue or 0)
+        else:
+            return (0, 0, 0, 0)
     
     def get_language_block_data_aggregated(self, month_str: str) -> Tuple:
         """Get language block revenue data for a specific month in mmm-yy format"""
@@ -106,6 +116,10 @@ class FixedRevenueReportGenerator:
         
         lang_total_result = cursor.fetchone()
         total_lang_spots, total_lang_revenue = lang_total_result if lang_total_result else (0, 0)
+        
+        # Ensure we have valid numbers, not None
+        total_lang_spots = total_lang_spots or 0
+        total_lang_revenue = total_lang_revenue or 0
         
         # Get language breakdown - keep Multi-Language separate for detailed view
         cursor.execute("""
@@ -128,7 +142,7 @@ class FixedRevenueReportGenerator:
             LEFT JOIN languages l ON lb.language_id = l.language_id
             WHERE s.broadcast_month = ?
             GROUP BY language_name
-            HAVING SUM(s.gross_rate) != 0
+            HAVING COUNT(*) > 0
             ORDER BY revenue DESC
         """, (month_str,))
         
@@ -171,10 +185,9 @@ class FixedRevenueReportGenerator:
             LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
             LEFT JOIN agencies a ON s.agency_id = a.agency_id
             WHERE s.broadcast_month = ?
-              AND (s.gross_rate != 0 OR s.broker_fees != 0)
-              AND slb.spot_id IS NULL  -- Only non-language spots
+            AND slb.spot_id IS NULL
             GROUP BY category
-            HAVING revenue != 0
+            HAVING COUNT(*) > 0
             ORDER BY revenue DESC
         """, (month_str,))
         
@@ -206,7 +219,6 @@ class FixedRevenueReportGenerator:
             LEFT JOIN language_blocks lb ON slb.block_id = lb.block_id
             LEFT JOIN languages l ON lb.language_id = l.language_id
             WHERE s.broadcast_month LIKE ?
-              AND s.gross_rate > 0
             GROUP BY language_name
             ORDER BY revenue DESC
         """, (f'%-{year_suffix}',))
@@ -302,6 +314,9 @@ class FixedRevenueReportGenerator:
         
         direct_response_result = cursor.fetchone()
         direct_response_revenue, direct_response_spots = direct_response_result if direct_response_result else (0, 0)
+        # Ensure we have valid numbers, not None
+        direct_response_revenue = direct_response_revenue or 0
+        direct_response_spots = direct_response_spots or 0
         
         # Get Multi-Language (Cross-Audience) revenue - EXCLUDING Direct Response
         cursor.execute("""
@@ -321,6 +336,9 @@ class FixedRevenueReportGenerator:
         
         multi_lang_result = cursor.fetchone()
         multi_lang_revenue, multi_lang_spots = multi_lang_result if multi_lang_result else (0, 0)
+        # Ensure we have valid numbers, not None
+        multi_lang_revenue = multi_lang_revenue or 0
+        multi_lang_spots = multi_lang_spots or 0
         
         # Get Other Language Blocks revenue - EXCLUDING Direct Response
         cursor.execute("""
@@ -340,6 +358,9 @@ class FixedRevenueReportGenerator:
         
         other_lang_result = cursor.fetchone()
         other_lang_revenue, other_lang_spots = other_lang_result if other_lang_result else (0, 0)
+        # Ensure we have valid numbers, not None
+        other_lang_revenue = other_lang_revenue or 0
+        other_lang_spots = other_lang_spots or 0
         
         # Get Non-Language revenue - EXCLUDING Direct Response
         cursor.execute("""
@@ -359,22 +380,25 @@ class FixedRevenueReportGenerator:
         
         nonlang_result = cursor.fetchone()
         nonlang_revenue, nonlang_spots = nonlang_result if nonlang_result else (0, 0)
+        # Ensure we have valid numbers, not None
+        nonlang_revenue = nonlang_revenue or 0
+        nonlang_spots = nonlang_spots or 0
         
         conn.close()
         
         # Return breakdown with Direct Response separated
         revenue_breakdown = {
-            'Direct Response': direct_response_revenue or 0,
-            'Multi-Language (Cross-Audience)': multi_lang_revenue or 0,
-            'Targeted Language Blocks': other_lang_revenue or 0,
-            'Other Non-Language': nonlang_revenue or 0
+            'Direct Response': direct_response_revenue,
+            'Multi-Language (Cross-Audience)': multi_lang_revenue,
+            'Targeted Language Blocks': other_lang_revenue,
+            'Other Non-Language': nonlang_revenue
         }
         
         spots_breakdown = {
-            'Direct Response': direct_response_spots or 0,
-            'Multi-Language (Cross-Audience)': multi_lang_spots or 0,
-            'Targeted Language Blocks': other_lang_spots or 0,
-            'Other Non-Language': nonlang_spots or 0
+            'Direct Response': direct_response_spots,
+            'Multi-Language (Cross-Audience)': multi_lang_spots,
+            'Targeted Language Blocks': other_lang_spots,
+            'Other Non-Language': nonlang_spots
         }
         
         return revenue_breakdown, spots_breakdown
@@ -395,26 +419,34 @@ class FixedRevenueReportGenerator:
         
         if not broadcast_months:
             self.add_line(f"⚠️ **No data found for {year}!**")
+            self.add_line(f"**Note:** Looking for broadcast_month pattern '%-{str(year)[2:]}'")
             return "\n".join(self.report_lines)
+        
+        # Debug info
+        self.add_line(f"**Debug:** Found {len(broadcast_months)} months for {year}")
+        self.add_line(f"**Months:** {', '.join([month for month, _ in broadcast_months])}")
+        self.add_line()
         
         self.add_header("📋 Executive Summary", 2)
         
         year_total = 0
-        total_spots = 0
+        year_total_spots = 0
+        year_bonus_spots = 0
         
         # Calculate totals
         for month_str, sample_date in broadcast_months:
-            spots, revenue = self.get_month_revenue_data_aggregated(month_str)
-            if spots > 0:
-                year_total += revenue
-                total_spots += spots
+            total_spots, revenue_spots, bonus_spots, revenue = self.get_month_revenue_data_aggregated(month_str)
+            if total_spots > 0:
+                year_total += (revenue or 0)
+                year_total_spots += (total_spots or 0)
+                year_bonus_spots += (bonus_spots or 0)
         
         # Summary table
         self.add_table_row(["Metric", "Value"], True)
         self.add_table_row(["Total Revenue", f"${year_total:,.2f}"])
-        self.add_table_row(["Total Spots", f"{total_spots:,}"])
-        self.add_table_row(["Average per Spot", f"${year_total/total_spots:.2f}" if total_spots > 0 else "$0.00"])
-        self.add_table_row(["Closed Months", f"{len(broadcast_months)}"])
+        self.add_table_row(["Total Spots", f"{year_total_spots:,}"])
+        self.add_table_row(["Bonus Spots", f"{year_bonus_spots:,}"])
+        self.add_table_row(["Average per Spot", f"${year_total/year_total_spots:.2f}" if year_total_spots > 0 else "$0.00"])
         
         if target_revenue:
             difference = year_total - target_revenue
@@ -427,9 +459,9 @@ class FixedRevenueReportGenerator:
         self.add_header("📅 Monthly Revenue Breakdown", 2)
         
         for month_str, sample_date in broadcast_months:
-            spots, revenue = self.get_month_revenue_data_aggregated(month_str)
+            total_spots, revenue_spots, bonus_spots, revenue = self.get_month_revenue_data_aggregated(month_str)
             
-            if spots == 0:
+            if total_spots == 0:
                 continue
             
             display_name = self.get_month_display_name(month_str)
@@ -440,9 +472,12 @@ class FixedRevenueReportGenerator:
             
             # Non-language data
             nonlang_results = self.get_non_language_data_aggregated(month_str)
-            nonlang_total = sum(cat_revenue for _, cat_revenue in nonlang_results)
+            nonlang_total = sum((cat_revenue or 0) for _, cat_revenue in nonlang_results if cat_revenue is not None)
             
             # Revenue split
+            total_lang_revenue = total_lang_revenue or 0
+            revenue = revenue or 0
+            
             self.add_table_row(["Type", "Amount", "Percentage"], True)
             self.add_table_row([
                 "Language Blocks", 
@@ -455,6 +490,13 @@ class FixedRevenueReportGenerator:
                 f"{(nonlang_total/revenue*100):.1f}%" if revenue > 0 else "0.0%"
             ])
             
+            # BNS Analysis for this month
+            if bonus_spots > 0:
+                self.add_line()
+                self.add_line(f"**BNS Spot Analysis for {display_name}:**")
+                self.add_line(f"• Total BNS spots: {bonus_spots:,}")
+                self.add_line(f"• BNS percentage: {bonus_spots/total_spots*100:.1f}% of all spots")
+
             self.add_line()
         
         self.add_line("---")
@@ -586,6 +628,7 @@ class FixedRevenueReportGenerator:
         self.add_line("✅ **Language Block Exclusion**: Direct Response excluded from language categories")
         self.add_line("✅ **Multi-Language Separated**: Cross-audience advertising shown separately")
         self.add_line("✅ **New Format Support**: Updated for mmm-yy broadcast_month format")
+        self.add_line("✅ **Fixed Tuple Unpacking**: Corrected data extraction errors")
         
         return "\n".join(self.report_lines)
     
@@ -626,6 +669,7 @@ def main():
         print("   • Direct Response excluded from language block categories")
         print("   • Multi-Language (Cross-Audience) separated")
         print("   • Updated for new mmm-yy broadcast_month format")
+        print("   • Fixed tuple unpacking errors")
         
         content = generator.generate_report(args.year, args.target)
         

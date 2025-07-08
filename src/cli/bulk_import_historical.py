@@ -53,9 +53,9 @@ class MarketSetupManager:
             for i, header in enumerate(header_row):
                 if header:
                     header_str = str(header).strip().lower()
-                    if header_str in ['market_name', 'market', 'market_code']:
+                    if header_str in ['market_name', 'market', 'market_code', 'market name']:
                         market_col_index = i
-                    elif header_str in ['air_date', 'date', 'airdate']:
+                    elif header_str in ['start date', 'air date', 'date', 'airdate', 'air_date']:
                         air_date_col_index = i
             
             if market_col_index is None:
