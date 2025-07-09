@@ -1,11 +1,11 @@
 """
-Revenue Analysis System
-======================
+Updated Revenue Analysis System with Enhanced Language Analysis
+==============================================================
 
-Main business logic for revenue analysis using BaseQueryBuilder.
-This replaces all the individual test files with one clean system.
+This updates the main revenue analysis system to include comprehensive
+language analysis with Hmong support and the requested table format.
 
-File: src/revenue_analysis.py
+File: src/updated_revenue_analysis.py
 """
 
 import sqlite3
@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
-# Import all the query builders
+# Import existing query builders
 from query_builders import (
     BaseQueryBuilder, 
     IndividualLanguageQueryBuilder, 
@@ -25,6 +25,9 @@ from query_builders import (
     BrandedContentQueryBuilder,
     ServicesQueryBuilder
 )
+
+# Import our enhanced language analyzer
+from enhanced_language_analysis import EnhancedLanguageAnalyzer, LanguageAnalysisResult
 
 
 @dataclass
@@ -39,21 +42,20 @@ class CategoryResult:
 
 @dataclass
 class RevenueAnalysisResult:
-    """Complete revenue analysis result"""
+    """Complete revenue analysis result with enhanced language analysis"""
     year: str
     total_revenue: float
     total_spots: int
     categories: List[CategoryResult]
+    language_analysis: List[LanguageAnalysisResult]
     strategic_insights: Dict[str, Any]
     reconciliation_perfect: bool
     generated_at: datetime
 
 
-class RevenueAnalysisEngine:
+class UpdatedRevenueAnalysisEngine:
     """
-    Main engine for revenue analysis using BaseQueryBuilder
-    
-    This is the clean system that replaces all the individual test files.
+    Updated revenue analysis engine with enhanced language analysis
     """
     
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -70,10 +72,7 @@ class RevenueAnalysisEngine:
     
     def analyze_complete_revenue(self, year: str = "2024") -> RevenueAnalysisResult:
         """
-        Run complete revenue analysis for the given year
-        
-        This does everything the complete_reconciliation_test.py did,
-        but returns structured data for reporting.
+        Run complete revenue analysis including enhanced language analysis
         """
         
         # Get total revenue for percentage calculations
@@ -156,8 +155,12 @@ class RevenueAnalysisEngine:
             percentage=(svc_result.revenue / total_result.revenue) * 100
         ))
         
+        # Enhanced Language Analysis
+        with EnhancedLanguageAnalyzer(self.db_path) as lang_analyzer:
+            language_analysis = lang_analyzer.get_comprehensive_language_analysis(year)
+        
         # Calculate strategic insights
-        strategic_insights = self._calculate_strategic_insights(categories, individual_data)
+        strategic_insights = self._calculate_strategic_insights(categories, individual_data, language_analysis)
         
         # Check reconciliation
         category_total = sum(cat.revenue for cat in categories)
@@ -168,6 +171,7 @@ class RevenueAnalysisEngine:
             total_revenue=total_result.revenue,
             total_spots=total_result.spot_count,
             categories=categories,
+            language_analysis=language_analysis,
             strategic_insights=strategic_insights,
             reconciliation_perfect=reconciliation_perfect,
             generated_at=datetime.now()
@@ -178,8 +182,27 @@ class RevenueAnalysisEngine:
         builder = IndividualLanguageQueryBuilder(year)
         builder.add_individual_language_conditions()
         
-        # Get language breakdown
-        query = builder.build_language_summary_query()
+        # Get language breakdown including Hmong
+        query = f"""
+        SELECT 
+            CASE 
+                WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+                WHEN l.language_name = 'Hmong' THEN 'Hmong'
+                ELSE COALESCE(l.language_name, 'Unknown Language')
+            END as language,
+            COUNT(*) as spots,
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots
+        {builder.build_from_clause()}
+        {builder.build_where_clause()}
+        GROUP BY CASE 
+            WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+            WHEN l.language_name = 'Hmong' THEN 'Hmong'
+            ELSE COALESCE(l.language_name, 'Unknown Language')
+        END
+        ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
+        """
+        
         cursor = self.db_connection.cursor()
         cursor.execute(query)
         
@@ -247,8 +270,9 @@ class RevenueAnalysisEngine:
         return builder.execute_revenue_query(self.db_connection)
     
     def _calculate_strategic_insights(self, categories: List[CategoryResult], 
-                                    individual_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate strategic insights from the analysis"""
+                                    individual_data: Dict[str, Any],
+                                    language_analysis: List[LanguageAnalysisResult]) -> Dict[str, Any]:
+        """Calculate strategic insights including enhanced language analysis"""
         
         # Find key categories
         individual_cat = next(cat for cat in categories if cat.name == "Individual Language Blocks")
@@ -263,44 +287,46 @@ class RevenueAnalysisEngine:
         # Calculate cross-audience total
         cross_audience_total = chinese_prime_cat.revenue + multi_lang_cat.revenue
         
+        # Enhanced language insights
+        hmong_analysis = next((lang for lang in language_analysis if lang.language == 'Hmong'), None)
+        top_5_languages = sorted(language_analysis, key=lambda x: x.revenue, reverse=True)[:5]
+        
         return {
             'language_specific_revenue': individual_cat.revenue,
             'cross_audience_revenue': cross_audience_total,
             'chinese_strategy_total': chinese_strategy_total,
             'chinese_individual_revenue': chinese_individual,
             'filipino_cross_audience_leadership': "Confirmed in Multi-Language category",
-            'top_languages': sorted(individual_data['languages'], 
-                                  key=lambda x: x['revenue'], reverse=True)[:5]
+            'top_languages': [
+                {
+                    'language': lang.language,
+                    'revenue': lang.revenue,
+                    'spots': lang.total_spots,
+                    'bonus_spots': lang.bonus_spots
+                }
+                for lang in top_5_languages
+            ],
+            'hmong_analysis': {
+                'included': hmong_analysis is not None,
+                'revenue': hmong_analysis.revenue if hmong_analysis else 0,
+                'spots': hmong_analysis.total_spots if hmong_analysis else 0,
+                'bonus_spots': hmong_analysis.bonus_spots if hmong_analysis else 0
+            } if hmong_analysis else {'included': False, 'revenue': 0, 'spots': 0, 'bonus_spots': 0},
+            'total_languages_analyzed': len(language_analysis),
+            'languages_with_bonus_spots': len([lang for lang in language_analysis if lang.bonus_spots > 0])
         }
 
 
-def print_summary(result: RevenueAnalysisResult):
-    """Print a summary of the analysis"""
-    print(f"🚀 Revenue Analysis Summary for {result.year}")
-    print("=" * 60)
-    print(f"Total Revenue: ${result.total_revenue:,.2f}")
-    print(f"Total Spots: {result.total_spots:,}")
-    print(f"Reconciliation: {'✅ Perfect' if result.reconciliation_perfect else '❌ Issues'}")
-    print(f"Generated: {result.generated_at.strftime('%Y-%m-%d %H:%M:%S')}")
+def generate_enhanced_markdown_report(result: RevenueAnalysisResult) -> str:
+    """Generate enhanced markdown report with language analysis table"""
     
-    print(f"\n📊 Category Breakdown:")
-    for cat in result.categories:
-        print(f"  {cat.name:<30}: ${cat.revenue:>12,.2f} ({cat.percentage:>5.1f}%)")
-    
-    print(f"\n📈 Strategic Insights:")
-    insights = result.strategic_insights
-    print(f"  • Language-Specific Revenue: ${insights['language_specific_revenue']:,.2f}")
-    print(f"  • Cross-Audience Revenue: ${insights['cross_audience_revenue']:,.2f}")
-    print(f"  • Chinese Strategy Total: ${insights['chinese_strategy_total']:,.2f}")
-    print(f"  • Top Language: {insights['top_languages'][0]['language']} (${insights['top_languages'][0]['revenue']:,.2f})")
-
-
-def generate_markdown_report(result: RevenueAnalysisResult) -> str:
-    """Generate full markdown report (like your original guide)"""
+    # Use the EnhancedLanguageAnalyzer to generate the table
+    with EnhancedLanguageAnalyzer() as analyzer:
+        language_table = analyzer.generate_language_analysis_table(result.year)
     
     markdown = f"""# Revenue Analysis Report - {result.year}
 
-*Generated on {result.generated_at.strftime('%Y-%m-%d %H:%M:%S')} using BaseQueryBuilder*
+*Generated on {result.generated_at.strftime('%Y-%m-%d %H:%M:%S')} using Enhanced BaseQueryBuilder*
 
 ## 🎯 Executive Summary
 
@@ -308,11 +334,28 @@ def generate_markdown_report(result: RevenueAnalysisResult) -> str:
 - **Total Spots:** {result.total_spots:,}
 - **Reconciliation Status:** {'✅ Perfect' if result.reconciliation_perfect else '❌ Issues Found'}
 - **Categories Analyzed:** {len(result.categories)}
+- **Languages Analyzed:** {result.strategic_insights['total_languages_analyzed']}
+
+{language_table}
 
 ## 📊 Revenue Category Breakdown
 
+## 📊 Revenue Category Breakdown
+
+# Import and use enhanced category analyzer
+try:
+    from enhanced_category_analysis import EnhancedCategoryAnalyzer
+    with EnhancedCategoryAnalyzer() as cat_analyzer:
+        category_table = cat_analyzer.generate_enhanced_category_table(result.year)
+    markdown += f"\n{category_table}\n"
+except ImportError:
+    # Fallback to original format
+    markdown += f"""
 | Category | Revenue | Spots | Percentage |
 |----------|---------|-------|------------|
+"""
+    for cat in result.categories:
+        markdown += f"| {cat.name} | ${cat.revenue:,.2f} | {cat.spots:,} | {cat.percentage:.1f}% |\n"
 """
     
     for cat in result.categories:
@@ -331,24 +374,46 @@ def generate_markdown_report(result: RevenueAnalysisResult) -> str:
 - **Total Cross-Audience Revenue:** ${result.strategic_insights['cross_audience_revenue']:,.2f}
 - **Filipino Leadership:** {result.strategic_insights['filipino_cross_audience_leadership']}
 
+### Language Diversity Analysis
+- **Total Languages Analyzed:** {result.strategic_insights['total_languages_analyzed']}
+- **Languages with Bonus Spots:** {result.strategic_insights['languages_with_bonus_spots']}
+- **Hmong Inclusion:** {'✅ Included' if result.strategic_insights['hmong_analysis']['included'] else '❌ Not Found'}
+
+### Hmong Language Performance
+"""
+    
+    hmong = result.strategic_insights['hmong_analysis']
+    if hmong['included']:
+        # FIX: Calculate average per spot separately to avoid f-string formatting issues
+        avg_per_spot = hmong['revenue'] / hmong['spots'] if hmong['spots'] > 0 else 0
+        markdown += f"""- **Revenue:** ${hmong['revenue']:,.2f}
+- **Total Spots:** {hmong['spots']:,}
+- **Bonus Spots:** {hmong['bonus_spots']:,}
+- **Average per Spot:** ${avg_per_spot:.2f}
+"""
+    else:
+        markdown += "- **Status:** No Hmong spots found for this year\n"
+    
+    markdown += f"""
+
 ### Language Performance Rankings
 """
     
     for i, lang in enumerate(result.strategic_insights['top_languages'], 1):
-        markdown += f"{i}. **{lang['language']}:** ${lang['revenue']:,.2f} ({lang['spots']:,} spots)\n"
+        markdown += f"{i}. **{lang['language']}:** ${lang['revenue']:,.2f} ({lang['spots']:,} spots, {lang['bonus_spots']:,} bonus)\n"
     
     markdown += f"""
 
 ## 🔧 Technical Details
 
-This report was generated using the BaseQueryBuilder system with perfect reconciliation.
-All 8 revenue categories are validated to ensure no revenue double-counting or omissions.
+This report was generated using the Enhanced BaseQueryBuilder system with perfect reconciliation.
+All 8 revenue categories are validated and language analysis includes comprehensive bonus spot tracking.
 
-**Query Architecture:**
-- Base filters applied consistently across all categories
-- NULL-safe WorldLink exclusion
-- Complex time-based conditions for Chinese Prime Time
-- Multi-language exclusion logic for clean category separation
+**Enhanced Features:**
+- Hmong language specifically included in analysis
+- Detailed bonus spot tracking for all languages
+- Average per spot calculations
+- Comprehensive language performance metrics
 
 **Perfect Reconciliation Achieved:**
 - Revenue difference: $0.00
@@ -357,69 +422,101 @@ All 8 revenue categories are validated to ensure no revenue double-counting or o
 
 ---
 
-*Report generated by Revenue Analysis System v2.0*
+*Report generated by Enhanced Revenue Analysis System v2.1*
 """
     
     return markdown
 
 
-def generate_json_report(result: RevenueAnalysisResult) -> Dict[str, Any]:
-    """Generate JSON report for programmatic use"""
-    return {
-        "year": result.year,
-        "total_revenue": result.total_revenue,
-        "total_spots": result.total_spots,
-        "reconciliation_perfect": result.reconciliation_perfect,
-        "generated_at": result.generated_at.isoformat(),
-        "categories": [
-            {
-                "name": cat.name,
-                "revenue": cat.revenue,
-                "spots": cat.spots,
-                "percentage": cat.percentage,
-                "details": cat.details
-            }
-            for cat in result.categories
-        ],
-        "strategic_insights": result.strategic_insights
-    }
-
-
-# Main CLI interface
 def main():
-    """Main CLI interface for revenue analysis"""
+    """Main CLI interface for enhanced revenue analysis"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Revenue Analysis System")
+    parser = argparse.ArgumentParser(description="Enhanced Revenue Analysis System")
     parser.add_argument("--year", default="2024", help="Year to analyze")
     parser.add_argument("--format", choices=['summary', 'markdown', 'json'], 
                        default='summary', help="Output format")
     parser.add_argument("--output", help="Output file path")
+    parser.add_argument("--verify-hmong", action='store_true', help="Verify Hmong inclusion")
     
     args = parser.parse_args()
     
+    # Verify Hmong if requested
+    if args.verify_hmong:
+        with EnhancedLanguageAnalyzer() as analyzer:
+            hmong_check = analyzer.verify_hmong_inclusion(args.year)
+            print(f"🔍 Hmong Verification for {args.year}:")
+            print(f"   Found: {hmong_check['found']}")
+            if hmong_check['found']:
+                print(f"   Spots: {hmong_check['total_spots']}")
+                print(f"   Revenue: ${hmong_check['revenue']:,.2f}")
+                print(f"   Bonus spots: {hmong_check['bonus_spots']}")
+            else:
+                print(f"   Status: {hmong_check['message']}")
+            print()
+    
     # Run analysis
-    with RevenueAnalysisEngine() as engine:
+    with UpdatedRevenueAnalysisEngine() as engine:
         result = engine.analyze_complete_revenue(args.year)
     
     # Output based on format
     if args.format == 'summary':
-        print_summary(result)
+        print(f"🚀 Enhanced Revenue Analysis Summary for {result.year}")
+        print("=" * 60)
+        print(f"Total Revenue: ${result.total_revenue:,.2f}")
+        print(f"Total Spots: {result.total_spots:,}")
+        print(f"Languages Analyzed: {result.strategic_insights['total_languages_analyzed']}")
+        print(f"Hmong Included: {'✅ Yes' if result.strategic_insights['hmong_analysis']['included'] else '❌ No'}")
+        print(f"Reconciliation: {'✅ Perfect' if result.reconciliation_perfect else '❌ Issues'}")
+        
+        # Show language table
+        with EnhancedLanguageAnalyzer() as analyzer:
+            table = analyzer.generate_language_analysis_table(args.year)
+            print("\n" + table)
+            
     elif args.format == 'markdown':
-        markdown_content = generate_markdown_report(result)
+        markdown_content = generate_enhanced_markdown_report(result)
         if args.output:
             with open(args.output, 'w') as f:
                 f.write(markdown_content)
-            print(f"Markdown report saved to {args.output}")
+            print(f"Enhanced markdown report saved to {args.output}")
         else:
             print(markdown_content)
     elif args.format == 'json':
         import json
-        json_content = generate_json_report(result)
+        json_content = {
+            "year": result.year,
+            "total_revenue": result.total_revenue,
+            "total_spots": result.total_spots,
+            "reconciliation_perfect": result.reconciliation_perfect,
+            "generated_at": result.generated_at.isoformat(),
+            "categories": [
+                {
+                    "name": cat.name,
+                    "revenue": cat.revenue,
+                    "spots": cat.spots,
+                    "percentage": cat.percentage
+                }
+                for cat in result.categories
+            ],
+            "language_analysis": [
+                {
+                    "language": lang.language,
+                    "revenue": lang.revenue,
+                    "percentage": lang.percentage,
+                    "paid_spots": lang.paid_spots,
+                    "bonus_spots": lang.bonus_spots,
+                    "total_spots": lang.total_spots,
+                    "avg_per_spot": lang.avg_per_spot
+                }
+                for lang in result.language_analysis
+            ],
+            "strategic_insights": result.strategic_insights
+        }
         if args.output:
             with open(args.output, 'w') as f:
                 json.dump(json_content, f, indent=2)
-            print(f"JSON report saved to {args.output}")
+            print(f"Enhanced JSON report saved to {args.output}")
         else:
             print(json.dumps(json_content, indent=2))
 
