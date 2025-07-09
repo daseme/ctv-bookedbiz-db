@@ -4,14 +4,32 @@ Standalone Language Block Assignment Script
 ===========================================
 
 This script includes the Language Block Service directly to avoid import issues.
-Run this to assign your 338K unassigned 2025 spots to language blocks!
+Run this to assign your unassigned spots to language blocks for any year!
+
+Features:
+- Dynamic year support (2023, 2024, 2025, 2026+)
+- Chinese language family recognition (Cantonese + Mandarin = Chinese intention)
+- Same-language multi-block assignment (e.g., Filipino 16:00-19:00)
+- Perfect grid coverage with intelligent intent analysis
+- Comprehensive error handling and progress tracking
 
 Usage:
-    python cli_language_assignment.py --test 10           # Test with 10 spots
-    python cli_language_assignment.py --batch 1000        # Assign 1000 spots
-    python cli_language_assignment.py --all-2025          # Assign all unassigned 2025 spots
-    python cli_language_assignment.py --all-2024          # Assign all unassigned 2024 spots
-    python cli_language_assignment.py --status            # Show assignment status by year
+    python cli_01_assign_language_blocks.py --test 100           # Test with 100 spots
+    python cli_01_assign_language_blocks.py --batch 1000        # Assign 1000 spots
+    python cli_01_assign_language_blocks.py --all-year 2025     # Assign all unassigned 2025 spots
+    python cli_01_assign_language_blocks.py --all-year 2024     # Assign all unassigned 2024 spots
+    python cli_01_assign_language_blocks.py --all-year 2023     # Assign all unassigned 2023 spots
+    python cli_01_assign_language_blocks.py --status            # Show assignment status by year
+
+Assignment Logic:
+- language_specific: Spots targeting single language or Chinese family (Cantonese+Mandarin)
+- indifferent: Long-duration spots spanning multiple different language families
+- no_coverage: Spots with no language block coverage (minimal with proper grid)
+
+Database Requirements:
+- SQLite 3.x compatible
+- Requires language_blocks, spots, and spot_language_blocks tables
+- Broadcast month format: MMM-YY (e.g., Jan-25, Feb-25)
 """
 
 import sqlite3
@@ -83,6 +101,7 @@ class AssignmentResult:
     requires_attention: bool = False
     alert_reason: Optional[str] = None
     error_message: Optional[str] = None
+    campaign_type: str = 'language_specific' 
 
 
 class LanguageBlockService:
@@ -380,57 +399,114 @@ class LanguageBlockService:
     
     def _create_assignment(self, spot: SpotData, schedule_id: int, 
                             blocks: List[LanguageBlock]) -> AssignmentResult:
-            """Create assignment based on spot and overlapping blocks"""
+        """Create assignment based on spot and overlapping blocks"""
+        
+        if len(blocks) == 1:
+            # Single block assignment
+            block = blocks[0]
+            intent = self._analyze_single_block_intent(spot, block)
             
-            if len(blocks) == 1:
-                # Single block assignment
-                block = blocks[0]
-                intent = self._analyze_single_block_intent(spot, block)
-                
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=schedule_id,
+                block_id=block.block_id,
+                customer_intent=intent,
+                spans_multiple_blocks=False,
+                primary_block_id=block.block_id,
+                requires_attention=intent == CustomerIntent.TIME_SPECIFIC,
+                campaign_type='language_specific'  # Single block = language specific
+            )
+        
+        else:
+            # Multi-block assignment
+            intent = self._analyze_multi_block_intent(spot, blocks)
+            primary_block = self._select_primary_block(spot, blocks)
+            
+            # Calculate spot duration in minutes
+            spot_duration = self._calculate_spot_duration(spot.time_in, spot.time_out)
+            
+            # Determine campaign type based on duration and intent
+            campaign_type = self._determine_campaign_type(intent, spot_duration, len(blocks))
+            
+            # If customer intent is indifferent, don't create language block assignment
+            if intent == CustomerIntent.INDIFFERENT:
                 return AssignmentResult(
                     spot_id=spot.spot_id,
                     success=True,
                     schedule_id=schedule_id,
-                    block_id=block.block_id,
+                    block_id=None,  # Will not be saved to database
                     customer_intent=intent,
-                    spans_multiple_blocks=False,
-                    primary_block_id=block.block_id,
-                    requires_attention=intent == CustomerIntent.TIME_SPECIFIC
+                    spans_multiple_blocks=True,
+                    blocks_spanned=[b.block_id for b in blocks],
+                    primary_block_id=primary_block.block_id if primary_block else None,
+                    requires_attention=True,
+                    alert_reason=f"Multi-language campaign ({campaign_type}) - left unassigned for non-language categorization",
+                    campaign_type=campaign_type
                 )
             
-            else:
-                # Multi-block assignment - FIXED: Don't assign if indifferent
-                intent = self._analyze_multi_block_intent(spot, blocks)
-                primary_block = self._select_primary_block(spot, blocks)
-                
-                # FIXED: If customer intent is indifferent, don't create language block assignment
-                # Let it remain unassigned and appear in non-language revenue
-                if intent == CustomerIntent.INDIFFERENT:
-                    return AssignmentResult(
-                        spot_id=spot.spot_id,
-                        success=True,
-                        schedule_id=schedule_id,
-                        block_id=None,  # Will not be saved to database
-                        customer_intent=intent,
-                        spans_multiple_blocks=True,
-                        blocks_spanned=[b.block_id for b in blocks],
-                        primary_block_id=primary_block.block_id if primary_block else None,
-                        requires_attention=True,
-                        alert_reason="Indifferent intent - left unassigned for non-language categorization"
-                    )
-                
-                # For TIME_SPECIFIC multi-block, assign to primary block
+            # For LANGUAGE_SPECIFIC multi-block (same language across blocks)
+            # Treat as single-block assignment using primary block
+            elif intent == CustomerIntent.LANGUAGE_SPECIFIC:
                 return AssignmentResult(
                     spot_id=spot.spot_id,
                     success=True,
                     schedule_id=schedule_id,
                     block_id=primary_block.block_id if primary_block else None,
                     customer_intent=intent,
-                    spans_multiple_blocks=True,
+                    spans_multiple_blocks=False,  # Treat as single block for DB constraint
+                    blocks_spanned=[b.block_id for b in blocks],  # But track all blocks spanned
+                    primary_block_id=primary_block.block_id if primary_block else None,
+                    requires_attention=len(blocks) > 3,
+                    campaign_type='language_specific'  # Same language family = language specific
+                )
+            
+            # For TIME_SPECIFIC multi-block, assign to primary block
+            else:  # TIME_SPECIFIC
+                return AssignmentResult(
+                    spot_id=spot.spot_id,
+                    success=True,
+                    schedule_id=schedule_id,
+                    block_id=primary_block.block_id if primary_block else None,
+                    customer_intent=intent,
+                    spans_multiple_blocks=False,  # Treat as single block for DB constraint
                     blocks_spanned=[b.block_id for b in blocks],
                     primary_block_id=primary_block.block_id if primary_block else None,
-                    requires_attention=len(blocks) > 3
+                    requires_attention=len(blocks) > 3,
+                    campaign_type='language_specific'  # Time specific = language specific
                 )
+
+
+    def _calculate_spot_duration(self, time_in: str, time_out: str) -> int:
+        """Calculate spot duration in minutes"""
+        try:
+            start_minutes = self._time_to_minutes(time_in)
+            end_minutes = self._time_to_minutes(time_out)
+            
+            if end_minutes >= start_minutes:
+                return end_minutes - start_minutes
+            else:
+                # Handle midnight rollover
+                return (24 * 60) - start_minutes + end_minutes
+        except:
+            return 0
+
+
+    def _determine_campaign_type(self, intent: CustomerIntent, duration_minutes: int, block_count: int) -> str:
+        """Determine campaign type based on intent, duration, and block count"""
+        
+        if intent == CustomerIntent.LANGUAGE_SPECIFIC:
+            return 'language_specific'
+        
+        elif intent == CustomerIntent.INDIFFERENT:
+            # Roadblock detection: 17+ hours (1020+ minutes) or 15+ blocks
+            if duration_minutes >= 1020 or block_count >= 15:
+                return 'roadblock'
+            else:
+                return 'multi_language'
+        
+        else:  # TIME_SPECIFIC
+            return 'language_specific'
     
     def _analyze_single_block_intent(self, spot: SpotData, block: LanguageBlock) -> CustomerIntent:
         """Analyze customer intent for single block assignment"""
@@ -444,15 +520,18 @@ class LanguageBlockService:
     def _analyze_multi_block_intent(self, spot: SpotData, blocks: List[LanguageBlock]) -> CustomerIntent:
         """Analyze customer intent for multi-block assignment"""
         unique_languages = set(b.language_id for b in blocks)
-        unique_day_parts = set(b.day_part for b in blocks)
         
+        # Check for same language
         if len(unique_languages) == 1:
-            if len(unique_day_parts) == 1:
-                return CustomerIntent.TIME_SPECIFIC
-            else:
-                return CustomerIntent.INDIFFERENT
-        else:
-            return CustomerIntent.INDIFFERENT
+            return CustomerIntent.LANGUAGE_SPECIFIC
+        
+        # Check for Chinese language family (Mandarin + Cantonese)
+        chinese_languages = {2, 3}  # Mandarin=2, Cantonese=3 (from your language table)
+        if unique_languages.issubset(chinese_languages):
+            return CustomerIntent.LANGUAGE_SPECIFIC  # Chinese intention
+        
+        # Multiple different language families = truly indifferent
+        return CustomerIntent.INDIFFERENT
     
     def _select_primary_block(self, spot: SpotData, blocks: List[LanguageBlock]) -> Optional[LanguageBlock]:
         """Select primary block for multi-block assignment"""
@@ -481,8 +560,8 @@ class LanguageBlockService:
                     spot_id, schedule_id, block_id, customer_intent, intent_confidence,
                     spans_multiple_blocks, blocks_spanned, primary_block_id,
                     assignment_method, assigned_date, assigned_by,
-                    requires_attention, alert_reason, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    requires_attention, alert_reason, notes, campaign_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 result.spot_id,
                 result.schedule_id,
@@ -497,7 +576,8 @@ class LanguageBlockService:
                 'system',
                 result.requires_attention,
                 result.alert_reason,
-                result.error_message
+                result.error_message,
+                result.campaign_type  # NEW FIELD
             ))
             
             self.db.commit()
@@ -581,59 +661,13 @@ class LanguageBlockService:
         return self.stats.copy()
 
 
-def get_unassigned_2025_count(db_connection):
-    """Get count of unassigned 2025 spots"""
-    cursor = db_connection.cursor()
-    
-    query = """
-    SELECT COUNT(*) as unassigned_count,
-           SUM(gross_rate) as unassigned_revenue
-    FROM spots s
-    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-    WHERE s.broadcast_month LIKE '2025%'
-      AND slb.spot_id IS NULL
-      AND s.market_id IS NOT NULL
-      AND s.time_in IS NOT NULL
-      AND s.time_out IS NOT NULL
-      AND s.day_of_week IS NOT NULL
-      AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-    """
-    
-    cursor.execute(query)
-    row = cursor.fetchone()
-    return row[0], row[1] if row else (0, 0)
-
-
-def get_unassigned_2024_count(db_connection):
-    """Get count of unassigned 2024 spots"""
-    cursor = db_connection.cursor()
-    
-    query = """
-    SELECT COUNT(*) as unassigned_count,
-           SUM(gross_rate) as unassigned_revenue
-    FROM spots s
-    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-    WHERE s.broadcast_month LIKE '2024%'
-      AND slb.spot_id IS NULL
-      AND s.market_id IS NOT NULL
-      AND s.time_in IS NOT NULL
-      AND s.time_out IS NOT NULL
-      AND s.day_of_week IS NOT NULL
-      AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-    """
-    
-    cursor.execute(query)
-    row = cursor.fetchone()
-    return row[0], row[1] if row else (0, 0)
-
-
 def get_unassigned_by_year_summary(db_connection):
-    """Get summary of unassigned spots by year"""
+    """Get summary of unassigned spots by year (updated for any year)"""
     cursor = db_connection.cursor()
     
     query = """
     SELECT 
-        SUBSTR(s.broadcast_month, 1, 4) as year,
+        '20' || SUBSTR(s.broadcast_month, -2) as year,
         COUNT(*) as total_spots,
         COUNT(slb.spot_id) as assigned_spots,
         COUNT(*) - COUNT(slb.spot_id) as unassigned_spots,
@@ -643,17 +677,80 @@ def get_unassigned_by_year_summary(db_connection):
     FROM spots s
     LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
     WHERE s.market_id IS NOT NULL
-      AND s.time_in IS NOT NULL
-      AND s.time_out IS NOT NULL
-      AND s.day_of_week IS NOT NULL
-      AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-      AND s.broadcast_month IS NOT NULL
-    GROUP BY year
+    AND s.time_in IS NOT NULL
+    AND s.time_out IS NOT NULL
+    AND s.day_of_week IS NOT NULL
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND s.broadcast_month IS NOT NULL
+    GROUP BY SUBSTR(s.broadcast_month, -2)
     ORDER BY year DESC
     """
     
     cursor.execute(query)
     return cursor.fetchall()
+
+def get_unassigned_year_count(db_connection, year: int):
+    """Get count of unassigned spots for any year"""
+    cursor = db_connection.cursor()
+    year_suffix = str(year)[-2:]  # Get last 2 digits (e.g., 2023 -> 23)
+    
+    query = """
+    SELECT COUNT(*) as unassigned_count,
+        SUM(gross_rate) as unassigned_revenue
+    FROM spots s
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+    WHERE s.broadcast_month LIKE ?
+    AND slb.spot_id IS NULL
+    AND s.market_id IS NOT NULL
+    AND s.time_in IS NOT NULL
+    AND s.time_out IS NOT NULL
+    AND s.day_of_week IS NOT NULL
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    """
+    
+    cursor.execute(query, (f'%-{year_suffix}',))
+    row = cursor.fetchone()
+    return row[0], row[1] if row else (0, 0)
+
+
+def get_available_years(db_connection):
+    """Get list of available years in the database"""
+    cursor = db_connection.cursor()
+    
+    query = """
+    SELECT DISTINCT '20' || SUBSTR(broadcast_month, -2) as year
+    FROM spots 
+    WHERE broadcast_month IS NOT NULL
+    ORDER BY year DESC
+    """
+    
+    cursor.execute(query)
+    return [row[0] for row in cursor.fetchall()]
+
+
+def get_unassigned_spot_ids_for_year(db_connection, year: int, limit: int = None):
+    """Get spot IDs that don't have language block assignments for specific year"""
+    cursor = db_connection.cursor()
+    year_suffix = str(year)[-2:]  # Get last 2 digits
+    
+    query = """
+    SELECT s.spot_id
+    FROM spots s
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+    WHERE s.broadcast_month LIKE ?
+    AND slb.spot_id IS NULL
+    AND s.market_id IS NOT NULL
+    AND s.time_in IS NOT NULL
+    AND s.time_out IS NOT NULL
+    AND s.day_of_week IS NOT NULL
+    ORDER BY s.spot_id
+    """
+    
+    if limit:
+        query += f" LIMIT {limit}"
+    
+    cursor.execute(query, (f'%-{year_suffix}',))
+    return [row[0] for row in cursor.fetchall()]
 
 
 def main():
@@ -665,8 +762,7 @@ def main():
     mode_group = parser.add_mutually_exclusive_group(required=True)
     mode_group.add_argument("--test", type=int, metavar="N", help="Test assignment with N spots")
     mode_group.add_argument("--batch", type=int, metavar="N", help="Assign N unassigned spots")
-    mode_group.add_argument("--all-2025", action="store_true", help="Assign all unassigned 2025 spots")
-    mode_group.add_argument("--all-2024", action="store_true", help="Assign all unassigned 2024 spots") 
+    mode_group.add_argument("--all-year", type=int, metavar="YYYY", help="Assign all unassigned spots for specific year (e.g., 2023, 2024, 2025)")
     mode_group.add_argument("--status", action="store_true", help="Show current assignment status")
     
     args = parser.parse_args()
@@ -700,7 +796,10 @@ def main():
                 
                 print(f"{year:6} {total_spots:>12,} {assigned_spots:>10,} {unassigned_spots:>12,} {assigned_pct:>9.1f}% ${unassigned_revenue:>17,.0f}")
             
-            print(f"\n💡 Use --all-2024 or --all-2025 to assign all spots for a specific year")
+            available_years = get_available_years(conn)
+            print(f"Available years: {', '.join(available_years)}")
+            print(f"\n💡 Use --all-year YYYY to assign all spots for a specific year")
+            print(f"💡 Example: --all-year 2023 or --all-year 2025")
             
         elif args.test:
             # Test mode
@@ -753,102 +852,41 @@ def main():
             print(f"   • Multi-block: {results['multi_block']}")
             print(f"   • No coverage: {results['no_coverage']}")
             print(f"   • Errors: {results['errors']}")
-            
-        elif args.all_2025:
-            # All 2025 mode
-            unassigned_count, unassigned_revenue = get_unassigned_2025_count(conn)
-            
-            if unassigned_count == 0:
-                print("✅ All 2025 spots are already assigned!")
-                return 0
-            
-            print(f"\n🎯 ASSIGNING ALL 2025 SPOTS:")
-            print(f"   • Found {unassigned_count:,} unassigned 2025 spots")
-            print(f"   • Total unassigned revenue: ${unassigned_revenue:,.2f}")
-            
-            confirm = input(f"\nProceed with assignment? (yes/no): ").strip().lower()
-            if confirm not in ['yes', 'y']:
-                print("❌ Assignment cancelled")
-                return 0
-            
-            # Get all unassigned 2025 spot IDs
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT s.spot_id 
-                FROM spots s
-                LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-                WHERE s.broadcast_month LIKE '2025%'
-                  AND slb.spot_id IS NULL
-                  AND s.market_id IS NOT NULL
-                  AND s.time_in IS NOT NULL
-                  AND s.time_out IS NOT NULL
-                  AND s.day_of_week IS NOT NULL
-                ORDER BY s.spot_id
-            """)
-            
-            spot_ids = [row[0] for row in cursor.fetchall()]
-            
-            print(f"🚀 Processing {len(spot_ids):,} spots...")
-            results = service.assign_spots_batch(spot_ids)
-            
-            print(f"\n🎉 2025 ASSIGNMENT COMPLETE:")
-            print(f"   • Processed: {results['processed']:,}")
-            print(f"   • Assigned: {results['assigned']:,}")
-            print(f"   • Multi-block: {results['multi_block']:,}")
-            print(f"   • No coverage: {results['no_coverage']:,}")
-            print(f"   • Errors: {results['errors']:,}")
-            
-            success_rate = (results['assigned'] + results['multi_block']) / results['processed'] * 100 if results['processed'] > 0 else 0
-            print(f"   • Success rate: {success_rate:.1f}%")
-            
-        elif args.all_2024:
-            # All 2024 mode
-            unassigned_count, unassigned_revenue = get_unassigned_2024_count(conn)
-            
-            if unassigned_count == 0:
-                print("✅ All 2024 spots are already assigned!")
-                return 0
-            
-            print(f"\n🎯 ASSIGNING ALL 2024 SPOTS:")
-            print(f"   • Found {unassigned_count:,} unassigned 2024 spots")
-            print(f"   • Total unassigned revenue: ${unassigned_revenue:,.2f}")
-            print(f"   • Note: This will overwrite any existing 2024 assignments")
-            
-            confirm = input(f"\nProceed with assignment? (yes/no): ").strip().lower()
-            if confirm not in ['yes', 'y']:
-                print("❌ Assignment cancelled")
-                return 0
-            
-            # Get all unassigned 2024 spot IDs
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT s.spot_id 
-                FROM spots s
-                LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-                WHERE s.broadcast_month LIKE '2024%'
-                  AND slb.spot_id IS NULL
-                  AND s.market_id IS NOT NULL
-                  AND s.time_in IS NOT NULL
-                  AND s.time_out IS NOT NULL
-                  AND s.day_of_week IS NOT NULL
-                ORDER BY s.spot_id
-            """)
-            
-            spot_ids = [row[0] for row in cursor.fetchall()]
-            
-            print(f"🚀 Processing {len(spot_ids):,} spots...")
-            results = service.assign_spots_batch(spot_ids)
-            
-            print(f"\n🎉 2024 ASSIGNMENT COMPLETE:")
-            print(f"   • Processed: {results['processed']:,}")
-            print(f"   • Assigned: {results['assigned']:,}")
-            print(f"   • Multi-block: {results['multi_block']:,}")
-            print(f"   • No coverage: {results['no_coverage']:,}")
-            print(f"   • Errors: {results['errors']:,}")
-            
-            success_rate = (results['assigned'] + results['multi_block']) / results['processed'] * 100 if results['processed'] > 0 else 0
-            print(f"   • Success rate: {success_rate:.1f}%")
         
+        elif args.all_year:
+            # All year mode
+            year = args.all_year
+            unassigned_count, unassigned_revenue = get_unassigned_year_count(conn, year)
+            
+            if unassigned_count == 0:
+                print(f"✅ All {year} spots are already assigned!")
+                return 0
+            
+            print(f"\n🎯 ASSIGNING ALL {year} SPOTS:")
+            print(f"   • Found {unassigned_count:,} unassigned {year} spots")
+            print(f"   • Total unassigned revenue: ${unassigned_revenue:,.2f}")
+            
+            confirm = input(f"\nProceed with assignment? (yes/no): ").strip().lower()
+            if confirm not in ['yes', 'y']:
+                print("❌ Assignment cancelled")
+                return 0
+            
+            # Get all unassigned spot IDs for the year
+            spot_ids = get_unassigned_spot_ids_for_year(conn, year)
+            
+            print(f"🚀 Processing {len(spot_ids):,} spots...")
+            results = service.assign_spots_batch(spot_ids)
+            
+            print(f"\n🎉 {year} ASSIGNMENT COMPLETE:")
+            print(f"   • Processed: {results['processed']:,}")
+            print(f"   • Assigned: {results['assigned']:,}")
+            print(f"   • Multi-block: {results['multi_block']:,}")
+            print(f"   • No coverage: {results['no_coverage']:,}")
+            print(f"   • Errors: {results['errors']:,}")
+            
+            success_rate = (results['assigned'] + results['multi_block']) / results['processed'] * 100 if results['processed'] > 0 else 0
+            print(f"   • Success rate: {success_rate:.1f}%")
+
         return 0
         
     except Exception as e:

@@ -1,6 +1,6 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-07-07 14:06:36
+-- Generated on: 2025-07-09 11:49:30
 -- 
 -- SQLite Version: 3.40.1
 -- 
@@ -360,7 +360,7 @@ CREATE TABLE spot_language_blocks (
     
     -- NEW: Alert flags for reporting
     requires_attention BOOLEAN DEFAULT 0,  -- Flag for spots needing manual review
-    alert_reason TEXT, business_rule_applied TEXT DEFAULT NULL, auto_resolved_date TIMESTAMP DEFAULT NULL,                     -- Why this spot needs attention
+    alert_reason TEXT, business_rule_applied TEXT DEFAULT NULL, auto_resolved_date TIMESTAMP DEFAULT NULL, campaign_type TEXT DEFAULT 'language_specific',                     -- Why this spot needs attention
     
     -- Constraints
     FOREIGN KEY (spot_id) REFERENCES spots(spot_id) ON DELETE CASCADE,
@@ -394,6 +394,7 @@ WHERE auto_resolved_date IS NOT NULL;
 CREATE INDEX idx_spot_blocks_business_rule 
 ON spot_language_blocks(business_rule_applied) 
 WHERE business_rule_applied IS NOT NULL;
+CREATE INDEX idx_spot_blocks_campaign_type ON spot_language_blocks(campaign_type);
 CREATE INDEX idx_spot_blocks_intent 
 ON spot_language_blocks(customer_intent);
 CREATE INDEX idx_spot_blocks_schedule 
