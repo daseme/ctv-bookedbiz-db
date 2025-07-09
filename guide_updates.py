@@ -1,8 +1,28 @@
-# 📊 Revenue Querying by Language - Complete Guide (Unified System 2025)
+#!/usr/bin/env python3
+"""
+Clean Guide Updates Script
+=========================
+
+Clean version without syntax errors.
+
+Usage:
+    python guide_updates.py --update
+    python guide_updates.py --preview
+"""
+
+import os
+from datetime import datetime
+
+
+def get_updated_guide_content() -> str:
+    """Generate the updated guide content"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    return f"""# 📊 Revenue Querying by Language - Complete Guide (Unified System 2025)
 
 *A comprehensive guide to the modern, maintainable revenue analysis system with perfect reconciliation, Hmong integration, SQLite compatibility, and roadblocks category support*
 
-**Last Updated**: 2025-07-09 15:39:15  
+**Last Updated**: {timestamp}  
 **Version**: 4.1 (Added Roadblocks Category with Separation of Concerns)
 
 ## 🎯 Overview
@@ -154,13 +174,13 @@ with sqlite3.connect("data/database/production.db") as db:
     
     # Get summary
     summary = analyzer.get_summary("2024")
-    print(f"Roadblocks: {summary.total_spots:,} spots, ${summary.total_revenue:,.2f}")
-    print(f"BNS Rate: {summary.bns_percentage:.1f}%")
+    print(f"Roadblocks: {{summary.total_spots:,}} spots, ${{summary.total_revenue:,.2f}}")
+    print(f"BNS Rate: {{summary.bns_percentage:.1f}}%")
     
     # Get time patterns
     patterns = analyzer.get_time_patterns("2024")
     for pattern in patterns:
-        print(f"{pattern.classification}: {pattern.spots:,} spots")
+        print(f"{{pattern.classification}}: {{pattern.spots:,}} spots")
     
     # Generate report
     report_gen = RoadblocksReportGenerator(db)
@@ -179,19 +199,19 @@ with sqlite3.connect("data/database/production.db") as db:
     
     # Summary statistics
     summary = analyzer.get_summary("2024")
-    print(f"Total Spots: {summary.total_spots:,}")
-    print(f"BNS Rate: {summary.bns_percentage:.1f}%")
-    print(f"Revenue: ${summary.total_revenue:,.2f}")
+    print(f"Total Spots: {{summary.total_spots:,}}")
+    print(f"BNS Rate: {{summary.bns_percentage:.1f}}%")
+    print(f"Revenue: ${{summary.total_revenue:,.2f}}")
     
     # Time patterns
     patterns = analyzer.get_time_patterns("2024")
     for pattern in patterns:
-        print(f"{pattern.time_range}: {pattern.classification}")
+        print(f"{{pattern.time_range}}: {{pattern.classification}}")
     
     # Customer analysis
     customers = analyzer.get_customers("2024")
     for customer in customers[:5]:
-        print(f"{customer.customer_name}: {customer.total_spots:,} spots")
+        print(f"{{customer.customer_name}}: {{customer.total_spots:,}} spots")
 ```
 
 ### Command Line Usage
@@ -312,4 +332,97 @@ python src/language_table_generator.py --year 2024 --output language_2024.md
 
 ---
 
-*This guide represents the evolution to include roadblocks category support with improved separation of concerns architecture while maintaining perfect reconciliation and comprehensive business intelligence.*
+*This guide represents the evolution to include roadblocks category support with improved separation of concerns architecture while maintaining perfect reconciliation and comprehensive business intelligence.*"""
+
+
+def update_guide_file(guide_path: str = "Revenue-Querying-By-Language-Guide.md") -> bool:
+    """Update the guide file with new content"""
+    try:
+        # Create backup
+        backup_path = f"{guide_path}.backup"
+        if os.path.exists(guide_path):
+            with open(guide_path, 'r') as f:
+                content = f.read()
+            with open(backup_path, 'w') as f:
+                f.write(content)
+            print(f"📋 Backup created: {backup_path}")
+        
+        # Write updated content
+        updated_content = get_updated_guide_content()
+        with open(guide_path, 'w') as f:
+            f.write(updated_content)
+        
+        print(f"✅ Guide updated successfully: {guide_path}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error updating guide: {e}")
+        return False
+
+
+def preview_updates() -> str:
+    """Preview the guide updates"""
+    return """# Guide Updates Preview
+
+## 🆕 Major Additions
+
+### 1. Roadblocks Category Section
+- **Full Day Roadblock Classification** (6:00am-11:59pm)
+- **BNS Tracking** (67% are bonus spots)
+- **Customer Analysis** (Future Forward, Cal Fire, etc.)
+- **Business Context** (public service focus)
+
+### 2. Updated Revenue Table
+- **Roadblocks row**: $232,388.01 (5.7%)
+- **BNS Spots column**: Shows bonus spots for all categories
+- **Total updated**: Perfect reconciliation maintained
+
+### 3. Enhanced Usage Examples
+- **Roadblocks Analysis** examples
+- **Command Line Usage** for all modules
+- **Troubleshooting** guidance
+
+## 📊 Key Statistics Updated
+- **Total Revenue**: $4,076,255.94 (perfect reconciliation maintained)
+- **Roadblocks Revenue**: $232,388.01 (5.7% of total)
+- **BNS Spots**: 30,128 total across all categories
+- **Roadblocks BNS Rate**: 67% (6,192 out of 9,217 spots)
+
+---
+**Impact**: Comprehensive update reflecting roadblocks integration
+**Compatibility**: Maintains existing functionality
+**Documentation**: Complete usage examples and troubleshooting"""
+
+
+def main():
+    """Main function for guide updates"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Update Revenue Querying Guide")
+    parser.add_argument("--update", action="store_true", help="Update the guide file")
+    parser.add_argument("--preview", action="store_true", help="Preview the updates")
+    parser.add_argument("--guide-path", default="Revenue-Querying-By-Language-Guide.md", help="Path to guide file")
+    
+    args = parser.parse_args()
+    
+    if args.preview:
+        print(preview_updates())
+        return
+    
+    if args.update:
+        success = update_guide_file(args.guide_path)
+        if success:
+            print("\\n🚀 Guide update completed successfully!")
+            print("\\n📋 Next steps:")
+            print("1. Review the updated guide")
+            print("2. Test the new roadblocks analyzer")
+            print("3. Test the integrated analysis")
+            print("4. Update your workflow scripts")
+        else:
+            print("❌ Guide update failed")
+    else:
+        print("Use --update to update the guide or --preview to see changes")
+
+
+if __name__ == "__main__":
+    main()
