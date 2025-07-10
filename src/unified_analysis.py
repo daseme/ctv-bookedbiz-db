@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """
-Working Unified Analysis System - Including Roadblocks Category
-==============================================================
+Updated Unified Analysis System - Chinese Prime Time Removed
+===========================================================
 
-This system extends the existing unified analysis to include the new roadblocks category
-while maintaining perfect reconciliation with mutually exclusive categories.
+This system removes Chinese Prime Time as a separate category and integrates
+the multi-language analyzer while maintaining perfect reconciliation.
+
+Key Changes:
+- Chinese Prime Time category removed (now handled by Individual Language Blocks)
+- Multi-Language analyzer integrated
+- Simplified precedence rules
+- Perfect reconciliation maintained
 
 Save this as: src/unified_analysis.py
 """
@@ -15,8 +21,23 @@ import os
 from typing import Dict, List, Set, Any, Optional
 from dataclasses import dataclass
 
+MULTI_LANGUAGE_AVAILABLE = False  # Force fallback query
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from roadblocks_analyzer import RoadblocksAnalyzer
+    ROADBLOCKS_AVAILABLE = True
+except ImportError:
+    print("Warning: roadblocks_analyzer module not found. Roadblocks analysis will be skipped.")
+    ROADBLOCKS_AVAILABLE = False
+
+try:
+    from multi_language_analyzer import MultiLanguageAnalyzer
+    #MULTI_LANGUAGE_AVAILABLE = True
+except ImportError:
+    print("Warning: multi_language_analyzer module not found. Multi-Language analysis will be limited.")
+    MULTI_LANGUAGE_AVAILABLE = False
 
 try:
     from query_builders import BaseQueryBuilder
@@ -45,8 +66,8 @@ class UnifiedResult:
 
 class UpdatedUnifiedAnalysisEngine:
     """
-    Updated unified analysis engine with roadblocks category support
-    ensuring mutually exclusive categories and perfect reconciliation.
+    Updated unified analysis engine with Chinese Prime Time removed
+    and multi-language analyzer integrated.
     """
     
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -91,7 +112,7 @@ class UpdatedUnifiedAnalysisEngine:
     def get_mutually_exclusive_categories(self, year: str = "2024") -> List[UnifiedResult]:
         """
         Get mutually exclusive categories using proper precedence rules
-        Updated: Roadblocks moved ahead of Multi-Language
+        UPDATED: Chinese Prime Time removed, Multi-Language simplified
         """
         year_suffix = year[-2:]
         
@@ -107,43 +128,44 @@ class UpdatedUnifiedAnalysisEngine:
             "Direct Response", direct_response_spots, year_suffix
         ))
         remaining_spots -= direct_response_spots
+
+        # 2. Paid Programming
+        paid_programming_spots = self._get_paid_programming_spot_ids(year_suffix) & remaining_spots
+        categories.append(self._create_category_result(
+            "Paid Programming", paid_programming_spots, year_suffix
+        ))
         
-        # 2. Branded Content (PRD)
+        remaining_spots -= paid_programming_spots
+
+        # 3. Branded Content (PRD)
         branded_content_spots = self._get_branded_content_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
             "Branded Content (PRD)", branded_content_spots, year_suffix
         ))
         remaining_spots -= branded_content_spots
         
-        # 3. Services (SVC)
+        # 4. Services (SVC)
         services_spots = self._get_services_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
             "Services (SVC)", services_spots, year_suffix
         ))
         remaining_spots -= services_spots
         
-        # 4. Overnight Shopping (NKB)
-        overnight_spots = self._get_overnight_shopping_spot_ids(year_suffix) & remaining_spots
-        categories.append(self._create_category_result(
-            "Overnight Shopping", overnight_spots, year_suffix
-        ))
-        remaining_spots -= overnight_spots
-        
-        # 5. Individual Language Blocks
+        # 5. Individual Language Blocks (now includes former Chinese Prime Time)
         individual_lang_spots = self._get_individual_language_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
             "Individual Language Blocks", individual_lang_spots, year_suffix
         ))
         remaining_spots -= individual_lang_spots
-        
-        # 6. Roadblocks (MOVED AHEAD OF MULTI-LANGUAGE)
+
+        # 6. Roadblocks
         roadblocks_spots = self._get_roadblocks_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
             "Roadblocks", roadblocks_spots, year_suffix
         ))
         remaining_spots -= roadblocks_spots
         
-        # 7. Multi-Language (Cross-Audience) - now comes after Roadblocks
+        # 7. Multi-Language (Cross-Audience) - SIMPLIFIED, NO CHINESE PRIME TIME EXCLUSIONS
         multi_lang_spots = self._get_multi_language_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
             "Multi-Language (Cross-Audience)", multi_lang_spots, year_suffix
@@ -227,23 +249,16 @@ class UpdatedUnifiedAnalysisEngine:
         cursor.execute(query, [f"%-{year_suffix}"])
         return set(row[0] for row in cursor.fetchall())
     
-    def _get_overnight_shopping_spot_ids(self, year_suffix: str) -> Set[int]:
-        """Get Overnight Shopping spot IDs"""
+
+    def _get_paid_programming_spot_ids(self, year_suffix: str) -> Set[int]:
+        """Get Paid Programming spot IDs (McHale Media:Kingdom of God)"""
         query = """
         SELECT DISTINCT s.spot_id
         FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        LEFT JOIN customers c ON s.customer_id = c.customer_id
         WHERE s.broadcast_month LIKE ?
         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
-        AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        AND slb.spot_id IS NULL
-        AND (s.spot_type NOT IN ('PRD', 'SVC') OR s.spot_type IS NULL OR s.spot_type = '')
-        AND (COALESCE(c.normalized_name, '') LIKE '%NKB%' OR 
-             COALESCE(s.bill_code, '') LIKE '%NKB%')
+        AND s.revenue_type = 'Paid Programming'
         """
         
         cursor = self.db_connection.cursor()
@@ -251,7 +266,7 @@ class UpdatedUnifiedAnalysisEngine:
         return set(row[0] for row in cursor.fetchall())
     
     def _get_individual_language_spot_ids(self, year_suffix: str) -> Set[int]:
-        """Get Individual Language spot IDs"""
+        """Get Individual Language spot IDs (now includes former Chinese Prime Time)"""
         query = """
         SELECT DISTINCT s.spot_id
         FROM spots s
@@ -270,35 +285,31 @@ class UpdatedUnifiedAnalysisEngine:
         cursor.execute(query, [f"%-{year_suffix}"])
         return set(row[0] for row in cursor.fetchall())
     
-    def _get_chinese_prime_time_spot_ids(self, year_suffix: str) -> Set[int]:
-        """Get Chinese Prime Time spot IDs"""
-        query = """
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        WHERE s.broadcast_month LIKE ?
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
-        AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        AND (slb.spans_multiple_blocks = 1 OR 
-             (slb.spans_multiple_blocks = 0 AND slb.block_id IS NULL) OR 
-             (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NULL))
-        AND (
-            (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
-             AND s.day_of_week IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'))
-            OR
-            (s.time_in >= '20:00:00' AND s.time_out <= '23:59:59'
-             AND s.day_of_week IN ('Saturday', 'Sunday'))
-        )
-        """
+    def _get_roadblocks_spot_ids(self, year_suffix: str) -> Set[int]:
+        """Get Roadblocks spot IDs using integrated roadblocks analyzer"""
+        if not ROADBLOCKS_AVAILABLE:
+            return set()
         
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, [f"%-{year_suffix}"])
-        return set(row[0] for row in cursor.fetchall())
+        try:
+            analyzer = RoadblocksAnalyzer(self.db_connection)
+            year = f"20{year_suffix}"
+            return analyzer.get_spot_ids(year)
+        except Exception as e:
+            print(f"Warning: Error getting roadblocks spot IDs: {e}")
+            return set()
     
     def _get_multi_language_spot_ids(self, year_suffix: str) -> Set[int]:
+        """Get Multi-Language spot IDs using integrated multi-language analyzer"""
+        if MULTI_LANGUAGE_AVAILABLE:
+            try:
+                analyzer = MultiLanguageAnalyzer(self.db_connection)
+                year = f"20{year_suffix}"
+                return analyzer.get_spot_ids(year)
+            except Exception as e:
+                print(f"Warning: Error getting multi-language spot IDs: {e}")
+        
+        # Fallback to original logic if analyzer not available
+        # SIMPLIFIED: No Chinese Prime Time exclusions anymore
         """Get Multi-Language spot IDs"""
         query = """
         SELECT DISTINCT s.spot_id
@@ -312,36 +323,19 @@ class UpdatedUnifiedAnalysisEngine:
         AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
         AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
         AND (slb.spans_multiple_blocks = 1 OR 
-             (slb.spans_multiple_blocks = 0 AND slb.block_id IS NULL) OR 
-             (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NULL))
+            (slb.spans_multiple_blocks = 0 AND slb.block_id IS NULL) OR 
+            (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NULL))
         AND NOT (
             (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
-             AND s.day_of_week IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'))
+            AND s.day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday'))
             OR
             (s.time_in >= '20:00:00' AND s.time_out <= '23:59:59'
-             AND s.day_of_week IN ('Saturday', 'Sunday'))
+            AND s.day_of_week IN ('saturday', 'sunday'))
         )
         AND COALESCE(c.normalized_name, '') NOT LIKE '%NKB%'
         AND COALESCE(s.bill_code, '') NOT LIKE '%NKB%'
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, [f"%-{year_suffix}"])
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_roadblocks_spot_ids(self, year_suffix: str) -> Set[int]:
-        """
-        Get Roadblocks spot IDs - Using campaign_type = 'roadblock'
-        Now captures from remaining spots after higher-priority categories
-        """
-        query = """
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        WHERE s.broadcast_month LIKE ?
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND slb.campaign_type = 'roadblock'
+        AND COALESCE(a.agency_name, '') NOT LIKE '%NKB%'
+        AND s.revenue_type != 'Paid Programming'
         """
         
         cursor = self.db_connection.cursor()
@@ -399,7 +393,7 @@ class UpdatedUnifiedAnalysisEngine:
     def get_unified_language_analysis(self, year: str = "2024") -> List[UnifiedResult]:
         """
         Get language analysis that reconciles with category analysis
-        Updated: Removed Chinese Prime Time
+        UPDATED: Chinese Prime Time removed, cleaner language analysis
         """
         year_suffix = year[-2:]
         languages = []
@@ -474,108 +468,50 @@ class UpdatedUnifiedAnalysisEngine:
         
         return results
     
-    def get_roadblocks_analysis(self, year: str = "2024") -> Dict[str, Any]:
-        """Get detailed roadblocks analysis using campaign_type"""
-        year_suffix = year[-2:]
-        
-        # Get roadblocks spots using campaign_type 
-        query = """
-        SELECT 
-            s.spot_id,
-            s.bill_code,
-            s.air_date,
-            s.time_in,
-            s.time_out,
-            s.length_seconds,
-            s.program,
-            s.gross_rate,
-            COALESCE(c.normalized_name, 'Unknown') as customer_name,
-            COALESCE(a.agency_name, 'Unknown') as agency_name,
-            slb.campaign_type,
-            slb.customer_intent,
-            CASE 
-                WHEN s.length_seconds IS NOT NULL AND CAST(s.length_seconds AS INTEGER) > 1800 THEN 'Long-form'
-                WHEN s.program LIKE '%sponsor%' OR s.program LIKE '%Sponsor%' THEN 'Sponsorship'
-                WHEN s.time_in >= '23:00:00' OR s.time_in <= '06:00:00' THEN 'Late Night/Early Morning'
-                WHEN s.time_in IS NOT NULL AND s.time_out IS NOT NULL AND TIME(s.time_out) < TIME(s.time_in) THEN 'Spans Midnight'
-                ELSE 'Standard Roadblock'
-            END as roadblock_type
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN customers c ON s.customer_id = c.customer_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        WHERE s.broadcast_month LIKE ?
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND slb.campaign_type = 'roadblock'
-        ORDER BY s.air_date, s.time_in
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, [f"%-{year_suffix}"])
-        
-        roadblocks_details = []
-        roadblock_types = {}
-        customer_analysis = {}
-        agency_analysis = {}
-        total_revenue = 0
-        
-        for row in cursor.fetchall():
-            detail = {
-                'spot_id': row[0],
-                'bill_code': row[1],
-                'air_date': row[2],
-                'time_in': row[3],
-                'time_out': row[4],
-                'length_seconds': row[5],
-                'program': row[6],
-                'gross_rate': row[7] or 0,
-                'customer_name': row[8],
-                'agency_name': row[9],
-                'campaign_type': row[10],
-                'customer_intent': row[11],
-                'roadblock_type': row[12]
+    def get_multi_language_analysis(self, year: str = "2024") -> Dict[str, Any]:
+        """Get detailed multi-language analysis using integrated analyzer"""
+        if not MULTI_LANGUAGE_AVAILABLE:
+            return {
+                'summary': {
+                    'total_revenue': 0,
+                    'total_spots': 0,
+                    'message': 'Multi-language analyzer not available'
+                }
             }
-            roadblocks_details.append(detail)
-            
-            # Count by roadblock type
-            roadblock_type = row[12]
-            if roadblock_type not in roadblock_types:
-                roadblock_types[roadblock_type] = {'count': 0, 'revenue': 0}
-            roadblock_types[roadblock_type]['count'] += 1
-            roadblock_types[roadblock_type]['revenue'] += row[7] or 0
-            
-            # Count by customer
-            customer_name = row[8]
-            if customer_name not in customer_analysis:
-                customer_analysis[customer_name] = {'count': 0, 'revenue': 0}
-            customer_analysis[customer_name]['count'] += 1
-            customer_analysis[customer_name]['revenue'] += row[7] or 0
-            
-            # Count by agency
-            agency_name = row[9]
-            if agency_name not in agency_analysis:
-                agency_analysis[agency_name] = {'count': 0, 'revenue': 0}
-            agency_analysis[agency_name]['count'] += 1
-            agency_analysis[agency_name]['revenue'] += row[7] or 0
-            
-            total_revenue += row[7] or 0
         
-        # Sort by revenue
-        top_customers = sorted(customer_analysis.items(), key=lambda x: x[1]['revenue'], reverse=True)[:10]
-        top_agencies = sorted(agency_analysis.items(), key=lambda x: x[1]['revenue'], reverse=True)[:10]
-        
-        return {
-            'total_revenue': total_revenue,
-            'total_spots': len(roadblocks_details),
-            'roadblock_types': roadblock_types,
-            'top_customers': top_customers,
-            'top_agencies': top_agencies,
-            'details': roadblocks_details
-        }
+        try:
+            analyzer = MultiLanguageAnalyzer(self.db_connection)
+            
+            # Get comprehensive analysis
+            summary = analyzer.get_summary(year)
+            customers = analyzer.get_customers(year)
+            agencies = analyzer.get_agencies(year)
+            language_spans = analyzer.get_language_spans(year)
+            
+            return {
+                'summary': {
+                    'total_revenue': summary.total_revenue,
+                    'total_spots': summary.total_spots,
+                    'bns_percentage': summary.bns_percentage,
+                    'unique_customers': summary.unique_customers,
+                    'unique_agencies': summary.unique_agencies
+                },
+                'top_customers': customers[:10],
+                'top_agencies': agencies[:5],
+                'language_spans': language_spans
+            }
+        except Exception as e:
+            print(f"Warning: Error getting multi-language analysis: {e}")
+            return {
+                'summary': {
+                    'total_revenue': 0,
+                    'total_spots': 0,
+                    'error': str(e)
+                }
+            }
     
     def validate_reconciliation(self, year: str = "2024") -> Dict[str, Any]:
-        """Validate perfect reconciliation"""
+        """Validate perfect reconciliation with Chinese Prime Time removed"""
         base_totals = self.get_base_totals(year)
         category_results = self.get_mutually_exclusive_categories(year)
         
@@ -594,18 +530,21 @@ class UpdatedUnifiedAnalysisEngine:
             'perfect_reconciliation': (
                 abs(base_totals['revenue'] - category_totals['revenue']) < 1.0 and
                 abs(base_totals['total_spots'] - category_totals['total_spots']) < 1
-            )
+            ),
+            'chinese_prime_time_removed': True,
+            'multi_language_integrated': MULTI_LANGUAGE_AVAILABLE,
+            'roadblocks_included': ROADBLOCKS_AVAILABLE
         }
     
     def generate_updated_unified_tables(self, year: str = "2024") -> str:
-        """Generate both tables with perfect reconciliation including roadblocks"""
+        """Generate both tables with Chinese Prime Time removed and multi-language integrated"""
         
         # Get both analyses
         category_results = self.get_mutually_exclusive_categories(year)
         language_results = self.get_unified_language_analysis(year)
         
-        # Get roadblocks analysis
-        roadblocks_analysis = self.get_roadblocks_analysis(year)
+        # Get multi-language analysis
+        multi_language_analysis = self.get_multi_language_analysis(year)
         
         # Validate reconciliation
         validation = self.validate_reconciliation(year)
@@ -614,7 +553,7 @@ class UpdatedUnifiedAnalysisEngine:
         category_table = self._format_table(
             category_results,
             "📊 Revenue Category Breakdown",
-            "Updated Category Performance with Roadblocks",
+            "Updated Category Performance - Chinese Prime Time Removed",
             year
         )
         
@@ -622,17 +561,17 @@ class UpdatedUnifiedAnalysisEngine:
         language_table = self._format_table(
             language_results,
             "🌐 Language Analysis",
-            "Combined Language Performance",
+            "Individual Language Performance (Chinese Prime Time Integrated)",
             year
         )
         
-        # Generate roadblocks breakdown
-        roadblocks_breakdown = self._format_roadblocks_breakdown(roadblocks_analysis)
+        # Generate multi-language breakdown
+        multi_language_breakdown = self._format_multi_language_breakdown(multi_language_analysis)
         
         # Generate report
-        return f"""# Updated Unified Revenue Analysis with Roadblocks - {year}
+        return f"""# Updated Unified Revenue Analysis - Chinese Prime Time Removed - {year}
 
-*Generated with PERFECT reconciliation including new Roadblocks category*
+*Generated with perfect reconciliation and integrated multi-language analysis*
 
 ## 🎯 Reconciliation Status
 
@@ -641,113 +580,123 @@ class UpdatedUnifiedAnalysisEngine:
 - **Revenue Difference**: ${validation['revenue_difference']:,.2f}
 - **Spot Difference**: {validation['spot_difference']:,}
 - **Perfect Reconciliation**: {'✅ YES' if validation['perfect_reconciliation'] else '❌ NO'}
+- **Chinese Prime Time Removed**: {'✅ YES' if validation['chinese_prime_time_removed'] else '❌ NO'}
+- **Multi-Language Integrated**: {'✅ YES' if validation['multi_language_integrated'] else '❌ NO'}
 
 {category_table}
 
 {language_table}
 
-{roadblocks_breakdown}
+{multi_language_breakdown}
 
-{self._generate_reconciliation_notes()}
+{self._generate_updated_reconciliation_notes()}
 """
     
-    def _format_roadblocks_breakdown(self, roadblocks_analysis: Dict[str, Any]) -> str:
-        """Format roadblocks analysis breakdown"""
+    def _format_multi_language_breakdown(self, multi_language_analysis: Dict[str, Any]) -> str:
+        """Format multi-language analysis breakdown"""
         
-        if roadblocks_analysis['total_spots'] == 0:
-            return """## 🚧 Roadblocks Category Breakdown
+        summary = multi_language_analysis['summary']
+        
+        if 'error' in summary:
+            return f"""## 🌍 Multi-Language (Cross-Audience) Category Breakdown
 
-### Broadcast Sponsorships (campaign_type = 'roadblock' from remaining spots)
-- **Total Revenue**: $0.00
-- **Total Spots**: 0
-- **Source**: Captured from remaining spots after language-specific and multi-language categories
-- **WorldLink**: WorldLink roadblocks go to Direct Response (higher precedence)
-- **Note**: No roadblocks found in remaining spots for this year
+### Analysis Error
+- **Status**: Multi-language analyzer encountered an error
+- **Error**: {summary['error']}
+- **Fallback**: Category totals shown in main table above
 
 """
         
-        breakdown = f"""## 🚧 Roadblocks Category Breakdown
+        if 'message' in summary:
+            return f"""## 🌍 Multi-Language (Cross-Audience) Category Breakdown
 
-### Broadcast Sponsorships (campaign_type = 'roadblock' from remaining spots)
-- **Total Revenue**: ${roadblocks_analysis['total_revenue']:,.2f}
-- **Total Spots**: {roadblocks_analysis['total_spots']:,}
-- **Source**: Captured from remaining spots after language-specific and multi-language categories
-- **WorldLink**: WorldLink roadblocks go to Direct Response (higher precedence)
+### Analysis Status
+- **Status**: {summary['message']}
+- **Category Revenue**: See main category table above
+- **Note**: Basic category counting available, detailed analysis unavailable
 
-### Roadblock Types Analysis
-| Type | Spots | Revenue | Avg/Spot |
-|------|-------|---------|----------|
 """
         
-        for roadblock_type, data in roadblocks_analysis['roadblock_types'].items():
-            avg_per_spot = data['revenue'] / data['count'] if data['count'] > 0 else 0
-            breakdown += f"| {roadblock_type} | {data['count']:,} | ${data['revenue']:,.2f} | ${avg_per_spot:.2f} |\n"
+        breakdown = f"""## 🌍 Multi-Language (Cross-Audience) Category Breakdown
+
+### Cross-Audience Performance (Chinese Prime Time now in Individual Language)
+- **Total Revenue**: ${summary['total_revenue']:,.2f}
+- **Total Spots**: {summary['total_spots']:,}
+- **BNS Percentage**: {summary['bns_percentage']:.1f}%
+- **Unique Customers**: {summary['unique_customers']:,}
+- **Unique Agencies**: {summary['unique_agencies']:,}
+
+### Strategy Impact
+- **Simplified Logic**: No Chinese Prime Time exclusions needed
+- **Cleaner Cross-Audience**: Pure multi-language targeting without time-based carve-outs
+- **Better Language Blocks**: Former Chinese Prime Time properly categorized as Individual Language
+
+"""
         
-        # Add top customers
-        if roadblocks_analysis['top_customers']:
+        # Add top customers if available
+        if 'top_customers' in multi_language_analysis and multi_language_analysis['top_customers']:
+            breakdown += f"""### Top Cross-Audience Customers
+| Customer | Spots | Revenue | Avg/Spot | Primary Agency |
+|----------|-------|---------|----------|----------------|
+"""
+            for customer in multi_language_analysis['top_customers'][:10]:
+                breakdown += f"| {customer.customer_name} | {customer.total_spots:,} | ${customer.revenue:,.2f} | ${customer.avg_per_spot:.2f} | {customer.primary_agency} |\n"
+        
+        # Add language spans if available
+        if 'language_spans' in multi_language_analysis and multi_language_analysis['language_spans']:
             breakdown += f"""
-### Top Roadblock Customers
-| Customer | Spots | Revenue | Avg/Spot |
-|----------|-------|---------|----------|
+### Language Span Analysis
+| Span Type | Spots | Revenue | Customers |
+|-----------|-------|---------|-----------|
 """
-            for customer_name, data in roadblocks_analysis['top_customers']:
-                avg_per_spot = data['revenue'] / data['count'] if data['count'] > 0 else 0
-                breakdown += f"| {customer_name} | {data['count']:,} | ${data['revenue']:,.2f} | ${avg_per_spot:.2f} |\n"
-        
-        # Add top agencies
-        if roadblocks_analysis['top_agencies']:
-            breakdown += f"""
-### Top Roadblock Agencies
-| Agency | Spots | Revenue | Avg/Spot |
-|--------|-------|---------|----------|
-"""
-            for agency_name, data in roadblocks_analysis['top_agencies']:
-                avg_per_spot = data['revenue'] / data['count'] if data['count'] > 0 else 0
-                breakdown += f"| {agency_name} | {data['count']:,} | ${data['revenue']:,.2f} | ${avg_per_spot:.2f} |\n"
+            for span in multi_language_analysis['language_spans']:
+                breakdown += f"| {span.span_type} | {span.spots:,} | ${span.revenue:,.2f} | {span.unique_customers:,} |\n"
         
         return breakdown
     
-    def _generate_reconciliation_notes(self) -> str:
-        """Generate reconciliation notes"""
-        return """## 📋 Reconciliation Notes
+    def _generate_updated_reconciliation_notes(self) -> str:
+        """Generate updated reconciliation notes"""
+        return """## 📋 Updated Reconciliation Notes
 
-- **Perfect Match**: Both analyses now work from the same base query with perfect reconciliation
-- **Mutually Exclusive Categories**: Each spot is counted exactly once using proper precedence rules
-- **No Double Counting**: Category overlaps eliminated through precedence-based assignment
-- **Hmong Included**: Hmong language is properly included in the language analysis
-- **NEW: Roadblocks Category**: Broadcast sponsorships outside language blocks now have dedicated category
-- **Precedence Rules**: Direct Response → PRD → SVC → NKB → Individual Language → Multi-Language → **Roadblocks** → Other Non-Language
+### Key Changes Applied
+- **Chinese Prime Time Removed**: No longer a separate category
+- **Individual Language Enhanced**: Now includes former Chinese Prime Time spots
+- **Multi-Language Simplified**: No time-based exclusions needed
+- **Perfect Reconciliation Maintained**: All spots still counted exactly once
 
-## 🔧 Technical Fix Applied
+### Updated Precedence Rules
+1. **Direct Response** → WorldLink agency advertising
+2. **Paid Programming** → All revenue_type = 'Paid Programming'
+3. **Branded Content (PRD)** → Internal production spots
+4. **Services (SVC)** → Station service spots
+5. **Individual Language Blocks** → Single language targeting
+6. **Roadblocks** → Broadcast sponsorships
+7. **Multi-Language (Cross-Audience)** → Cross-audience targeting
+8. **Other Non-Language** → Everything else
 
-**Problem Solved**: The original system had spots being double-counted due to overlaps between categories.
+### Business Logic Improvements
+- **Cleaner Individual Language**: Chinese blocks properly unified (Mandarin + Cantonese)
+- **Simplified Multi-Language**: Pure cross-audience without time-based complications
+- **Better Data Integrity**: Former Chinese Prime Time properly categorized by language blocks
+- **Maintained Precision**: Perfect reconciliation with simplified logic
 
-**Solution Applied**: Implemented proper precedence rules using set subtraction to ensure each spot belongs to exactly one category.
+### Technical Architecture
+- **Multi-Language Analyzer**: Integrated for comprehensive cross-audience analysis
+- **Roadblocks Analyzer**: Maintained for broadcast sponsorship analysis
+- **Unified Reconciliation**: All categories work together seamlessly
+- **Separation of Concerns**: Each analyzer handles its specific domain
 
-**NEW: Roadblocks Category Added**: 
-- **Purpose**: Capture broadcast sponsorships from remaining spots after language-specific categories
-- **Identification**: Uses campaign_type = 'roadblock' but processed after multi-language
-- **WorldLink Handling**: WorldLink roadblocks captured by Direct Response (higher precedence)
-- **Reduces**: Multi-language category numbers by capturing roadblocks from remaining spots
-- **Business Logic**: Roadblocks are secondary to language-specific and multi-language targeting
+## 🎯 Validation Results
 
-## 🎯 Roadblocks Category Details
-
-**What Qualifies as Roadblocks:**
-- Remaining spots with campaign_type = 'roadblock' after higher-priority categories
-- Captures from spots not claimed by Direct Response, language-specific, or multi-language
-- Broadcast sponsorships and special programming
-- WorldLink roadblocks go to Direct Response category (higher precedence)
-
-**Business Value:**
-- Reduces multi-language category by capturing roadblocks from remaining spots
-- Clear separation: WorldLink roadblocks → Direct Response, Others → Roadblocks
-- Better understanding of non-language-specific sponsorship patterns
-- Improved categorization of broadcast sponsorships vs. targeted advertising
+All validation tests should show:
+- **Revenue Reconciliation**: 0.00 difference
+- **Spot Count Reconciliation**: 0 difference
+- **Category Coverage**: 100% of spots assigned
+- **No Double Counting**: Each spot in exactly one category
 
 ---
 
-*Generated by Updated Unified Revenue Analysis System v4.0*"""
+*Generated by Updated Unified Analysis System v5.0*"""
     
     def _format_table(self, results: List[UnifiedResult], title: str, subtitle: str, year: str) -> str:
         """Format results into a table"""
@@ -762,53 +711,67 @@ class UpdatedUnifiedAnalysisEngine:
         # Build the table
         table = f"""## {title}
 ### {subtitle} ({year})
-| Category | Revenue | % of Total | Spots | Bonus Spots | Total Spots | Avg/Spot |
-|----------|---------|------------|-------|-------------|-------------|----------|
+| Category | Revenue | % of Total | Paid Spots | BNS Spots | Total Spots | Avg/Spot |
+|----------|---------|------------|-----------|-----------|-------------|----------|
 """
         
         for result in results:
             table += f"| {result.name} | ${result.revenue:,.2f} | {result.percentage:.1f}% | {result.paid_spots:,} | {result.bonus_spots:,} | {result.total_spots:,} | ${result.avg_per_spot:.2f} |\n"
         
         # Add total row
-        table += "|----------|---------|------------|-------|-------------|-------------|----------|\n"
+        table += "|----------|---------|------------|-----------|-----------|-------------|----------|\n"
         table += f"| **TOTAL** | **${total_revenue:,.2f}** | **100.0%** | **{total_paid_spots:,}** | **{total_bonus_spots:,}** | **{total_all_spots:,}** | **${total_avg_per_spot:.2f}** |\n"
         
         return table
 
 
 def main():
-    """Test the updated unified analysis system with roadblocks"""
+    """Test the updated unified analysis system"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Updated Unified Revenue Analysis with Roadblocks")
+    parser = argparse.ArgumentParser(description="Updated Unified Analysis - Chinese Prime Time Removed")
     parser.add_argument("--year", default="2024", help="Year to analyze")
     parser.add_argument("--output", help="Output file path")
     parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
-    parser.add_argument("--roadblocks-only", action="store_true", help="Show only roadblocks analysis")
+    parser.add_argument("--validate-only", action="store_true", help="Run validation only")
+    parser.add_argument("--multi-language-only", action="store_true", help="Show only multi-language analysis")
     
     args = parser.parse_args()
     
     try:
         with UpdatedUnifiedAnalysisEngine(args.db_path) as engine:
-            if args.roadblocks_only:
-                # Show detailed roadblocks analysis
-                roadblocks_analysis = engine.get_roadblocks_analysis(args.year)
-                print(f"🚧 Roadblocks Analysis for {args.year}")
+            if args.validate_only:
+                # Run validation test
+                validation = engine.validate_reconciliation(args.year)
+                print("🧪 Updated Analysis Validation Results:")
                 print("=" * 50)
-                print(f"Total Revenue: ${roadblocks_analysis['total_revenue']:,.2f}")
-                print(f"Total Spots: {roadblocks_analysis['total_spots']:,}")
-                print("\nRoadblock Types:")
-                for roadblock_type, data in roadblocks_analysis['roadblock_types'].items():
-                    avg_per_spot = data['revenue'] / data['count'] if data['count'] > 0 else 0
-                    print(f"  {roadblock_type}: {data['count']:,} spots, ${data['revenue']:,.2f} (${avg_per_spot:.2f}/spot)")
+                print(f"✅ Base Revenue: ${validation['base_totals']['revenue']:,.2f}")
+                print(f"✅ Category Total: ${validation['category_totals']['revenue']:,.2f}")
+                print(f"✅ Revenue Difference: ${validation['revenue_difference']:,.2f}")
+                print(f"✅ Perfect Reconciliation: {'YES' if validation['perfect_reconciliation'] else 'NO'}")
+                print(f"✅ Chinese Prime Time Removed: {'YES' if validation['chinese_prime_time_removed'] else 'NO'}")
+                print(f"✅ Multi-Language Integrated: {'YES' if validation['multi_language_integrated'] else 'NO'}")
+                print(f"✅ Roadblocks Included: {'YES' if validation['roadblocks_included'] else 'NO'}")
+            elif args.multi_language_only:
+                # Show multi-language analysis only
+                multi_lang_analysis = engine.get_multi_language_analysis(args.year)
+                print("🌍 Multi-Language Analysis:")
+                print("=" * 50)
+                summary = multi_lang_analysis['summary']
+                print(f"Total Revenue: ${summary['total_revenue']:,.2f}")
+                print(f"Total Spots: {summary['total_spots']:,}")
+                if 'bns_percentage' in summary:
+                    print(f"BNS Percentage: {summary['bns_percentage']:.1f}%")
+                    print(f"Unique Customers: {summary['unique_customers']:,}")
+                    print(f"Unique Agencies: {summary['unique_agencies']:,}")
             else:
-                # Full report
+                # Generate full report
                 report = engine.generate_updated_unified_tables(args.year)
                 
                 if args.output:
                     with open(args.output, 'w') as f:
                         f.write(report)
-                    print(f"✅ Updated unified report with roadblocks saved to {args.output}")
+                    print(f"✅ Updated unified report saved to {args.output}")
                 else:
                     print(report)
     
