@@ -89,7 +89,7 @@ class LanguageBlock:
 
 @dataclass
 class AssignmentResult:
-    """Result of spot assignment"""
+    """Result of spot assignment with enhanced business rule tracking"""
     spot_id: int
     success: bool
     schedule_id: Optional[int] = None
@@ -101,11 +101,15 @@ class AssignmentResult:
     requires_attention: bool = False
     alert_reason: Optional[str] = None
     error_message: Optional[str] = None
-    campaign_type: str = 'language_specific' 
+    campaign_type: str = 'language_specific'
+    
+    # NEW: Enhanced business rule tracking
+    business_rule_applied: Optional[str] = None    # 'tagalog_pattern', 'chinese_pattern', 'ros_duration', 'ros_time'
+    auto_resolved_date: Optional[datetime] = None  # When enhanced rule was applied
 
 
 class LanguageBlockService:
-    """Language Block Assignment Service"""
+    """Language Block Assignment Service with Enhanced Business Rules"""
     
     def __init__(self, db_connection):
         self.db = db_connection
@@ -276,6 +280,368 @@ class LanguageBlockService:
         
         return test_results
     
+    def _create_assignment(self, spot: SpotData, schedule_id: int, 
+                            blocks: List[LanguageBlock]) -> AssignmentResult:
+        """Create assignment with enhanced business rules (additive layer)"""
+        
+        # Step 1: Apply base logic (unchanged)
+        base_result = self._analyze_base_assignment(spot, schedule_id, blocks)
+        
+        # Step 2: Apply enhanced rules only if base logic returns 'indifferent'
+        if base_result.customer_intent == CustomerIntent.INDIFFERENT:
+            enhanced_result = self._apply_enhanced_business_rules(spot, base_result)
+            return enhanced_result
+        
+        return base_result
+    
+    def _analyze_base_assignment(self, spot: SpotData, schedule_id: int, 
+                                blocks: List[LanguageBlock]) -> AssignmentResult:
+        """Original assignment logic (unchanged)"""
+        
+        if len(blocks) == 1:
+            # Single block assignment
+            block = blocks[0]
+            intent = self._analyze_single_block_intent(spot, block)
+            
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=schedule_id,
+                block_id=block.block_id,
+                customer_intent=intent,
+                spans_multiple_blocks=False,
+                primary_block_id=block.block_id,
+                requires_attention=intent == CustomerIntent.TIME_SPECIFIC,
+                campaign_type='language_specific'
+            )
+        
+        else:
+            # Multi-block assignment
+            intent = self._analyze_multi_block_intent(spot, blocks)
+            primary_block = self._select_primary_block(spot, blocks)
+            
+            # Calculate spot duration and campaign type
+            spot_duration = self._calculate_spot_duration(spot.time_in, spot.time_out)
+            campaign_type = self._determine_campaign_type(intent, spot_duration, len(blocks))
+            
+            # Handle different intents
+            if intent == CustomerIntent.INDIFFERENT:
+                return AssignmentResult(
+                    spot_id=spot.spot_id,
+                    success=True,
+                    schedule_id=schedule_id,
+                    block_id=None,
+                    customer_intent=intent,
+                    spans_multiple_blocks=True,
+                    blocks_spanned=[b.block_id for b in blocks],
+                    primary_block_id=primary_block.block_id if primary_block else None,
+                    requires_attention=True,
+                    alert_reason=f"Multi-language campaign ({campaign_type}) - candidate for enhanced rules",
+                    campaign_type=campaign_type
+                )
+            
+            elif intent == CustomerIntent.LANGUAGE_SPECIFIC:
+                return AssignmentResult(
+                    spot_id=spot.spot_id,
+                    success=True,
+                    schedule_id=schedule_id,
+                    block_id=primary_block.block_id if primary_block else None,
+                    customer_intent=intent,
+                    spans_multiple_blocks=False,
+                    blocks_spanned=[b.block_id for b in blocks],
+                    primary_block_id=primary_block.block_id if primary_block else None,
+                    requires_attention=len(blocks) > 3,
+                    campaign_type='language_specific'
+                )
+            
+            else:  # TIME_SPECIFIC
+                return AssignmentResult(
+                    spot_id=spot.spot_id,
+                    success=True,
+                    schedule_id=schedule_id,
+                    block_id=primary_block.block_id if primary_block else None,
+                    customer_intent=intent,
+                    spans_multiple_blocks=False,
+                    blocks_spanned=[b.block_id for b in blocks],
+                    primary_block_id=primary_block.block_id if primary_block else None,
+                    requires_attention=len(blocks) > 3,
+                    campaign_type='language_specific'
+                )
+
+    def _apply_enhanced_business_rules(self, spot: SpotData, base_result: AssignmentResult) -> AssignmentResult:
+        """Apply enhanced business rules (additive layer)"""
+        
+        # Rule 1: Duration-based ROS detection (> 4 hours)
+        if self._is_ros_by_duration(spot):
+            return self._create_ros_assignment(spot, base_result, 'ros_duration')
+        
+        # Rule 2: Time-based ROS detection (13:00-23:59)
+        if self._is_ros_by_time(spot):
+            return self._create_ros_assignment(spot, base_result, 'ros_time')
+        
+        # Rule 3: Tagalog pattern recognition (16:00-19:00 + "T")
+        if self._is_tagalog_pattern(spot):
+            return self._create_tagalog_assignment(spot, base_result)
+        
+        # Rule 4: Chinese pattern recognition (19:00-23:59 + "M"/"M/C")
+        if self._is_chinese_pattern(spot):
+            return self._create_chinese_assignment(spot, base_result)
+        
+        # No enhanced rule applies, return original result
+        return base_result
+    
+    def _is_ros_by_duration(self, spot: SpotData) -> bool:
+        """Check if spot duration > 4 hours (240 minutes)"""
+        duration = self._calculate_spot_duration(spot.time_in, spot.time_out)
+        return duration > 360  # 6 hours (360 minutes)
+    
+    def _is_ros_by_time(self, spot: SpotData) -> bool:
+        """Check if spot runs 13:00-23:59 (ROS time slot)"""
+        return spot.time_in == "13:00:00" and spot.time_out == "23:59:00"
+    
+    def _is_tagalog_pattern(self, spot: SpotData) -> bool:
+        """Check if spot matches Tagalog pattern (16:00-19:00 + language hint "T")"""
+        time_match = spot.time_in == "16:00:00" and spot.time_out == "19:00:00"
+        language_hint = self._get_language_hint(spot) == "T"
+        return time_match and language_hint
+    
+    def _is_chinese_pattern(self, spot: SpotData) -> bool:
+        """Check if spot matches Chinese pattern (19:00-23:59 + language hint "M"/"M/C")"""
+        time_match = spot.time_in == "19:00:00" and spot.time_out == "23:59:00"
+        language_hint = self._get_language_hint(spot) in ["M", "M/C"]
+        return time_match and language_hint
+    
+    def _get_language_hint(self, spot: SpotData) -> Optional[str]:
+        """Get original language hint from spots.language_code"""
+        cursor = self.db.cursor()
+        cursor.execute("SELECT language_code FROM spots WHERE spot_id = ?", (spot.spot_id,))
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else None
+    
+    def _create_ros_assignment(self, spot: SpotData, base_result: AssignmentResult, 
+                              rule_type: str) -> AssignmentResult:
+        """Create ROS assignment from enhanced rule"""
+        return AssignmentResult(
+            spot_id=spot.spot_id,
+            success=True,
+            schedule_id=base_result.schedule_id,
+            block_id=None,  # ROS has no specific block
+            customer_intent=CustomerIntent.INDIFFERENT,
+            spans_multiple_blocks=True,
+            blocks_spanned=base_result.blocks_spanned,
+            primary_block_id=base_result.primary_block_id,
+            requires_attention=False,  # ROS is resolved
+            alert_reason=None,
+            campaign_type='ros',  # ROS campaign type
+            business_rule_applied=rule_type,
+            auto_resolved_date=datetime.now()
+        )
+    
+    def _create_tagalog_assignment(self, spot: SpotData, base_result: AssignmentResult) -> AssignmentResult:
+        """Create Tagalog assignment from enhanced rule"""
+        # Find Tagalog block from the spanned blocks
+        tagalog_block = self._find_tagalog_block(base_result.blocks_spanned)
+        
+        return AssignmentResult(
+            spot_id=spot.spot_id,
+            success=True,
+            schedule_id=base_result.schedule_id,
+            block_id=tagalog_block.block_id if tagalog_block else None,
+            customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+            spans_multiple_blocks=False,  # Now language-specific
+            blocks_spanned=base_result.blocks_spanned,
+            primary_block_id=tagalog_block.block_id if tagalog_block else None,
+            requires_attention=False,  # Resolved by rule
+            alert_reason=None,
+            campaign_type='language_specific',
+            business_rule_applied='tagalog_pattern',
+            auto_resolved_date=datetime.now()
+        )
+    
+    def _create_chinese_assignment(self, spot: SpotData, base_result: AssignmentResult) -> AssignmentResult:
+        """Create Chinese family assignment from enhanced rule"""
+        # Find Chinese block from the spanned blocks (Mandarin or Cantonese)
+        chinese_block = self._find_chinese_block(base_result.blocks_spanned)
+        
+        return AssignmentResult(
+            spot_id=spot.spot_id,
+            success=True,
+            schedule_id=base_result.schedule_id,
+            block_id=chinese_block.block_id if chinese_block else None,
+            customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+            spans_multiple_blocks=False,  # Now language-specific
+            blocks_spanned=base_result.blocks_spanned,
+            primary_block_id=chinese_block.block_id if chinese_block else None,
+            requires_attention=False,  # Resolved by rule
+            alert_reason=None,
+            campaign_type='language_specific',
+            business_rule_applied='chinese_pattern',
+            auto_resolved_date=datetime.now()
+        )
+    
+    def _find_tagalog_block(self, block_ids: List[int]) -> Optional[LanguageBlock]:
+        """Find Tagalog block from list of block IDs"""
+        if not block_ids:
+            return None
+        
+        cursor = self.db.cursor()
+        placeholders = ','.join(['?'] * len(block_ids))
+        query = f"""
+        SELECT lb.block_id, lb.schedule_id, lb.day_of_week, lb.time_start, lb.time_end,
+            lb.language_id, lb.block_name, lb.block_type, lb.day_part
+        FROM language_blocks lb
+        JOIN languages l ON lb.language_id = l.language_id
+        WHERE lb.block_id IN ({placeholders})
+        AND l.language_code = 'T'
+        LIMIT 1
+        """
+        
+        cursor.execute(query, block_ids)
+        row = cursor.fetchone()
+        
+        if row:
+            return LanguageBlock(
+                block_id=row[0], schedule_id=row[1], day_of_week=row[2],
+                time_start=row[3], time_end=row[4], language_id=row[5],
+                block_name=row[6], block_type=row[7], day_part=row[8]
+            )
+        return None
+    
+    def _find_chinese_block(self, block_ids: List[int]) -> Optional[LanguageBlock]:
+        """Find Chinese block (Mandarin or Cantonese) from list of block IDs"""
+        if not block_ids:
+            return None
+        
+        cursor = self.db.cursor()
+        placeholders = ','.join(['?'] * len(block_ids))
+        query = f"""
+        SELECT block_id, schedule_id, day_of_week, time_start, time_end,
+               language_id, block_name, block_type, day_part
+        FROM language_blocks lb
+        WHERE lb.block_id IN ({placeholders})
+        AND lb.language_id IN (2, 3)  -- Mandarin=2, Cantonese=3
+        ORDER BY lb.language_id  -- Prefer Mandarin (2) over Cantonese (3)
+        LIMIT 1
+        """
+        
+        cursor.execute(query, block_ids)
+        row = cursor.fetchone()
+        
+        if row:
+            return LanguageBlock(
+                block_id=row[0], schedule_id=row[1], day_of_week=row[2],
+                time_start=row[3], time_end=row[4], language_id=row[5],
+                block_name=row[6], block_type=row[7], day_part=row[8]
+            )
+        return None
+    
+    def _analyze_single_block_intent(self, spot: SpotData, block: LanguageBlock) -> CustomerIntent:
+        """Analyze customer intent for single block assignment"""
+        if spot.language_id and spot.language_id == block.language_id:
+            return CustomerIntent.LANGUAGE_SPECIFIC
+        elif spot.language_id and spot.language_id != block.language_id:
+            return CustomerIntent.TIME_SPECIFIC
+        else:
+            return CustomerIntent.LANGUAGE_SPECIFIC
+    
+    def _analyze_multi_block_intent(self, spot: SpotData, blocks: List[LanguageBlock]) -> CustomerIntent:
+        """Analyze customer intent for multi-block assignment"""
+        unique_languages = set(b.language_id for b in blocks)
+        
+        # Check for same language
+        if len(unique_languages) == 1:
+            return CustomerIntent.LANGUAGE_SPECIFIC
+        
+        # Check for Chinese language family (Mandarin + Cantonese)
+        chinese_languages = {2, 3}  # Mandarin=2, Cantonese=3 (from your language table)
+        if unique_languages.issubset(chinese_languages):
+            return CustomerIntent.LANGUAGE_SPECIFIC  # Chinese intention
+        
+        # Multiple different language families = truly indifferent
+        return CustomerIntent.INDIFFERENT
+    
+    def _select_primary_block(self, spot: SpotData, blocks: List[LanguageBlock]) -> Optional[LanguageBlock]:
+        """Select primary block for multi-block assignment"""
+        if not blocks:
+            return None
+        
+        # Prefer language match if available
+        if spot.language_id:
+            matching_blocks = [b for b in blocks if b.language_id == spot.language_id]
+            if matching_blocks:
+                return matching_blocks[0]
+        
+        return blocks[0]
+    
+    def _calculate_spot_duration(self, time_in: str, time_out: str) -> int:
+        """Calculate spot duration in minutes"""
+        try:
+            start_minutes = self._time_to_minutes(time_in)
+            end_minutes = self._time_to_minutes(time_out)
+            
+            if end_minutes >= start_minutes:
+                return end_minutes - start_minutes
+            else:
+                # Handle midnight rollover
+                return (24 * 60) - start_minutes + end_minutes
+        except:
+            return 0
+
+    def _determine_campaign_type(self, intent: CustomerIntent, duration_minutes: int, block_count: int) -> str:
+        """Determine campaign type based on intent, duration, and block count"""
+        
+        if intent == CustomerIntent.LANGUAGE_SPECIFIC:
+            return 'language_specific'
+        
+        elif intent == CustomerIntent.INDIFFERENT:
+            # ROS detection: 17+ hours (1020+ minutes) or 15+ blocks
+            if duration_minutes >= 1020 or block_count >= 15:
+                return 'ros'
+            else:
+                return 'multi_language'
+        
+        else:  # TIME_SPECIFIC
+            return 'language_specific'
+    
+    def _save_assignment(self, result: AssignmentResult):
+        """Save assignment to database with enhanced rule tracking"""
+        cursor = self.db.cursor()
+        
+        # Only insert if we have a valid schedule_id
+        if result.schedule_id:
+            # Delete existing assignment if exists
+            cursor.execute("DELETE FROM spot_language_blocks WHERE spot_id = ?", (result.spot_id,))
+            
+            cursor.execute("""
+                INSERT INTO spot_language_blocks (
+                    spot_id, schedule_id, block_id, customer_intent, intent_confidence,
+                    spans_multiple_blocks, blocks_spanned, primary_block_id,
+                    assignment_method, assigned_date, assigned_by,
+                    requires_attention, alert_reason, notes, campaign_type,
+                    business_rule_applied, auto_resolved_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                result.spot_id,
+                result.schedule_id,
+                result.block_id,
+                result.customer_intent.value if result.customer_intent else None,
+                1.0,  # Default confidence
+                result.spans_multiple_blocks,
+                str(result.blocks_spanned) if result.blocks_spanned else None,
+                result.primary_block_id,
+                AssignmentMethod.AUTO_COMPUTED.value,
+                datetime.now().isoformat(),
+                'system',
+                result.requires_attention,
+                result.alert_reason,
+                result.error_message,
+                result.campaign_type,
+                result.business_rule_applied,
+                result.auto_resolved_date.isoformat() if result.auto_resolved_date else None
+            ))
+            
+            self.db.commit()
+    
     def _get_spot_data(self, spot_id: int) -> Optional[SpotData]:
         """Get spot data from database"""
         cursor = self.db.cursor()
@@ -397,191 +763,6 @@ class LanguageBlockService:
         
         return overlapping_blocks
     
-    def _create_assignment(self, spot: SpotData, schedule_id: int, 
-                            blocks: List[LanguageBlock]) -> AssignmentResult:
-        """Create assignment based on spot and overlapping blocks"""
-        
-        if len(blocks) == 1:
-            # Single block assignment
-            block = blocks[0]
-            intent = self._analyze_single_block_intent(spot, block)
-            
-            return AssignmentResult(
-                spot_id=spot.spot_id,
-                success=True,
-                schedule_id=schedule_id,
-                block_id=block.block_id,
-                customer_intent=intent,
-                spans_multiple_blocks=False,
-                primary_block_id=block.block_id,
-                requires_attention=intent == CustomerIntent.TIME_SPECIFIC,
-                campaign_type='language_specific'  # Single block = language specific
-            )
-        
-        else:
-            # Multi-block assignment
-            intent = self._analyze_multi_block_intent(spot, blocks)
-            primary_block = self._select_primary_block(spot, blocks)
-            
-            # Calculate spot duration in minutes
-            spot_duration = self._calculate_spot_duration(spot.time_in, spot.time_out)
-            
-            # Determine campaign type based on duration and intent
-            campaign_type = self._determine_campaign_type(intent, spot_duration, len(blocks))
-            
-            # If customer intent is indifferent, don't create language block assignment
-            if intent == CustomerIntent.INDIFFERENT:
-                return AssignmentResult(
-                    spot_id=spot.spot_id,
-                    success=True,
-                    schedule_id=schedule_id,
-                    block_id=None,  # Will not be saved to database
-                    customer_intent=intent,
-                    spans_multiple_blocks=True,
-                    blocks_spanned=[b.block_id for b in blocks],
-                    primary_block_id=primary_block.block_id if primary_block else None,
-                    requires_attention=True,
-                    alert_reason=f"Multi-language campaign ({campaign_type}) - left unassigned for non-language categorization",
-                    campaign_type=campaign_type
-                )
-            
-            # For LANGUAGE_SPECIFIC multi-block (same language across blocks)
-            # Treat as single-block assignment using primary block
-            elif intent == CustomerIntent.LANGUAGE_SPECIFIC:
-                return AssignmentResult(
-                    spot_id=spot.spot_id,
-                    success=True,
-                    schedule_id=schedule_id,
-                    block_id=primary_block.block_id if primary_block else None,
-                    customer_intent=intent,
-                    spans_multiple_blocks=False,  # Treat as single block for DB constraint
-                    blocks_spanned=[b.block_id for b in blocks],  # But track all blocks spanned
-                    primary_block_id=primary_block.block_id if primary_block else None,
-                    requires_attention=len(blocks) > 3,
-                    campaign_type='language_specific'  # Same language family = language specific
-                )
-            
-            # For TIME_SPECIFIC multi-block, assign to primary block
-            else:  # TIME_SPECIFIC
-                return AssignmentResult(
-                    spot_id=spot.spot_id,
-                    success=True,
-                    schedule_id=schedule_id,
-                    block_id=primary_block.block_id if primary_block else None,
-                    customer_intent=intent,
-                    spans_multiple_blocks=False,  # Treat as single block for DB constraint
-                    blocks_spanned=[b.block_id for b in blocks],
-                    primary_block_id=primary_block.block_id if primary_block else None,
-                    requires_attention=len(blocks) > 3,
-                    campaign_type='language_specific'  # Time specific = language specific
-                )
-
-
-    def _calculate_spot_duration(self, time_in: str, time_out: str) -> int:
-        """Calculate spot duration in minutes"""
-        try:
-            start_minutes = self._time_to_minutes(time_in)
-            end_minutes = self._time_to_minutes(time_out)
-            
-            if end_minutes >= start_minutes:
-                return end_minutes - start_minutes
-            else:
-                # Handle midnight rollover
-                return (24 * 60) - start_minutes + end_minutes
-        except:
-            return 0
-
-
-    def _determine_campaign_type(self, intent: CustomerIntent, duration_minutes: int, block_count: int) -> str:
-        """Determine campaign type based on intent, duration, and block count"""
-        
-        if intent == CustomerIntent.LANGUAGE_SPECIFIC:
-            return 'language_specific'
-        
-        elif intent == CustomerIntent.INDIFFERENT:
-            # Roadblock detection: 17+ hours (1020+ minutes) or 15+ blocks
-            if duration_minutes >= 1020 or block_count >= 15:
-                return 'roadblock'
-            else:
-                return 'multi_language'
-        
-        else:  # TIME_SPECIFIC
-            return 'language_specific'
-    
-    def _analyze_single_block_intent(self, spot: SpotData, block: LanguageBlock) -> CustomerIntent:
-        """Analyze customer intent for single block assignment"""
-        if spot.language_id and spot.language_id == block.language_id:
-            return CustomerIntent.LANGUAGE_SPECIFIC
-        elif spot.language_id and spot.language_id != block.language_id:
-            return CustomerIntent.TIME_SPECIFIC
-        else:
-            return CustomerIntent.LANGUAGE_SPECIFIC
-    
-    def _analyze_multi_block_intent(self, spot: SpotData, blocks: List[LanguageBlock]) -> CustomerIntent:
-        """Analyze customer intent for multi-block assignment"""
-        unique_languages = set(b.language_id for b in blocks)
-        
-        # Check for same language
-        if len(unique_languages) == 1:
-            return CustomerIntent.LANGUAGE_SPECIFIC
-        
-        # Check for Chinese language family (Mandarin + Cantonese)
-        chinese_languages = {2, 3}  # Mandarin=2, Cantonese=3 (from your language table)
-        if unique_languages.issubset(chinese_languages):
-            return CustomerIntent.LANGUAGE_SPECIFIC  # Chinese intention
-        
-        # Multiple different language families = truly indifferent
-        return CustomerIntent.INDIFFERENT
-    
-    def _select_primary_block(self, spot: SpotData, blocks: List[LanguageBlock]) -> Optional[LanguageBlock]:
-        """Select primary block for multi-block assignment"""
-        if not blocks:
-            return None
-        
-        # Prefer language match if available
-        if spot.language_id:
-            matching_blocks = [b for b in blocks if b.language_id == spot.language_id]
-            if matching_blocks:
-                return matching_blocks[0]
-        
-        return blocks[0]
-    
-    def _save_assignment(self, result: AssignmentResult):
-        """Save assignment to database"""
-        cursor = self.db.cursor()
-        
-        # Only insert if we have a valid schedule_id
-        if result.schedule_id:
-            # Delete existing assignment if exists
-            cursor.execute("DELETE FROM spot_language_blocks WHERE spot_id = ?", (result.spot_id,))
-            
-            cursor.execute("""
-                INSERT INTO spot_language_blocks (
-                    spot_id, schedule_id, block_id, customer_intent, intent_confidence,
-                    spans_multiple_blocks, blocks_spanned, primary_block_id,
-                    assignment_method, assigned_date, assigned_by,
-                    requires_attention, alert_reason, notes, campaign_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                result.spot_id,
-                result.schedule_id,
-                result.block_id,
-                result.customer_intent.value if result.customer_intent else None,
-                1.0,  # Default confidence
-                result.spans_multiple_blocks,
-                str(result.blocks_spanned) if result.blocks_spanned else None,
-                result.primary_block_id,
-                AssignmentMethod.AUTO_COMPUTED.value,
-                datetime.now().isoformat(),
-                'system',
-                result.requires_attention,
-                result.alert_reason,
-                result.error_message,
-                result.campaign_type  # NEW FIELD
-            ))
-            
-            self.db.commit()
-    
     def _get_unassigned_spot_ids(self, limit: int = None) -> List[int]:
         """Get spot IDs that don't have language block assignments"""
         cursor = self.db.cursor()
@@ -613,7 +794,8 @@ class LanguageBlockService:
             s.spot_id, s.bill_code, s.air_date, s.time_in, s.time_out,
             m.market_code, 
             slb.customer_intent, slb.spans_multiple_blocks, slb.requires_attention,
-            slb.alert_reason, lb.block_name, lb.day_part
+            slb.alert_reason, lb.block_name, lb.day_part,
+            slb.business_rule_applied, slb.auto_resolved_date
         FROM spots s
         JOIN markets m ON s.market_id = m.market_id
         LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
@@ -639,7 +821,9 @@ class LanguageBlockService:
             'requires_attention': bool(row[8]) if row[8] is not None else False,
             'alert_reason': row[9],
             'block_name': row[10],
-            'day_part': row[11]
+            'day_part': row[11],
+            'business_rule_applied': row[12],
+            'auto_resolved_date': row[13]
         }
     
     def _time_to_minutes(self, time_str: str) -> int:
@@ -659,6 +843,48 @@ class LanguageBlockService:
     def get_stats(self) -> Dict[str, Any]:
         """Get current assignment statistics"""
         return self.stats.copy()
+    
+    def get_enhanced_rule_stats(self) -> Dict[str, Any]:
+        """Get statistics on enhanced business rule applications"""
+        cursor = self.db.cursor()
+        
+        query = """
+        SELECT 
+            business_rule_applied,
+            COUNT(*) as count,
+            AVG(intent_confidence) as avg_confidence,
+            MIN(auto_resolved_date) as first_applied,
+            MAX(auto_resolved_date) as last_applied
+        FROM spot_language_blocks
+        WHERE business_rule_applied IS NOT NULL
+        GROUP BY business_rule_applied
+        ORDER BY count DESC
+        """
+        
+        cursor.execute(query)
+        results = cursor.fetchall()
+        
+        stats = {
+            'enhanced_rules': {},
+            'total_enhanced': 0,
+            'total_standard': 0
+        }
+        
+        for row in results:
+            rule_name = row[0]
+            stats['enhanced_rules'][rule_name] = {
+                'count': row[1],
+                'avg_confidence': row[2],
+                'first_applied': row[3],
+                'last_applied': row[4]
+            }
+            stats['total_enhanced'] += row[1]
+        
+        # Get total standard assignments
+        cursor.execute("SELECT COUNT(*) FROM spot_language_blocks WHERE business_rule_applied IS NULL")
+        stats['total_standard'] = cursor.fetchone()[0]
+        
+        return stats
 
 
 def get_unassigned_by_year_summary(db_connection):
@@ -776,7 +1002,7 @@ def main():
         return 1
     
     try:
-        service = LanguageBlockService(conn)
+        service = LanguageBlockService(conn)  # ← FIXED: Pass conn parameter
         
         if args.status:
             # Show current status for all years

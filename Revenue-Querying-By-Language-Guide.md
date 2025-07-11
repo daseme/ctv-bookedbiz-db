@@ -11,7 +11,7 @@ This guide documents the **Unified Analysis System** with **Paid Programming cat
 
 ## 🆕 NEW: Paid Programming Category & Streamlined Architecture
 
-### What's New in Version 5.0
+### What's New in Version 5.0   
 - **Paid Programming Category**: Dedicated category for all `revenue_type = 'Paid Programming'` content
 - **Overnight Shopping Removed**: NKB spots properly reclassified as Paid Programming
 - **Revenue Type Precedence**: `revenue_type` now takes precedence over bill_code patterns
