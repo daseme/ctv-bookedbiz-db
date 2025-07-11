@@ -1,6 +1,6 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-07-09 11:49:30
+-- Generated on: 2025-07-11 09:17:41
 -- 
 -- SQLite Version: 3.40.1
 -- 
@@ -494,7 +494,7 @@ CREATE INDEX idx_spots_time_market_day
 ON spots(market_id, day_of_week, time_in, time_out) 
 WHERE day_of_week IS NOT NULL AND time_in IS NOT NULL;
 
--- Views (9)
+-- Views (10)
 -- ============================================================
 
 CREATE VIEW business_rule_analytics AS
@@ -531,6 +531,22 @@ SELECT
     'Standard assignment process' as notes
 FROM spot_language_blocks
 WHERE business_rule_applied IS NULL;
+
+CREATE VIEW enhanced_rule_analytics AS
+                SELECT 
+                    COALESCE(business_rule_applied, 'standard_assignment') as rule_type,
+                    COUNT(*) as spots_affected,
+                    COUNT(*) * 100.0 / (SELECT COUNT(*) FROM spot_language_blocks) as percentage,
+                    AVG(intent_confidence) as avg_confidence,
+                    COUNT(CASE WHEN requires_attention = 1 THEN 1 END) as flagged_count,
+                    COUNT(CASE WHEN requires_attention = 0 THEN 1 END) as auto_resolved_count,
+                    MIN(assigned_date) as earliest_assignment,
+                    MAX(assigned_date) as latest_assignment,
+                    MIN(auto_resolved_date) as earliest_auto_resolved,
+                    MAX(auto_resolved_date) as latest_auto_resolved
+                FROM spot_language_blocks 
+                GROUP BY COALESCE(business_rule_applied, 'standard_assignment')
+                ORDER BY spots_affected DESC;
 
 CREATE VIEW language_block_dashboard AS
 SELECT 
@@ -915,5 +931,5 @@ END;
 
 -- End of schema export
 -- Total tables: 18
--- Total views: 9
+-- Total views: 10
 -- Total triggers: 3
