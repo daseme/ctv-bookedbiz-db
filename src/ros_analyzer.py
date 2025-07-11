@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Roadblocks Analyzer - Production Ready
-=====================================
+ROS Analyzer - Production Ready (formerly Roadblocks Analyzer)
+=============================================================
 
-Production-ready roadblocks analysis module with proper integration
+Production-ready ROS (Run on Schedule) analysis module with proper integration
 into the existing BaseQueryBuilder system.
 
 Key features:
-- Full Day Roadblock classification (6:00am-11:59pm)
+- Full Day ROS classification (6:00am-11:59pm)
 - BNS spot tracking and analysis
 - Customer and time pattern analysis
 - Integration with existing query builder foundation
 
-Save as: src/roadblocks_analyzer.py
+Save as: src/ros_analyzer.py
 """
 
 import sqlite3
@@ -65,8 +65,8 @@ except ImportError:
 
 
 @dataclass
-class RoadblockSummary:
-    """Roadblock summary statistics"""
+class ROSSummary:
+    """ROS summary statistics"""
     total_spots: int
     paid_spots: int
     bns_spots: int
@@ -76,8 +76,8 @@ class RoadblockSummary:
 
 
 @dataclass
-class RoadblockTimePattern:
-    """Time pattern analysis for roadblocks"""
+class ROSTimePattern:
+    """Time pattern analysis for ROS spots"""
     time_range: str
     classification: str
     spots: int
@@ -88,8 +88,8 @@ class RoadblockTimePattern:
 
 
 @dataclass
-class RoadblockCustomer:
-    """Customer analysis for roadblocks"""
+class ROSCustomer:
+    """Customer analysis for ROS spots"""
     customer_name: str
     total_spots: int
     paid_spots: int
@@ -100,8 +100,8 @@ class RoadblockCustomer:
     time_range: str
 
 
-class RoadblocksQueryBuilder(BaseQueryBuilder):
-    """Production-ready roadblocks query builder"""
+class ROSQueryBuilder(BaseQueryBuilder):
+    """Production-ready ROS query builder"""
     
     def __init__(self, year: str = "2024"):
         super().__init__(year)
@@ -113,9 +113,9 @@ class RoadblocksQueryBuilder(BaseQueryBuilder):
         self.add_left_join("spot_language_blocks slb", "s.spot_id = slb.spot_id")
         return self
     
-    def add_roadblock_conditions(self):
-        """Add roadblock-specific conditions"""
-        self.add_filter("slb.campaign_type = 'roadblock'")
+    def add_ros_conditions(self):
+        """Add ROS-specific conditions"""
+        self.add_filter("slb.campaign_type = 'ros'")
         return self
     
     def add_customer_and_agency_joins(self):
@@ -124,24 +124,24 @@ class RoadblocksQueryBuilder(BaseQueryBuilder):
         self.add_left_join("agencies a", "s.agency_id = a.agency_id")
         return self
     
-    def get_roadblocks_spot_ids(self) -> Set[int]:
-        """Get all roadblock spot IDs for integration with unified analysis"""
+    def get_ros_spot_ids(self) -> Set[int]:
+        """Get all ROS spot IDs for integration with unified analysis"""
         # This method will be used by unified_analysis.py for reconciliation
         pass
     
     def classify_time_range(self, time_in: str, time_out: str) -> str:
-        """Classify roadblock time range based on actual patterns"""
+        """Classify ROS time range based on actual patterns"""
         if time_in == "6:00:00" and time_out == "23:59:00":
-            return "Full Day Roadblock (6:00am-11:59pm)"
+            return "Full Day ROS (6:00am-11:59pm)"
         elif time_in == "6:00:00" and time_out == "23:00:00":
-            return "Full Day Roadblock (6:00am-11:00pm)"
+            return "Full Day ROS (6:00am-11:00pm)"
         elif time_in == "06:00" and time_out == "23:59":
-            return "Full Day Roadblock (6:00am-11:59pm) - Alt Format"
+            return "Full Day ROS (6:00am-11:59pm) - Alt Format"
         else:
-            return f"Roadblock ({time_in} to {time_out})"
+            return f"ROS ({time_in} to {time_out})"
     
     def build_summary_query(self) -> str:
-        """Build roadblocks summary query"""
+        """Build ROS summary query"""
         return f"""
         SELECT 
             COUNT(*) as total_spots,
@@ -159,10 +159,10 @@ class RoadblocksQueryBuilder(BaseQueryBuilder):
         SELECT 
             s.time_in || ' to ' || s.time_out as time_range,
             CASE 
-                WHEN s.time_in = '6:00:00' AND s.time_out = '23:59:00' THEN 'Full Day Roadblock (6:00am-11:59pm)'
-                WHEN s.time_in = '6:00:00' AND s.time_out = '23:00:00' THEN 'Full Day Roadblock (6:00am-11:00pm)'
-                WHEN s.time_in = '06:00' AND s.time_out = '23:59' THEN 'Full Day Roadblock (6:00am-11:59pm) - Alt Format'
-                ELSE 'Roadblock (' || s.time_in || ' to ' || s.time_out || ')'
+                WHEN s.time_in = '6:00:00' AND s.time_out = '23:59:00' THEN 'Full Day ROS (6:00am-11:59pm)'
+                WHEN s.time_in = '6:00:00' AND s.time_out = '23:00:00' THEN 'Full Day ROS (6:00am-11:00pm)'
+                WHEN s.time_in = '06:00' AND s.time_out = '23:59' THEN 'Full Day ROS (6:00am-11:59pm) - Alt Format'
+                ELSE 'ROS (' || s.time_in || ' to ' || s.time_out || ')'
             END as classification,
             COUNT(*) as spots,
             COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
@@ -196,7 +196,7 @@ class RoadblocksQueryBuilder(BaseQueryBuilder):
         """
     
     def build_spot_ids_query(self) -> str:
-        """Build query to get roadblock spot IDs for unified analysis integration"""
+        """Build query to get ROS spot IDs for unified analysis integration"""
         return f"""
         SELECT DISTINCT s.spot_id
         {self.build_from_clause()}
@@ -204,16 +204,16 @@ class RoadblocksQueryBuilder(BaseQueryBuilder):
         """
 
 
-class RoadblocksAnalyzer:
-    """Production-ready roadblocks analyzer"""
+class ROSAnalyzer:
+    """Production-ready ROS analyzer"""
     
     def __init__(self, db_connection):
         self.db_connection = db_connection
     
-    def get_summary(self, year: str = "2024") -> RoadblockSummary:
-        """Get roadblocks summary statistics"""
-        builder = RoadblocksQueryBuilder(year)
-        builder.add_roadblock_conditions()
+    def get_summary(self, year: str = "2024") -> ROSSummary:
+        """Get ROS summary statistics"""
+        builder = ROSQueryBuilder(year)
+        builder.add_ros_conditions()
         
         query = builder.build_summary_query()
         cursor = self.db_connection.cursor()
@@ -228,7 +228,7 @@ class RoadblocksAnalyzer:
         
         bns_percentage = (bns_spots / total_spots) * 100 if total_spots > 0 else 0
         
-        return RoadblockSummary(
+        return ROSSummary(
             total_spots=total_spots,
             paid_spots=paid_spots,
             bns_spots=bns_spots,
@@ -237,10 +237,10 @@ class RoadblocksAnalyzer:
             bns_percentage=bns_percentage
         )
     
-    def get_time_patterns(self, year: str = "2024") -> List[RoadblockTimePattern]:
+    def get_time_patterns(self, year: str = "2024") -> List[ROSTimePattern]:
         """Get time pattern analysis"""
-        builder = RoadblocksQueryBuilder(year)
-        builder.add_roadblock_conditions()
+        builder = ROSQueryBuilder(year)
+        builder.add_ros_conditions()
         
         query = builder.build_time_pattern_query()
         cursor = self.db_connection.cursor()
@@ -248,7 +248,7 @@ class RoadblocksAnalyzer:
         
         patterns = []
         for row in cursor.fetchall():
-            patterns.append(RoadblockTimePattern(
+            patterns.append(ROSTimePattern(
                 time_range=row[0],
                 classification=row[1],
                 spots=row[2],
@@ -260,10 +260,10 @@ class RoadblocksAnalyzer:
         
         return patterns
     
-    def get_customers(self, year: str = "2024") -> List[RoadblockCustomer]:
+    def get_customers(self, year: str = "2024") -> List[ROSCustomer]:
         """Get customer analysis"""
-        builder = RoadblocksQueryBuilder(year)
-        builder.add_roadblock_conditions().add_customer_and_agency_joins()
+        builder = ROSQueryBuilder(year)
+        builder.add_ros_conditions().add_customer_and_agency_joins()
         
         query = builder.build_customer_query()
         cursor = self.db_connection.cursor()
@@ -271,7 +271,7 @@ class RoadblocksAnalyzer:
         
         customers = []
         for row in cursor.fetchall():
-            customers.append(RoadblockCustomer(
+            customers.append(ROSCustomer(
                 customer_name=row[0],
                 total_spots=row[1],
                 paid_spots=row[2],
@@ -285,9 +285,9 @@ class RoadblocksAnalyzer:
         return customers
     
     def get_spot_ids(self, year: str = "2024") -> Set[int]:
-        """Get roadblock spot IDs for unified analysis integration"""
-        builder = RoadblocksQueryBuilder(year)
-        builder.add_roadblock_conditions()
+        """Get ROS spot IDs for unified analysis integration"""
+        builder = ROSQueryBuilder(year)
+        builder.add_ros_conditions()
         
         query = builder.build_spot_ids_query()
         cursor = self.db_connection.cursor()
@@ -297,8 +297,8 @@ class RoadblocksAnalyzer:
     
     def get_bns_breakdown(self, year: str = "2024") -> Dict[str, Any]:
         """Get detailed BNS breakdown"""
-        builder = RoadblocksQueryBuilder(year)
-        builder.add_roadblock_conditions().add_customer_and_agency_joins()
+        builder = ROSQueryBuilder(year)
+        builder.add_ros_conditions().add_customer_and_agency_joins()
         
         query = f"""
         SELECT 
@@ -330,24 +330,24 @@ class RoadblocksAnalyzer:
         }
 
 
-class RoadblocksReportGenerator:
-    """Production-ready roadblocks report generator"""
+class ROSReportGenerator:
+    """Production-ready ROS report generator"""
     
     def __init__(self, db_connection):
-        self.analyzer = RoadblocksAnalyzer(db_connection)
+        self.analyzer = ROSAnalyzer(db_connection)
     
     def generate_report(self, year: str = "2024") -> str:
-        """Generate comprehensive roadblocks report"""
+        """Generate comprehensive ROS report"""
         summary = self.analyzer.get_summary(year)
         time_patterns = self.analyzer.get_time_patterns(year)
         customers = self.analyzer.get_customers(year)
         bns_breakdown = self.analyzer.get_bns_breakdown(year)
         
-        return f"""# Roadblocks Analysis Report - {year}
+        return f"""# ROS (Run on Schedule) Analysis Report - {year}
 
-*Generated by Production Roadblocks Analyzer*
+*Generated by Production ROS Analyzer*
 
-## 🚧 Executive Summary
+## 📅 Executive Summary
 
 ### Performance Metrics
 - **Total Revenue**: ${summary.total_revenue:,.2f}
@@ -357,7 +357,7 @@ class RoadblocksReportGenerator:
 - **Average per Spot**: ${summary.avg_per_spot:.2f}
 
 ### Key Insights
-- **{summary.bns_percentage:.1f}% of roadblocks are BNS** (bonus spots with no revenue)
+- **{summary.bns_percentage:.1f}% of ROS spots are BNS** (bonus spots with no revenue)
 - **Only {100 - summary.bns_percentage:.1f}% generate revenue** (${summary.total_revenue:,.2f})
 - **Public service focus**: High BNS rate indicates government/non-profit campaigns
 
@@ -370,23 +370,23 @@ class RoadblocksReportGenerator:
 ## 📊 Technical Details
 
 **Classification Logic:**
-- **6:00:00 to 23:59:00**: Full Day Roadblock (6:00am-11:59pm) - Main pattern
-- **6:00:00 to 23:00:00**: Full Day Roadblock (6:00am-11:00pm) - Ends at 11pm
-- **06:00 to 23:59**: Full Day Roadblock (6:00am-11:59pm) - Alternative time format
+- **6:00:00 to 23:59:00**: Full Day ROS (6:00am-11:59pm) - Main pattern
+- **6:00:00 to 23:00:00**: Full Day ROS (6:00am-11:00pm) - Ends at 11pm
+- **06:00 to 23:59**: Full Day ROS (6:00am-11:59pm) - Alternative time format
 
 **Revenue Calculation:**
 - **BNS Spots**: spot_type = 'BNS' (no revenue, bonus content)
 - **Paid Spots**: All other spots that generate revenue
 - **Total Revenue**: Sum of paid spots only
 
-**Data Source**: campaign_type = 'roadblock' in spot_language_blocks table
+**Data Source**: campaign_type = 'ros' in spot_language_blocks table
 
 ---
 
-*Generated by Production Roadblocks Analyzer v1.0*
+*Generated by Production ROS Analyzer v1.0*
 """
     
-    def _format_time_patterns(self, patterns: List[RoadblockTimePattern]) -> str:
+    def _format_time_patterns(self, patterns: List[ROSTimePattern]) -> str:
         """Format time patterns section"""
         if not patterns:
             return "### No time patterns found."
@@ -402,7 +402,7 @@ class RoadblocksReportGenerator:
         
         return section
     
-    def _format_customers(self, customers: List[RoadblockCustomer]) -> str:
+    def _format_customers(self, customers: List[ROSCustomer]) -> str:
         """Format customers section"""
         if not customers:
             return "### No customers found."
@@ -442,10 +442,10 @@ class RoadblocksReportGenerator:
 
 
 def main():
-    """Main function for testing roadblocks analyzer"""
+    """Main function for testing ROS analyzer"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Production Roadblocks Analyzer")
+    parser = argparse.ArgumentParser(description="Production ROS Analyzer")
     parser.add_argument("--year", default="2024", help="Year to analyze")
     parser.add_argument("--output", help="Output file path")
     parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
@@ -456,22 +456,22 @@ def main():
     try:
         with sqlite3.connect(args.db_path) as db:
             if args.summary_only:
-                analyzer = RoadblocksAnalyzer(db)
+                analyzer = ROSAnalyzer(db)
                 summary = analyzer.get_summary(args.year)
-                print(f"📊 Roadblocks Summary ({args.year}):")
+                print(f"📊 ROS Summary ({args.year}):")
                 print(f"Total Spots: {summary.total_spots:,}")
                 print(f"Paid Spots: {summary.paid_spots:,}")
                 print(f"BNS Spots: {summary.bns_spots:,} ({summary.bns_percentage:.1f}%)")
                 print(f"Total Revenue: ${summary.total_revenue:,.2f}")
                 print(f"Average per Spot: ${summary.avg_per_spot:.2f}")
             else:
-                report_generator = RoadblocksReportGenerator(db)
+                report_generator = ROSReportGenerator(db)
                 report = report_generator.generate_report(args.year)
                 
                 if args.output:
                     with open(args.output, 'w') as f:
                         f.write(report)
-                    print(f"✅ Roadblocks report saved to {args.output}")
+                    print(f"✅ ROS report saved to {args.output}")
                 else:
                     print(report)
     

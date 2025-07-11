@@ -24,7 +24,7 @@ src/
 ├── query_builders.py              # Foundation BaseQueryBuilder classes
 ├── unified_analysis.py            # Main category analysis & reconciliation
 ├── language_table_generator.py    # Language-specific analysis
-├── roadblocks_analyzer.py         # Roadblocks analysis module
+├── ross_analyzer.py         # ROSs analysis module
 ├── export_multilang.sh           # Multi-language export script (updated)
 └── reports/                       # Generated reports
 ```
@@ -46,7 +46,7 @@ python src/unified_analysis.py --year 2024
 |----------|---------|------------|-----------|-------------|---|-------------|
 | **Individual Language Blocks** | $3,195,320.35 | 50,273 | 14,201 | 64,474 | 78.4% | Core language targeting |
 | **Direct Response** | $354,506.93 | 38,679 | 3,179 | 41,858 | 8.7% | WorldLink consistency |
-| **Roadblocks** | $232,238.01 | 2,975 | 4,821 | 7,796 | 5.7% | Broadcast sponsorships |
+| **ROSs** | $232,238.01 | 2,975 | 4,821 | 7,796 | 5.7% | Broadcast sponsorships |
 | **Paid Programming** | $115,808.12 | 264 | 0 | 264 | 2.8% | **NEW: All revenue_type = 'Paid Programming'** |
 | **Other Non-Language** | $73,714.21 | 417 | 271 | 688 | 1.8% | Miscellaneous spots |
 | **Branded Content (PRD)** | $52,592.29 | 78 | 0 | 78 | 1.3% | Internal production |
@@ -90,10 +90,10 @@ python src/unified_analysis.py --year 2024
 **Precedence:** Fifth priority, includes all individually assigned language spots
 **Implementation:** `IndividualLanguageQueryBuilder`
 
-#### 6. Roadblocks (5.7%)
-**Definition:** Broadcast sponsorships with campaign_type = 'roadblock'  
-**Precedence:** Sixth priority for spots with roadblock campaign classification
-**Implementation:** `RoadblocksQueryBuilder`
+#### 6. ROSs (5.7%)
+**Definition:** Broadcast sponsorships with campaign_type = 'ros'  
+**Precedence:** Sixth priority for spots with ros campaign classification
+**Implementation:** `ROSsQueryBuilder`
 
 #### 7. Multi-Language Cross-Audience (1.0%)
 **Definition:** Cross-cultural advertising spanning multiple language blocks  
@@ -102,7 +102,7 @@ python src/unified_analysis.py --year 2024
 
 **Updated Exclusions:**
 - Excludes `revenue_type = 'Paid Programming'` (now handled by category 2)
-- Excludes roadblocks (handled by category 6)
+- Excludes ross (handled by category 6)
 - Excludes WorldLink (handled by category 1)
 
 #### 8. Other Non-Language (1.8%)
@@ -128,7 +128,7 @@ Based on actual revenue_type = 'Paid Programming' data:
 5. **Cornerstone Media Group**: $400 (4 spots) - Media services
 
 ### Business Intelligence
-- **No BNS Content**: All Paid Programming spots generate revenue (unlike roadblocks)
+- **No BNS Content**: All Paid Programming spots generate revenue (unlike ross)
 - **Diverse Content**: Shopping, religious, ethnic, and regional programming
 - **Premium Rates**: $438.67 average per spot vs. $34.71 overall average
 - **Formerly Misclassified**: NKB:Shop LC previously in "Overnight Shopping"

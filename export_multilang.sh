@@ -132,9 +132,9 @@ AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
 AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
 AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
 AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-AND (slb.spans_multiple_blocks = 1 OR 
-     (slb.spans_multiple_blocks = 0 AND slb.block_id IS NULL) OR 
-     (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NULL))
+AND slb.customer_intent = 'indifferent'
+AND slb.campaign_type != 'roadblock'
+AND s.revenue_type != 'Paid Programming'
 AND NOT (
     (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
      AND s.day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday'))
@@ -174,9 +174,9 @@ AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
 AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
 AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
 AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-AND (slb.spans_multiple_blocks = 1 OR 
-     (slb.spans_multiple_blocks = 0 AND slb.block_id IS NULL) OR 
-     (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NULL))
+AND slb.customer_intent = 'indifferent'
+AND slb.campaign_type != 'roadblock'
+AND s.revenue_type != 'Paid Programming'
 AND NOT (
     (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
      AND s.day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday'))

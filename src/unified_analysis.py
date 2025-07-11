@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Updated Unified Analysis System - Chinese Prime Time Removed
-===========================================================
+Updated Unified Analysis System - ROS Terminology
+==================================================
 
-This system removes Chinese Prime Time as a separate category and integrates
-the multi-language analyzer while maintaining perfect reconciliation.
+This system uses ROS (Run on Schedule) terminology instead of "roadblocks"
+while maintaining perfect reconciliation.
 
 Key Changes:
-- Chinese Prime Time category removed (now handled by Individual Language Blocks)
+- ROS terminology throughout (formerly "roadblocks")
 - Multi-Language analyzer integrated
 - Simplified precedence rules
 - Perfect reconciliation maintained
@@ -26,11 +26,11 @@ MULTI_LANGUAGE_AVAILABLE = False  # Force fallback query
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from roadblocks_analyzer import RoadblocksAnalyzer
-    ROADBLOCKS_AVAILABLE = True
+    from ros_analyzer import ROSAnalyzer
+    ROS_AVAILABLE = True
 except ImportError:
-    print("Warning: roadblocks_analyzer module not found. Roadblocks analysis will be skipped.")
-    ROADBLOCKS_AVAILABLE = False
+    print("Warning: ros_analyzer module not found. ROS analysis will be skipped.")
+    ROS_AVAILABLE = False
 
 try:
     from multi_language_analyzer import MultiLanguageAnalyzer
@@ -66,7 +66,7 @@ class UnifiedResult:
 
 class UpdatedUnifiedAnalysisEngine:
     """
-    Updated unified analysis engine with Chinese Prime Time removed
+    Updated unified analysis engine with ROS terminology
     and multi-language analyzer integrated.
     """
     
@@ -112,7 +112,7 @@ class UpdatedUnifiedAnalysisEngine:
     def get_mutually_exclusive_categories(self, year: str = "2024") -> List[UnifiedResult]:
         """
         Get mutually exclusive categories using proper precedence rules
-        UPDATED: Chinese Prime Time removed, Multi-Language simplified
+        UPDATED: ROS terminology (formerly roadblocks)
         """
         year_suffix = year[-2:]
         
@@ -151,21 +151,21 @@ class UpdatedUnifiedAnalysisEngine:
         ))
         remaining_spots -= services_spots
         
-        # 5. Individual Language Blocks (now includes former Chinese Prime Time)
+        # 5. Individual Language Blocks
         individual_lang_spots = self._get_individual_language_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
             "Individual Language Blocks", individual_lang_spots, year_suffix
         ))
         remaining_spots -= individual_lang_spots
 
-        # 6. Roadblocks
-        roadblocks_spots = self._get_roadblocks_spot_ids(year_suffix) & remaining_spots
+        # 6. ROS (Run on Schedule) - UPDATED terminology
+        ros_spots = self._get_ros_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
-            "Roadblocks", roadblocks_spots, year_suffix
+            "ROS (Run on Schedule)", ros_spots, year_suffix
         ))
-        remaining_spots -= roadblocks_spots
+        remaining_spots -= ros_spots
         
-        # 7. Multi-Language (Cross-Audience) - SIMPLIFIED, NO CHINESE PRIME TIME EXCLUSIONS
+        # 7. Multi-Language (Cross-Audience)
         multi_lang_spots = self._get_multi_language_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
             "Multi-Language (Cross-Audience)", multi_lang_spots, year_suffix
@@ -251,7 +251,7 @@ class UpdatedUnifiedAnalysisEngine:
     
 
     def _get_paid_programming_spot_ids(self, year_suffix: str) -> Set[int]:
-        """Get Paid Programming spot IDs (McHale Media:Kingdom of God)"""
+        """Get Paid Programming spot IDs"""
         query = """
         SELECT DISTINCT s.spot_id
         FROM spots s
@@ -266,7 +266,7 @@ class UpdatedUnifiedAnalysisEngine:
         return set(row[0] for row in cursor.fetchall())
     
     def _get_individual_language_spot_ids(self, year_suffix: str) -> Set[int]:
-        """Get Individual Language spot IDs (now includes former Chinese Prime Time)"""
+        """Get Individual Language spot IDs"""
         query = """
         SELECT DISTINCT s.spot_id
         FROM spots s
@@ -285,17 +285,17 @@ class UpdatedUnifiedAnalysisEngine:
         cursor.execute(query, [f"%-{year_suffix}"])
         return set(row[0] for row in cursor.fetchall())
     
-    def _get_roadblocks_spot_ids(self, year_suffix: str) -> Set[int]:
-        """Get Roadblocks spot IDs using integrated roadblocks analyzer"""
-        if not ROADBLOCKS_AVAILABLE:
+    def _get_ros_spot_ids(self, year_suffix: str) -> Set[int]:
+        """Get ROS spot IDs using integrated ROS analyzer"""
+        if not ROS_AVAILABLE:
             return set()
         
         try:
-            analyzer = RoadblocksAnalyzer(self.db_connection)
+            analyzer = ROSAnalyzer(self.db_connection)
             year = f"20{year_suffix}"
             return analyzer.get_spot_ids(year)
         except Exception as e:
-            print(f"Warning: Error getting roadblocks spot IDs: {e}")
+            print(f"Warning: Error getting ROS spot IDs: {e}")
             return set()
     
     def _get_multi_language_spot_ids(self, year_suffix: str) -> Set[int]:
@@ -309,7 +309,6 @@ class UpdatedUnifiedAnalysisEngine:
                 print(f"Warning: Error getting multi-language spot IDs: {e}")
         
         # Fallback to original logic if analyzer not available
-        # SIMPLIFIED: No Chinese Prime Time exclusions anymore
         """Get Multi-Language spot IDs"""
         query = """
         SELECT DISTINCT s.spot_id
@@ -393,7 +392,6 @@ class UpdatedUnifiedAnalysisEngine:
     def get_unified_language_analysis(self, year: str = "2024") -> List[UnifiedResult]:
         """
         Get language analysis that reconciles with category analysis
-        UPDATED: Chinese Prime Time removed, cleaner language analysis
         """
         year_suffix = year[-2:]
         languages = []
@@ -511,7 +509,7 @@ class UpdatedUnifiedAnalysisEngine:
             }
     
     def validate_reconciliation(self, year: str = "2024") -> Dict[str, Any]:
-        """Validate perfect reconciliation with Chinese Prime Time removed"""
+        """Validate perfect reconciliation with ROS terminology"""
         base_totals = self.get_base_totals(year)
         category_results = self.get_mutually_exclusive_categories(year)
         
@@ -531,13 +529,13 @@ class UpdatedUnifiedAnalysisEngine:
                 abs(base_totals['revenue'] - category_totals['revenue']) < 1.0 and
                 abs(base_totals['total_spots'] - category_totals['total_spots']) < 1
             ),
-            'chinese_prime_time_removed': True,
+            'ros_terminology_updated': True,
             'multi_language_integrated': MULTI_LANGUAGE_AVAILABLE,
-            'roadblocks_included': ROADBLOCKS_AVAILABLE
+            'ros_included': ROS_AVAILABLE
         }
     
     def generate_updated_unified_tables(self, year: str = "2024") -> str:
-        """Generate both tables with Chinese Prime Time removed and multi-language integrated"""
+        """Generate both tables with ROS terminology"""
         
         # Get both analyses
         category_results = self.get_mutually_exclusive_categories(year)
@@ -553,7 +551,7 @@ class UpdatedUnifiedAnalysisEngine:
         category_table = self._format_table(
             category_results,
             "📊 Revenue Category Breakdown",
-            "Updated Category Performance - Chinese Prime Time Removed",
+            "Updated Category Performance - ROS Terminology",
             year
         )
         
@@ -561,7 +559,7 @@ class UpdatedUnifiedAnalysisEngine:
         language_table = self._format_table(
             language_results,
             "🌐 Language Analysis",
-            "Individual Language Performance (Chinese Prime Time Integrated)",
+            "Individual Language Performance",
             year
         )
         
@@ -569,9 +567,9 @@ class UpdatedUnifiedAnalysisEngine:
         multi_language_breakdown = self._format_multi_language_breakdown(multi_language_analysis)
         
         # Generate report
-        return f"""# Updated Unified Revenue Analysis - Chinese Prime Time Removed - {year}
+        return f"""# Updated Unified Revenue Analysis - ROS Terminology - {year}
 
-*Generated with perfect reconciliation and integrated multi-language analysis*
+*Generated with perfect reconciliation and ROS terminology*
 
 ## 🎯 Reconciliation Status
 
@@ -580,7 +578,7 @@ class UpdatedUnifiedAnalysisEngine:
 - **Revenue Difference**: ${validation['revenue_difference']:,.2f}
 - **Spot Difference**: {validation['spot_difference']:,}
 - **Perfect Reconciliation**: {'✅ YES' if validation['perfect_reconciliation'] else '❌ NO'}
-- **Chinese Prime Time Removed**: {'✅ YES' if validation['chinese_prime_time_removed'] else '❌ NO'}
+- **ROS Terminology Updated**: {'✅ YES' if validation['ros_terminology_updated'] else '❌ NO'}
 - **Multi-Language Integrated**: {'✅ YES' if validation['multi_language_integrated'] else '❌ NO'}
 
 {category_table}
@@ -619,7 +617,7 @@ class UpdatedUnifiedAnalysisEngine:
         
         breakdown = f"""## 🌍 Multi-Language (Cross-Audience) Category Breakdown
 
-### Cross-Audience Performance (Chinese Prime Time now in Individual Language)
+### Cross-Audience Performance
 - **Total Revenue**: ${summary['total_revenue']:,.2f}
 - **Total Spots**: {summary['total_spots']:,}
 - **BNS Percentage**: {summary['bns_percentage']:.1f}%
@@ -627,9 +625,9 @@ class UpdatedUnifiedAnalysisEngine:
 - **Unique Agencies**: {summary['unique_agencies']:,}
 
 ### Strategy Impact
-- **Simplified Logic**: No Chinese Prime Time exclusions needed
-- **Cleaner Cross-Audience**: Pure multi-language targeting without time-based carve-outs
-- **Better Language Blocks**: Former Chinese Prime Time properly categorized as Individual Language
+- **Simplified Logic**: Clean cross-audience targeting
+- **Better Language Blocks**: Proper language categorization
+- **ROS Integration**: Run on Schedule properly categorized
 
 """
         
@@ -655,13 +653,13 @@ class UpdatedUnifiedAnalysisEngine:
         return breakdown
     
     def _generate_updated_reconciliation_notes(self) -> str:
-        """Generate updated reconciliation notes"""
+        """Generate updated reconciliation notes with ROS terminology"""
         return """## 📋 Updated Reconciliation Notes
 
 ### Key Changes Applied
-- **Chinese Prime Time Removed**: No longer a separate category
-- **Individual Language Enhanced**: Now includes former Chinese Prime Time spots
-- **Multi-Language Simplified**: No time-based exclusions needed
+- **ROS Terminology**: "Roadblocks" renamed to "ROS (Run on Schedule)"
+- **Individual Language Enhanced**: Clean language categorization
+- **Multi-Language Simplified**: Cross-audience targeting
 - **Perfect Reconciliation Maintained**: All spots still counted exactly once
 
 ### Updated Precedence Rules
@@ -670,19 +668,20 @@ class UpdatedUnifiedAnalysisEngine:
 3. **Branded Content (PRD)** → Internal production spots
 4. **Services (SVC)** → Station service spots
 5. **Individual Language Blocks** → Single language targeting
-6. **Roadblocks** → Broadcast sponsorships
+6. **ROS (Run on Schedule)** → Broadcast sponsorships (formerly "roadblocks")
 7. **Multi-Language (Cross-Audience)** → Cross-audience targeting
 8. **Other Non-Language** → Everything else
 
 ### Business Logic Improvements
 - **Cleaner Individual Language**: Chinese blocks properly unified (Mandarin + Cantonese)
-- **Simplified Multi-Language**: Pure cross-audience without time-based complications
-- **Better Data Integrity**: Former Chinese Prime Time properly categorized by language blocks
-- **Maintained Precision**: Perfect reconciliation with simplified logic
+- **Better ROS Definition**: Run on Schedule is clearer than "roadblocks"
+- **Simplified Multi-Language**: Pure cross-audience targeting
+- **Better Data Integrity**: Proper categorization by language blocks
+- **Maintained Precision**: Perfect reconciliation with updated terminology
 
 ### Technical Architecture
 - **Multi-Language Analyzer**: Integrated for comprehensive cross-audience analysis
-- **Roadblocks Analyzer**: Maintained for broadcast sponsorship analysis
+- **ROS Analyzer**: Updated terminology for broadcast sponsorship analysis
 - **Unified Reconciliation**: All categories work together seamlessly
 - **Separation of Concerns**: Each analyzer handles its specific domain
 
@@ -696,7 +695,7 @@ All validation tests should show:
 
 ---
 
-*Generated by Updated Unified Analysis System v5.0*"""
+*Generated by Updated Unified Analysis System v5.1 - ROS Terminology*"""
     
     def _format_table(self, results: List[UnifiedResult], title: str, subtitle: str, year: str) -> str:
         """Format results into a table"""
@@ -726,10 +725,10 @@ All validation tests should show:
 
 
 def main():
-    """Test the updated unified analysis system"""
+    """Test the updated unified analysis system with ROS terminology"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Updated Unified Analysis - Chinese Prime Time Removed")
+    parser = argparse.ArgumentParser(description="Updated Unified Analysis - ROS Terminology")
     parser.add_argument("--year", default="2024", help="Year to analyze")
     parser.add_argument("--output", help="Output file path")
     parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
@@ -749,9 +748,9 @@ def main():
                 print(f"✅ Category Total: ${validation['category_totals']['revenue']:,.2f}")
                 print(f"✅ Revenue Difference: ${validation['revenue_difference']:,.2f}")
                 print(f"✅ Perfect Reconciliation: {'YES' if validation['perfect_reconciliation'] else 'NO'}")
-                print(f"✅ Chinese Prime Time Removed: {'YES' if validation['chinese_prime_time_removed'] else 'NO'}")
+                print(f"✅ ROS Terminology Updated: {'YES' if validation['ros_terminology_updated'] else 'NO'}")
                 print(f"✅ Multi-Language Integrated: {'YES' if validation['multi_language_integrated'] else 'NO'}")
-                print(f"✅ Roadblocks Included: {'YES' if validation['roadblocks_included'] else 'NO'}")
+                print(f"✅ ROS Included: {'YES' if validation['ros_included'] else 'NO'}")
             elif args.multi_language_only:
                 # Show multi-language analysis only
                 multi_lang_analysis = engine.get_multi_language_analysis(args.year)
