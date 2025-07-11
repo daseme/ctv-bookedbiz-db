@@ -728,12 +728,44 @@ def main():
     """Test the updated unified analysis system with ROS terminology"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Updated Unified Analysis - ROS Terminology")
-    parser.add_argument("--year", default="2024", help="Year to analyze")
-    parser.add_argument("--output", help="Output file path")
-    parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
-    parser.add_argument("--validate-only", action="store_true", help="Run validation only")
-    parser.add_argument("--multi-language-only", action="store_true", help="Show only multi-language analysis")
+    parser = argparse.ArgumentParser(
+        description="Updated Unified Analysis - ROS Terminology",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Generate full report to console
+  python unified_analysis.py --year 2024
+  
+  # Save report to markdown file
+  python unified_analysis.py --year 2024 --output revenue_analysis_2024.md
+  
+  # Save to specific directory
+  python unified_analysis.py --year 2024 --output reports/unified_analysis_2024.md
+  
+  # Quick validation check
+  python unified_analysis.py --year 2024 --validate-only
+  
+  # Multi-language analysis only
+  python unified_analysis.py --year 2024 --multi-language-only
+        """
+    )
+    
+    parser.add_argument("--year", default="2024", 
+                       help="Year to analyze (default: 2024)")
+    
+    parser.add_argument("--output", metavar="FILE", 
+                       help="Save report to file (e.g., report.md, analysis.txt). "
+                            "Supports any text format - commonly used with .md for markdown files. "
+                            "If not specified, output goes to console.")
+    
+    parser.add_argument("--db-path", default="data/database/production.db", 
+                       help="Database path (default: data/database/production.db)")
+    
+    parser.add_argument("--validate-only", action="store_true", 
+                       help="Run validation only - check reconciliation without generating full report")
+    
+    parser.add_argument("--multi-language-only", action="store_true", 
+                       help="Show only multi-language analysis - detailed cross-audience breakdown")
     
     args = parser.parse_args()
     
@@ -768,9 +800,14 @@ def main():
                 report = engine.generate_updated_unified_tables(args.year)
                 
                 if args.output:
+                    # Create directory if it doesn't exist
+                    import os
+                    os.makedirs(os.path.dirname(args.output), exist_ok=True) if os.path.dirname(args.output) else None
+                    
                     with open(args.output, 'w') as f:
                         f.write(report)
                     print(f"✅ Updated unified report saved to {args.output}")
+                    print(f"📄 File size: {os.path.getsize(args.output):,} bytes")
                 else:
                     print(report)
     

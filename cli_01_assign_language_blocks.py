@@ -20,6 +20,7 @@ Usage:
     python cli_01_assign_language_blocks.py --all-year 2024     # Assign all unassigned 2024 spots
     python cli_01_assign_language_blocks.py --all-year 2023     # Assign all unassigned 2023 spots
     python cli_01_assign_language_blocks.py --status            # Show assignment status by year
+    python cli_01_assign_language_blocks.py --force-year 2024   # Force reassign all 2024 spots (deletes existing)
 
 Assignment Logic:
 - language_specific: Spots targeting single language or Chinese family (Cantonese+Mandarin)
@@ -990,6 +991,7 @@ def main():
     mode_group.add_argument("--batch", type=int, metavar="N", help="Assign N unassigned spots")
     mode_group.add_argument("--all-year", type=int, metavar="YYYY", help="Assign all unassigned spots for specific year (e.g., 2023, 2024, 2025)")
     mode_group.add_argument("--status", action="store_true", help="Show current assignment status")
+    mode_group.add_argument("--force-year", type=int, metavar="YYYY", help="Force reassignment of all spots for specific year")
     
     args = parser.parse_args()
     
@@ -1043,6 +1045,33 @@ def main():
                     intent = detail['customer_intent'] or 'None'
                     block = detail['block_name'] or 'No block'
                     print(f"   • Spot {detail['spot_id']} ({detail['bill_code']}): {intent} → {block}")
+
+        elif args.force_year:
+            # Force reassignment mode
+            year = args.force_year
+            
+            # Delete existing assignments for the year
+            year_suffix = str(year)[-2:]
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM spot_language_blocks 
+                WHERE spot_id IN (
+                    SELECT spot_id FROM spots 
+                    WHERE broadcast_month LIKE ?
+                )
+            """, (f'%-{year_suffix}',))
+            
+            deleted_count = cursor.rowcount
+            conn.commit()
+            
+            print(f"🗑️ Deleted {deleted_count:,} existing assignments for {year}")
+            
+            # Now re-assign
+            spot_ids = get_unassigned_spot_ids_for_year(conn, year)
+            print(f"🚀 Re-assigning {len(spot_ids):,} spots for {year}")
+            
+            results = service.assign_spots_batch(spot_ids)
+            print(f"✅ Re-assignment completed: {results}")
             
         elif args.batch:
             # Batch mode
