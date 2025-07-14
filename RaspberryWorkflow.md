@@ -306,7 +306,318 @@ python --version
 - **Access Control**: Only team members have Pi access via SSH keys
 - **Service Security**: Flask service runs as `daseme` user with minimal privileges
 
-### 9. Maintenance
+### 9. Datasette for Database Exploration
+
+Datasette provides a powerful web interface for exploring and analyzing your SQLite database, with support for complex queries and data visualization.
+
+#### Installation and Setup
+
+**Install Datasette**:
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Install Datasette and useful plugins
+uv pip install datasette
+uv pip install datasette-vega  # For charts and visualizations
+uv pip install datasette-cluster-map  # For geographic data
+uv pip install datasette-export  # For data export options
+
+# Update requirements
+uv pip freeze > requirements.txt
+```
+
+#### Configuration for Long-Running Queries
+
+**Option 1: Command Line Settings (Recommended)**
+```bash
+# Start Datasette with long-running query support using command line settings
+datasette data/database/production.db \
+  --host 0.0.0.0 \
+  --port 8001 \
+  --setting sql_time_limit_ms 300000 \
+  --setting facet_time_limit_ms 300000 \
+  --setting max_returned_rows 10000 \
+  --setting default_page_size 100 \
+  --reload
+
+# To see all available settings:
+datasette --help-settings
+```
+
+**Option 2: Metadata File Configuration**
+Create a `metadata.yaml` file for database-specific settings and plugin configuration:
+
+```yaml
+# /opt/apps/ctv-bookedbiz-db/metadata.yaml
+databases:
+  production:
+    title: "CTV BookedBiz Production Database"
+    description: "Production database for CTV BookedBiz application"
+    queries:
+      recent_transactions:
+        sql: "SELECT * FROM transactions WHERE created_date >= DATE('now', '-30 days') ORDER BY created_date DESC LIMIT 100"
+        title: "Recent Transactions (Last 30 Days)"
+      monthly_summary:
+        sql: "SELECT DATE(created_date, 'start of month') as month, COUNT(*) as count, SUM(amount) as total FROM transactions GROUP BY month ORDER BY month DESC"
+        title: "Monthly Transaction Summary"
+        
+# Plugin configuration (installed plugins will be auto-detected)
+plugins:
+  datasette-vega: {}
+  datasette-export: {}
+  datasette-cluster-map: {}
+```
+
+Then run with:
+```bash
+datasette data/database/production.db \
+  --host 0.0.0.0 \
+  --port 8001 \
+  --metadata metadata.yaml \
+  --setting sql_time_limit_ms 300000 \
+  --setting facet_time_limit_ms 300000 \
+  --setting max_returned_rows 10000 \
+  --setting default_page_size 100 \
+  --reload
+```
+
+**Note**: To see all available settings, run `datasette --help-settings`
+
+**Option 3: Environment Variables**
+```bash
+# Set environment variables for common settings
+export DATASETTE_SQL_TIME_LIMIT_MS=300000
+export DATASETTE_FACET_TIME_LIMIT_MS=300000
+export DATASETTE_MAX_RETURNED_ROWS=10000
+export DATASETTE_DEFAULT_PAGE_SIZE=100
+
+# Start Datasette
+datasette data/database/production.db \
+  --host 0.0.0.0 \
+  --port 8001 \
+  --reload
+```
+
+#### Running Datasette
+
+**Option 1: Interactive Development (Recommended)**:
+```bash
+# Navigate to project directory
+cd /opt/apps/ctv-bookedbiz-db
+source .venv/bin/activate
+
+# Get latest database
+python db_sync.py download
+
+# Start Datasette with long-running query support
+datasette data/database/production.db \
+  --host 0.0.0.0 \
+  --port 8001 \
+  --setting sql_time_limit_ms 300000 \
+  --setting facet_time_limit_ms 300000 \
+  --setting max_returned_rows 10000 \
+  --setting default_page_size 100 \
+  --reload
+
+# Access via: http://100.81.73.46:8001 (Tailscale IP)
+```
+
+**Option 2: Background Service**:
+```bash
+# Create a simple background script
+nohup datasette data/database/production.db \
+  --host 0.0.0.0 \
+  --port 8001 \
+  --setting sql_time_limit_ms 300000 \
+  --setting facet_time_limit_ms 300000 \
+  --setting max_returned_rows 10000 \
+  --setting default_page_size 100 \
+  > datasette.log 2>&1 &
+
+# Check if running
+ps aux | grep datasette
+
+# Stop background process
+pkill -f datasette
+```
+
+**Option 3: Systemd Service (Recommended)**:
+
+Create a systemd service file:
+```bash
+sudo nano /etc/systemd/system/datasette.service
+```
+
+**Service Configuration**:
+```ini
+[Unit]
+Description=Datasette Service
+After=network.target
+
+[Service]
+Type=simple
+User=daseme
+Group=ctv-dev
+WorkingDirectory=/opt/apps/ctv-bookedbiz-db
+Environment=PATH=/opt/apps/ctv-bookedbiz-db/.venv/bin
+ExecStart=/opt/apps/ctv-bookedbiz-db/.venv/bin/datasette data/database/production.db --host 0.0.0.0 --port 8001 --setting sql_time_limit_ms 300000 --setting facet_time_limit_ms 300000 --setting max_returned_rows 10000 --setting default_page_size 100
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Enable and manage the service**:
+```bash
+# Reload systemd configuration
+sudo systemctl daemon-reload
+
+# Enable service to start on boot
+sudo systemctl enable datasette
+
+# Start the service
+sudo systemctl start datasette
+
+# Check status
+sudo systemctl status datasette
+
+# View logs
+sudo journalctl -u datasette -n 50
+sudo journalctl -u datasette -f  # Follow logs
+
+# Restart service (after database updates)
+sudo systemctl restart datasette
+```
+
+#### Datasette Workflow Integration
+
+**Daily Development with Datasette**:
+```bash
+# 1. Get latest database
+python db_sync.py download
+
+# 2. Restart Datasette to pick up database changes
+sudo systemctl restart datasette
+
+# 3. Access Datasette interface
+# Open browser: http://100.81.73.46:8001
+```
+
+**Long-Running Query Examples**:
+```sql
+-- Complex aggregation query
+SELECT 
+  category,
+  COUNT(*) as total_records,
+  AVG(amount) as avg_amount,
+  SUM(amount) as total_amount,
+  MIN(created_date) as earliest_date,
+  MAX(created_date) as latest_date
+FROM transactions 
+WHERE created_date >= '2024-01-01'
+GROUP BY category
+ORDER BY total_amount DESC;
+
+-- Time-series analysis
+SELECT 
+  DATE(created_date) as date,
+  COUNT(*) as daily_count,
+  SUM(amount) as daily_total,
+  AVG(amount) as daily_average
+FROM transactions
+WHERE created_date >= DATE('now', '-90 days')
+GROUP BY DATE(created_date)
+ORDER BY date;
+```
+
+#### Advanced Datasette Features
+
+**Custom SQL Queries**:
+- Navigate to `/production` in Datasette
+- Click "View and edit SQL" 
+- Write complex queries with confidence they won't timeout
+- Export results as CSV, JSON, or use API endpoints
+
+**Faceted Browsing**:
+- Use suggested facets for quick data exploration
+- Filter data interactively without writing SQL
+- Perfect for business users who need data insights
+
+**Data Visualization**:
+- Use datasette-vega plugin for charts
+- Create bar charts, line graphs, and scatter plots
+- Export visualizations for reports
+
+**API Access**:
+```bash
+# Get data via API
+curl "http://100.81.73.46:8001/production/transactions.json?_size=1000"
+
+# Get specific query results
+curl "http://100.81.73.46:8001/production.json?sql=SELECT+*+FROM+transactions+LIMIT+10"
+```
+
+#### Security and Access Control
+
+**Network Access**:
+- Datasette runs on port 8001 (separate from Flask app on 8000)
+- Only accessible via Tailscale VPN network
+- No authentication required within trusted network
+
+**Read-Only Access**:
+- Datasette provides read-only access to your database
+- Safe for data exploration without risking data corruption
+- Original database remains protected
+
+#### Troubleshooting Datasette
+
+**Common Issues**:
+```bash
+# Check if Datasette is running
+sudo systemctl status datasette
+curl http://localhost:8001
+
+# View detailed logs
+sudo journalctl -u datasette -n 100
+
+# Restart after database changes
+sudo systemctl restart datasette
+
+# Check database file permissions
+ls -la data/database/production.db
+
+# Test configuration and see available settings
+datasette --help-settings
+datasette data/database/production.db --setting sql_time_limit_ms 300000 --help
+```
+
+**Performance Tips**:
+- Create indexes for frequently queried columns
+- Use LIMIT clauses for large result sets
+- Monitor query execution time in Datasette interface
+- Use facets instead of complex WHERE clauses when possible
+
+### 10. Maintenance
+
+#### Regular Tasks
+- **Weekly**: Review and clean up old database backups
+- **Monthly**: Update system packages: `sudo apt update && sudo apt upgrade`
+- **As Needed**: Update Python dependencies: `uv pip install --upgrade package-name`
+- **Service Health**: Monitor Flask app and Datasette service logs periodically
+- **Database Analysis**: Use Datasette to monitor data quality and trends
+
+#### Monitoring
+- **Database Size**: Check `python db_sync.py info` for database growth
+- **Disk Space**: Monitor Pi storage with `df -h`
+- **Dropbox Usage**: Monitor Dropbox storage limits
+- **Service Status**: Check Flask app health with `sudo systemctl status flaskapp`
+- **Datasette Health**: Check Datasette service with `sudo systemctl status datasette`
+
+### 10. Maintenance
 
 #### Regular Tasks
 - **Weekly**: Review and clean up old database backups
