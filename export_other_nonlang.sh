@@ -130,6 +130,7 @@ SELECT
     s.spot_type,
     s.time_in,
     s.time_out,
+    language_code,
     CASE 
         WHEN s.day_of_week IN ('saturday', 'sunday') THEN 'Weekend'
         WHEN s.day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday') THEN 'Weekday'
