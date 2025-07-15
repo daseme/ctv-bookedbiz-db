@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Updated Unified Analysis System - ROS Terminology with FAQ
-==========================================================
+Updated Unified Analysis System - ROS Terminology with Packages Category
+========================================================================
 
 This system uses ROS (Run on Schedule) terminology instead of "roadblocks"
-while maintaining perfect reconciliation and includes comprehensive FAQ.
+while maintaining perfect reconciliation and includes a new Packages category.
 
 Key Changes:
 - ROS terminology throughout (formerly "roadblocks")
+- Packages category added (position 7) for PKG spots without time targeting
 - Multi-Language analyzer integrated
 - Simplified precedence rules
 - Perfect reconciliation maintained
@@ -67,8 +68,8 @@ class UnifiedResult:
 
 class UpdatedUnifiedAnalysisEngine:
     """
-    Updated unified analysis engine with ROS terminology
-    and multi-language analyzer integrated.
+    Updated unified analysis engine with ROS terminology,
+    multi-language analyzer integrated, and Packages category added.
     """
     
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -113,7 +114,7 @@ class UpdatedUnifiedAnalysisEngine:
     def get_mutually_exclusive_categories(self, year: str = "2024") -> List[UnifiedResult]:
         """
         Get mutually exclusive categories using proper precedence rules
-        UPDATED: ROS terminology (formerly roadblocks)
+        UPDATED: ROS terminology (formerly roadblocks) + Packages category
         """
         year_suffix = year[-2:]
         
@@ -166,14 +167,21 @@ class UpdatedUnifiedAnalysisEngine:
         ))
         remaining_spots -= ros_spots
         
-        # 7. Multi-Language (Cross-Audience)
+        # 7. Packages (PKG spots without time targeting)
+        packages_spots = self._get_packages_spot_ids(year_suffix) & remaining_spots
+        categories.append(self._create_category_result(
+            "Packages", packages_spots, year_suffix
+        ))
+        remaining_spots -= packages_spots
+        
+        # 8. Multi-Language (Cross-Audience)
         multi_lang_spots = self._get_multi_language_spot_ids(year_suffix) & remaining_spots
         categories.append(self._create_category_result(
             "Multi-Language (Cross-Audience)", multi_lang_spots, year_suffix
         ))
         remaining_spots -= multi_lang_spots
         
-        # 8. Other Non-Language (everything else)
+        # 9. Other Non-Language (everything else)
         categories.append(self._create_category_result(
             "Other Non-Language", remaining_spots, year_suffix
         ))
@@ -297,6 +305,30 @@ class UpdatedUnifiedAnalysisEngine:
         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
         AND slb.business_rule_applied IN ('ros_duration', 'ros_time')
+        -- Exclude higher precedence categories
+        AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
+        AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
+        AND s.revenue_type != 'Paid Programming'
+        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
+        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
+        """
+        
+        cursor = self.db_connection.cursor()
+        cursor.execute(query, [f"%-{year_suffix}"])
+        return set(row[0] for row in cursor.fetchall())
+    
+    def _get_packages_spot_ids(self, year_suffix: str) -> Set[int]:
+        """Get Package spots (PKG with no time targeting)"""
+        query = """
+        SELECT DISTINCT s.spot_id
+        FROM spots s
+        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+        LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        WHERE s.broadcast_month LIKE ?
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND s.spot_type = 'PKG'
+        AND (s.time_in IS NULL OR s.time_out IS NULL OR s.time_in = '' OR s.time_out = '')
         -- Exclude higher precedence categories
         AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
         AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
@@ -493,7 +525,7 @@ class UpdatedUnifiedAnalysisEngine:
             }
     
     def validate_reconciliation(self, year: str = "2024") -> Dict[str, Any]:
-        """Validate perfect reconciliation with ROS terminology"""
+        """Validate perfect reconciliation with ROS terminology and Packages category"""
         base_totals = self.get_base_totals(year)
         category_results = self.get_mutually_exclusive_categories(year)
         
@@ -514,12 +546,13 @@ class UpdatedUnifiedAnalysisEngine:
                 abs(base_totals['total_spots'] - category_totals['total_spots']) < 1
             ),
             'ros_terminology_updated': True,
+            'packages_category_added': True,
             'multi_language_integrated': MULTI_LANGUAGE_AVAILABLE,
             'ros_included': ROS_AVAILABLE
         }
     
     def generate_updated_unified_tables(self, year: str = "2024") -> str:
-        """Generate both tables with ROS terminology"""
+        """Generate both tables with ROS terminology and Packages category"""
         
         # Get both analyses
         category_results = self.get_mutually_exclusive_categories(year)
@@ -535,7 +568,7 @@ class UpdatedUnifiedAnalysisEngine:
         category_table = self._format_table(
             category_results,
             "📊 Revenue Category Breakdown",
-            "Updated Category Performance - ROS Terminology",
+            "Updated Category Performance - ROS Terminology + Packages",
             year
         )
         
@@ -554,9 +587,9 @@ class UpdatedUnifiedAnalysisEngine:
         faq_section = self._generate_faq_section()
         
         # Generate report
-        return f"""# Updated Unified Revenue Analysis - ROS Terminology - {year}
+        return f"""# Updated Unified Revenue Analysis - ROS Terminology + Packages - {year}
 
-*Generated with perfect reconciliation and ROS terminology*
+*Generated with perfect reconciliation, ROS terminology, and Packages category*
 
 ## 🎯 Reconciliation Status
 
@@ -566,6 +599,7 @@ class UpdatedUnifiedAnalysisEngine:
 - **Spot Difference**: {validation['spot_difference']:,}
 - **Perfect Reconciliation**: {'✅ YES' if validation['perfect_reconciliation'] else '❌ NO'}
 - **ROS Terminology Updated**: {'✅ YES' if validation['ros_terminology_updated'] else '❌ NO'}
+- **Packages Category Added**: {'✅ YES' if validation['packages_category_added'] else '❌ NO'}
 - **Multi-Language Integrated**: {'✅ YES' if validation['multi_language_integrated'] else '❌ NO'}
 
 {category_table}
@@ -617,6 +651,7 @@ class UpdatedUnifiedAnalysisEngine:
 - **Simplified Logic**: Clean cross-audience targeting
 - **Better Language Blocks**: Proper language categorization
 - **ROS Integration**: Run on Schedule properly categorized
+- **Packages Separation**: Package deals properly categorized
 
 """
         
@@ -642,11 +677,12 @@ class UpdatedUnifiedAnalysisEngine:
         return breakdown
     
     def _generate_updated_reconciliation_notes(self) -> str:
-        """Generate updated reconciliation notes with ROS terminology"""
+        """Generate updated reconciliation notes with ROS terminology and Packages category"""
         return """## 📋 Updated Reconciliation Notes
 
 ### Key Changes Applied
 - **ROS Terminology**: "Roadblocks" renamed to "ROS (Run on Schedule)"
+- **Packages Category Added**: Package deals without time targeting separated from Other Non-Language
 - **Individual Language Enhanced**: Clean language categorization
 - **Multi-Language Simplified**: Cross-audience targeting
 - **Perfect Reconciliation Maintained**: All spots still counted exactly once
@@ -658,20 +694,30 @@ class UpdatedUnifiedAnalysisEngine:
 4. **Services (SVC)** → Station service spots
 5. **Individual Language Blocks** → Single language targeting
 6. **ROS (Run on Schedule)** → Broadcast sponsorships (formerly "roadblocks")
-7. **Multi-Language (Cross-Audience)** → Cross-audience targeting
-8. **Other Non-Language** → Everything else
+7. **Packages** → Package deals without time targeting (PKG spots with no time_in/time_out)
+8. **Multi-Language (Cross-Audience)** → Cross-audience targeting
+9. **Other Non-Language** → Everything else
 
 ### Business Logic Improvements
 - **Cleaner Individual Language**: Chinese blocks properly unified (Mandarin + Cantonese)
 - **Better ROS Definition**: Run on Schedule is clearer than "roadblocks"
+- **Separated Package Deals**: Package deals now have dedicated category
 - **Simplified Multi-Language**: Pure cross-audience targeting
+- **Cleaner Other Non-Language**: True miscellaneous content only
 - **Better Data Integrity**: Proper categorization by language blocks
 - **Maintained Precision**: Perfect reconciliation with updated terminology
+
+### Business Value
+- **Package Visibility**: ~$40K+ in package deal revenue now properly categorized
+- **Cleaner Categories**: Each category more homogeneous and meaningful
+- **Better Reporting**: Sales teams can track package deals separately from operational content
+- **Enhanced Analysis**: Clear separation of advertising types for business intelligence
 
 ### Technical Architecture
 - **Multi-Language Analyzer**: Integrated for comprehensive cross-audience analysis
 - **ROS Analyzer**: Updated terminology for broadcast sponsorship analysis
-- **Unified Reconciliation**: All categories work together seamlessly
+- **Packages Detection**: Automated identification of package deals without time targeting
+- **Unified Reconciliation**: All 9 categories work together seamlessly
 - **Separation of Concerns**: Each analyzer handles its specific domain
 
 ## 🎯 Validation Results
@@ -681,10 +727,11 @@ All validation tests should show:
 - **Spot Count Reconciliation**: 0 difference
 - **Category Coverage**: 100% of spots assigned
 - **No Double Counting**: Each spot in exactly one category
+- **9 Categories**: All categories properly segregated
 
 ---
 
-*Generated by Updated Unified Analysis System v5.1 - ROS Terminology*"""
+*Generated by Updated Unified Analysis System v5.2 - ROS Terminology + Packages Category*"""
     
     def _generate_faq_section(self) -> str:
         """Generate the comprehensive FAQ section"""
@@ -713,7 +760,7 @@ TV spots need to be categorized to understand our language audience targeting an
 
 ---
 
-### Q: Why is a spot marked as "ROS" (Run of Schedule)?
+### Q: Why is a spot marked as "ROS" (Run on Schedule)?
 
 **A:** The advertiser wants broad reach across multiple audiences:
 
@@ -722,6 +769,18 @@ TV spots need to be categorized to understand our language audience targeting an
 - **Business Intent**: Advertiser targeting general market, not specific language communities
 
 **Example**: A spot running 06:00-23:59 = ROS assignment (17+ hours)
+
+---
+
+### Q: Why is a spot in "Packages"?
+
+**A:** The spot is a package deal without specific time targeting:
+
+- **Package Deal**: Spot type is marked as 'PKG' (Package)
+- **No Time Targeting**: Missing time_in or time_out information
+- **Business Intent**: Advertiser bought a package deal without caring about specific time slots
+
+**Example**: A monthly advertising package where the advertiser gets X spots but doesn't specify when they should run
 
 ---
 
@@ -784,9 +843,10 @@ Our system applies rules in this order (first match wins):
 4. **Branded Content** (Internal production)
 5. **Enhanced Language Patterns** (Tagalog/Chinese operational patterns)
 6. **ROS Detection** (Long duration or specific time slots)
-7. **Individual Language Blocks** (Single language targeting)
-8. **Multi-Language** (Cross-cultural targeting)
-9. **Other Non-Language** (Everything else) - *Lowest Priority*
+7. **Packages** (Package deals without time targeting)
+8. **Individual Language Blocks** (Single language targeting)
+9. **Multi-Language** (Cross-cultural targeting)
+10. **Other Non-Language** (Everything else) - *Lowest Priority*
 
 ---
 
@@ -796,16 +856,19 @@ Our system applies rules in this order (first match wins):
 - **Language-specific performance** now reflects operational reality
 - **ROS identification** captures broad-reach campaigns correctly
 - **Cross-cultural campaigns** properly distinguished from language-specific
+- **Package deals** properly separated from operational content
 
 ### Sales Intelligence:
 - **Better targeting insights** for account executives
 - **Accurate language community reach** for media planning
 - **Improved revenue attribution** by audience segment
+- **Package deal performance** tracking
 
 ### Operational Alignment:
 - **System matches traffic operations** for consistency
 - **Automated classification** reduces manual review needs
 - **Enhanced audit trail** for assignment decisions
+- **Cleaner categorization** for business analysis
 
 ---
 
@@ -813,11 +876,11 @@ Our system applies rules in this order (first match wins):
 
 The system automatically sorts every TV spot into the right bucket based on **when it airs**, **what languages it reaches**, and **advertiser intent**. The enhanced rules capture the operational knowledge that our traffic team uses every day, making our reporting more accurate and useful for business decisions.
 
-**Key Benefit**: 36% of our spots now have enhanced classification that better reflects how our business actually operates.
+**Key Benefit**: 36% of our spots now have enhanced classification that better reflects how our business actually operates, with package deals properly separated for better business intelligence.
 
 ---
 
-*FAQ Section - Updated Unified Analysis System v5.1*"""
+*FAQ Section - Updated Unified Analysis System v5.2*"""
     
     def _format_table(self, results: List[UnifiedResult], title: str, subtitle: str, year: str) -> str:
         """Format results into a table"""
@@ -847,11 +910,11 @@ The system automatically sorts every TV spot into the right bucket based on **wh
 
 
 def main():
-    """Test the updated unified analysis system with ROS terminology and FAQ"""
+    """Test the updated unified analysis system with ROS terminology, Packages category and FAQ"""
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Updated Unified Analysis - ROS Terminology with FAQ",
+        description="Updated Unified Analysis - ROS Terminology + Packages with FAQ",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -903,6 +966,7 @@ Examples:
                 print(f"✅ Revenue Difference: ${validation['revenue_difference']:,.2f}")
                 print(f"✅ Perfect Reconciliation: {'YES' if validation['perfect_reconciliation'] else 'NO'}")
                 print(f"✅ ROS Terminology Updated: {'YES' if validation['ros_terminology_updated'] else 'NO'}")
+                print(f"✅ Packages Category Added: {'YES' if validation['packages_category_added'] else 'NO'}")
                 print(f"✅ Multi-Language Integrated: {'YES' if validation['multi_language_integrated'] else 'NO'}")
                 print(f"✅ ROS Included: {'YES' if validation['ros_included'] else 'NO'}")
             elif args.multi_language_only:

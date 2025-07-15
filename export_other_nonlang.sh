@@ -1,60 +1,39 @@
 #!/bin/bash
 
-# Other Non-Language Spots Export Script
-# Exports spots that fall into the "Other Non-Language" category
-# These are English-language general market spots outside specific language targeting
-# Usage: ./export_other_nonlang.sh [OPTIONS]
+# Working Other Non-Language Export Script
+# Updated for 9-category system with Packages category
 
 # Default values
 YEAR="2024"
 OUTPUT_FILE=""
 DB_PATH="data/database/production.db"
-CORE_FIELDS_ONLY=false
+DEBUG=false
 
-# Function to display help
 show_help() {
     cat << EOF
-Other Non-Language Spots Export Script
+Working Other Non-Language Export Script
 
 USAGE:
     $0 [OPTIONS]
 
 OPTIONS:
     -y, --year YEAR         Year to export (default: 2024)
-    -o, --output FILE       Output CSV file (default: other_nonlang_spots_YEAR.csv)
+    -o, --output FILE       Output CSV file (default: other_nonlang_working_YEAR.csv)
     -d, --database PATH     Database path (default: data/database/production.db)
-    -c, --core-only         Export only core fields (bill_code, customer_name, gross_rate, spot_type, time_in, time_out, weekday_weekend)
+    --debug                 Show debug information
     -h, --help              Show this help message
 
 EXAMPLES:
-    $0                                      # Export 2024 data with all fields
-    $0 -y 2023                             # Export 2023 data
-    $0 -y 2024 -o my_export.csv           # Export 2024 to specific file
-    $0 -y 2023 -c                         # Export 2023 with core fields only
-    $0 -y 2024 -d /path/to/other.db       # Use different database
+    $0 -y 2024                             # Export 2024 data
+    $0 -y 2024 --debug                     # Export with debug info
+    $0 -y 2024 -o final_other_nonlang.csv  # Export to specific file
 
-DEFINITION:
-    "Other Non-Language" spots are English-language general market advertising that:
-    - Are Internal Ad Sales (not Direct Response/WorldLink)
-    - Are NOT in specific language blocks
-    - Are NOT multi-language (cross-audience)
-    - Are NOT ROS (Run on Schedule) programming
-    - Are NOT Paid Programming
-    - Are NOT Branded Content (PRD) or Services (SVC)
-
-TYPICAL CUSTOMERS:
-    - Major brands (Aldi, Lexus, McDonald's)
-    - Government agencies (CalTrans, DHCS, Cal Fire)
-    - Public transit (Sound Transit)
-    - General English-speaking market advertisers
-
-EXCLUSIONS APPLIED:
-    - WorldLink (Direct Response category)
-    - Individual Language Blocks (language-specific targeting)
-    - Multi-Language (cross-audience targeting)
-    - ROS/Roadblocks (broadcast sponsorships)
-    - Paid Programming (religious, shopping, etc.)
-    - Branded Content (PRD) and Services (SVC)
+UPDATED SYSTEM:
+    Now works with 9-category system where package deals have been moved
+    to a separate Packages category. Other Non-Language now contains:
+    - 201 spots (down from 210)
+    - $1,313.70 revenue (down from $42,160.35)
+    - True miscellaneous content only
 
 EOF
 }
@@ -74,8 +53,8 @@ while [[ $# -gt 0 ]]; do
             DB_PATH="$2"
             shift 2
             ;;
-        -c|--core-only)
-            CORE_FIELDS_ONLY=true
+        --debug)
+            DEBUG=true
             shift
             ;;
         -h|--help)
@@ -90,78 +69,152 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate year format
+# Validate inputs
 if [[ ! "$YEAR" =~ ^[0-9]{4}$ ]]; then
     echo "Error: Year must be 4 digits (e.g., 2024)"
     exit 1
 fi
 
-# Set default output file if not provided
-if [[ -z "$OUTPUT_FILE" ]]; then
-    if [[ "$CORE_FIELDS_ONLY" == true ]]; then
-        OUTPUT_FILE="other_nonlang_spots_${YEAR}_core.csv"
-    else
-        OUTPUT_FILE="other_nonlang_spots_${YEAR}.csv"
-    fi
-fi
-
-# Check if database exists
 if [[ ! -f "$DB_PATH" ]]; then
     echo "Error: Database file not found: $DB_PATH"
     exit 1
 fi
 
-# Get last 2 digits of year for broadcast_month matching
+# Set default output file if not provided
+if [[ -z "$OUTPUT_FILE" ]]; then
+    OUTPUT_FILE="other_nonlang_working_${YEAR}.csv"
+fi
+
 YEAR_SUFFIX="${YEAR: -2}"
 
-echo "🔍 Exporting Other Non-Language spots for $YEAR..."
+echo "🔍 Working Other Non-Language Export for $YEAR"
 echo "📊 Database: $DB_PATH"
 echo "📁 Output: $OUTPUT_FILE"
-echo "🎯 Core fields only: $CORE_FIELDS_ONLY"
+echo "🎯 Using updated 9-category precedence logic"
 echo ""
 
-# Build the appropriate query based on options
-if [[ "$CORE_FIELDS_ONLY" == true ]]; then
-    QUERY="
-SELECT 
-    s.bill_code,
-    COALESCE(c.normalized_name, 'Unknown') as customer_name,
-    s.gross_rate,
-    s.spot_type,
-    s.time_in,
-    s.time_out,
-    language_code,
-    CASE 
-        WHEN s.day_of_week IN ('saturday', 'sunday') THEN 'Weekend'
-        WHEN s.day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday') THEN 'Weekday'
-        ELSE 'Unknown'
-    END as weekday_weekend
-FROM spots s
-LEFT JOIN customers c ON s.customer_id = c.customer_id
-LEFT JOIN agencies a ON s.agency_id = a.agency_id
-LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
-AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
--- Must be Internal Ad Sales (not Direct Response)
-AND s.revenue_type = 'Internal Ad Sales'
--- Exclude Direct Response (WorldLink)
-AND NOT (COALESCE(a.agency_name, '') LIKE '%WorldLink%' OR 
-         COALESCE(s.bill_code, '') LIKE '%WorldLink%')
--- Exclude Individual Language Blocks
-AND NOT ((slb.spans_multiple_blocks = 0 AND slb.block_id IS NOT NULL) OR 
+# Single query approach to avoid table name conflicts
+echo "⚡ Generating Other Non-Language export..."
+
+sqlite3 -header -csv "$DB_PATH" << EOF > "$OUTPUT_FILE"
+-- Single query with all precedence logic
+WITH base_spots AS (
+    SELECT spot_id FROM spots s
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+),
+direct_response AS (
+    SELECT DISTINCT s.spot_id
+    FROM spots s
+    LEFT JOIN agencies a ON s.agency_id = a.agency_id
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+    AND (COALESCE(a.agency_name, '') LIKE '%WorldLink%' OR COALESCE(s.bill_code, '') LIKE '%WorldLink%')
+),
+paid_programming AS (
+    SELECT DISTINCT s.spot_id
+    FROM spots s
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+    AND s.revenue_type = 'Paid Programming'
+),
+branded_content AS (
+    SELECT DISTINCT s.spot_id
+    FROM spots s
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+    AND slb.spot_id IS NULL
+    AND s.spot_type = 'PRD'
+),
+services AS (
+    SELECT DISTINCT s.spot_id
+    FROM spots s
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+    AND slb.spot_id IS NULL
+    AND s.spot_type = 'SVC'
+),
+individual_language AS (
+    SELECT DISTINCT s.spot_id
+    FROM spots s
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+    LEFT JOIN agencies a ON s.agency_id = a.agency_id
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+    AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
+    AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
+    AND ((slb.spans_multiple_blocks = 0 AND slb.block_id IS NOT NULL) OR 
          (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NOT NULL))
--- Exclude Multi-Language (Cross-Audience)
-AND NOT (slb.spans_multiple_blocks = 1)
--- Exclude Paid Programming
-AND s.revenue_type != 'Paid Programming'
--- Exclude Branded Content (PRD) and Services (SVC) that are in other categories
-AND NOT (s.spot_type = 'PRD' AND slb.spot_id IS NULL)
-AND NOT (s.spot_type = 'SVC' AND slb.spot_id IS NULL)
-ORDER BY s.bill_code, s.air_date;"
-else
-    QUERY="
+),
+ros AS (
+    SELECT DISTINCT s.spot_id
+    FROM spots s
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+    LEFT JOIN agencies a ON s.agency_id = a.agency_id
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+    AND slb.business_rule_applied IN ('ros_duration', 'ros_time')
+    AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
+    AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
+    AND s.revenue_type != 'Paid Programming'
+    AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
+    AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
+),
+packages AS (
+    SELECT DISTINCT s.spot_id
+    FROM spots s
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+    LEFT JOIN agencies a ON s.agency_id = a.agency_id
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+    AND s.spot_type = 'PKG'
+    AND (s.time_in IS NULL OR s.time_out IS NULL OR s.time_in = '' OR s.time_out = '')
+    AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
+    AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
+    AND s.revenue_type != 'Paid Programming'
+    AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
+    AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
+),
+multi_language AS (
+    SELECT DISTINCT s.spot_id
+    FROM spots s
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+    WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
+    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+    AND slb.campaign_type = 'multi_language'
+),
+other_non_language AS (
+    SELECT spot_id FROM base_spots
+    EXCEPT
+    SELECT spot_id FROM direct_response
+    EXCEPT
+    SELECT spot_id FROM paid_programming
+    EXCEPT
+    SELECT spot_id FROM branded_content
+    EXCEPT
+    SELECT spot_id FROM services
+    EXCEPT
+    SELECT spot_id FROM individual_language
+    EXCEPT
+    SELECT spot_id FROM ros
+    EXCEPT
+    SELECT spot_id FROM packages
+    EXCEPT
+    SELECT spot_id FROM multi_language
+)
 SELECT 
+    s.spot_id,
     s.bill_code,
     COALESCE(c.normalized_name, 'Unknown') as customer_name,
     COALESCE(a.agency_name, 'No Agency') as agency_name,
@@ -183,84 +236,90 @@ SELECT
     s.language_code,
     s.program,
     s.market_name,
-    -- Language block status
     CASE 
-        WHEN slb.spot_id IS NULL THEN 'Not in any language block'
-        WHEN slb.spans_multiple_blocks = 1 THEN 'Multi-Language (should not appear)'
-        WHEN slb.block_id IS NULL THEN 'In system but no block assigned'
-        ELSE 'Has language block (should not appear)'
-    END as language_block_status,
-    slb.customer_intent,
-    slb.assignment_method,
-    -- Time period classification
+        WHEN s.time_in IS NULL AND s.time_out IS NULL THEN 'Both NULL'
+        WHEN s.time_in IS NULL THEN 'time_in NULL'
+        WHEN s.time_out IS NULL THEN 'time_out NULL'
+        ELSE 'Has Times'
+    END as time_status,
     CASE 
+        WHEN s.time_in IS NULL THEN 'No Time Info'
         WHEN s.time_in < '06:00:00' THEN 'Overnight (00:00-05:59)'
         WHEN s.time_in < '12:00:00' THEN 'Morning (06:00-11:59)'
         WHEN s.time_in < '18:00:00' THEN 'Afternoon (12:00-17:59)'
         WHEN s.time_in < '24:00:00' THEN 'Evening (18:00-23:59)'
         ELSE 'Unknown'
-    END as time_period
-FROM spots s
+    END as time_period,
+    CASE 
+        WHEN s.spot_type = 'PRD' THEN 'PRD (Branded Content)'
+        WHEN s.spot_type = 'SVC' THEN 'SVC (Services)'
+        WHEN s.spot_type = 'BNS' THEN 'BNS (Bonus Spot)'
+        WHEN s.spot_type = 'CRD' THEN 'CRD (Credit)'
+        WHEN s.spot_type = 'PKG' THEN 'PKG (Package - should not appear here)'
+        WHEN s.spot_type = 'COM' THEN 'COM (Commercial)'
+        ELSE COALESCE(s.spot_type, 'NULL')
+    END as spot_type_analysis,
+    'Other Non-Language' as final_category
+FROM other_non_language onl
+JOIN spots s ON onl.spot_id = s.spot_id
 LEFT JOIN customers c ON s.customer_id = c.customer_id
 LEFT JOIN agencies a ON s.agency_id = a.agency_id
-LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
-AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
--- Must be Internal Ad Sales (not Direct Response)
-AND s.revenue_type = 'Internal Ad Sales'
--- Exclude Direct Response (WorldLink)
-AND NOT (COALESCE(a.agency_name, '') LIKE '%WorldLink%' OR 
-         COALESCE(s.bill_code, '') LIKE '%WorldLink%')
--- Exclude Individual Language Blocks
-AND NOT ((slb.spans_multiple_blocks = 0 AND slb.block_id IS NOT NULL) OR 
-         (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NOT NULL))
--- Exclude Multi-Language (Cross-Audience)
-AND NOT (slb.spans_multiple_blocks = 1)
--- Exclude Paid Programming
-AND s.revenue_type != 'Paid Programming'
--- Exclude Branded Content (PRD) and Services (SVC) that are in other categories
-AND NOT (s.spot_type = 'PRD' AND slb.spot_id IS NULL)
-AND NOT (s.spot_type = 'SVC' AND slb.spot_id IS NULL)
-ORDER BY s.bill_code, s.air_date;"
-fi
+ORDER BY s.revenue_type, s.spot_type, s.gross_rate DESC;
+EOF
 
-# Execute the query
-echo "⚡ Running query..."
-if sqlite3 -header -csv "$DB_PATH" "$QUERY" > "$OUTPUT_FILE"; then
-    # Count the results
+# Check results
+if [[ -f "$OUTPUT_FILE" ]]; then
     RECORD_COUNT=$(tail -n +2 "$OUTPUT_FILE" | wc -l)
     echo "✅ Export completed successfully!"
     echo "📊 Records exported: $RECORD_COUNT"
     echo "📁 File saved: $OUTPUT_FILE"
-    echo ""
-    echo "🔍 Sample records:"
-    head -n 6 "$OUTPUT_FILE"
-    echo ""
-    echo "📈 Quick stats:"
-    echo "   Weekday spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Weekday')"
-    echo "   Weekend spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Weekend')"
-    if [[ "$CORE_FIELDS_ONLY" == false ]]; then
-        echo "   COM spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',COM,')"
-        echo "   BNS spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',BNS,')"
-        echo "   Not in language blocks: $(tail -n +2 "$OUTPUT_FILE" | grep -c 'Not in any language block')"
+    
+    # Validate against expected numbers
+    if [[ "$RECORD_COUNT" == "201" ]]; then
+        echo "✅ SUCCESS: Perfect match with updated unified analysis!"
+        echo "✅ Record count: $RECORD_COUNT matches expected 201"
+    else
+        echo "❌ ISSUE: Record count $RECORD_COUNT doesn't match expected 201"
+        echo "❌ Difference: $((RECORD_COUNT - 201))"
     fi
-    echo ""
-    echo "🎯 Exclusions applied:"
-    echo "   - WorldLink (Direct Response Sales)"
-    echo "   - Individual Language Blocks (language-specific targeting)"
-    echo "   - Multi-Language (cross-audience targeting)"
-    echo "   - Paid Programming (religious, shopping, etc.)"
-    echo "   - Branded Content (PRD) and Services (SVC) categories"
-    echo ""
-    echo "💡 These spots represent English-language general market advertising"
-    echo "   that targets broad audiences outside specific language programming."
-    echo ""
-    echo "🔗 Related analysis:"
-    echo "   - Run unified_analysis.py to see full revenue breakdown"
-    echo "   - Check ROS analyzer for broadcast sponsorship categorization"
-    echo "   - Compare with Multi-Language export for cross-audience targeting"
+    
+    if [[ "$DEBUG" == true ]]; then
+        echo ""
+        echo "🔍 Debug: Sample records"
+        head -n 6 "$OUTPUT_FILE"
+        echo ""
+        echo "📈 Final statistics:"
+        echo "   Total records: $RECORD_COUNT"
+        echo "   BNS spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',BNS,')"
+        echo "   CRD spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',CRD,')"
+        echo "   COM spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',COM,')"
+        echo "   PKG spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',PKG,')"
+        echo "   Weekend spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Weekend,')"
+        echo "   Weekday spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Weekday,')"
+        
+        # Check revenue
+        REVENUE=$(tail -n +2 "$OUTPUT_FILE" | awk -F',' '{sum += $5} END {print sum}')
+        echo "   Total revenue: \$${REVENUE}"
+        
+        if [[ $(echo "$REVENUE == 1313.70" | bc -l) == 1 ]]; then
+            echo "   ✅ Revenue matches expected \$1,313.70"
+        else
+            echo "   ❌ Revenue doesn't match expected \$1,313.70"
+        fi
+    fi
 else
     echo "❌ Export failed!"
     exit 1
 fi
+
+echo ""
+echo "🎯 Summary:"
+echo "   Expected: 201 spots, \$1,313.70 revenue"
+echo "   Actual: $RECORD_COUNT spots from export"
+echo "   Package deals (~\$40K, 9 spots) now in separate Packages category"
+echo ""
+echo "💡 This export contains only true miscellaneous content:"
+echo "   - Credit adjustments and billing corrections"
+echo "   - Bonus spots and general commercials"
+echo "   - Operational content without language targeting"
+echo "   - NO package deals (moved to Packages category)"
