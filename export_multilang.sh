@@ -117,6 +117,7 @@ SELECT
     s.time_in,
     s.time_out,
     s.revenue_type,
+    air_date,
     s.language_code,
     CASE 
         WHEN s.day_of_week IN ('saturday', 'sunday') THEN 'Weekend'

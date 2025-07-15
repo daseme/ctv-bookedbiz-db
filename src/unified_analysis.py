@@ -287,55 +287,38 @@ class UpdatedUnifiedAnalysisEngine:
         return set(row[0] for row in cursor.fetchall())
     
     def _get_ros_spot_ids(self, year_suffix: str) -> Set[int]:
-        """Get ROS spot IDs using integrated ROS analyzer"""
-        if not ROS_AVAILABLE:
-            return set()
-        
-        try:
-            analyzer = ROSAnalyzer(self.db_connection)
-            year = f"20{year_suffix}"
-            return analyzer.get_spot_ids(year)
-        except Exception as e:
-            print(f"Warning: Error getting ROS spot IDs: {e}")
-            return set()
-    
-    def _get_multi_language_spot_ids(self, year_suffix: str) -> Set[int]:
-        """Get Multi-Language spot IDs using integrated multi-language analyzer"""
-        if MULTI_LANGUAGE_AVAILABLE:
-            try:
-                analyzer = MultiLanguageAnalyzer(self.db_connection)
-                year = f"20{year_suffix}"
-                return analyzer.get_spot_ids(year)
-            except Exception as e:
-                print(f"Warning: Error getting multi-language spot IDs: {e}")
-        
-        # Fallback to original logic if analyzer not available
-        """Get Multi-Language spot IDs"""
+        """Get ROS spot IDs using business rule detection, excluding higher precedence categories"""
         query = """
         SELECT DISTINCT s.spot_id
         FROM spots s
         LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
         LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        LEFT JOIN customers c ON s.customer_id = c.customer_id
         WHERE s.broadcast_month LIKE ?
         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND slb.business_rule_applied IN ('ros_duration', 'ros_time')
+        -- Exclude higher precedence categories
         AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
         AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        AND (slb.spans_multiple_blocks = 1 OR 
-            (slb.spans_multiple_blocks = 0 AND slb.block_id IS NULL) OR 
-            (slb.spans_multiple_blocks IS NULL AND slb.block_id IS NULL))
-        AND NOT (
-            (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
-            AND s.day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday'))
-            OR
-            (s.time_in >= '20:00:00' AND s.time_out <= '23:59:59'
-            AND s.day_of_week IN ('saturday', 'sunday'))
-        )
-        AND COALESCE(c.normalized_name, '') NOT LIKE '%NKB%'
-        AND COALESCE(s.bill_code, '') NOT LIKE '%NKB%'
-        AND COALESCE(a.agency_name, '') NOT LIKE '%NKB%'
         AND s.revenue_type != 'Paid Programming'
+        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
+        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
+        """
+        
+        cursor = self.db_connection.cursor()
+        cursor.execute(query, [f"%-{year_suffix}"])
+        return set(row[0] for row in cursor.fetchall())
+    
+    def _get_multi_language_spot_ids(self, year_suffix: str) -> Set[int]:
+        """Get Multi-Language spot IDs using campaign_type classification"""
+        query = """
+        SELECT DISTINCT s.spot_id
+        FROM spots s
+        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+        WHERE s.broadcast_month LIKE ?
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND slb.campaign_type = 'multi_language'
         """
         
         cursor = self.db_connection.cursor()
