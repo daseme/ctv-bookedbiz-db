@@ -38,6 +38,12 @@ uv run python src/cli/bulk_import_historical.py data/raw/YYYY.xlsx --year YYYY -
 - ✅ Memory-optimized streaming import
 - ✅ Complete audit trail
 
+
+**Get files from windows**
+'''
+scp "C:\Users\Kurt\Crossings TV Dropbox\kurt olmstead\Financial\Sales\WeeklyReports\ctv-bookedbiz-db\data\raw\2022.xlsx" daseme@raspberrypi:/opt/apps/ctv-bookedbiz-db/data/raw/
+'''
+
 **Examples:**
 ```bash
 # Import complete 2024 annual data

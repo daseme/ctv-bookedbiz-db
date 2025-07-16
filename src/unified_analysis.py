@@ -507,15 +507,13 @@ class UpdatedUnifiedAnalysisEngine:
         return languages
     
     def _get_individual_language_breakdown(self, year_suffixes: List[str]) -> List[UnifiedResult]:
-        """Get breakdown of individual language blocks by language for multiple years"""
+        """FIXED: Get breakdown with SQLite-compatible SQL"""
         
-        # First get the spot IDs for individual language blocks
         individual_lang_spots = self._get_individual_language_spot_ids(year_suffixes)
         
         if not individual_lang_spots:
             return []
         
-        # Convert to list for SQL IN clause
         spot_ids_list = list(individual_lang_spots)
         placeholders = ','.join(['?' for _ in spot_ids_list])
         
@@ -523,8 +521,14 @@ class UpdatedUnifiedAnalysisEngine:
         SELECT 
             CASE 
                 WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+                WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
                 WHEN l.language_name = 'Hmong' THEN 'Hmong'
-                ELSE COALESCE(l.language_name, 'Unknown Language')
+                WHEN l.language_name IN ('Hindi', 'Punjabi', 'Bengali', 'Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
+                WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'
+                WHEN l.language_name = 'Korean' THEN 'Korean'
+                WHEN l.language_name = 'Japanese' THEN 'Japanese'
+                WHEN l.language_name = 'English' THEN 'English'
+                ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
             END as language,
             SUM(COALESCE(s.gross_rate, 0)) as revenue,
             COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
@@ -535,10 +539,18 @@ class UpdatedUnifiedAnalysisEngine:
         LEFT JOIN language_blocks lb ON slb.block_id = lb.block_id
         LEFT JOIN languages l ON lb.language_id = l.language_id
         WHERE s.spot_id IN ({placeholders})
+        AND slb.block_id IS NOT NULL  -- Only include spots with proper block assignments
+        AND slb.campaign_type = 'language_specific'  -- Only language_specific spots
         GROUP BY CASE 
             WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+            WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
             WHEN l.language_name = 'Hmong' THEN 'Hmong'
-            ELSE COALESCE(l.language_name, 'Unknown Language')
+            WHEN l.language_name IN ('Hindi', 'Punjabi', 'Bengali', 'Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
+            WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'
+            WHEN l.language_name = 'Korean' THEN 'Korean'
+            WHEN l.language_name = 'Japanese' THEN 'Japanese'
+            WHEN l.language_name = 'English' THEN 'English'
+            ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
         END
         HAVING SUM(COALESCE(s.gross_rate, 0)) > 0 OR COUNT(*) > 0
         ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
@@ -553,7 +565,7 @@ class UpdatedUnifiedAnalysisEngine:
             results.append(UnifiedResult(
                 name=language,
                 revenue=revenue,
-                percentage=0,  # Will be calculated later
+                percentage=0,
                 paid_spots=paid_spots,
                 bonus_spots=bonus_spots,
                 total_spots=total_spots,
