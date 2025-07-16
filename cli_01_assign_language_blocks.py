@@ -258,6 +258,12 @@ class LanguageBlockService:
             'errors': 0
         }
     
+    def _normalize_time_out(self, time_out: str) -> str:
+        """Convert '1 day, 0:00:00' to '24:00:00' for comparison"""
+        if time_out and 'day' in str(time_out) and '0:00:00' in str(time_out):
+            return '24:00:00'
+        return time_out
+
     def assign_single_spot(self, spot_id: int) -> AssignmentResult:
         """Assign a single spot to appropriate language block(s) - DEBUG VERSION"""
         try:
@@ -1005,7 +1011,9 @@ class LanguageBlockService:
           AND is_active = 1
         ORDER BY time_start
         """
-        
+
+        normalized_time_out = self._normalize_time_out(time_out)
+
         cursor.execute(query, (schedule_id, day_of_week))
         rows = cursor.fetchall()
         
