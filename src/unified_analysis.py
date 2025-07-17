@@ -19,7 +19,7 @@ Usage Examples:
   python ./src/unified_analysis.py --year 2024              # Single year
   python ./src/unified_analysis.py --year 2023-2024         # Two years
   python ./src/unified_analysis.py --year 2022-2024         # Three years
-  python ./src/unified_analysis.py --year 2023-2024 --output report.md
+  python ./src/unified_analysis.py --year 2023-2024 --output reports/report.md
 
 Save this as: src/unified_analysis.py
 """
@@ -507,19 +507,41 @@ class UpdatedUnifiedAnalysisEngine:
         return languages
     
     def _get_individual_language_breakdown(self, year_suffixes: List[str]) -> List[UnifiedResult]:
-        """FIXED: Get breakdown with SQLite-compatible SQL"""
-        
-        individual_lang_spots = self._get_individual_language_spot_ids(year_suffixes)
-        
-        if not individual_lang_spots:
-            return []
-        
-        spot_ids_list = list(individual_lang_spots)
-        placeholders = ','.join(['?' for _ in spot_ids_list])
-        
-        query = f"""
-        SELECT 
-            CASE 
+            """FIXED: Get breakdown with SQLite-compatible SQL - handles both single and multi-block"""
+            
+            individual_lang_spots = self._get_individual_language_spot_ids(year_suffixes)
+            
+            if not individual_lang_spots:
+                return []
+            
+            spot_ids_list = list(individual_lang_spots)
+            placeholders = ','.join(['?' for _ in spot_ids_list])
+            
+            query = f"""
+            SELECT 
+                CASE 
+                    WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+                    WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
+                    WHEN l.language_name = 'Hmong' THEN 'Hmong'
+                    WHEN l.language_name IN ('Hindi', 'Punjabi', 'Bengali', 'Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
+                    WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'
+                    WHEN l.language_name = 'Korean' THEN 'Korean'
+                    WHEN l.language_name = 'Japanese' THEN 'Japanese'
+                    WHEN l.language_name = 'English' THEN 'English'
+                    ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
+                END as language,
+                SUM(COALESCE(s.gross_rate, 0)) as revenue,
+                COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
+                COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
+                COUNT(*) as total_spots
+            FROM spots s
+            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
+            LEFT JOIN language_blocks lb ON COALESCE(slb.block_id, slb.primary_block_id) = lb.block_id
+            LEFT JOIN languages l ON lb.language_id = l.language_id
+            WHERE s.spot_id IN ({placeholders})
+            AND slb.campaign_type = 'language_specific'  -- Only language_specific spots
+            AND (slb.block_id IS NOT NULL OR slb.primary_block_id IS NOT NULL)  -- Has block assignment
+            GROUP BY CASE 
                 WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
                 WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
                 WHEN l.language_name = 'Hmong' THEN 'Hmong'
@@ -529,50 +551,28 @@ class UpdatedUnifiedAnalysisEngine:
                 WHEN l.language_name = 'Japanese' THEN 'Japanese'
                 WHEN l.language_name = 'English' THEN 'English'
                 ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
-            END as language,
-            SUM(COALESCE(s.gross_rate, 0)) as revenue,
-            COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
-            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
-            COUNT(*) as total_spots
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN language_blocks lb ON slb.block_id = lb.block_id
-        LEFT JOIN languages l ON lb.language_id = l.language_id
-        WHERE s.spot_id IN ({placeholders})
-        AND slb.block_id IS NOT NULL  -- Only include spots with proper block assignments
-        AND slb.campaign_type = 'language_specific'  -- Only language_specific spots
-        GROUP BY CASE 
-            WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
-            WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
-            WHEN l.language_name = 'Hmong' THEN 'Hmong'
-            WHEN l.language_name IN ('Hindi', 'Punjabi', 'Bengali', 'Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
-            WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'
-            WHEN l.language_name = 'Korean' THEN 'Korean'
-            WHEN l.language_name = 'Japanese' THEN 'Japanese'
-            WHEN l.language_name = 'English' THEN 'English'
-            ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
-        END
-        HAVING SUM(COALESCE(s.gross_rate, 0)) > 0 OR COUNT(*) > 0
-        ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, spot_ids_list)
-        
-        results = []
-        for row in cursor.fetchall():
-            language, revenue, paid_spots, bonus_spots, total_spots = row
-            results.append(UnifiedResult(
-                name=language,
-                revenue=revenue,
-                percentage=0,
-                paid_spots=paid_spots,
-                bonus_spots=bonus_spots,
-                total_spots=total_spots,
-                avg_per_spot=revenue / total_spots if total_spots > 0 else 0
-            ))
-        
-        return results
+            END
+            HAVING SUM(COALESCE(s.gross_rate, 0)) > 0 OR COUNT(*) > 0
+            ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
+            """
+            
+            cursor = self.db_connection.cursor()
+            cursor.execute(query, spot_ids_list)
+            
+            results = []
+            for row in cursor.fetchall():
+                language, revenue, paid_spots, bonus_spots, total_spots = row
+                results.append(UnifiedResult(
+                    name=language,
+                    revenue=revenue,
+                    percentage=0,
+                    paid_spots=paid_spots,
+                    bonus_spots=bonus_spots,
+                    total_spots=total_spots,
+                    avg_per_spot=revenue / total_spots if total_spots > 0 else 0
+                ))
+            
+            return results
     
     def get_multi_language_analysis(self, year_input: str = "2024") -> Dict[str, Any]:
         """Get detailed multi-language analysis for multiple years"""

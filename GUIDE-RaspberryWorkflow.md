@@ -290,7 +290,7 @@ sudo chmod -R g+rw /opt/apps/ctv-bookedbiz-db
 uv --version
 
 # Reactivate virtual environment
-source .venv/bin/activate
+  source .venv/bin/activate
 
 # Check Python interpreter
 which python

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Multi-Language Spots Export Script
-# Exports multi-language category spots excluding roadblocks and paid programming
+# Multi-Language Spots Export Script - UPDATED FOR CAMPAIGN_TYPE
+# Exports multi-language category spots using proper campaign_type classification
 # Usage: ./export_multilang.sh [OPTIONS]
 
 # Default values
@@ -13,7 +13,7 @@ CORE_FIELDS_ONLY=false
 # Function to display help
 show_help() {
     cat << EOF
-Multi-Language Spots Export Script
+Multi-Language Spots Export Script (Updated for campaign_type)
 
 USAGE:
     $0 [OPTIONS]
@@ -32,12 +32,19 @@ EXAMPLES:
     $0 -y 2023 -c                         # Export 2023 with core fields only
     $0 -y 2024 -d /path/to/other.db       # Use different database
 
-NOTES:
-    - Excludes roadblocks (campaign_type = 'roadblock')
+MULTI-LANGUAGE CATEGORY DEFINITION:
+    - Uses campaign_type = 'multi_language' (proper classification)
+    - Cross-audience targeting spanning multiple language families
     - Excludes WorldLink (Direct Response category)
-    - Excludes Chinese Prime Time slots
     - Excludes Paid Programming (revenue_type = 'Paid Programming')
-    - Includes weekday/weekend indicator
+    - Excludes Chinese Prime Time slots (language-specific, not multi-language)
+    - Excludes ROS (Run on Schedule) spots
+
+UPDATED BUSINESS LOGIC:
+    - Proper campaign_type classification (not customer_intent)
+    - Mutually exclusive with other categories
+    - True cross-audience targeting only
+    - Enhanced exclusions for accurate categorization
 
 PAID PROGRAMMING EXCLUSIONS:
     - McHale Media:Kingdom of God (Religious programming)
@@ -107,6 +114,7 @@ echo "🔍 Exporting Multi-Language spots for $YEAR..."
 echo "📊 Database: $DB_PATH"
 echo "📁 Output: $OUTPUT_FILE"
 echo "🎯 Core fields only: $CORE_FIELDS_ONLY"
+echo "🔧 Using campaign_type = 'multi_language' classification"
 echo ""
 
 # Build the appropriate query based on options
@@ -117,7 +125,7 @@ SELECT
     s.time_in,
     s.time_out,
     s.revenue_type,
-    air_date,
+    s.air_date,
     s.language_code,
     CASE 
         WHEN s.day_of_week IN ('saturday', 'sunday') THEN 'Weekend'
@@ -133,18 +141,10 @@ AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
 AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
 AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
 AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-AND slb.customer_intent = 'indifferent'
-AND slb.campaign_type != 'roadblock'
 AND s.revenue_type != 'Paid Programming'
-AND NOT (
-    (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
-     AND s.day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday'))
-    OR
-    (s.time_in >= '20:00:00' AND s.time_out <= '23:59:59'
-     AND s.day_of_week IN ('saturday', 'sunday'))
-)
-AND slb.campaign_type != 'roadblock'
-AND s.revenue_type != 'Paid Programming'
+AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
+AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
+AND slb.campaign_type = 'multi_language'
 ORDER BY s.bill_code;"
 else
     QUERY="
@@ -165,7 +165,9 @@ SELECT
     s.broadcast_month,
     COALESCE(c.normalized_name, 'Unknown') as customer_name,
     slb.customer_intent,
-    slb.spans_multiple_blocks
+    slb.spans_multiple_blocks,
+    slb.campaign_type,
+    slb.business_rule_applied
 FROM spots s
 LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
 LEFT JOIN agencies a ON s.agency_id = a.agency_id
@@ -175,18 +177,10 @@ AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
 AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
 AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
 AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-AND slb.customer_intent = 'indifferent'
-AND slb.campaign_type != 'roadblock'
 AND s.revenue_type != 'Paid Programming'
-AND NOT (
-    (s.time_in >= '19:00:00' AND s.time_out <= '23:59:59' 
-     AND s.day_of_week IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday'))
-    OR
-    (s.time_in >= '20:00:00' AND s.time_out <= '23:59:59'
-     AND s.day_of_week IN ('saturday', 'sunday'))
-)
-AND slb.campaign_type != 'roadblock'
-AND s.revenue_type != 'Paid Programming'
+AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
+AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
+AND slb.campaign_type = 'multi_language'
 ORDER BY s.bill_code;"
 fi
 
@@ -206,11 +200,19 @@ if sqlite3 -header -csv "$DB_PATH" "$QUERY" > "$OUTPUT_FILE"; then
     echo "   Weekday spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Weekday')"
     echo "   Weekend spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Weekend')"
     echo ""
-    echo "🎯 Exclusions applied:"
-    echo "   - WorldLink (Direct Response)"
-    echo "   - Roadblocks (campaign_type = 'roadblock')" 
-    echo "   - Paid Programming (revenue_type = 'Paid Programming')"
-    echo "   - Chinese Prime Time slots"
+    echo "🎯 Updated Classification Applied:"
+    echo "   ✅ campaign_type = 'multi_language' (proper classification)"
+    echo "   ✅ WorldLink excluded (Direct Response category)"
+    echo "   ✅ Paid Programming excluded (separate category)"
+    echo "   ✅ Branded Content (PRD) excluded (separate category)"
+    echo "   ✅ Services (SVC) excluded (separate category)"
+    echo "   ✅ True cross-audience targeting only"
+    echo ""
+    echo "🚀 Business Impact:"
+    echo "   - More accurate multi-language categorization"
+    echo "   - Proper mutual exclusivity with other categories"
+    echo "   - Better cross-audience targeting analysis"
+    echo "   - Enhanced campaign_type field utilization"
 else
     echo "❌ Export failed!"
     exit 1
