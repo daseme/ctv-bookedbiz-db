@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# ROS (Run on Schedule) Export Script
-# Export all ROS spots using campaign_type field for proper classification
+# UPDATED ROS (Run on Schedule) Export Script
+# Export all ROS spots with enhanced business rule compliance checking
 # 
-# This script extracts ROS spots which are broadcast sponsorships that run
-# across multiple time periods or have broad reach targeting.
+# This script extracts ROS spots and validates they comply with business rules:
+# 1. Duration-based ROS: > 6 hours (360 minutes)
+# 2. Time-based ROS: Specific patterns (13:00-23:59, late night to next day, etc.)
 
 # Default values
 YEAR="2024"
@@ -14,7 +15,7 @@ DEBUG=false
 
 show_help() {
     cat << EOF
-ROS (Run on Schedule) Export Script
+UPDATED ROS (Run on Schedule) Export Script with Business Rule Validation
 
 USAGE:
     $0 [OPTIONS]
@@ -30,26 +31,27 @@ EXAMPLES:
     $0 -y 2023                              # Export 2023 ROS spots
     $0 -y 2024                              # Export 2024 ROS spots
     $0 -y 2023 --debug                      # Export with debug info
-    $0 -y 2023 -o ros_analysis_2023.csv     # Export to specific file
 
-ROS CLASSIFICATION:
-    Uses campaign_type = 'ros' for proper identification of:
-    - Broadcast sponsorships
-    - Long-duration advertising (6+ hours)
-    - All-day placements (1pm-midnight patterns)
-    - General market targeting (not language-specific)
+ROS BUSINESS RULES (Enhanced):
+    Duration-based ROS: Spots > 6 hours (360 minutes)
+    Time-based ROS patterns:
+    - 13:00-23:59 (standard ROS)
+    - Late night starts (≥19:00) running to next day
+    - Early morning starts (≤06:00) running to next day
+    - Full day patterns (06:00-23:59)
 
-EXPECTED RESULTS:
-    - 2023: Should show significant ROS activity
-    - 2024: Baseline ROS patterns
-    - Analysis focuses on duration, timing, and customer patterns
+VALIDATION FEATURES:
+    - Business rule compliance checking
+    - Pattern matching validation  
+    - Misclassification detection
+    - Revenue impact analysis
+    - Handles corrected Fujisankei Paid Programming spots
 
-TROUBLESHOOTING:
-    If no ROS spots found, check campaign_type field:
-    
-    SELECT campaign_type, COUNT(*) FROM spot_language_blocks 
-    WHERE spot_id IN (SELECT spot_id FROM spots WHERE broadcast_month LIKE '%-YY')
-    GROUP BY campaign_type;
+IMPORTANT: If you see compliance issues, run the misclassification fix first:
+    UPDATE spot_language_blocks SET campaign_type = 'paid_programming' 
+    WHERE campaign_type = 'ros' AND spot_id IN (
+        SELECT spot_id FROM spots WHERE revenue_type = 'Paid Programming'
+    );
 
 EOF
 }
@@ -98,19 +100,19 @@ fi
 
 # Set default output file if not provided
 if [[ -z "$OUTPUT_FILE" ]]; then
-    OUTPUT_FILE="ros_spots_${YEAR}.csv"
+    OUTPUT_FILE="ros_spots_${YEAR}_validated.csv"
 fi
 
 YEAR_SUFFIX="${YEAR: -2}"
 
-echo "🔍 ROS (Run on Schedule) Export for $YEAR"
+echo "🔍 ROS (Run on Schedule) Export with Business Rule Validation for $YEAR"
 echo "📊 Database: $DB_PATH"
 echo "📁 Output: $OUTPUT_FILE"
-echo "🎯 Using campaign_type = 'ros' for classification"
+echo "🎯 Using enhanced business rule compliance checking"
 echo ""
 
-# Main ROS export query
-echo "⚡ Generating ROS spots export..."
+# Enhanced ROS export query with business rule validation
+echo "⚡ Generating validated ROS spots export..."
 
 sqlite3 -header -csv "$DB_PATH" << EOF > "$OUTPUT_FILE"
 WITH ros_spots AS (
@@ -121,7 +123,7 @@ WITH ros_spots AS (
     WHERE s.broadcast_month LIKE '%-$YEAR_SUFFIX'
     AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
     AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-    -- Exclude higher precedence categories
+    -- Exclude higher precedence categories (these should NOT be ROS)
     AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
     AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
     AND s.revenue_type != 'Paid Programming'
@@ -130,41 +132,66 @@ WITH ros_spots AS (
     -- ROS identification using campaign_type
     AND slb.campaign_type = 'ros'
 ),
-time_analysis AS (
+duration_analysis AS (
     SELECT 
         s.spot_id,
         s.time_in,
         s.time_out,
+        -- Enhanced duration calculation handling "1 day, 0:00:00" format
         CASE 
             WHEN s.time_in IS NULL OR s.time_out IS NULL THEN NULL
+            WHEN s.time_out LIKE '%day%' THEN 
+                1440 - (CAST(substr(s.time_in, 1, 2) AS INTEGER) * 60 + CAST(substr(s.time_in, 4, 2) AS INTEGER))
             WHEN s.time_in <= s.time_out THEN 
-                CAST((strftime('%H', s.time_out) - strftime('%H', s.time_in)) * 60 + 
-                     (strftime('%M', s.time_out) - strftime('%M', s.time_in)) AS INTEGER)
+                (CAST(substr(s.time_out, 1, 2) AS INTEGER) - CAST(substr(s.time_in, 1, 2) AS INTEGER)) * 60 + 
+                (CAST(substr(s.time_out, 4, 2) AS INTEGER) - CAST(substr(s.time_in, 4, 2) AS INTEGER))
             ELSE 
-                CAST((24 * 60) - ((strftime('%H', s.time_in) - strftime('%H', s.time_out)) * 60 + 
-                                  (strftime('%M', s.time_in) - strftime('%M', s.time_out))) AS INTEGER)
-        END as duration_minutes,
-        CASE 
-            WHEN s.time_in IS NULL OR s.time_out IS NULL THEN 'No Time Info'
-            WHEN s.time_in <= s.time_out THEN 
-                CASE 
-                    WHEN ((strftime('%H', s.time_out) - strftime('%H', s.time_in)) * 60 + 
-                          (strftime('%M', s.time_out) - strftime('%M', s.time_in))) >= 360 THEN 'Long Duration (6+ hours)'
-                    WHEN ((strftime('%H', s.time_out) - strftime('%H', s.time_in)) * 60 + 
-                          (strftime('%M', s.time_out) - strftime('%M', s.time_in))) >= 180 THEN 'Medium Duration (3-6 hours)'
-                    ELSE 'Short Duration (<3 hours)'
-                END
-            ELSE 'Overnight Span'
-        END as duration_category,
-        CASE 
-            WHEN s.time_in = '13:00:00' AND s.time_out = '00:00:00' THEN 'All-Day Pattern (1pm-midnight)'
-            WHEN s.time_in = '06:00:00' AND s.time_out = '23:59:00' THEN 'Full Day Pattern (6am-11:59pm)'
-            WHEN s.time_in = '06:00:00' AND s.time_out = '00:00:00' THEN 'Full Day Pattern (6am-midnight)'
-            WHEN s.time_in <= '06:00:00' AND s.time_out >= '23:00:00' THEN 'Extended Day Pattern'
-            ELSE 'Custom Pattern'
-        END as time_pattern
+                (24 * 60) - ((CAST(substr(s.time_in, 1, 2) AS INTEGER) - CAST(substr(s.time_out, 1, 2) AS INTEGER)) * 60 + 
+                              (CAST(substr(s.time_in, 4, 2) AS INTEGER) - CAST(substr(s.time_out, 4, 2) AS INTEGER)))
+        END as duration_minutes
     FROM spots s
     WHERE s.spot_id IN (SELECT spot_id FROM ros_spots)
+),
+business_rule_validation AS (
+    SELECT 
+        da.spot_id,
+        da.duration_minutes,
+        slb.business_rule_applied,
+        -- Validate duration-based ROS rule
+        CASE 
+            WHEN slb.business_rule_applied = 'ros_duration' AND da.duration_minutes > 360 THEN 'VALID'
+            WHEN slb.business_rule_applied = 'ros_duration' AND da.duration_minutes <= 360 THEN 'INVALID - Duration too short'
+            WHEN slb.business_rule_applied = 'ros_duration' AND da.duration_minutes IS NULL THEN 'INVALID - No duration info'
+            ELSE 'N/A'
+        END as duration_rule_compliance,
+        -- Validate time-based ROS rule
+        CASE 
+            WHEN slb.business_rule_applied = 'ros_time' THEN
+                CASE 
+                    WHEN (s.time_in = '13:00:00' AND s.time_out = '23:59:00') THEN 'VALID - Standard ROS (1pm-midnight)'
+                    WHEN (s.time_in >= '19:00:00' AND s.time_out LIKE '%day%') THEN 'VALID - Late night to next day'
+                    WHEN (s.time_in <= '06:00:00' AND s.time_out LIKE '%day%') THEN 'VALID - Early morning to next day'
+                    WHEN (s.time_in = '06:00:00' AND s.time_out = '23:59:00') THEN 'VALID - Full day pattern'
+                    ELSE 'INVALID - Unknown time pattern'
+                END
+            ELSE 'N/A'
+        END as time_rule_compliance,
+        -- Overall compliance status with misclassification detection
+        CASE 
+            WHEN s.revenue_type = 'Paid Programming' THEN 'MISCLASSIFIED - Should be Paid Programming'
+            WHEN slb.business_rule_applied = 'ros_duration' AND da.duration_minutes > 360 THEN 'COMPLIANT'
+            WHEN slb.business_rule_applied = 'ros_time' AND (
+                (s.time_in = '13:00:00' AND s.time_out = '23:59:00') OR
+                (s.time_in >= '19:00:00' AND s.time_out LIKE '%day%') OR
+                (s.time_in <= '06:00:00' AND s.time_out LIKE '%day%') OR
+                (s.time_in = '06:00:00' AND s.time_out = '23:59:00')
+            ) THEN 'COMPLIANT'
+            WHEN slb.business_rule_applied IS NULL THEN 'MISSING_RULE'
+            ELSE 'NON_COMPLIANT'
+        END as overall_compliance
+    FROM duration_analysis da
+    JOIN spots s ON da.spot_id = s.spot_id
+    LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
 )
 SELECT 
     s.spot_id,
@@ -177,9 +204,22 @@ SELECT
     s.revenue_type,
     s.time_in,
     s.time_out,
-    ta.duration_minutes,
-    ta.duration_category,
-    ta.time_pattern,
+    da.duration_minutes,
+    CASE 
+        WHEN da.duration_minutes IS NULL THEN 'Unknown Duration'
+        WHEN da.duration_minutes >= 720 THEN 'Very Long (12+ hours)'
+        WHEN da.duration_minutes >= 360 THEN 'Long (6-12 hours)'
+        WHEN da.duration_minutes >= 180 THEN 'Medium (3-6 hours)'
+        WHEN da.duration_minutes >= 60 THEN 'Short (1-3 hours)'
+        ELSE 'Very Short (<1 hour)'
+    END as duration_category,
+    CASE 
+        WHEN s.time_in = '13:00:00' AND s.time_out = '23:59:00' THEN 'Standard ROS (1pm-midnight)'
+        WHEN s.time_in >= '19:00:00' AND s.time_out LIKE '%day%' THEN 'Late Night to Next Day'
+        WHEN s.time_in <= '06:00:00' AND s.time_out LIKE '%day%' THEN 'Early Morning to Next Day'
+        WHEN s.time_in = '06:00:00' AND s.time_out = '23:59:00' THEN 'Full Day Pattern'
+        ELSE 'Other Pattern'
+    END as time_pattern,
     s.day_of_week,
     CASE 
         WHEN s.day_of_week IN ('saturday', 'sunday') THEN 'Weekend'
@@ -192,61 +232,43 @@ SELECT
     s.language_code,
     s.program,
     s.market_name,
-    CASE 
-        WHEN s.time_in IS NULL THEN 'No Time Info'
-        WHEN s.time_in < '06:00:00' THEN 'Overnight (00:00-05:59)'
-        WHEN s.time_in < '12:00:00' THEN 'Morning (06:00-11:59)'
-        WHEN s.time_in < '18:00:00' THEN 'Afternoon (12:00-17:59)'
-        WHEN s.time_in < '24:00:00' THEN 'Evening (18:00-23:59)'
-        ELSE 'Unknown'
-    END as start_time_period,
-    CASE 
-        WHEN s.time_out IS NULL THEN 'No Time Info'
-        WHEN s.time_out < '06:00:00' THEN 'Overnight (00:00-05:59)'
-        WHEN s.time_out < '12:00:00' THEN 'Morning (06:00-11:59)'
-        WHEN s.time_out < '18:00:00' THEN 'Afternoon (12:00-17:59)'
-        WHEN s.time_out < '24:00:00' THEN 'Evening (18:00-23:59)'
-        ELSE 'Unknown'
-    END as end_time_period,
-    CASE 
-        WHEN s.spot_type = 'BNS' THEN 'BNS (Bonus Spot)'
-        WHEN s.spot_type = 'COM' THEN 'COM (Commercial)'
-        WHEN s.spot_type = 'CRD' THEN 'CRD (Credit)'
-        WHEN s.spot_type = 'PKG' THEN 'PKG (Package)'
-        ELSE COALESCE(s.spot_type, 'NULL')
-    END as spot_type_analysis,
-    'ROS (Run on Schedule)' as final_category,
-    -- Additional ROS analysis fields
-    COALESCE(slb.campaign_type, 'NO_ASSIGNMENT') as campaign_type_confirm,
+    -- Business rule validation fields
     COALESCE(slb.business_rule_applied, 'NO_RULE') as business_rule_applied,
+    COALESCE(brv.duration_rule_compliance, 'N/A') as duration_rule_compliance,
+    COALESCE(brv.time_rule_compliance, 'N/A') as time_rule_compliance,
+    COALESCE(brv.overall_compliance, 'UNKNOWN') as overall_compliance,
+    -- Compliance flags
     CASE 
-        WHEN ta.duration_minutes IS NULL THEN 'Unknown Duration'
-        WHEN ta.duration_minutes >= 720 THEN 'Very Long (12+ hours)'
-        WHEN ta.duration_minutes >= 360 THEN 'Long (6-12 hours)'
-        WHEN ta.duration_minutes >= 180 THEN 'Medium (3-6 hours)'
-        WHEN ta.duration_minutes >= 60 THEN 'Short (1-3 hours)'
-        ELSE 'Very Short (<1 hour)'
-    END as duration_bucket,
+        WHEN brv.overall_compliance = 'COMPLIANT' THEN 'PASS'
+        WHEN brv.overall_compliance = 'NON_COMPLIANT' THEN 'FAIL'
+        WHEN brv.overall_compliance = 'MISSING_RULE' THEN 'MISSING'
+        WHEN brv.overall_compliance LIKE 'MISCLASSIFIED%' THEN 'MISCLASSIFIED'
+        ELSE 'UNKNOWN'
+    END as compliance_status,
+    -- Revenue impact analysis
     CASE 
-        WHEN s.time_in IS NOT NULL AND s.time_out IS NOT NULL THEN 
-            CASE 
-                WHEN s.time_in = '13:00:00' AND s.time_out = '00:00:00' THEN 'Standard ROS (1pm-midnight)'
-                WHEN ta.duration_minutes >= 360 THEN 'Long-Duration ROS (6+ hours)'
-                WHEN ta.duration_minutes >= 180 THEN 'Medium-Duration ROS (3-6 hours)'
-                ELSE 'Short-Duration ROS (<3 hours)'
-            END
-        ELSE 'Undefined ROS Pattern'
-    END as ros_type_analysis
+        WHEN brv.overall_compliance = 'NON_COMPLIANT' THEN 'Revenue at Risk'
+        WHEN brv.overall_compliance = 'MISSING_RULE' THEN 'Needs Review'
+        WHEN brv.overall_compliance LIKE 'MISCLASSIFIED%' THEN 'Wrong Category'
+        ELSE 'OK'
+    END as revenue_status,
+    'ROS (Run on Schedule)' as final_category,
+    COALESCE(slb.campaign_type, 'NO_ASSIGNMENT') as campaign_type_confirm
 FROM ros_spots rs
 JOIN spots s ON rs.spot_id = s.spot_id
 LEFT JOIN customers c ON s.customer_id = c.customer_id
 LEFT JOIN agencies a ON s.agency_id = a.agency_id
 LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-LEFT JOIN time_analysis ta ON s.spot_id = ta.spot_id
-ORDER BY s.gross_rate DESC, s.air_date, s.time_in;
+LEFT JOIN duration_analysis da ON s.spot_id = da.spot_id
+LEFT JOIN business_rule_validation brv ON s.spot_id = brv.spot_id
+ORDER BY 
+    brv.overall_compliance DESC,
+    s.gross_rate DESC, 
+    s.air_date, 
+    s.time_in;
 EOF
 
-# Check results
+# Check results and provide validation summary
 if [[ -f "$OUTPUT_FILE" ]]; then
     RECORD_COUNT=$(tail -n +2 "$OUTPUT_FILE" | wc -l)
     echo "✅ ROS export completed successfully!"
@@ -257,44 +279,61 @@ if [[ -f "$OUTPUT_FILE" ]]; then
     REVENUE=$(tail -n +2 "$OUTPUT_FILE" | awk -F',' '{sum += $5} END {print sum}')
     echo "💰 Total ROS revenue: \$${REVENUE}"
     
-    # Calculate average per spot
+    # Business rule compliance analysis
+    echo ""
+    echo "🔍 BUSINESS RULE COMPLIANCE ANALYSIS:"
+    
+    COMPLIANT_COUNT=$(tail -n +2 "$OUTPUT_FILE" | grep -c ',COMPLIANT,')
+    NON_COMPLIANT_COUNT=$(tail -n +2 "$OUTPUT_FILE" | grep -c ',NON_COMPLIANT,')
+    MISSING_RULE_COUNT=$(tail -n +2 "$OUTPUT_FILE" | grep -c ',MISSING_RULE,')
+    MISCLASSIFIED_COUNT=$(tail -n +2 "$OUTPUT_FILE" | grep -c ',MISCLASSIFIED,')
+    
+    echo "   ✅ Compliant spots: $COMPLIANT_COUNT"
+    echo "   ❌ Non-compliant spots: $NON_COMPLIANT_COUNT"
+    echo "   ⚠️  Missing business rule: $MISSING_RULE_COUNT"
+    echo "   🔄 Misclassified spots: $MISCLASSIFIED_COUNT"
+    
     if [[ $RECORD_COUNT -gt 0 ]]; then
-        AVG_PER_SPOT=$(echo "scale=2; $REVENUE / $RECORD_COUNT" | bc -l)
-        echo "📈 Average per ROS spot: \$${AVG_PER_SPOT}"
+        COMPLIANCE_RATE=$(echo "scale=1; $COMPLIANT_COUNT * 100 / $RECORD_COUNT" | bc -l)
+        echo "   📈 Compliance rate: ${COMPLIANCE_RATE}%"
+    fi
+    
+    # Alert if misclassified spots found
+    if [[ $MISCLASSIFIED_COUNT -gt 0 ]]; then
+        echo "   🚨 Found $MISCLASSIFIED_COUNT misclassified spots - run fix script first!"
+    fi
+    
+    # Revenue at risk analysis
+    REVENUE_AT_RISK=$(tail -n +2 "$OUTPUT_FILE" | grep ',Revenue at Risk,' | awk -F',' '{sum += $5} END {print sum}')
+    WRONG_CATEGORY_REVENUE=$(tail -n +2 "$OUTPUT_FILE" | grep ',Wrong Category,' | awk -F',' '{sum += $5} END {print sum}')
+    
+    if [[ -n "$REVENUE_AT_RISK" && "$REVENUE_AT_RISK" != "0" ]]; then
+        echo "   ⚠️  Revenue at risk: \${REVENUE_AT_RISK}"
+    fi
+    if [[ -n "$WRONG_CATEGORY_REVENUE" && "$WRONG_CATEGORY_REVENUE" != "0" ]]; then
+        echo "   🔄 Revenue in wrong category: \${WRONG_CATEGORY_REVENUE}"
     fi
     
     if [[ "$DEBUG" == true ]]; then
         echo ""
-        echo "🔍 Debug: Sample records"
-        head -n 6 "$OUTPUT_FILE"
-        echo ""
-        echo "📈 ROS statistics:"
-        echo "   Total records: $RECORD_COUNT"
-        echo "   BNS spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',BNS,')"
-        echo "   COM spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',COM,')"
-        echo "   Weekend spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Weekend,')"
-        echo "   Weekday spots: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Weekday,')"
+        echo "🔍 Debug: Business rule breakdown"
+        echo "   Duration-based ROS: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',ros_duration,')"
+        echo "   Time-based ROS: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',ros_time,')"
+        echo "   No rule applied: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',NO_RULE,')"
         
         echo ""
-        echo "⏱️ Duration analysis:"
-        echo "   Very Long (12+ hours): $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Very Long (12+ hours),')"
-        echo "   Long (6-12 hours): $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Long (6-12 hours),')"
-        echo "   Medium (3-6 hours): $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Medium (3-6 hours),')"
-        echo "   Short (1-3 hours): $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Short (1-3 hours),')"
-        echo "   Very Short (<1 hour): $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Very Short (<1 hour),')"
-        
-        echo ""
-        echo "🎯 Time pattern analysis:"
-        echo "   All-Day Pattern: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',All-Day Pattern')"
-        echo "   Full Day Pattern: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Full Day Pattern')"
-        echo "   Extended Day Pattern: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Extended Day Pattern')"
-        echo "   Custom Pattern: $(tail -n +2 "$OUTPUT_FILE" | grep -c ',Custom Pattern')"
-        
-        echo ""
-        echo "🏢 Top customers by revenue:"
-        tail -n +2 "$OUTPUT_FILE" | sort -t',' -k5 -rn | head -5 | while IFS=',' read -r spot_id bill_code customer_name agency_name revenue rest; do
-            echo "   $customer_name: \$${revenue}"
+        echo "📋 Sample non-compliant spots:"
+        tail -n +2 "$OUTPUT_FILE" | grep ',NON_COMPLIANT,' | head -3 | while IFS=',' read -r spot_id bill_code customer rest; do
+            echo "   Spot $spot_id ($bill_code): $customer"
         done
+        
+        if [[ $MISCLASSIFIED_COUNT -gt 0 ]]; then
+            echo ""
+            echo "🔄 Sample misclassified spots:"
+            tail -n +2 "$OUTPUT_FILE" | grep ',MISCLASSIFIED,' | head -3 | while IFS=',' read -r spot_id bill_code customer rest; do
+                echo "   Spot $spot_id ($bill_code): $customer"
+            done
+        fi
     fi
 else
     echo "❌ Export failed!"
@@ -302,15 +341,15 @@ else
 fi
 
 echo ""
-echo "🎯 ROS Analysis Summary:"
-echo "   This export contains all ROS (Run on Schedule) spots for $YEAR"
-echo "   ROS spots are broadcast sponsorships with broad reach targeting"
-echo "   Common patterns: 1pm-midnight, 6am-11:59pm, 6+ hour durations"
-echo "   Business purpose: General market reach, not language-specific"
+echo "🎯 ROS Business Rule Validation Summary:"
+echo "   This export includes enhanced compliance checking for all ROS spots"
+echo "   Each spot is validated against the specific business rules used in assignment"
+echo "   Non-compliant spots should be reviewed and potentially reassigned"
+echo "   Misclassified spots (like Paid Programming) are automatically flagged"
 echo ""
-echo "💡 Key insights available:"
-echo "   - Duration analysis (Very Long, Long, Medium, Short buckets)"
-echo "   - Time pattern recognition (All-Day, Full Day, Extended Day)"
-echo "   - Customer and agency breakdown"
-echo "   - Revenue performance by ROS type"
-echo "   - Weekday vs weekend distribution"
+echo "💡 Key validation features:"
+echo "   - Duration rule compliance (>6 hours for ros_duration)"
+echo "   - Time pattern compliance (specific patterns for ros_time)"
+echo "   - Overall compliance status (COMPLIANT/NON_COMPLIANT/MISSING_RULE/MISCLASSIFIED)"
+echo "   - Revenue impact analysis for non-compliant spots"
+echo "   - Automatic detection of misclassified Paid Programming spots"

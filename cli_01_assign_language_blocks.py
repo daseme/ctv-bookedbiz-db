@@ -265,7 +265,7 @@ class LanguageBlockService:
         return time_out
 
     def assign_single_spot(self, spot_id: int) -> AssignmentResult:
-        """Assign a single spot to appropriate language block(s) - DEBUG VERSION"""
+        """COMPLETE: Assign a single spot with proper variable definitions"""
         try:
             # Step 1: Get spot data
             spot_data = self._get_spot_data(spot_id)
@@ -286,7 +286,7 @@ class LanguageBlockService:
                     alert_reason="Spot has no market assignment"
                 )
             
-            # Step 3: APPLY PRECEDENCE RULES FIRST (DEBUG)
+            # Step 3: Apply precedence rules first
             self.logger.info(f"DEBUG: Applying precedence rules for spot {spot_id}")
             precedence_result = self._apply_precedence_rules(spot_data)
             
@@ -301,9 +301,10 @@ class LanguageBlockService:
             else:
                 self.logger.info(f"DEBUG: No precedence rules matched for spot {spot_id}")
             
-            # Step 4: Only if no precedence rules match, find programming schedule
+            # Step 4: Find programming schedule
             schedule_id = self._get_applicable_schedule(spot_data.market_id, spot_data.air_date)
             if not schedule_id:
+                self.logger.info(f"DEBUG: No programming schedule found for spot {spot_id}")
                 result = AssignmentResult(
                     spot_id=spot_id,
                     success=True,
@@ -311,8 +312,11 @@ class LanguageBlockService:
                     requires_attention=True,
                     alert_reason="No programming grid for market"
                 )
+                self._save_assignment(result)
                 self.stats['no_coverage'] += 1
                 return result
+            
+            self.logger.info(f"DEBUG: Found schedule_id {schedule_id} for spot {spot_id}")
             
             # Step 5: Find overlapping language blocks
             blocks = self._get_overlapping_blocks(
@@ -320,6 +324,7 @@ class LanguageBlockService:
             )
             
             if not blocks:
+                self.logger.info(f"DEBUG: No overlapping blocks found for spot {spot_id}")
                 result = AssignmentResult(
                     spot_id=spot_id,
                     success=True,
@@ -332,8 +337,56 @@ class LanguageBlockService:
                 self.stats['no_coverage'] += 1
                 return result
             
+            self.logger.info(f"DEBUG: Found {len(blocks)} overlapping blocks for spot {spot_id}")
+            
             # Step 6: Apply normal language block assignment
+            # Add this right before calling _analyze_base_assignment
+            self.logger.info(f"DEBUG: About to call _analyze_base_assignment method")
+            self.logger.info(f"DEBUG: Method exists: {hasattr(self, '_analyze_base_assignment')}")
+            self.logger.info(f"DEBUG: Calling _analyze_base_assignment for spot {spot_id}")
             result = self._analyze_base_assignment(spot_data, schedule_id, blocks)
+            
+            # CRITICAL FIX: Check if result is None and fix database constraints
+            if result is None:
+                self.logger.error(f"ERROR: _analyze_base_assignment returned None for spot {spot_id}")
+                
+                # Create a fallback result that respects database constraints
+                if len(blocks) == 1:
+                    # Single block: spans_multiple_blocks = False, block_id = NOT NULL
+                    result = AssignmentResult(
+                        spot_id=spot_id,
+                        success=True,
+                        schedule_id=schedule_id,
+                        block_id=blocks[0].block_id,
+                        customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+                        spans_multiple_blocks=False,
+                        blocks_spanned=[blocks[0].block_id],
+                        primary_block_id=blocks[0].block_id,
+                        requires_attention=True,
+                        alert_reason="Fallback assignment - _analyze_base_assignment returned None",
+                        campaign_type='language_specific',
+                        error_message="Assignment method returned None"
+                    )
+                else:
+                    # Multiple blocks: spans_multiple_blocks = True, block_id = NULL
+                    result = AssignmentResult(
+                        spot_id=spot_id,
+                        success=True,
+                        schedule_id=schedule_id,
+                        block_id=None,  # Must be None when spans_multiple_blocks = True
+                        customer_intent=CustomerIntent.INDIFFERENT,
+                        spans_multiple_blocks=True,
+                        blocks_spanned=[b.block_id for b in blocks],
+                        primary_block_id=blocks[0].block_id,
+                        requires_attention=True,
+                        alert_reason="Fallback assignment - _analyze_base_assignment returned None",
+                        campaign_type='multi_language',
+                        error_message="Assignment method returned None"
+                    )
+            
+            self.logger.info(f"DEBUG: Assignment result for spot {spot_id}: success={result.success}, block_id={result.block_id}, spans_multiple={result.spans_multiple_blocks}")
+            
+            # Save the assignment
             self._save_assignment(result)
             
             # Update stats
@@ -435,10 +488,216 @@ class LanguageBlockService:
         
         return test_results
         
-    def _analyze_base_assignment(self, spot: SpotData, schedule_id: int, 
+    def _analyze_base_assignment(self, spot: SpotData, schedule_id: int,
                                 blocks: List[LanguageBlock]) -> AssignmentResult:
-        """Original assignment logic (unchanged)"""
+        """CLEAN VERSION: Proper Chinese pattern detection + normal assignment"""
         
+        # Check for Chinese pattern first (19:00 or 20:00 start times)
+        if self._is_chinese_pattern(spot):
+            self.logger.info(f"DEBUG: Chinese pattern detected for spot {spot.spot_id}")
+            
+            # Find Chinese block from available blocks
+            chinese_block = self._find_chinese_block([b.block_id for b in blocks])
+            
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=schedule_id,
+                block_id=chinese_block.block_id if chinese_block else blocks[0].block_id,
+                customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+                spans_multiple_blocks=False,
+                blocks_spanned=[blocks[0].block_id],
+                primary_block_id=chinese_block.block_id if chinese_block else blocks[0].block_id,
+                requires_attention=False,
+                campaign_type='language_specific',
+                business_rule_applied='chinese_pattern',
+                auto_resolved_date=datetime.now()
+            )
+        
+        # Check for Tagalog pattern (16:00-19:00)
+        if self._is_tagalog_pattern(spot):
+            self.logger.info(f"DEBUG: Tagalog pattern detected for spot {spot.spot_id}")
+            
+            # Find Tagalog block from available blocks
+            tagalog_block = self._find_tagalog_block([b.block_id for b in blocks])
+            
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=schedule_id,
+                block_id=tagalog_block.block_id if tagalog_block else blocks[0].block_id,
+                customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+                spans_multiple_blocks=False,
+                blocks_spanned=[blocks[0].block_id],
+                primary_block_id=tagalog_block.block_id if tagalog_block else blocks[0].block_id,
+                requires_attention=False,
+                campaign_type='language_specific',
+                business_rule_applied='tagalog_pattern',
+                auto_resolved_date=datetime.now()
+            )
+        
+        # Normal assignment logic
+        if len(blocks) == 1:
+            # Single block assignment
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=schedule_id,
+                block_id=blocks[0].block_id,
+                customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+                spans_multiple_blocks=False,
+                blocks_spanned=[blocks[0].block_id],
+                primary_block_id=blocks[0].block_id,
+                requires_attention=False,
+                campaign_type='language_specific'
+            )
+        
+        else:
+            # Multi-block assignment
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=schedule_id,
+                block_id=None,
+                customer_intent=CustomerIntent.INDIFFERENT,
+                spans_multiple_blocks=True,
+                blocks_spanned=[b.block_id for b in blocks],
+                primary_block_id=blocks[0].block_id,
+                requires_attention=True,
+                alert_reason="Multi-block assignment",
+                campaign_type='multi_language'
+            )
+
+    def _apply_precedence_rules(self, spot: SpotData) -> Optional[AssignmentResult]:
+        """FIXED: Apply precedence rules - language patterns removed (handled in normal flow)"""
+        
+        # Rule 1: WorldLink Direct Response
+        if self._is_worldlink_spot(spot):
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=1,
+                block_id=None,
+                customer_intent=CustomerIntent.INDIFFERENT,
+                spans_multiple_blocks=True,
+                blocks_spanned=[],
+                primary_block_id=None,
+                requires_attention=False,
+                alert_reason=None,
+                campaign_type='direct_response',
+                business_rule_applied='worldlink_direct_response',
+                auto_resolved_date=datetime.now()
+            )
+        
+        # Rule 2: Paid Programming
+        if self._is_paid_programming(spot):
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=1,
+                block_id=None,
+                customer_intent=CustomerIntent.INDIFFERENT,
+                spans_multiple_blocks=True,
+                blocks_spanned=[],
+                primary_block_id=None,
+                requires_attention=False,
+                alert_reason=None,
+                campaign_type='paid_programming',
+                business_rule_applied='revenue_type_paid_programming',
+                auto_resolved_date=datetime.now()
+            )
+        
+        # Rule 3: ROS by Duration (> 6 hours = 360 minutes)
+        # BUT exclude Chinese and Tagalog patterns first
+        if not self._is_chinese_pattern(spot) and not self._is_tagalog_pattern(spot):
+            duration = self._calculate_spot_duration(spot.time_in, spot.time_out)
+            if duration > 360:
+                return AssignmentResult(
+                    spot_id=spot.spot_id,
+                    success=True,
+                    schedule_id=1,
+                    block_id=None,
+                    customer_intent=CustomerIntent.INDIFFERENT,
+                    spans_multiple_blocks=True,
+                    blocks_spanned=[],
+                    primary_block_id=None,
+                    requires_attention=False,
+                    alert_reason=None,
+                    campaign_type='ros',
+                    business_rule_applied='ros_duration',
+                    auto_resolved_date=datetime.now()
+                )
+        
+        # Rule 4: ROS by Time Pattern (exclude Chinese and Tagalog patterns)
+        if self._is_ros_by_time(spot):
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=1,
+                block_id=None,
+                customer_intent=CustomerIntent.INDIFFERENT,
+                spans_multiple_blocks=True,
+                blocks_spanned=[],
+                primary_block_id=None,
+                requires_attention=False,
+                alert_reason=None,
+                campaign_type='ros',
+                business_rule_applied='ros_time',
+                auto_resolved_date=datetime.now()
+            )
+        
+        return None
+    
+    def _is_chinese_pattern(self, spot: SpotData) -> bool:
+        """FIXED: Check if spot matches Chinese pattern (19:00 or 20:00 start)"""
+        
+        # Chinese patterns can start at 19:00:00 OR 20:00:00
+        if spot.time_in not in ["19:00:00", "20:00:00"]:
+            return False
+        
+        # Must end at 23:59:00 OR contain "day" (for "1 day, 0:00:00")
+        time_out_match = (
+            spot.time_out == "23:59:00" or 
+            spot.time_out == "24:00:00" or
+            "day" in str(spot.time_out)
+        )
+        
+        if not time_out_match:
+            return False
+        
+        # Must have Chinese language code
+        language_hint = self._get_language_hint(spot)
+        language_match = language_hint in ["M", "C", "M/C"]
+        
+        # Debug logging
+        if time_out_match and language_match:
+            self.logger.info(f"DEBUG: Chinese pattern detected for spot {spot.spot_id} - time_in: {spot.time_in}, time_out: {spot.time_out}, language: {language_hint}")
+        
+        return time_out_match and language_match
+        
+        if self._is_tagalog_pattern(spot):
+            self.logger.info(f"DEBUG: Tagalog pattern detected in normal assignment for spot {spot.spot_id}")
+            
+            # Find Tagalog block from available blocks
+            tagalog_block = self._find_tagalog_block([b.block_id for b in blocks])
+            
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=schedule_id,
+                block_id=tagalog_block.block_id if tagalog_block else None,
+                customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+                spans_multiple_blocks=False,
+                blocks_spanned=[b.block_id for b in blocks],
+                primary_block_id=tagalog_block.block_id if tagalog_block else None,
+                requires_attention=False,
+                alert_reason=None,
+                campaign_type='language_specific',
+                business_rule_applied='tagalog_pattern',
+                auto_resolved_date=datetime.now()
+            )
+        
+        # THEN: Continue with original assignment logic for other spots
         if len(blocks) == 1:
             # Single block assignment
             block = blocks[0]
@@ -509,84 +768,6 @@ class LanguageBlockService:
                     campaign_type='language_specific'
                 )
 
-    def _apply_precedence_rules(self, spot: SpotData) -> Optional[AssignmentResult]:
-        """FIXED: Apply precedence rules with proper constraint values"""
-        
-        # Rule 1: WorldLink Direct Response
-        if self._is_worldlink_spot(spot):
-            return AssignmentResult(
-                spot_id=spot.spot_id,
-                success=True,
-                schedule_id=1,
-                block_id=None,
-                customer_intent=CustomerIntent.INDIFFERENT,
-                spans_multiple_blocks=True,
-                blocks_spanned=[],  # FIXED: Empty list instead of None
-                primary_block_id=None,
-                requires_attention=False,
-                alert_reason=None,
-                campaign_type='direct_response',
-                business_rule_applied='worldlink_direct_response',
-                auto_resolved_date=datetime.now()
-            )
-        
-        # Rule 2: ROS by Duration (> 6 hours = 360 minutes)
-        duration = self._calculate_spot_duration(spot.time_in, spot.time_out)
-        if duration > 360:
-            return AssignmentResult(
-                spot_id=spot.spot_id,
-                success=True,
-                schedule_id=1,
-                block_id=None,
-                customer_intent=CustomerIntent.INDIFFERENT,
-                spans_multiple_blocks=True,
-                blocks_spanned=[],  # FIXED: Empty list instead of None
-                primary_block_id=None,
-                requires_attention=False,
-                alert_reason=None,
-                campaign_type='ros',
-                business_rule_applied='ros_duration',
-                auto_resolved_date=datetime.now()
-            )
-        
-        # Rule 3: ROS by Time Pattern (CRITICAL FIX)
-        if self._is_ros_by_time(spot):
-            return AssignmentResult(
-                spot_id=spot.spot_id,
-                success=True,
-                schedule_id=1,
-                block_id=None,
-                customer_intent=CustomerIntent.INDIFFERENT,
-                spans_multiple_blocks=True,
-                blocks_spanned=[],  # FIXED: Empty list instead of None
-                primary_block_id=None,
-                requires_attention=False,
-                alert_reason=None,
-                campaign_type='ros',
-                business_rule_applied='ros_time',
-                auto_resolved_date=datetime.now()
-            )
-        
-        # Rule 4: Paid Programming
-        if self._is_paid_programming(spot):
-            return AssignmentResult(
-                spot_id=spot.spot_id,
-                success=True,
-                schedule_id=1,
-                block_id=None,
-                customer_intent=CustomerIntent.INDIFFERENT,
-                spans_multiple_blocks=True,
-                blocks_spanned=[],  # FIXED: Empty list instead of None
-                primary_block_id=None,
-                requires_attention=False,
-                alert_reason=None,
-                campaign_type='paid_programming',
-                business_rule_applied='revenue_type_paid_programming',
-                auto_resolved_date=datetime.now()
-            )
-        
-        return None
-    
     def _is_worldlink_spot(self, spot: SpotData) -> bool:
         """Check if spot is from WorldLink agency (DEBUG VERSION)"""
         cursor = self.db.cursor()
@@ -623,25 +804,30 @@ class LanguageBlockService:
         return is_ros
 
     def _is_ros_by_time(self, spot: SpotData) -> bool:
-        """FIXED: Check if spot runs ROS time patterns"""
+        """FIXED: ROS time check that excludes Chinese and Tagalog patterns"""
+        
+        # CRITICAL: If this is a Chinese or Tagalog pattern, it should NOT be ROS
+        if self._is_chinese_pattern(spot) or self._is_tagalog_pattern(spot):
+            return False
         
         # Pattern 1: 13:00-23:59 (standard ROS)
         if spot.time_in == "13:00:00" and spot.time_out == "23:59:00":
             return True
         
-        # Pattern 2: Late night to next day (CRITICAL FIX for RPM:Thunder Valley)
-        if 'day' in spot.time_out:
+        # Pattern 2: Late night to next day patterns (excluding Chinese patterns)
+        if 'day' in str(spot.time_out):
             start_hour = int(spot.time_in.split(':')[0])
             
-            # Late night starts (after 19:00) running to next day
-            if start_hour >= 19:
+            # Late night starts (after 20:00) running to next day
+            # NOTE: 19:00 and 20:00 are handled by Chinese pattern detection
+            if start_hour >= 21:
                 return True
             
             # Very early morning starts (before 6:00) running to next day  
             if start_hour <= 6:
                 return True
         
-        # Pattern 3: Very long daytime slots
+        # Pattern 3: Full day patterns
         if spot.time_in == "06:00:00" and spot.time_out == "23:59:00":
             return True
         
@@ -655,16 +841,50 @@ class LanguageBlockService:
         return row and row[0] == 'Paid Programming'
     
     def _is_tagalog_pattern(self, spot: SpotData) -> bool:
-        """Check if spot matches Tagalog pattern (16:00-19:00 + language hint "T")"""
+        """FIXED: Check if spot matches Tagalog pattern (16:00-19:00 + T)"""
+        
+        # Must be 16:00:00 to 19:00:00
         time_match = spot.time_in == "16:00:00" and spot.time_out == "19:00:00"
-        language_hint = self._get_language_hint(spot) == "T"
-        return time_match and language_hint
+        
+        if not time_match:
+            return False
+        
+        # Must have Tagalog language code
+        language_hint = self._get_language_hint(spot)
+        language_match = language_hint == "T"
+        
+        # Debug logging
+        if time_match and language_match:
+            self.logger.info(f"DEBUG: Tagalog pattern detected for spot {spot.spot_id} - time_in: {spot.time_in}, time_out: {spot.time_out}, language: {language_hint}")
+        
+        return time_match and language_match
     
     def _is_chinese_pattern(self, spot: SpotData) -> bool:
-        """Check if spot matches Chinese pattern (19:00-23:59 + language hint "M"/"M/C")"""
-        time_match = spot.time_in == "19:00:00" and spot.time_out == "23:59:00"
-        language_hint = self._get_language_hint(spot) in ["M", "M/C"]
-        return time_match and language_hint
+        """FIXED: Check if spot matches Chinese pattern - now includes 20:00:00 start times"""
+        
+        # Chinese patterns can start at 19:00:00 OR 20:00:00
+        if spot.time_in not in ["19:00:00", "20:00:00"]:
+            return False
+        
+        # Must end at 23:59:00 OR contain "day" (for "1 day, 0:00:00")
+        time_out_match = (
+            spot.time_out == "23:59:00" or 
+            spot.time_out == "24:00:00" or
+            "day" in str(spot.time_out)
+        )
+        
+        if not time_out_match:
+            return False
+        
+        # Must have Chinese language code
+        language_hint = self._get_language_hint(spot)
+        language_match = language_hint in ["M", "C", "M/C"]
+        
+        # Debug logging
+        if time_out_match and language_match:
+            self.logger.info(f"DEBUG: Chinese pattern detected for spot {spot.spot_id} - time_in: {spot.time_in}, time_out: {spot.time_out}, language: {language_hint}")
+        
+        return time_out_match and language_match
     
     def _get_language_hint(self, spot: SpotData) -> Optional[str]:
         """Get original language hint from spots.language_code"""
@@ -673,6 +893,49 @@ class LanguageBlockService:
         row = cursor.fetchone()
         return row[0] if row and row[0] else None
     
+
+    def _create_chinese_assignment(self, spot: SpotData, schedule_id: int, blocks: List[LanguageBlock]) -> AssignmentResult:
+        """ENHANCED: Create Chinese family assignment from enhanced rule"""
+        # Find Chinese block from the available blocks (Mandarin or Cantonese)
+        chinese_block = self._find_chinese_block([b.block_id for b in blocks])
+        
+        return AssignmentResult(
+            spot_id=spot.spot_id,
+            success=True,
+            schedule_id=schedule_id,
+            block_id=chinese_block.block_id if chinese_block else None,
+            customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+            spans_multiple_blocks=False,
+            blocks_spanned=[b.block_id for b in blocks],
+            primary_block_id=chinese_block.block_id if chinese_block else None,
+            requires_attention=False,
+            alert_reason=None,
+            campaign_type='language_specific',
+            business_rule_applied='chinese_pattern',
+            auto_resolved_date=datetime.now()
+        )
+
+    def _create_tagalog_assignment(self, spot: SpotData, schedule_id: int, blocks: List[LanguageBlock]) -> AssignmentResult:
+        """ENHANCED: Create Tagalog assignment from enhanced rule"""
+        # Find Tagalog block from the available blocks
+        tagalog_block = self._find_tagalog_block([b.block_id for b in blocks])
+        
+        return AssignmentResult(
+            spot_id=spot.spot_id,
+            success=True,
+            schedule_id=schedule_id,
+            block_id=tagalog_block.block_id if tagalog_block else None,
+            customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+            spans_multiple_blocks=False,
+            blocks_spanned=[b.block_id for b in blocks],
+            primary_block_id=tagalog_block.block_id if tagalog_block else None,
+            requires_attention=False,
+            alert_reason=None,
+            campaign_type='language_specific',
+            business_rule_applied='tagalog_pattern',
+            auto_resolved_date=datetime.now()
+        )
+
     def _create_direct_response_assignment(self, spot: SpotData, schedule_id: int, 
                                         blocks: List[LanguageBlock]) -> AssignmentResult:
         """FIXED: Create direct_response assignment with proper constraint values"""
@@ -770,15 +1033,19 @@ class LanguageBlockService:
         LIMIT 1
         """
         
-        cursor.execute(query, block_ids)
-        row = cursor.fetchone()
+        try:
+            cursor.execute(query, block_ids)
+            row = cursor.fetchone()
+            
+            if row:
+                return LanguageBlock(
+                    block_id=row[0], schedule_id=row[1], day_of_week=row[2],
+                    time_start=row[3], time_end=row[4], language_id=row[5],
+                    block_name=row[6], block_type=row[7], day_part=row[8]
+                )
+        except Exception as e:
+            self.logger.error(f"Error finding Tagalog block: {e}")
         
-        if row:
-            return LanguageBlock(
-                block_id=row[0], schedule_id=row[1], day_of_week=row[2],
-                time_start=row[3], time_end=row[4], language_id=row[5],
-                block_name=row[6], block_type=row[7], day_part=row[8]
-            )
         return None
     
     def _find_chinese_block(self, block_ids: List[int]) -> Optional[LanguageBlock]:
@@ -790,7 +1057,7 @@ class LanguageBlockService:
         placeholders = ','.join(['?'] * len(block_ids))
         query = f"""
         SELECT block_id, schedule_id, day_of_week, time_start, time_end,
-               language_id, block_name, block_type, day_part
+            language_id, block_name, block_type, day_part
         FROM language_blocks lb
         WHERE lb.block_id IN ({placeholders})
         AND lb.language_id IN (2, 3)  -- Mandarin=2, Cantonese=3
@@ -798,15 +1065,19 @@ class LanguageBlockService:
         LIMIT 1
         """
         
-        cursor.execute(query, block_ids)
-        row = cursor.fetchone()
+        try:
+            cursor.execute(query, block_ids)
+            row = cursor.fetchone()
+            
+            if row:
+                return LanguageBlock(
+                    block_id=row[0], schedule_id=row[1], day_of_week=row[2],
+                    time_start=row[3], time_end=row[4], language_id=row[5],
+                    block_name=row[6], block_type=row[7], day_part=row[8]
+                )
+        except Exception as e:
+            self.logger.error(f"Error finding Chinese block: {e}")
         
-        if row:
-            return LanguageBlock(
-                block_id=row[0], schedule_id=row[1], day_of_week=row[2],
-                time_start=row[3], time_end=row[4], language_id=row[5],
-                block_name=row[6], block_type=row[7], day_part=row[8]
-            )
         return None
     
     def _analyze_single_block_intent(self, spot: SpotData, block: LanguageBlock) -> CustomerIntent:
@@ -885,12 +1156,44 @@ class LanguageBlockService:
             return 'language_specific'
     
     def _save_assignment(self, result: AssignmentResult):
-        """Save assignment to database with enhanced rule tracking"""
+        """FIXED: Save assignment to database - handle None schedule_id properly"""
         cursor = self.db.cursor()
         
-        # Only insert if we have a valid schedule_id
-        if result.schedule_id:
-            # Delete existing assignment if exists
+        # Handle case where no schedule_id exists (no grid coverage)
+        if result.schedule_id is None:
+            # For spots with no grid coverage, we can still save the assignment
+            # but without schedule_id or block_id
+            cursor.execute("DELETE FROM spot_language_blocks WHERE spot_id = ?", (result.spot_id,))
+            
+            cursor.execute("""
+                INSERT INTO spot_language_blocks (
+                    spot_id, schedule_id, block_id, customer_intent, intent_confidence,
+                    spans_multiple_blocks, blocks_spanned, primary_block_id,
+                    assignment_method, assigned_date, assigned_by,
+                    requires_attention, alert_reason, notes, campaign_type,
+                    business_rule_applied, auto_resolved_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                result.spot_id,
+                None,  # schedule_id can be None for no grid coverage
+                None,  # block_id will be None for no grid coverage
+                result.customer_intent.value if result.customer_intent else None,
+                1.0,  # Default confidence
+                result.spans_multiple_blocks,
+                str(result.blocks_spanned) if result.blocks_spanned is not None else None,
+                result.primary_block_id,
+                AssignmentMethod.AUTO_COMPUTED.value,
+                datetime.now().isoformat(),
+                'system',
+                result.requires_attention,
+                result.alert_reason,
+                result.error_message,
+                result.campaign_type,
+                result.business_rule_applied,
+                result.auto_resolved_date.isoformat() if result.auto_resolved_date else None
+            ))
+        else:
+            # Normal assignment with schedule_id
             cursor.execute("DELETE FROM spot_language_blocks WHERE spot_id = ?", (result.spot_id,))
             
             cursor.execute("""
@@ -920,8 +1223,8 @@ class LanguageBlockService:
                 result.business_rule_applied,
                 result.auto_resolved_date.isoformat() if result.auto_resolved_date else None
             ))
-            
-            self.db.commit()
+        
+        self.db.commit()
     
     def _get_spot_data(self, spot_id: int) -> Optional[SpotData]:
         """Get spot data from database"""
@@ -956,8 +1259,10 @@ class LanguageBlockService:
         )
     
     def _get_applicable_schedule(self, market_id: int, air_date: str) -> Optional[int]:
-        """Find applicable programming schedule for market and date"""
+        """ENHANCED: Find applicable programming schedule with better error handling"""
         cursor = self.db.cursor()
+        
+        self.logger.info(f"DEBUG: Looking for schedule for market_id={market_id}, air_date={air_date}")
         
         # First try the original query
         query = """
@@ -965,9 +1270,9 @@ class LanguageBlockService:
         FROM programming_schedules ps
         JOIN schedule_market_assignments sma ON ps.schedule_id = sma.schedule_id
         WHERE sma.market_id = ?
-          AND DATE(sma.effective_start_date) <= DATE(?)
-          AND (sma.effective_end_date IS NULL OR DATE(sma.effective_end_date) >= DATE(?))
-          AND ps.is_active = 1
+        AND DATE(sma.effective_start_date) <= DATE(?)
+        AND (sma.effective_end_date IS NULL OR DATE(sma.effective_end_date) >= DATE(?))
+        AND ps.is_active = 1
         ORDER BY sma.assignment_priority DESC, sma.effective_start_date DESC
         LIMIT 1
         """
@@ -976,6 +1281,7 @@ class LanguageBlockService:
         row = cursor.fetchone()
         
         if row:
+            self.logger.info(f"DEBUG: Found schedule {row[0]} ({row[1]}) for market {market_id}")
             return row[0]
         
         # If no result, try fallback approach
@@ -992,9 +1298,10 @@ class LanguageBlockService:
         row = cursor.fetchone()
         
         if row:
-            self.logger.debug(f"Using fallback schedule for market {market_id}")
+            self.logger.info(f"DEBUG: Using fallback schedule {row[0]} ({row[1]}) for market {market_id}")
             return row[0]
         
+        self.logger.info(f"DEBUG: No schedule found for market {market_id}")
         return None
     
     def _get_overlapping_blocks(self, schedule_id: int, day_of_week: str, 

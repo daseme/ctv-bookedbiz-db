@@ -16,10 +16,10 @@ MULTIYEAR FEATURES:
 5. **Flexible Input**: Single year (2024) or range (2023-2024)
 
 Usage Examples:
-  python unified_analysis.py --year 2024              # Single year
-  python unified_analysis.py --year 2023-2024         # Two years
-  python unified_analysis.py --year 2022-2024         # Three years
-  python unified_analysis.py --year 2023-2024 --output report.md
+  python ./src/unified_analysis.py --year 2024              # Single year
+  python ./src/unified_analysis.py --year 2023-2024         # Two years
+  python ./src/unified_analysis.py --year 2022-2024         # Three years
+  python ./src/unified_analysis.py --year 2023-2024 --output report.md
 
 Save this as: src/unified_analysis.py
 """
