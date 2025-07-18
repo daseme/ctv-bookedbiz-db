@@ -1,28 +1,12 @@
 #!/usr/bin/env python3
 """
-Market Analysis System - MULTIYEAR SUPPORT
-==========================================
+Market Analysis System - MULTIYEAR SUPPORT (FIXED)
+==================================================
 
-This system provides market-focused analysis showing:
-1. Language performance summary (first grid)
-2. Language performance across markets (second grid)
+Fixed to properly handle multi-block spots like unified analysis.
 
-MULTIYEAR FEATURES:
-==================
-
-1. **Multiyear Arguments**: Support for "2023-2024", "2022-2023", etc.
-2. **Combined Analysis**: Aggregates market data across multiple years
-3. **Geographic Insights**: Shows language distribution across markets
-4. **Market Share Analysis**: Identifies dominant languages per market
-5. **Flexible Input**: Single year (2024) or range (2023-2024)
-
-Usage Examples:
-  python ./src/market_analysis.py --year 2024              # Single year
-  python ./src/market_analysis.py --year 2023-2024         # Two years
-  python ./src/market_analysis.py --year 2022-2024         # Three years
-  python ./src/market_analysis.py --year 2023-2024 --output market_report.md
-
-Save this as: src/market_analysis.py
+Key fix: Using COALESCE(slb.block_id, slb.primary_block_id) to handle
+both single-block and multi-block spot assignments.
 """
 
 import sqlite3
@@ -72,6 +56,7 @@ class MarketAnalysisEngine:
     """
     Market analysis engine with multiyear support,
     focusing on language performance across markets.
+    FIXED: Properly handles multi-block spots.
     """
     
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -138,7 +123,7 @@ class MarketAnalysisEngine:
     def get_language_performance_summary(self, year_input: str = "2024") -> List[LanguageResult]:
         """
         Get language performance summary (first grid).
-        This is similar to the second grid in unified analysis.
+        FIXED: Now properly handles multi-block spots using COALESCE.
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
         
@@ -151,6 +136,7 @@ class MarketAnalysisEngine:
         spot_ids_list = list(individual_lang_spots)
         placeholders = ','.join(['?' for _ in spot_ids_list])
         
+        # FIXED: Using COALESCE to handle both single and multi-block spots
         query = f"""
         SELECT 
             CASE 
@@ -170,11 +156,11 @@ class MarketAnalysisEngine:
             COUNT(*) as total_spots
         FROM spots s
         LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN language_blocks lb ON slb.block_id = lb.block_id
+        LEFT JOIN language_blocks lb ON COALESCE(slb.block_id, slb.primary_block_id) = lb.block_id
         LEFT JOIN languages l ON lb.language_id = l.language_id
         WHERE s.spot_id IN ({placeholders})
-        AND slb.block_id IS NOT NULL
         AND slb.campaign_type = 'language_specific'
+        AND (slb.block_id IS NOT NULL OR slb.primary_block_id IS NOT NULL)
         GROUP BY CASE 
             WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
             WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
@@ -218,7 +204,7 @@ class MarketAnalysisEngine:
     def get_language_market_breakdown(self, year_input: str = "2024") -> List[MarketLanguageResult]:
         """
         Get language performance broken down by market (second grid).
-        This shows how each language performs across different markets.
+        FIXED: Now properly handles multi-block spots using COALESCE.
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
         
@@ -231,6 +217,7 @@ class MarketAnalysisEngine:
         spot_ids_list = list(individual_lang_spots)
         placeholders = ','.join(['?' for _ in spot_ids_list])
         
+        # FIXED: Using COALESCE to handle both single and multi-block spots
         query = f"""
         SELECT 
             CASE 
@@ -251,12 +238,12 @@ class MarketAnalysisEngine:
             COUNT(*) as total_spots
         FROM spots s
         LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN language_blocks lb ON slb.block_id = lb.block_id
+        LEFT JOIN language_blocks lb ON COALESCE(slb.block_id, slb.primary_block_id) = lb.block_id
         LEFT JOIN languages l ON lb.language_id = l.language_id
         LEFT JOIN markets m ON s.market_id = m.market_id
         WHERE s.spot_id IN ({placeholders})
-        AND slb.block_id IS NOT NULL
         AND slb.campaign_type = 'language_specific'
+        AND (slb.block_id IS NOT NULL OR slb.primary_block_id IS NOT NULL)
         GROUP BY 
             CASE 
                 WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
@@ -421,7 +408,7 @@ class MarketAnalysisEngine:
         # Generate report
         return f"""# Market Analysis Report - {year_display}
 
-*Generated with multiyear support, focusing on language performance across markets*
+*Generated with multiyear support and fixed multi-block spot handling*
 
 ## 📊 Analysis Overview
 
@@ -429,6 +416,7 @@ class MarketAnalysisEngine:
 - **Total Languages**: {len(language_summary)}
 - **Total Markets**: {len(market_summary)}
 - **Analysis Focus**: Individual Language Blocks only (excludes ROS, Multi-Language, Direct Response, etc.)
+- **Multi-block Support**: ✅ Fixed - Now properly handles spots spanning multiple blocks
 
 {language_table}
 
@@ -445,7 +433,7 @@ class MarketAnalysisEngine:
         """Format language summary table (first grid)"""
         
         if not results:
-            return """## 🌐 Language Performance Summary
+            return f"""## 🌐 Language Performance Summary
 ### Individual Language Performance ({year_display})
 
 *No individual language data found for the specified year(s)*
@@ -630,6 +618,7 @@ class MarketAnalysisEngine:
 - **Exclusions**: ROS, Multi-Language, Direct Response, Paid Programming, Services, Branded Content, Packages
 - **Years**: Supports single year or multiyear ranges (e.g., 2023-2024)
 - **Revenue**: Gross rate revenue only, excludes Trade revenue
+- **Multi-block Handling**: ✅ Fixed - Now properly includes spots spanning multiple blocks
 
 ### Analysis Components
 
@@ -637,11 +626,13 @@ class MarketAnalysisEngine:
 - **Purpose**: Shows overall performance of each language across all markets
 - **Metrics**: Revenue, spot counts, averages, percentages
 - **Grouping**: Languages consolidated (e.g., Mandarin + Cantonese = Chinese)
+- **Multi-block**: Spots assigned to primary language block when spanning multiple
 
 #### Second Grid: Language by Market Breakdown
 - **Purpose**: Shows how each language performs in each market
 - **Metrics**: Revenue with percentages of language total and market total
 - **Cross-tabulation**: Language rows × Market columns
+- **Multi-block**: Properly counted in market where they air
 
 #### Market Summary
 - **Purpose**: Shows market-level performance and dominant languages
@@ -653,6 +644,12 @@ class MarketAnalysisEngine:
 - **Market Share**: Each market's share of total individual language revenue
 - **Language Dominance**: Top language's percentage within each market
 - **Concentration**: Top markets' share of total revenue
+- **Multi-block Spots**: Use primary_block_id when block_id is NULL
+
+### Technical Fix Applied
+- **Issue**: Previous version missed multi-block spots (spans_multiple_blocks = 1)
+- **Solution**: Using COALESCE(slb.block_id, slb.primary_block_id) to capture both single and multi-block spots
+- **Result**: Now properly synchronized with unified analysis totals
 
 ### Multiyear Support
 - **Year Ranges**: Supports "2023-2024" format for multiyear analysis
@@ -661,7 +658,7 @@ class MarketAnalysisEngine:
 
 ---
 
-*Market Analysis System v1.0 - Multiyear Support*"""
+*Market Analysis System v1.1 - Fixed Multi-block Support*"""
 
 
 def main():
@@ -669,7 +666,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Market Analysis System - Multiyear Support",
+        description="Market Analysis System - Fixed Multi-block Support",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Market Analysis Examples:
@@ -761,6 +758,7 @@ Market Analysis Examples:
                     print(f"✅ Market analysis report saved to {args.output}")
                     print(f"📅 Years analyzed: {year_display}")
                     print(f"📄 File size: {os.path.getsize(args.output):,} bytes")
+                    print(f"🔧 Multi-block support: Fixed")
                 else:
                     print(report)
     

@@ -8,7 +8,7 @@ load_dotenv()
 """
 Dropbox Database Synchronization Script
 
-USAGE: python db_sync.py [COMMAND] [OPTIONS]
+USAGE: python cli_db_sync.py [COMMAND] [OPTIONS]
 
 AVAILABLE COMMANDS:
     test                    - Test connection to Dropbox and show account info
@@ -21,14 +21,14 @@ AVAILABLE COMMANDS:
     list [folder]         - List contents of Dropbox folder (default: root)
 
 EXAMPLES:
-    python db_sync.py test
-    python db_sync.py upload
-    python db_sync.py backup
-    python db_sync.py backup "pre_migration_backup.db"
-    python db_sync.py download
-    python db_sync.py info
-    python db_sync.py list-backups
-    python db_sync.py list /backups
+    python cli_db_sync.py.py test
+    python cli_db_sync.py.py upload
+    python cli_db_sync.py.py backup
+    python cli_db_sync.py.py backup "pre_migration_backup.db"
+    python cli_db_sync.py.py download
+    python cli_db_sync.py.py info
+    python cli_db_sync.py.py list-backups
+    python cli_db_sync.py.py list /backups
 
 ENVIRONMENT VARIABLES (set in .env file):
     # Option 1: Long-lived authentication (recommended)

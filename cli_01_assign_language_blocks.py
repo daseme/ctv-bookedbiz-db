@@ -6,14 +6,7 @@ Standalone Language Block Assignment Script - UPDATED DOCUMENTATION
 This script includes the Language Block Service directly to avoid import issues.
 Run this to assign your unassigned spots to language blocks for any year!
 
-Features:
-- Dynamic year support (2023, 2024, 2025, 2026+)
-- Chinese language family recognition (Cantonese + Mandarin = Chinese intention)
-- Same-language multi-block assignment (e.g., Filipino 16:00-19:00)
-- Perfect grid coverage with intelligent intent analysis
-- Comprehensive error handling and progress tracking
-- FIXED: Enhanced business rules with campaign_type field
-
+It is designed to be run from the command line with various options for testing, batch assignment, and status reporting.
 Usage:
     python cli_01_assign_language_blocks.py --test 100           # Test with 100 spots
     python cli_01_assign_language_blocks.py --batch 1000        # Assign 1000 spots
@@ -29,141 +22,6 @@ Assignment Logic - UPDATED WITH CAMPAIGN_TYPE FIELD:
 - multi_language: Spots spanning multiple different language families
 - no_coverage: Spots with no language block coverage (minimal with proper grid)
 
-Database Requirements:
-- SQLite 3.x compatible
-- Requires language_blocks, spots, and spot_language_blocks tables
-- CRITICAL: spot_language_blocks.campaign_type field must be populated
-- Broadcast month format: MMM-YY (e.g., Jan-25, Feb-25)
-
-IMPORTANT CLASSIFICATION CHANGES (2024):
-===========================================
-
-The system now uses the campaign_type field for proper classification:
-
-1. INDIVIDUAL LANGUAGE BLOCKS:
-   - Query: slb.campaign_type = 'language_specific'
-   - Previous: spans_multiple_blocks = 0 AND block_id IS NOT NULL
-   - Impact: More accurate language-specific classification
-
-2. ROS (RUN ON SCHEDULE):
-   - Query: slb.campaign_type = 'ros'
-   - Previous: business_rule_applied IN ('ros_duration', 'ros_time')
-   - Impact: Better broadcast sponsorship identification
-
-3. MULTI-LANGUAGE (CROSS-AUDIENCE):
-   - Query: slb.campaign_type = 'multi_language'
-   - Previous: Same (already correct)
-   - Impact: Proper cross-audience targeting classification
-
-4. OTHER NON-LANGUAGE:
-   - Result: Dramatically reduced to true miscellaneous content
-   - 2023 Impact: Reduced from 6,401 spots to 59 spots (99.1% reduction)
-   - 2024 Impact: Already correct, ~201 spots maintained
-
-TROUBLESHOOTING GUIDE:
-======================
-
-If Other Non-Language category is too large:
-
-1. Check campaign_type field population:
-   SELECT campaign_type, COUNT(*) FROM spot_language_blocks
-   WHERE spot_id IN (SELECT spot_id FROM spots WHERE broadcast_month LIKE '%-23')
-   GROUP BY campaign_type;
-
-2. Verify language_specific assignments:
-   SELECT COUNT(*) FROM spots s
-   JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-   WHERE s.broadcast_month LIKE '%-23' AND slb.campaign_type = 'language_specific';
-
-3. Check ROS assignments:
-   SELECT COUNT(*) FROM spots s
-   JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-   WHERE s.broadcast_month LIKE '%-23' AND slb.campaign_type = 'ros';
-
-4. If campaign_type is NULL for many spots, run language block assignment:
-   python cli_01_assign_language_blocks.py --all-year YYYY
-
-REVENUE CATEGORY BREAKDOWN (Expected):
-=====================================
-
-With proper campaign_type classification:
-
-2023 Expected Results:
-- Individual Language Blocks: ~72.4% of revenue (was 65.2%)
-- ROS (Run on Schedule): ~17.7% of revenue (unchanged)
-- Direct Response: ~5.0% of revenue (unchanged)
-- Other categories: ~4.9% of revenue (unchanged)
-- Other Non-Language: ~-1.5% of revenue (was 5.7%) ← FIXED
-
-2024 Expected Results:
-- Similar distribution but Other Non-Language should be <1% of revenue
-
-BUSINESS RULE ENHANCEMENTS:
-===========================
-
-The enhanced business rules now populate campaign_type field:
-
-1. Duration-based ROS (> 6 hours):
-   - Sets campaign_type = 'ros'
-   - business_rule_applied = 'ros_duration'
-
-2. Time-based ROS (13:00-23:59):
-   - Sets campaign_type = 'ros'
-   - business_rule_applied = 'ros_time'
-
-3. Tagalog pattern (16:00-19:00 + "T"):
-   - Sets campaign_type = 'language_specific'
-   - business_rule_applied = 'tagalog_pattern'
-
-4. Chinese pattern (19:00-23:59 + "M"/"M/C"):
-   - Sets campaign_type = 'language_specific'
-   - business_rule_applied = 'chinese_pattern'
-
-5. Standard language block assignment:
-   - Sets campaign_type based on span analysis
-   - business_rule_applied = NULL
-
-MIGRATION NOTES:
-================
-
-For existing data (especially 2023):
-- Run --force-year 2023 to reprocess all 2023 spots
-- This will populate campaign_type field properly
-- Export scripts will then work correctly
-- Other Non-Language category will be dramatically reduced
-
-Database Schema Requirements:
-- spot_language_blocks.campaign_type TEXT DEFAULT 'language_specific'
-- spot_language_blocks.business_rule_applied TEXT DEFAULT NULL
-- spot_language_blocks.auto_resolved_date TIMESTAMP DEFAULT NULL
-
-VALIDATION COMMANDS:
-====================
-
-To verify proper classification:
-
-1. Check campaign_type distribution:
-   SELECT campaign_type, COUNT(*), SUM(gross_rate)
-   FROM spots s JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-   WHERE s.broadcast_month LIKE '%-23' GROUP BY campaign_type;
-
-2. Verify Other Non-Language is small:
-   # Should be <100 spots for any year
-   python unified_analysis.py --year 2023 --validate-only
-
-3. Test export scripts:
-   ./export_other_nonlang_fixed.sh -y 2023 --debug
-   # Should show ~59 spots for 2023, ~201 spots for 2024
-
-PERFORMANCE NOTES:
-==================
-
-- campaign_type field enables faster classification queries
-- Reduces complex span analysis during export/reporting
-- Improves accuracy of revenue category breakdown
-- Maintains perfect reconciliation across all categories
-
-For questions or issues, verify campaign_type field population first.
 """
 
 import sqlite3
@@ -730,9 +588,9 @@ class LanguageBlockService:
         return result[0] if result else f"Unknown_{language_id}"
 
     def _apply_precedence_rules(self, spot: SpotData) -> Optional[AssignmentResult]:
-        """FIXED: Apply precedence rules - language patterns removed (handled in normal flow)"""
+        """ENHANCED: Apply precedence rules with operational time-based language rules"""
 
-        # Rule 1: WorldLink Direct Response
+        # Rule 1: WorldLink Direct Response (highest priority)
         if self._is_worldlink_spot(spot):
             return AssignmentResult(
                 spot_id=spot.spot_id,
@@ -768,9 +626,98 @@ class LanguageBlockService:
                 auto_resolved_date=datetime.now(),
             )
 
-        # Rule 3: ROS by Duration (> 6 hours = 360 minutes)
+        # NEW Rule 3: Operational Time-Based Language Rules
+        operational_language = self._get_operational_language_assignment(spot)
+
+        if operational_language == 'chinese':
+            # Get schedule for this spot
+            schedule_id = self._get_applicable_schedule(
+                spot.market_id, spot.air_date
+            )
+            
+            if schedule_id:
+                # Find actual Chinese blocks that overlap with this spot
+                blocks = self._get_overlapping_blocks(
+                    schedule_id,
+                    spot.day_of_week,
+                    spot.time_in,
+                    spot.time_out
+                )
+                
+                # Filter for Chinese blocks (Mandarin=2, Cantonese=3)
+                chinese_blocks = [b for b in blocks if b.language_id in [2, 3]]
+                
+                if chinese_blocks:
+                    # Use the existing Chinese block finding logic
+                    primary_block = self._find_primary_chinese_block(chinese_blocks)
+                    
+                    if len(chinese_blocks) == 1:
+                        # Single Chinese block
+                        return AssignmentResult(
+                            spot_id=spot.spot_id,
+                            success=True,
+                            schedule_id=schedule_id,
+                            block_id=chinese_blocks[0].block_id,
+                            customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+                            spans_multiple_blocks=False,
+                            blocks_spanned=[chinese_blocks[0].block_id],
+                            primary_block_id=chinese_blocks[0].block_id,
+                            requires_attention=False,
+                            campaign_type="language_specific",
+                            business_rule_applied="operational_chinese_time",
+                            auto_resolved_date=datetime.now(),
+                        )
+                    else:
+                        # Multiple Chinese blocks
+                        return AssignmentResult(
+                            spot_id=spot.spot_id,
+                            success=True,
+                            schedule_id=schedule_id,
+                            block_id=None,  # Must be None when spans_multiple_blocks = True
+                            customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+                            spans_multiple_blocks=True,
+                            blocks_spanned=[b.block_id for b in chinese_blocks],
+                            primary_block_id=primary_block.block_id if primary_block else chinese_blocks[0].block_id,
+                            requires_attention=False,
+                            campaign_type="language_specific",
+                            business_rule_applied="operational_chinese_time",
+                            auto_resolved_date=datetime.now(),
+                        )
+            
+            # Fallback if no Chinese blocks found - let normal flow handle it
+            self.logger.warning(f"No Chinese blocks found for operational rule on spot {spot.spot_id}")
+            return None
+        
+        # For Hmong and Tagalog, let the normal flow handle them
+        # This preserves existing pattern matching
+        
+        # Rule 4: Enhanced Chinese Pattern (backwards compatibility + extended hours)
+        if self._is_chinese_pattern_enhanced(spot):
+            schedule_id = self._get_applicable_schedule(
+                spot.market_id, spot.air_date
+            )
+            if not schedule_id:
+                schedule_id = 1
+                
+            return AssignmentResult(
+                spot_id=spot.spot_id,
+                success=True,
+                schedule_id=schedule_id,
+                block_id=None,
+                customer_intent=CustomerIntent.LANGUAGE_SPECIFIC,
+                spans_multiple_blocks=True,
+                blocks_spanned=[],
+                primary_block_id=None,
+                requires_attention=False,
+                alert_reason=None,
+                campaign_type="language_specific",
+                business_rule_applied="chinese_pattern",
+                auto_resolved_date=datetime.now(),
+            )
+
+        # Rule 5: ROS by Duration (> 6 hours = 360 minutes)
         # BUT exclude Chinese and Tagalog patterns first
-        if not self._is_chinese_pattern(spot) and not self._is_tagalog_pattern(spot):
+        if not self._is_tagalog_pattern(spot):
             duration = self._calculate_spot_duration(spot.time_in, spot.time_out)
             if duration > 360:
                 return AssignmentResult(
@@ -789,7 +736,7 @@ class LanguageBlockService:
                     auto_resolved_date=datetime.now(),
                 )
 
-        # Rule 4: ROS by Time Pattern (exclude Chinese and Tagalog patterns)
+        # Rule 6: ROS by Time Pattern (exclude Chinese and Tagalog patterns)
         if self._is_ros_by_time(spot):
             return AssignmentResult(
                 spot_id=spot.spot_id,
@@ -935,6 +882,50 @@ class LanguageBlockService:
                     campaign_type="language_specific",
                 )
 
+    def _is_chinese_pattern_enhanced(self, spot: SpotData) -> bool:
+        """Enhanced Chinese pattern detection including extended evening hours"""
+        
+        # Keep original exact pattern matching for backwards compatibility
+        if spot.time_in in ["19:00:00", "20:00:00"]:
+            # Must end at 23:59:00 OR contain "day" (for "1 day, 0:00:00")
+            time_out_match = (
+                spot.time_out == "23:59:00"
+                or spot.time_out == "24:00:00"
+                or "day" in str(spot.time_out)
+            )
+            
+            if time_out_match:
+                # Must have Chinese language code
+                language_hint = self._get_language_hint(spot)
+                if language_hint in ["M", "C", "M/C"]:
+                    self.logger.info(
+                        f"DEBUG: Original Chinese pattern detected for spot {spot.spot_id} - "
+                        f"time_in: {spot.time_in}, time_out: {spot.time_out}, language: {language_hint}"
+                    )
+                    return True
+        
+        # Extended pattern: Any spot starting 19:00-23:30 with Chinese language code
+        try:
+            hour = int(spot.time_in.split(':')[0])
+            minute = int(spot.time_in.split(':')[1])
+            
+            # 19:00:00 through 23:30:00
+            if (hour == 19) or (hour >= 20 and hour <= 23):
+                if hour == 23 and minute > 30:
+                    return False
+                    
+                language_hint = self._get_language_hint(spot)
+                if language_hint in ["M", "C", "M/C"]:
+                    self.logger.info(
+                        f"DEBUG: Extended Chinese pattern detected for spot {spot.spot_id} - "
+                        f"time_in: {spot.time_in}, language: {language_hint}"
+                    )
+                    return True
+        except:
+            pass
+        
+        return False
+
     def _is_chinese_family_span(self, spot: SpotData, blocks: List[LanguageBlock]) -> bool:
         """ENHANCED: Check if spot spans Chinese family blocks (Mandarin + Cantonese)"""
         
@@ -1047,6 +1038,53 @@ class LanguageBlockService:
         )
         row = cursor.fetchone()
         return row and row[0] == "Paid Programming"
+
+    def _get_operational_language_assignment(self, spot: SpotData) -> Optional[str]:
+        """Apply operational time-based language rules from master control"""
+        
+        # CRITICAL: Check duration first - long spots should be ROS, not language-specific
+        duration = self._calculate_spot_duration(spot.time_in, spot.time_out)
+        
+        # If spot is longer than 6 hours (360 minutes), it's likely ROS
+        # This prevents all-day and overnight spots from being miscategorized
+        if duration > 360:
+            self.logger.info(f"DEBUG: Spot {spot.spot_id} duration {duration}min > 360min, skipping operational rules for ROS")
+            return None
+        
+        # Also check for specific ROS time pattern
+        if spot.time_in == "13:00:00" and spot.time_out == "23:59:00":
+            self.logger.info(f"DEBUG: Spot {spot.spot_id} matches ROS time pattern, skipping operational rules")
+            return None
+        
+        try:
+            hour = int(spot.time_in.split(':')[0])
+        except:
+            return None
+        
+        # Morning Chinese block: 06:00-08:00
+        if 6 <= hour < 8:
+            self.logger.info(f"DEBUG: Operational morning Chinese rule applied for spot {spot.spot_id} at {spot.time_in}")
+            return 'chinese'
+        
+        # Evening Chinese block: 19:00-23:59
+        if 19 <= hour <= 23:
+            # Check for weekend Hmong exception (18:00-20:00)
+            if spot.day_of_week in ['Saturday', 'Sunday'] and hour < 20:
+                language_hint = self._get_language_hint(spot)
+                if language_hint == 'H':
+                    self.logger.info(f"DEBUG: Hmong weekend exception for spot {spot.spot_id}")
+                    return 'hmong'
+            
+            # Check if this might be a Tagalog spot that shouldn't be Chinese
+            if hour < 19:  # 18:00 hour
+                language_hint = self._get_language_hint(spot)
+                if language_hint == 'T':
+                    return None  # Let normal flow handle it
+            
+            self.logger.info(f"DEBUG: Operational evening Chinese rule applied for spot {spot.spot_id} at {spot.time_in}")
+            return 'chinese'
+        
+        return None
 
     def _is_tagalog_pattern(self, spot: SpotData) -> bool:
         """EXPANDED: Check if spot matches Tagalog pattern (16:00-19:00 OR 17:00-19:00 + T)"""
