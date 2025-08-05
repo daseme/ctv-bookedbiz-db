@@ -11,6 +11,7 @@ Key Updates:
 - Only analyzes spots with direct language mapping
 - Based on Internal Ad Sales + COM/BNS spots
 - Excludes business rule default English spots
+- Combines CHI, CMP, and MSP markets into single CMP category
 """
 
 import sqlite3
@@ -61,6 +62,7 @@ class UpdatedMarketAnalysisEngine:
     """
     Updated market analysis engine using the new language assignment system.
     Focuses on language performance across markets using direct language mappings.
+    Now combines CHI, CMP, and MSP markets into single CMP category.
     """
     
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -203,11 +205,12 @@ class UpdatedMarketAnalysisEngine:
     def get_language_market_breakdown(self, year_input: str = "2024") -> List[MarketLanguageResult]:
         """
         Get language performance broken down by market using new assignment system.
+        Combines CHI, CMP, and MSP markets into single CMP category.
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
         year_filter, year_params = self.build_year_filter(year_suffixes)
         
-        # Use NEW language assignment system with market breakdown
+        # Use NEW language assignment system with market breakdown and CMP consolidation
         query = f"""
         SELECT 
             CASE 
@@ -221,7 +224,10 @@ class UpdatedMarketAnalysisEngine:
                 WHEN l.language_name = 'English' THEN 'English'
                 ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
             END as language,
-            COALESCE(s.market_name, 'Unknown Market') as market,
+            CASE 
+                WHEN UPPER(COALESCE(s.market_name, 'Unknown Market')) IN ('CHI', 'CMP', 'MSP') THEN 'CMP'
+                ELSE COALESCE(s.market_name, 'Unknown Market')
+            END as market,
             SUM(COALESCE(s.gross_rate, 0)) as revenue,
             COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
             COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
@@ -248,7 +254,10 @@ class UpdatedMarketAnalysisEngine:
                 WHEN l.language_name = 'English' THEN 'English'
                 ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
             END,
-            COALESCE(s.market_name, 'Unknown Market')
+            CASE 
+                WHEN UPPER(COALESCE(s.market_name, 'Unknown Market')) IN ('CHI', 'CMP', 'MSP') THEN 'CMP'
+                ELSE COALESCE(s.market_name, 'Unknown Market')
+            END
         HAVING SUM(COALESCE(s.gross_rate, 0)) > 0 OR COUNT(*) > 0
         ORDER BY 
             CASE 
@@ -309,6 +318,7 @@ class UpdatedMarketAnalysisEngine:
     def get_market_summary(self, year_input: str = "2024") -> List[MarketSummary]:
         """
         Get market summary showing total revenue and top language per market.
+        Includes CMP consolidation (CHI + CMP + MSP).
         """
         market_language_data = self.get_language_market_breakdown(year_input)
         
@@ -393,7 +403,7 @@ class UpdatedMarketAnalysisEngine:
         }
     
     def generate_market_analysis_report(self, year_input: str = "2024") -> str:
-        """Generate comprehensive market analysis report using new system"""
+        """Generate comprehensive market analysis report using new system with CMP consolidation"""
         
         # Parse year range for display
         full_years, year_suffixes = self.parse_year_range(year_input)
@@ -418,12 +428,14 @@ class UpdatedMarketAnalysisEngine:
         return f"""# Market Analysis Report - {year_display}
 
 *Generated with NEW language assignment system using spot_language_assignments table*
+*Markets: CHI, CMP, and MSP consolidated into CMP category*
 
 ## 📊 Analysis Overview
 
 - **Years Analyzed**: {', '.join(full_years)}
 - **Total Languages**: {len(language_summary)}
 - **Total Markets**: {len(market_summary)}
+- **Market Consolidation**: CHI + CMP + MSP → CMP
 - **Data Source**: NEW language assignment system (spot_language_assignments table)
 - **Analysis Focus**: Direct language mapping only (assignment_method = 'direct_mapping')
 - **Scope**: Internal Ad Sales + COM/BNS spots only
@@ -509,6 +521,8 @@ class UpdatedMarketAnalysisEngine:
         # Build the table
         table = f"""## 📍 Language Performance by Market
 ### Revenue Distribution Across Markets ({year_display})
+*Note: CHI, CMP, and MSP markets consolidated into CMP category*
+
 | Language | """ + " | ".join(market_order) + """ | Total |
 |----------|""" + "|".join(["-" * max(len(market), 8) for market in market_order]) + """|-------|
 """
@@ -559,6 +573,8 @@ class UpdatedMarketAnalysisEngine:
         
         table = f"""## 📊 Market Share Analysis
 ### Market Performance Summary ({year_display})
+*Note: CMP includes consolidated CHI + CMP + MSP markets*
+
 | Market | Revenue | % of Total | Top Language | Top Lang % | Languages |
 |--------|---------|------------|--------------|------------|-----------|
 """
@@ -639,6 +655,10 @@ class UpdatedMarketAnalysisEngine:
         top_language = language_summary[0] if language_summary else None
         top_market = market_summary[0] if market_summary else None
         
+        # Find CMP performance specifically
+        cmp_market = next((m for m in market_summary if m.market == 'CMP'), None)
+        cmp_performance = f"CMP (CHI+CMP+MSP): ${cmp_market.revenue:,.0f} ({cmp_market.percentage_of_total:.1f}%)" if cmp_market else "CMP data not found"
+        
         # Find market concentration
         top_2_markets_revenue = sum(r.revenue for r in market_summary[:2])
         market_concentration = (top_2_markets_revenue / total_revenue) * 100 if total_revenue > 0 else 0
@@ -659,6 +679,7 @@ class UpdatedMarketAnalysisEngine:
 - **Total Revenue**: ${total_revenue:,.2f} from direct language targeting campaigns
 - **Top Language**: {top_language.name if top_language else 'Unknown'} with ${top_language.revenue:,.2f} ({top_language.percentage:.1f}%)
 - **Top Market**: {top_market.market if top_market else 'Unknown'} with ${top_market.revenue:,.2f} ({top_market.percentage_of_total:.1f}%)
+- **{cmp_performance}**
 - **Market Concentration**: Top 2 markets account for {market_concentration:.1f}% of language-targeted revenue
 
 ### Geographic Language Distribution
@@ -670,6 +691,11 @@ class UpdatedMarketAnalysisEngine:
 - **Language Portfolio**: {len(language_summary)} distinct language groups with direct targeting
 - **Revenue Concentration**: Top 3 languages account for {sum(r.percentage for r in language_summary[:3]):.1f}% of language-targeted revenue
 - **Market Penetration**: Languages active across {len(set(mb.market for mb in market_breakdown))} different markets
+
+### CMP Market Consolidation Impact
+- **Market Grouping**: CHI, CMP, and MSP markets now consolidated into single CMP category
+- **Geographic Clarity**: Simplified market analysis with combined Midwest markets
+- **Revenue Aggregation**: CMP represents combined performance across Chicago, core CMP, and Minneapolis-St. Paul regions
 
 ### NEW SYSTEM Benefits
 - **Data Quality**: Only includes confirmed language targeting (direct_mapping)
@@ -697,10 +723,16 @@ class UpdatedMarketAnalysisEngine:
 - **Business Rules**: Based on revenue_type + spot_type combinations
 - **Quality Control**: Confidence levels and review flagging included
 
+### Market Consolidation (NEW)
+- **CMP Market**: Combines CHI + CMP + MSP markets into single "CMP" category
+- **Rationale**: Unified view of Midwest market performance
+- **SQL Implementation**: `CASE WHEN UPPER(market_name) IN ('CHI', 'CMP', 'MSP') THEN 'CMP'`
+- **Other Markets**: Remain unchanged
+
 ### Data Scope (Updated)
 - **Included Spots**: Internal Ad Sales + COM/BNS spots with direct language assignments
 - **Language Source**: `spots.language_code` mapped to `languages` table
-- **Market Source**: `spots.market_name` field
+- **Market Source**: `spots.market_name` field with CMP consolidation
 - **Excluded**: Business rule defaults, review required, undetermined languages
 
 ### Analysis Components
@@ -715,12 +747,13 @@ class UpdatedMarketAnalysisEngine:
 - **Purpose**: Cross-tabulation of languages and markets
 - **Metrics**: Revenue with percentages by language and market
 - **Scope**: Only confirmed language targeting
-- **Geography**: Based on spot market_name
+- **Geography**: Based on spot market_name with CMP consolidation
 
 #### Market Summary
 - **Purpose**: Market-level performance and language dominance
 - **Metrics**: Total revenue, top language, language count per market
 - **Analysis**: Geographic concentration and specialization
+- **CMP Impact**: Shows combined CHI+CMP+MSP performance
 
 #### Assignment Method Context
 - **Purpose**: Shows how spots were categorized in new system
@@ -732,6 +765,7 @@ class UpdatedMarketAnalysisEngine:
 - **Business Clarity**: Clear separation of targeted vs. default assignments
 - **Quality Control**: Confidence scoring and review flagging
 - **Simplified Logic**: Direct mapping from language codes to languages
+- **Geographic Simplification**: CMP market consolidation for cleaner analysis
 
 ### Business Rules Applied
 1. **Direct Response Sales** → Default English (excluded from market analysis)
@@ -743,17 +777,18 @@ class UpdatedMarketAnalysisEngine:
 ### Technical Implementation
 - **Primary Query**: Joins spots → spot_language_assignments → languages
 - **Filtering**: assignment_method = 'direct_mapping' AND revenue_type = 'Internal Ad Sales'
-- **Grouping**: Language name consolidation with CASE statements
-- **Market Field**: Uses spots.market_name directly
+- **Language Grouping**: Language name consolidation with CASE statements
+- **Market Grouping**: Market consolidation with CASE statements (CHI/CMP/MSP → CMP)
+- **Market Field**: Uses spots.market_name with consolidation logic
 
 ### Multiyear Support
 - **Year Ranges**: Supports "2023-2024" format for multiyear analysis
 - **Aggregation**: Combines data across all years in range
-- **Consistency**: Same assignment rules applied to all years
+- **Consistency**: Same assignment and consolidation rules applied to all years
 
 ---
 
-*Market Analysis System v2.0 - Updated for NEW Language Assignment System*"""
+*Market Analysis System v2.1 - Updated for NEW Language Assignment System + CMP Market Consolidation*"""
 
 
 def main():
@@ -761,11 +796,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Updated Market Analysis System - NEW Language Assignment System",
+        description="Updated Market Analysis System - NEW Language Assignment System + CMP Market Consolidation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Updated Market Analysis Examples:
-  # Single year analysis (new system)
+  # Single year analysis with CMP consolidation
   python market_analysis.py --year 2024
   
   # Two year analysis
@@ -779,6 +814,8 @@ Updated Market Analysis Examples:
   
   # Assignment method breakdown
   python market_analysis.py --year 2024 --assignment-methods-only
+
+Note: CHI, CMP, and MSP markets are automatically consolidated into CMP category
         """
     )
     
@@ -810,10 +847,11 @@ Updated Market Analysis Examples:
                 full_years, _ = engine.parse_year_range(args.year)
                 year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
                 
-                print("🌐 Language Performance Summary (NEW SYSTEM):")
-                print("=" * 50)
+                print("🌐 Language Performance Summary (NEW SYSTEM + CMP CONSOLIDATION):")
+                print("=" * 65)
                 print(f"Years: {year_display}")
                 print(f"Total Languages: {len(language_summary)}")
+                print("Markets: CHI, CMP, MSP → CMP")
                 
                 if language_summary:
                     total_revenue = sum(r.revenue for r in language_summary)
@@ -832,10 +870,11 @@ Updated Market Analysis Examples:
                 full_years, _ = engine.parse_year_range(args.year)
                 year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
                 
-                print("📍 Language Performance by Market (NEW SYSTEM):")
-                print("=" * 50)
+                print("📍 Language Performance by Market (NEW SYSTEM + CMP CONSOLIDATION):")
+                print("=" * 70)
                 print(f"Years: {year_display}")
                 print(f"Total Language-Market Combinations: {len(market_breakdown)}")
+                print("Markets: CHI, CMP, MSP → CMP")
                 print()
                 
                 for item in market_breakdown:
@@ -877,12 +916,13 @@ Updated Market Analysis Examples:
                     print(f"📅 Years analyzed: {year_display}")
                     print(f"📄 File size: {os.path.getsize(args.output):,} bytes")
                     print(f"🔧 System: NEW language assignment system")
+                    print(f"📍 Markets: CHI + CMP + MSP → CMP consolidated")
                 else:
                     print(report)
     
     except ValueError as e:
         print(f"❌ Input Error: {str(e)}")
-        print("💡 Use format like: --year 2024 or --year 2023-2024")
+        print("💡Help: Use format like: --year 2024 or --year 2023-2024")
     except Exception as e:
         print(f"❌ Error: {str(e)}")
         import traceback
