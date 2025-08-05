@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Market Analysis System - MULTIYEAR SUPPORT (FIXED)
-==================================================
+Market Analysis System - Updated for New Language Assignment System
+==================================================================
 
-Fixed to properly handle multi-block spots like unified analysis.
+Updated to use the new language assignment system with spot_language_assignments table
+instead of the old time block system.
 
-Key fix: Using COALESCE(slb.block_id, slb.primary_block_id) to handle
-both single-block and multi-block spot assignments.
+Key Updates:
+- Uses spot_language_assignments table
+- Only analyzes spots with direct language mapping
+- Based on Internal Ad Sales + COM/BNS spots
+- Excludes business rule default English spots
 """
 
 import sqlite3
@@ -52,11 +56,11 @@ class MarketSummary:
     top_language_percentage: float
     unique_languages: int
 
-class MarketAnalysisEngine:
+
+class UpdatedMarketAnalysisEngine:
     """
-    Market analysis engine with multiyear support,
-    focusing on language performance across markets.
-    FIXED: Properly handles multi-block spots.
+    Updated market analysis engine using the new language assignment system.
+    Focuses on language performance across markets using direct language mappings.
     """
     
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -122,21 +126,13 @@ class MarketAnalysisEngine:
     
     def get_language_performance_summary(self, year_input: str = "2024") -> List[LanguageResult]:
         """
-        Get language performance summary (first grid).
-        FIXED: Now properly handles multi-block spots using COALESCE.
+        Get language performance summary using new language assignment system.
+        Only includes spots with direct language mapping.
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
+        year_filter, year_params = self.build_year_filter(year_suffixes)
         
-        # Get individual language spots (same logic as unified analysis)
-        individual_lang_spots = self._get_individual_language_spot_ids(year_suffixes)
-        
-        if not individual_lang_spots:
-            return []
-        
-        spot_ids_list = list(individual_lang_spots)
-        placeholders = ','.join(['?' for _ in spot_ids_list])
-        
-        # FIXED: Using COALESCE to handle both single and multi-block spots
+        # Use NEW language assignment system
         query = f"""
         SELECT 
             CASE 
@@ -155,12 +151,15 @@ class MarketAnalysisEngine:
             COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
             COUNT(*) as total_spots
         FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN language_blocks lb ON COALESCE(slb.block_id, slb.primary_block_id) = lb.block_id
-        LEFT JOIN languages l ON lb.language_id = l.language_id
-        WHERE s.spot_id IN ({placeholders})
-        AND slb.campaign_type = 'language_specific'
-        AND (slb.block_id IS NOT NULL OR slb.primary_block_id IS NOT NULL)
+        JOIN spot_language_assignments sla ON s.spot_id = sla.spot_id
+        LEFT JOIN languages l ON UPPER(sla.language_code) = UPPER(l.language_code)
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        -- NEW SYSTEM: Only spots with direct language assignments
+        AND sla.assignment_method = 'direct_mapping'
+        AND s.revenue_type = 'Internal Ad Sales'
+        AND s.spot_type IN ('COM', 'BNS')
         GROUP BY CASE 
             WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
             WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
@@ -177,7 +176,7 @@ class MarketAnalysisEngine:
         """
         
         cursor = self.db_connection.cursor()
-        cursor.execute(query, spot_ids_list)
+        cursor.execute(query, year_params)
         
         results = []
         total_revenue = 0
@@ -203,21 +202,12 @@ class MarketAnalysisEngine:
     
     def get_language_market_breakdown(self, year_input: str = "2024") -> List[MarketLanguageResult]:
         """
-        Get language performance broken down by market (second grid).
-        FIXED: Now properly handles multi-block spots using COALESCE.
+        Get language performance broken down by market using new assignment system.
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
+        year_filter, year_params = self.build_year_filter(year_suffixes)
         
-        # Get individual language spots
-        individual_lang_spots = self._get_individual_language_spot_ids(year_suffixes)
-        
-        if not individual_lang_spots:
-            return []
-        
-        spot_ids_list = list(individual_lang_spots)
-        placeholders = ','.join(['?' for _ in spot_ids_list])
-        
-        # FIXED: Using COALESCE to handle both single and multi-block spots
+        # Use NEW language assignment system with market breakdown
         query = f"""
         SELECT 
             CASE 
@@ -231,19 +221,21 @@ class MarketAnalysisEngine:
                 WHEN l.language_name = 'English' THEN 'English'
                 ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
             END as language,
-            COALESCE(m.market_code, 'Unknown') as market,
+            COALESCE(s.market_name, 'Unknown Market') as market,
             SUM(COALESCE(s.gross_rate, 0)) as revenue,
             COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
             COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
             COUNT(*) as total_spots
         FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN language_blocks lb ON COALESCE(slb.block_id, slb.primary_block_id) = lb.block_id
-        LEFT JOIN languages l ON lb.language_id = l.language_id
-        LEFT JOIN markets m ON s.market_id = m.market_id
-        WHERE s.spot_id IN ({placeholders})
-        AND slb.campaign_type = 'language_specific'
-        AND (slb.block_id IS NOT NULL OR slb.primary_block_id IS NOT NULL)
+        JOIN spot_language_assignments sla ON s.spot_id = sla.spot_id
+        LEFT JOIN languages l ON UPPER(sla.language_code) = UPPER(l.language_code)
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        -- NEW SYSTEM: Only spots with direct language assignments
+        AND sla.assignment_method = 'direct_mapping'
+        AND s.revenue_type = 'Internal Ad Sales'
+        AND s.spot_type IN ('COM', 'BNS')
         GROUP BY 
             CASE 
                 WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
@@ -256,7 +248,7 @@ class MarketAnalysisEngine:
                 WHEN l.language_name = 'English' THEN 'English'
                 ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
             END,
-            COALESCE(m.market_code, 'Unknown')
+            COALESCE(s.market_name, 'Unknown Market')
         HAVING SUM(COALESCE(s.gross_rate, 0)) > 0 OR COUNT(*) > 0
         ORDER BY 
             CASE 
@@ -274,7 +266,7 @@ class MarketAnalysisEngine:
         """
         
         cursor = self.db_connection.cursor()
-        cursor.execute(query, spot_ids_list)
+        cursor.execute(query, year_params)
         
         # Build results and calculate totals
         results = []
@@ -357,32 +349,51 @@ class MarketAnalysisEngine:
         
         return results
     
-    def _get_individual_language_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get Individual Language spot IDs for multiple years (same logic as unified analysis)"""
+    def get_assignment_method_breakdown(self, year_input: str = "2024") -> Dict[str, Any]:
+        """Get breakdown of assignment methods for context"""
+        full_years, year_suffixes = self.parse_year_range(year_input)
         year_filter, year_params = self.build_year_filter(year_suffixes)
         
         query = f"""
-        SELECT DISTINCT s.spot_id
+        SELECT 
+            sla.assignment_method,
+            COUNT(*) as spots,
+            SUM(COALESCE(s.gross_rate, 0)) as revenue
         FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        JOIN spot_language_assignments sla ON s.spot_id = sla.spot_id
         WHERE {year_filter}
         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
-        AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        AND s.revenue_type != 'Paid Programming'
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
-        AND slb.campaign_type = 'language_specific'
+        GROUP BY sla.assignment_method
+        ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
         """
         
         cursor = self.db_connection.cursor()
         cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
+        
+        results = {}
+        total_spots = 0
+        total_revenue = 0
+        
+        for row in cursor.fetchall():
+            method, spots, revenue = row
+            results[method] = {'spots': spots, 'revenue': revenue}
+            total_spots += spots
+            total_revenue += revenue
+        
+        # Add percentages
+        for method, data in results.items():
+            data['spot_percentage'] = (data['spots'] / total_spots) * 100 if total_spots > 0 else 0
+            data['revenue_percentage'] = (data['revenue'] / total_revenue) * 100 if total_revenue > 0 else 0
+        
+        return {
+            'methods': results,
+            'total_spots': total_spots,
+            'total_revenue': total_revenue
+        }
     
     def generate_market_analysis_report(self, year_input: str = "2024") -> str:
-        """Generate comprehensive market analysis report"""
+        """Generate comprehensive market analysis report using new system"""
         
         # Parse year range for display
         full_years, year_suffixes = self.parse_year_range(year_input)
@@ -392,15 +403,13 @@ class MarketAnalysisEngine:
         language_summary = self.get_language_performance_summary(year_input)
         market_breakdown = self.get_language_market_breakdown(year_input)
         market_summary = self.get_market_summary(year_input)
+        assignment_breakdown = self.get_assignment_method_breakdown(year_input)
         
-        # Generate first grid (language performance summary)
+        # Generate tables
         language_table = self._format_language_summary_table(language_summary, year_display)
-        
-        # Generate second grid (language by market breakdown)
         market_breakdown_table = self._format_market_breakdown_table(market_breakdown, year_display)
-        
-        # Generate market summary
         market_summary_table = self._format_market_summary_table(market_summary, year_display)
+        assignment_table = self._format_assignment_method_table(assignment_breakdown, year_display)
         
         # Generate insights
         insights = self._generate_market_insights(language_summary, market_breakdown, market_summary)
@@ -408,15 +417,16 @@ class MarketAnalysisEngine:
         # Generate report
         return f"""# Market Analysis Report - {year_display}
 
-*Generated with multiyear support and fixed multi-block spot handling*
+*Generated with NEW language assignment system using spot_language_assignments table*
 
 ## 📊 Analysis Overview
 
 - **Years Analyzed**: {', '.join(full_years)}
 - **Total Languages**: {len(language_summary)}
 - **Total Markets**: {len(market_summary)}
-- **Analysis Focus**: Individual Language Blocks only (excludes ROS, Multi-Language, Direct Response, etc.)
-- **Multi-block Support**: ✅ Fixed - Now properly handles spots spanning multiple blocks
+- **Data Source**: NEW language assignment system (spot_language_assignments table)
+- **Analysis Focus**: Direct language mapping only (assignment_method = 'direct_mapping')
+- **Scope**: Internal Ad Sales + COM/BNS spots only
 
 {language_table}
 
@@ -424,19 +434,26 @@ class MarketAnalysisEngine:
 
 {market_summary_table}
 
+{assignment_table}
+
 {insights}
 
-{self._generate_market_methodology()}
+{self._generate_updated_methodology()}
 """
     
     def _format_language_summary_table(self, results: List[LanguageResult], year_display: str) -> str:
-        """Format language summary table (first grid)"""
+        """Format language summary table"""
         
         if not results:
             return f"""## 🌐 Language Performance Summary
-### Individual Language Performance ({year_display})
+### Direct Language Mapping Performance ({year_display})
 
-*No individual language data found for the specified year(s)*
+*No direct language mapping data found for the specified year(s)*
+
+💡 This could mean:
+- Language assignments haven't been processed yet
+- No Internal Ad Sales spots have direct language targeting
+- Run language assignment processing first: `python cli_01_language_assignment.py --process-all-categories`
 """
         
         # Calculate totals
@@ -448,7 +465,7 @@ class MarketAnalysisEngine:
         
         # Build the table
         table = f"""## 🌐 Language Performance Summary
-### Individual Language Performance ({year_display})
+### Direct Language Mapping Performance ({year_display})
 | Language | Revenue | % of Total | Paid Spots | BNS Spots | Total Spots | Avg/Spot |
 |----------|---------|------------|-----------|-----------|-------------|----------|
 """
@@ -463,7 +480,7 @@ class MarketAnalysisEngine:
         return table
     
     def _format_market_breakdown_table(self, results: List[MarketLanguageResult], year_display: str) -> str:
-        """Format market breakdown table (second grid)"""
+        """Format market breakdown table"""
         
         if not results:
             return f"""## 📍 Language Performance by Market
@@ -551,6 +568,56 @@ class MarketAnalysisEngine:
         
         return table
     
+    def _format_assignment_method_table(self, assignment_data: Dict[str, Any], year_display: str) -> str:
+        """Format assignment method breakdown table"""
+        
+        methods = assignment_data.get('methods', {})
+        total_spots = assignment_data.get('total_spots', 0)
+        total_revenue = assignment_data.get('total_revenue', 0)
+        
+        if not methods:
+            return f"""## 🔧 Assignment Method Context
+### Language Assignment Methods ({year_display})
+
+*No assignment method data found*
+"""
+        
+        table = f"""## 🔧 Assignment Method Context
+### Language Assignment Methods ({year_display})
+| Assignment Method | Spots | % of Spots | Revenue | % of Revenue |
+|-------------------|-------|------------|---------|-------------|
+"""
+        
+        # Sort by revenue descending
+        sorted_methods = sorted(methods.items(), key=lambda x: x[1]['revenue'], reverse=True)
+        
+        for method, data in sorted_methods:
+            method_display = {
+                'direct_mapping': 'Direct Language Mapping',
+                'business_rule_default_english': 'Business Rule Default English',  
+                'business_review_required': 'Business Review Required',
+                'undetermined_flagged': 'Undetermined Language',
+                'default_english': 'Default English Fallback'
+            }.get(method, method)
+            
+            table += f"| {method_display} | {data['spots']:,} | {data['spot_percentage']:.1f}% | ${data['revenue']:,.2f} | {data['revenue_percentage']:.1f}% |\n"
+        
+        # Add total row
+        table += "|-------------------|-------|------------|---------|-------------|\n"
+        table += f"| **TOTAL** | **{total_spots:,}** | **100.0%** | **${total_revenue:,.2f}** | **100.0%** |\n"
+        
+        # Add note about what's included in market analysis
+        direct_mapping_data = methods.get('direct_mapping', {'spots': 0, 'revenue': 0})
+        table += f"""
+
+### Market Analysis Scope
+- **Market Analysis Includes**: Only "Direct Language Mapping" spots ({direct_mapping_data['spots']:,} spots, ${direct_mapping_data['revenue']:,.2f})
+- **Excluded from Market Analysis**: Business rule defaults, review required, undetermined languages
+- **Reason**: Market analysis focuses on spots with confirmed language targeting
+"""
+        
+        return table
+    
     def _generate_market_insights(self, language_summary: List[LanguageResult], 
                                  market_breakdown: List[MarketLanguageResult],
                                  market_summary: List[MarketSummary]) -> str:
@@ -559,7 +626,12 @@ class MarketAnalysisEngine:
         if not language_summary or not market_breakdown or not market_summary:
             return """## 📊 Key Insights
 
-*Insufficient data to generate insights*
+*Insufficient data to generate insights - no direct language mapping spots found*
+
+💡 **Next Steps:**
+- Run language assignment processing: `python cli_01_language_assignment.py --process-all-categories`
+- Verify Internal Ad Sales spots have language codes
+- Check that language assignments completed successfully
 """
         
         # Calculate key metrics
@@ -583,82 +655,105 @@ class MarketAnalysisEngine:
         
         insights = f"""## 📊 Key Insights
 
-### Market Performance Highlights
-- **Total Revenue**: ${total_revenue:,.2f} across all individual language campaigns
+### Language-Targeted Market Performance
+- **Total Revenue**: ${total_revenue:,.2f} from direct language targeting campaigns
 - **Top Language**: {top_language.name if top_language else 'Unknown'} with ${top_language.revenue:,.2f} ({top_language.percentage:.1f}%)
 - **Top Market**: {top_market.market if top_market else 'Unknown'} with ${top_market.revenue:,.2f} ({top_market.percentage_of_total:.1f}%)
-- **Market Concentration**: Top 2 markets account for {market_concentration:.1f}% of total revenue
+- **Market Concentration**: Top 2 markets account for {market_concentration:.1f}% of language-targeted revenue
 
-### Geographic Distribution
-- **Total Markets**: {len(market_summary)} markets with individual language campaigns
-- **Language Dominance**: {dominant_language[0]} is the top language in {dominant_language[1]} market(s)
+### Geographic Language Distribution
+- **Active Markets**: {len(market_summary)} markets with direct language targeting
+- **Language Leadership**: {dominant_language[0]} dominates in {dominant_language[1]} market(s)
 - **Market Diversity**: Average of {sum(m.unique_languages for m in market_summary) / len(market_summary):.1f} languages per market
 
-### Language Performance Patterns
-- **Language Diversity**: {len(language_summary)} distinct language groups active
-- **Revenue Distribution**: Top 3 languages account for {sum(r.percentage for r in language_summary[:3]):.1f}% of total revenue
-- **Market Reach**: Languages appear across {len(set(mb.market for mb in market_breakdown))} different markets
+### Strategic Language Patterns
+- **Language Portfolio**: {len(language_summary)} distinct language groups with direct targeting
+- **Revenue Concentration**: Top 3 languages account for {sum(r.percentage for r in language_summary[:3]):.1f}% of language-targeted revenue
+- **Market Penetration**: Languages active across {len(set(mb.market for mb in market_breakdown))} different markets
 
-### Strategic Observations
-- **Geographic Concentration**: {"High" if market_concentration > 70 else "Moderate" if market_concentration > 50 else "Low"} concentration in top markets
-- **Language Specialization**: {"High" if language_summary[0].percentage > 40 else "Moderate" if language_summary[0].percentage > 25 else "Balanced"} language market specialization
-- **Market Penetration**: {"Excellent" if len(market_summary) > 8 else "Good" if len(market_summary) > 5 else "Limited"} market penetration across regions
+### NEW SYSTEM Benefits
+- **Data Quality**: Only includes confirmed language targeting (direct_mapping)
+- **Business Clarity**: Excludes business rule defaults and uncertain assignments
+- **Assignment Transparency**: Shows how each spot was categorized
+- **Better Accuracy**: Removes ambiguous time block associations
+
+### Business Intelligence
+- **Geographic Strategy**: {"High" if market_concentration > 70 else "Moderate" if market_concentration > 50 else "Balanced"} geographic concentration
+- **Language Focus**: {"Specialized" if language_summary[0].percentage > 40 else "Diversified" if language_summary[0].percentage < 25 else "Moderate"} language concentration
+- **Market Reach**: {"Excellent" if len(market_summary) > 8 else "Good" if len(market_summary) > 5 else "Developing"} market penetration
 """
         
         return insights
     
-    def _generate_market_methodology(self) -> str:
-        """Generate methodology section"""
+    def _generate_updated_methodology(self) -> str:
+        """Generate updated methodology section"""
         return """---
 
-## 📋 Market Analysis Methodology
+## 📋 Updated Market Analysis Methodology
 
-### Data Scope
-- **Focus**: Individual Language Blocks only (language-specific campaigns)
-- **Exclusions**: ROS, Multi-Language, Direct Response, Paid Programming, Services, Branded Content, Packages
-- **Years**: Supports single year or multiyear ranges (e.g., 2023-2024)
-- **Revenue**: Gross rate revenue only, excludes Trade revenue
-- **Multi-block Handling**: ✅ Fixed - Now properly includes spots spanning multiple blocks
+### NEW Language Assignment System
+- **Data Source**: `spot_language_assignments` table (not time blocks)
+- **Assignment Method**: Only `assignment_method = 'direct_mapping'` spots included
+- **Business Rules**: Based on revenue_type + spot_type combinations
+- **Quality Control**: Confidence levels and review flagging included
+
+### Data Scope (Updated)
+- **Included Spots**: Internal Ad Sales + COM/BNS spots with direct language assignments
+- **Language Source**: `spots.language_code` mapped to `languages` table
+- **Market Source**: `spots.market_name` field
+- **Excluded**: Business rule defaults, review required, undetermined languages
 
 ### Analysis Components
 
-#### First Grid: Language Performance Summary
-- **Purpose**: Shows overall performance of each language across all markets
-- **Metrics**: Revenue, spot counts, averages, percentages
-- **Grouping**: Languages consolidated (e.g., Mandarin + Cantonese = Chinese)
-- **Multi-block**: Spots assigned to primary language block when spanning multiple
+#### Language Performance Summary
+- **Purpose**: Shows performance of each directly-targeted language
+- **Data**: Only spots with `assignment_method = 'direct_mapping'`
+- **Grouping**: Languages consolidated (Mandarin + Cantonese = Chinese)
+- **Quality**: High confidence assignments only
 
-#### Second Grid: Language by Market Breakdown
-- **Purpose**: Shows how each language performs in each market
-- **Metrics**: Revenue with percentages of language total and market total
-- **Cross-tabulation**: Language rows × Market columns
-- **Multi-block**: Properly counted in market where they air
+#### Language by Market Breakdown  
+- **Purpose**: Cross-tabulation of languages and markets
+- **Metrics**: Revenue with percentages by language and market
+- **Scope**: Only confirmed language targeting
+- **Geography**: Based on spot market_name
 
 #### Market Summary
-- **Purpose**: Shows market-level performance and dominant languages
-- **Metrics**: Total revenue, top language per market, language diversity
-- **Insights**: Geographic concentration and language specialization
+- **Purpose**: Market-level performance and language dominance
+- **Metrics**: Total revenue, top language, language count per market
+- **Analysis**: Geographic concentration and specialization
 
-### Key Calculations
-- **Percentages**: Based on individual language revenue totals only
-- **Market Share**: Each market's share of total individual language revenue
-- **Language Dominance**: Top language's percentage within each market
-- **Concentration**: Top markets' share of total revenue
-- **Multi-block Spots**: Use primary_block_id when block_id is NULL
+#### Assignment Method Context
+- **Purpose**: Shows how spots were categorized in new system
+- **Transparency**: Breakdown by assignment method
+- **Scope**: Market analysis uses only direct_mapping spots
 
-### Technical Fix Applied
-- **Issue**: Previous version missed multi-block spots (spans_multiple_blocks = 1)
-- **Solution**: Using COALESCE(slb.block_id, slb.primary_block_id) to capture both single and multi-block spots
-- **Result**: Now properly synchronized with unified analysis totals
+### Key Improvements
+- **Better Accuracy**: No ambiguous time block associations
+- **Business Clarity**: Clear separation of targeted vs. default assignments
+- **Quality Control**: Confidence scoring and review flagging
+- **Simplified Logic**: Direct mapping from language codes to languages
+
+### Business Rules Applied
+1. **Direct Response Sales** → Default English (excluded from market analysis)
+2. **Paid Programming** → Default English (excluded from market analysis)
+3. **Branded Content** → Default English (excluded from market analysis)
+4. **Internal Ad Sales + COM/BNS** → Language assignment required → Market analysis
+5. **Other Combinations** → Review required (excluded from market analysis)
+
+### Technical Implementation
+- **Primary Query**: Joins spots → spot_language_assignments → languages
+- **Filtering**: assignment_method = 'direct_mapping' AND revenue_type = 'Internal Ad Sales'
+- **Grouping**: Language name consolidation with CASE statements
+- **Market Field**: Uses spots.market_name directly
 
 ### Multiyear Support
 - **Year Ranges**: Supports "2023-2024" format for multiyear analysis
 - **Aggregation**: Combines data across all years in range
-- **Consistency**: Same classification rules applied to all years
+- **Consistency**: Same assignment rules applied to all years
 
 ---
 
-*Market Analysis System v1.1 - Fixed Multi-block Support*"""
+*Market Analysis System v2.0 - Updated for NEW Language Assignment System*"""
 
 
 def main():
@@ -666,24 +761,24 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Market Analysis System - Fixed Multi-block Support",
+        description="Updated Market Analysis System - NEW Language Assignment System",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Market Analysis Examples:
-  # Single year analysis
+Updated Market Analysis Examples:
+  # Single year analysis (new system)
   python market_analysis.py --year 2024
   
   # Two year analysis
   python market_analysis.py --year 2023-2024
   
-  # Three year analysis
-  python market_analysis.py --year 2022-2024
-  
-  # Save multiyear report to file
-  python market_analysis.py --year 2023-2024 --output market_report.md
+  # Save report to file
+  python market_analysis.py --year 2024 --output market_report.md
   
   # Language summary only
   python market_analysis.py --year 2024 --language-summary-only
+  
+  # Assignment method breakdown
+  python market_analysis.py --year 2024 --assignment-methods-only
         """
     )
     
@@ -691,38 +786,45 @@ Market Analysis Examples:
                        help="Year to analyze - supports single year (2024) or range (2023-2024)")
     
     parser.add_argument("--output", metavar="FILE", 
-                       help="Save report to file (e.g., market_report.md). "
-                            "If not specified, output goes to console.")
+                       help="Save report to file (e.g., market_report.md)")
     
     parser.add_argument("--db-path", default="data/database/production.db", 
                        help="Database path (default: data/database/production.db)")
     
     parser.add_argument("--language-summary-only", action="store_true", 
-                       help="Show only language summary (first grid)")
+                       help="Show only language summary")
     
     parser.add_argument("--market-breakdown-only", action="store_true", 
-                       help="Show only market breakdown (second grid)")
+                       help="Show only market breakdown")
+    
+    parser.add_argument("--assignment-methods-only", action="store_true", 
+                       help="Show only assignment method breakdown")
     
     args = parser.parse_args()
     
     try:
-        with MarketAnalysisEngine(args.db_path) as engine:
+        with UpdatedMarketAnalysisEngine(args.db_path) as engine:
             if args.language_summary_only:
                 # Show language summary only
                 language_summary = engine.get_language_performance_summary(args.year)
                 full_years, _ = engine.parse_year_range(args.year)
                 year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
                 
-                print("🌐 Language Performance Summary:")
+                print("🌐 Language Performance Summary (NEW SYSTEM):")
                 print("=" * 50)
                 print(f"Years: {year_display}")
                 print(f"Total Languages: {len(language_summary)}")
-                total_revenue = sum(r.revenue for r in language_summary)
-                print(f"Total Revenue: ${total_revenue:,.2f}")
-                print()
                 
-                for lang in language_summary:
-                    print(f"{lang.name}: ${lang.revenue:,.2f} ({lang.percentage:.1f}%) - {lang.total_spots:,} spots")
+                if language_summary:
+                    total_revenue = sum(r.revenue for r in language_summary)
+                    print(f"Total Revenue: ${total_revenue:,.2f}")
+                    print()
+                    
+                    for lang in language_summary:
+                        print(f"{lang.name}: ${lang.revenue:,.2f} ({lang.percentage:.1f}%) - {lang.total_spots:,} spots")
+                else:
+                    print("No direct language mapping data found.")
+                    print("💡 Run language assignment processing first.")
                     
             elif args.market_breakdown_only:
                 # Show market breakdown only
@@ -730,7 +832,7 @@ Market Analysis Examples:
                 full_years, _ = engine.parse_year_range(args.year)
                 year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
                 
-                print("📍 Language Performance by Market:")
+                print("📍 Language Performance by Market (NEW SYSTEM):")
                 print("=" * 50)
                 print(f"Years: {year_display}")
                 print(f"Total Language-Market Combinations: {len(market_breakdown)}")
@@ -738,6 +840,22 @@ Market Analysis Examples:
                 
                 for item in market_breakdown:
                     print(f"{item.language} in {item.market}: ${item.revenue:,.2f} ({item.percentage_of_language:.1f}% of language)")
+                    
+            elif args.assignment_methods_only:
+                # Show assignment method breakdown only
+                assignment_breakdown = engine.get_assignment_method_breakdown(args.year)
+                full_years, _ = engine.parse_year_range(args.year)
+                year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
+                
+                print("🔧 Assignment Method Breakdown (NEW SYSTEM):")
+                print("=" * 50)
+                print(f"Years: {year_display}")
+                print(f"Total Spots: {assignment_breakdown['total_spots']:,}")
+                print(f"Total Revenue: ${assignment_breakdown['total_revenue']:,.2f}")
+                print()
+                
+                for method, data in assignment_breakdown['methods'].items():
+                    print(f"{method}: {data['spots']:,} spots (${data['revenue']:,.2f}) - {data['spot_percentage']:.1f}%")
                     
             else:
                 # Generate full report
@@ -755,10 +873,10 @@ Market Analysis Examples:
                     full_years, _ = engine.parse_year_range(args.year)
                     year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
                     
-                    print(f"✅ Market analysis report saved to {args.output}")
+                    print(f"✅ Updated market analysis report saved to {args.output}")
                     print(f"📅 Years analyzed: {year_display}")
                     print(f"📄 File size: {os.path.getsize(args.output):,} bytes")
-                    print(f"🔧 Multi-block support: Fixed")
+                    print(f"🔧 System: NEW language assignment system")
                 else:
                     print(report)
     

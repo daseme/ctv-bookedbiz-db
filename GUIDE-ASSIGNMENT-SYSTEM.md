@@ -1,5 +1,12 @@
 # Language Assignment System - How-To Guide
 
+
+# After ingesting new spots, just run the workflow again
+python cli_01_language_assignment.py --categorize-all
+python cli_01_language_assignment.py --process-all-remaining
+# Quick health check
+python cli_01_language_assignment.py --status-by-category
+
 ## Overview
 
 The Language Assignment System automatically categorizes and assigns languages to advertising spots based on business rules and revenue types. This guide explains the system logic for developers writing reporting code and analysts working with the data.

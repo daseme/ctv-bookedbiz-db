@@ -1,6 +1,6 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-07-18 07:06:03
+-- Generated on: 2025-08-05 10:57:18
 -- 
 -- SQLite Version: 3.40.1
 -- 
@@ -13,7 +13,7 @@
 
 PRAGMA foreign_keys = ON;
 
--- Tables (18)
+-- Tables (19)
 -- ============================================================
 
 -- Table: agencies
@@ -335,6 +335,31 @@ CREATE TABLE sectors (
         created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+-- Table: spot_language_assignments
+-- ----------------------------------------
+CREATE TABLE spot_language_assignments (
+    assignment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    spot_id INTEGER NOT NULL UNIQUE,
+    language_code TEXT NOT NULL,
+    language_status TEXT NOT NULL CHECK (language_status IN ('determined', 'undetermined', 'default', 'invalid')),
+    confidence REAL DEFAULT 1.0,
+    assignment_method TEXT DEFAULT 'direct_mapping',
+    assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    requires_review BOOLEAN DEFAULT 0,
+    notes TEXT,
+    FOREIGN KEY (spot_id) REFERENCES spots(spot_id) ON DELETE CASCADE
+);
+
+-- Indexes for table: spot_language_assignments
+CREATE INDEX idx_language_assignments_review 
+ON spot_language_assignments(requires_review, language_status) 
+WHERE requires_review = 1;
+CREATE INDEX idx_language_assignments_spot 
+ON spot_language_assignments(spot_id);
+CREATE INDEX idx_language_assignments_undetermined 
+ON spot_language_assignments(language_status) 
+WHERE language_status = 'undetermined';
+
 -- Table: spot_language_blocks
 -- ----------------------------------------
 CREATE TABLE spot_language_blocks (
@@ -457,7 +482,7 @@ CREATE TABLE spots (
         effective_date DATE,  -- When this forward-looking data was loaded
         
         -- NEW: Import batch tracking
-        import_batch_id TEXT,
+        import_batch_id TEXT, spot_category TEXT,
         
         -- Business rule constraints (excludes Trade revenue)
         CHECK (revenue_type != 'Trade' OR revenue_type IS NULL),
@@ -478,6 +503,7 @@ CREATE INDEX idx_spots_agency_performance ON spots(agency_id, air_date, gross_ra
     ;
 CREATE INDEX idx_spots_air_date ON spots(air_date);
 CREATE INDEX idx_spots_broadcast_month_historical ON spots(broadcast_month, is_historical);
+CREATE INDEX idx_spots_category ON spots(spot_category) WHERE spot_category IS NOT NULL;
 CREATE INDEX idx_spots_customer_broadcast ON spots(customer_id, broadcast_month, gross_rate, station_net) WHERE gross_rate > 0;
 CREATE INDEX idx_spots_customer_id ON spots(customer_id);
 CREATE INDEX idx_spots_customer_timeline ON spots(customer_id, air_date, revenue_type);
@@ -930,6 +956,6 @@ BEGIN
 END;
 
 -- End of schema export
--- Total tables: 18
+-- Total tables: 19
 -- Total views: 10
 -- Total triggers: 3
