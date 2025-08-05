@@ -368,7 +368,13 @@ sudo systemctl status datasette
 - **Check logs**: `sudo journalctl -u datasette -n 50`
 - **Access**: `http://100.81.73.46:8001`
 
-### 10. Maintenance
+
+
+### 10. Mount network drives
+- sudo mkdir -p /mnt/k-drive
+- sudo mount -t cifs "//100.102.206.113/K Drive" /mnt/k-drive -o username=usrjp,password='PASSWORDNEEDED',domain=CTVETERE,vers=2.0,sec=ntlmv2
+
+### 11. Maintenance
 
 #### Regular Tasks
 - **Weekly**: Review and clean up old database backups

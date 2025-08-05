@@ -43,3 +43,60 @@ The system achieves 0.000000% error rate with perfect revenue reconciliation acr
 - **Filipino Cross-Audience Leadership**: 60.3% of cross-audience revenue
 - **Cross-Audience Strategy**: $1.1M+ total revenue
 - **Weekend Programming**: Strong cross-audience weekend performance
+
+
+
+%%{init: {"theme": "default"}}%%
+flowchart TD
+    subgraph Spot Flow [Spot Assignment Swimlanes]
+        direction LR
+
+        subgraph A [📥 Unassigned Spot]
+            A1[Spot enters system]
+        end
+
+        subgraph B [🧠 Business Rules]
+            B1[Check WorldLink]
+            B2[Check Paid Programming]
+            B3[Check Duration > 6 hrs]
+            B4[Check Tagalog Pattern]
+            B5[Check Chinese Evening Pattern]
+        end
+
+        subgraph C [📅 Schedule Lookup]
+            C1[Find Schedule for Market + Date]
+            C2[Find Overlapping Blocks]
+        end
+
+        subgraph D [🧬 Language Analysis]
+            D1[Single Block → Language-Specific]
+            D2[Multi-Block → Same Language?]
+            D3[→ Same Family?]
+            D4[→ Else → Multi-Language or ROS]
+        end
+
+        subgraph E [💾 Final Assignment]
+            E1[Save to spot_language_blocks]
+        end
+
+        A1 --> B1
+        B1 -->|Yes| E1
+        B1 -->|No| B2
+        B2 -->|Yes| E1
+        B2 -->|No| B3
+        B3 -->|Yes| E1
+        B3 -->|No| B4
+        B4 -->|Yes| E1
+        B4 -->|No| B5
+        B5 -->|Yes| E1
+        B5 -->|No| C1
+        C1 --> C2
+        C2 --> D1
+        D1 -->|Yes| E1
+        D1 -->|No| D2
+        D2 -->|Yes| E1
+        D2 -->|No| D3
+        D3 -->|Yes| E1
+        D3 -->|No| D4
+        D4 --> E1
+    end

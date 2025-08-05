@@ -1,3 +1,42 @@
-cd ~/wsldev/ctv-bookedbiz-db
-source .venv/bin/activate
-.venv/bin/python -m uvicorn src.web.asgi:asgi_app --host 0.0.0.0 --port 8000 --reload
+ystemd Service Overview
+What it is: systemd is Linux's service manager that handles starting/stopping background processes and ensuring they run persistently.
+Your setup:
+
+Service name: flaskapp.service
+Location: /etc/systemd/system/flaskapp.service
+What it runs: /opt/apps/ctv-bookedbiz-db/runserver.sh (which then starts uvicorn)
+
+Key commands
+
+# Check if service starts on boot
+sudo systemctl is-enabled flaskapp
+
+# Start the service now
+sudo systemctl start flaskapp
+
+# Stop the service
+sudo systemctl stop flaskapp
+
+# Enable to start on boot
+sudo systemctl enable flaskapp
+
+# Disable from starting on boot
+sudo systemctl disable flaskapp
+
+# Check current status
+sudo systemctl status flaskapp
+
+# View live logs
+sudo journalctl -u flaskapp -f
+
+# Restart service (useful after code changes)
+sudo systemctl restart flaskapp
+
+How it works:
+
+Boot time: systemd automatically starts flaskapp.service because it's "enabled"
+Runs persistently: The service runs independently of your SSH/WSL session
+Auto-restart: If the process crashes, systemd can restart it (depending on configuration)
+Logging: All output goes to systemd logs (viewable with journalctl)
+
+Key benefit: Your Flask app now runs as a proper system service that survives reboots and doesn't depend on keeping terminal sessions open!

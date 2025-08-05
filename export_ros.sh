@@ -196,6 +196,7 @@ business_rule_validation AS (
 SELECT 
     s.spot_id,
     s.bill_code,
+    estimate,
     COALESCE(c.normalized_name, 'Unknown') as customer_name,
     COALESCE(a.agency_name, 'No Agency') as agency_name,
     s.gross_rate,

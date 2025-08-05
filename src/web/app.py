@@ -3,8 +3,11 @@
 Clean Flask application factory with dependency injection.
 All route handlers moved to blueprints, focuses on app configuration.
 """
+import psutil
+import time
+from datetime import datetime, timedelta
 import logging
-from flask import Flask
+from flask import Flask, jsonify
 from typing import Optional
 
 from services.container import ServiceCreationError
@@ -15,10 +18,6 @@ from web.blueprints import initialize_blueprints
 
 logger = logging.getLogger(__name__)
 
-
-# src/web/app.py - Replace the blueprint registration section
-
-# src/web/app.py - Replace the before_first_request section
 
 def create_app(environment: Optional[str] = None) -> Flask:
     """
@@ -121,7 +120,6 @@ def create_app(environment: Optional[str] = None) -> Flask:
     @app.route('/health')
     def health_check():
         """Application health check."""
-        from flask import jsonify
         from services.container import get_container
         
         try:
@@ -147,7 +145,6 @@ def create_app(environment: Optional[str] = None) -> Flask:
     @app.route('/info')
     def app_info():
         """Application information endpoint."""
-        from flask import jsonify
         from web.blueprints import get_blueprint_info
         
         return jsonify({
@@ -167,6 +164,68 @@ def create_app(environment: Optional[str] = None) -> Flask:
                 'pipeline_decay_system': True
             }
         })
+    
+    # System monitoring endpoint for Pi2 control panel
+    @app.route('/api/system-stats')
+    def system_stats():
+        """System monitoring endpoint for control panel integration."""
+        try:
+            # Get CPU usage (1-second sample)
+            cpu_percent = psutil.cpu_percent(interval=1)
+            
+            # Get memory info
+            memory = psutil.virtual_memory()
+            
+            # Get disk usage for root partition
+            disk = psutil.disk_usage('/')
+            
+            # Get system temperature (Pi-specific)
+            try:
+                with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                    temp = int(f.read()) / 1000.0  # Convert to Celsius
+            except:
+                temp = 0
+            
+            # Get load average
+            load_avg = psutil.getloadavg()
+            
+            # Get uptime
+            boot_time = psutil.boot_time()
+            uptime_seconds = int(time.time() - boot_time)
+            
+            # Get network stats
+            network = psutil.net_io_counters()
+            
+            return jsonify({
+                "status": "success",
+                "timestamp": datetime.now().isoformat(),
+                "system": {
+                    "cpu_percent": round(cpu_percent, 1),
+                    "memory_percent": round(memory.percent, 1),
+                    "memory_used_mb": round(memory.used / 1024 / 1024, 1),
+                    "memory_total_mb": round(memory.total / 1024 / 1024, 1),
+                    "disk_percent": round((disk.used / disk.total) * 100, 1),
+                    "disk_used_gb": round(disk.used / 1024 / 1024 / 1024, 1),
+                    "disk_total_gb": round(disk.total / 1024 / 1024 / 1024, 1),
+                    "temperature": round(temp, 1),
+                    "load_average": [round(x, 2) for x in load_avg],
+                    "uptime_seconds": uptime_seconds,
+                    "uptime_formatted": str(timedelta(seconds=uptime_seconds))
+                },
+                "network": {
+                    "bytes_sent": network.bytes_sent,
+                    "bytes_recv": network.bytes_recv,
+                    "packets_sent": network.packets_sent,
+                    "packets_recv": network.packets_recv
+                }
+            })
+        except Exception as e:
+            logger.error(f"System stats error: {e}")
+            return jsonify({
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }), 500
     
     logger.info(f"Flask app created for environment: {settings.environment}")
     return app
