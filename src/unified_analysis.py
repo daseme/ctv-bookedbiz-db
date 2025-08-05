@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """
-Updated Unified Analysis System - MULTIYEAR SUPPORT
-====================================================
+Updated Unified Analysis System - Using New Language Assignment System
+====================================================================
 
-This system now supports multiyear reporting arguments like "2023-2024"
-for comprehensive multiyear analysis.
+This system has been updated to work with the new language assignment system
+that uses spot_language_assignments table instead of time blocks.
 
-MULTIYEAR FEATURES:
-==================
+UPDATED FEATURES:
+================
 
-1. **Multiyear Arguments**: Support for "2023-2024", "2022-2023", etc.
-2. **Combined Analysis**: Aggregates data across multiple years
-3. **Year Comparison**: Shows breakdown by individual years within range
-4. **Enhanced Reporting**: Multiyear totals and averages
-5. **Flexible Input**: Single year (2024) or range (2023-2024)
+1. **New Language Assignment System**: Uses spot_language_assignments table
+2. **Business Rule Categories**: Based on revenue_type and spot_type combinations  
+3. **Simplified Categories**: Removed ROS, updated to match new business logic
+4. **Multiyear Support**: Support for "2023-2024", "2022-2023", etc.
+5. **Assignment Method Tracking**: Shows how languages were assigned
 
 Usage Examples:
   python ./src/unified_analysis.py --year 2024              # Single year
   python ./src/unified_analysis.py --year 2023-2024         # Two years
-  python ./src/unified_analysis.py --year 2022-2024         # Three years
   python ./src/unified_analysis.py --year 2023-2024 --output reports/report.md
 
 Save this as: src/unified_analysis.py
@@ -30,35 +29,8 @@ import os
 from typing import Dict, List, Set, Any, Optional, Tuple
 from dataclasses import dataclass
 
-MULTI_LANGUAGE_AVAILABLE = False  # Force fallback query
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-try:
-    from ros_analyzer import ROSAnalyzer
-    ROS_AVAILABLE = True
-except ImportError:
-    print("Warning: ros_analyzer module not found. ROS analysis will be skipped.")
-    ROS_AVAILABLE = False
-
-try:
-    from multi_language_analyzer import MultiLanguageAnalyzer
-    #MULTI_LANGUAGE_AVAILABLE = True
-except ImportError:
-    print("Warning: multi_language_analyzer module not found. Multi-Language analysis will be limited.")
-    MULTI_LANGUAGE_AVAILABLE = False
-
-try:
-    from query_builders import BaseQueryBuilder
-except ImportError:
-    print("Warning: query_builders module not found. Using basic BaseQueryBuilder.")
-    class BaseQueryBuilder:
-        def __init__(self, year: str = "2024"):
-            self.year = year
-        
-        def apply_standard_filters(self):
-            return self
-
 
 @dataclass
 class UnifiedResult:
@@ -75,8 +47,8 @@ class UnifiedResult:
 
 class UpdatedUnifiedAnalysisEngine:
     """
-    Updated unified analysis engine with multiyear support,
-    ROS terminology, multi-language analyzer integrated, and Packages category.
+    Updated unified analysis engine using the new language assignment system
+    with multiyear support and simplified business rule categories.
     """
     
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -172,77 +144,179 @@ class UpdatedUnifiedAnalysisEngine:
     
     def get_mutually_exclusive_categories(self, year_input: str = "2024") -> List[UnifiedResult]:
         """
-        Get mutually exclusive categories using proper precedence rules
-        UPDATED: Multiyear support + ROS terminology + Packages category
+        Get mutually exclusive categories using new business rule system
+        Based on the new spot categorization logic
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
-        
-        # Get all base spots for all years
-        base_spots = self._get_base_spot_ids(year_suffixes)
-        remaining_spots = base_spots.copy()
+        year_filter, year_params = self.build_year_filter(year_suffixes)
         
         categories = []
         
-        # Apply precedence rules across all years
-        # 1. Direct Response (WorldLink - highest priority)
-        direct_response_spots = self._get_direct_response_spot_ids(year_suffixes) & remaining_spots
-        categories.append(self._create_category_result(
-            "Direct Response", direct_response_spots, year_suffixes
-        ))
-        remaining_spots -= direct_response_spots
-
-        # 2. Paid Programming
-        paid_programming_spots = self._get_paid_programming_spot_ids(year_suffixes) & remaining_spots
-        categories.append(self._create_category_result(
-            "Paid Programming", paid_programming_spots, year_suffixes
-        ))
-        remaining_spots -= paid_programming_spots
-
-        # 3. Branded Content (PRD)
-        branded_content_spots = self._get_branded_content_spot_ids(year_suffixes) & remaining_spots
-        categories.append(self._create_category_result(
-            "Branded Content (PRD)", branded_content_spots, year_suffixes
-        ))
-        remaining_spots -= branded_content_spots
+        # 1. Direct Response Sales (WorldLink - all spot types default to English)
+        direct_response_query = f"""
+        SELECT 
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
+            COUNT(*) as total_spots
+        FROM spots s
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND s.revenue_type = 'Direct Response Sales'
+        """
         
-        # 4. Services (SVC)
-        services_spots = self._get_services_spot_ids(year_suffixes) & remaining_spots
-        categories.append(self._create_category_result(
-            "Services (SVC)", services_spots, year_suffixes
-        ))
-        remaining_spots -= services_spots
+        cursor = self.db_connection.cursor()
+        cursor.execute(direct_response_query, year_params)
+        result = cursor.fetchone()
         
-        # 5. Individual Language Blocks
-        individual_lang_spots = self._get_individual_language_spot_ids(year_suffixes) & remaining_spots
-        categories.append(self._create_category_result(
-            "Individual Language Blocks", individual_lang_spots, year_suffixes
-        ))
-        remaining_spots -= individual_lang_spots
-
-        # 6. ROS (Run on Schedule)
-        ros_spots = self._get_ros_spot_ids(year_suffixes) & remaining_spots
-        categories.append(self._create_category_result(
-            "ROS (Run on Schedule)", ros_spots, year_suffixes
-        ))
-        remaining_spots -= ros_spots
+        direct_response_revenue = result[0] or 0
+        direct_response_paid = result[1] or 0  
+        direct_response_bonus = result[2] or 0
+        direct_response_total = result[3] or 0
         
-        # 7. Packages
-        packages_spots = self._get_packages_spot_ids(year_suffixes) & remaining_spots
-        categories.append(self._create_category_result(
-            "Packages", packages_spots, year_suffixes
+        categories.append(UnifiedResult(
+            name="Direct Response Sales",
+            revenue=direct_response_revenue,
+            percentage=0,
+            paid_spots=direct_response_paid,
+            bonus_spots=direct_response_bonus,
+            total_spots=direct_response_total,
+            avg_per_spot=direct_response_revenue / direct_response_total if direct_response_total > 0 else 0
         ))
-        remaining_spots -= packages_spots
         
-        # 8. Multi-Language (Cross-Audience)
-        multi_lang_spots = self._get_multi_language_spot_ids(year_suffixes) & remaining_spots
-        categories.append(self._create_category_result(
-            "Multi-Language (Cross-Audience)", multi_lang_spots, year_suffixes
+        # 2. Paid Programming (all spot types default to English)
+        paid_programming_query = f"""
+        SELECT 
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
+            COUNT(*) as total_spots
+        FROM spots s
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND s.revenue_type = 'Paid Programming'
+        """
+        
+        cursor.execute(paid_programming_query, year_params)
+        result = cursor.fetchone()
+        
+        paid_programming_revenue = result[0] or 0
+        paid_programming_paid = result[1] or 0
+        paid_programming_bonus = result[2] or 0
+        paid_programming_total = result[3] or 0
+        
+        categories.append(UnifiedResult(
+            name="Paid Programming",
+            revenue=paid_programming_revenue,
+            percentage=0,
+            paid_spots=paid_programming_paid,
+            bonus_spots=paid_programming_bonus,
+            total_spots=paid_programming_total,
+            avg_per_spot=paid_programming_revenue / paid_programming_total if paid_programming_total > 0 else 0
         ))
-        remaining_spots -= multi_lang_spots
         
-        # 9. Other Non-Language
-        categories.append(self._create_category_result(
-            "Other Non-Language", remaining_spots, year_suffixes
+        # 3. Branded Content (all spot types default to English)
+        branded_content_query = f"""
+        SELECT 
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
+            COUNT(*) as total_spots
+        FROM spots s
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND s.revenue_type = 'Branded Content'
+        """
+        
+        cursor.execute(branded_content_query, year_params)
+        result = cursor.fetchone()
+        
+        branded_content_revenue = result[0] or 0
+        branded_content_paid = result[1] or 0
+        branded_content_bonus = result[2] or 0
+        branded_content_total = result[3] or 0
+        
+        categories.append(UnifiedResult(
+            name="Branded Content",
+            revenue=branded_content_revenue,
+            percentage=0,
+            paid_spots=branded_content_paid,
+            bonus_spots=branded_content_bonus,
+            total_spots=branded_content_total,
+            avg_per_spot=branded_content_revenue / branded_content_total if branded_content_total > 0 else 0
+        ))
+        
+        # 4. Language Assignment Required (Internal Ad Sales + COM/BNS)
+        # These are the spots that get individual language assignments
+        language_required_query = f"""
+        SELECT 
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
+            COUNT(*) as total_spots
+        FROM spots s
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND s.revenue_type = 'Internal Ad Sales'
+        AND s.spot_type IN ('COM', 'BNS')
+        """
+        
+        cursor.execute(language_required_query, year_params)
+        result = cursor.fetchone()
+        
+        language_required_revenue = result[0] or 0
+        language_required_paid = result[1] or 0
+        language_required_bonus = result[2] or 0
+        language_required_total = result[3] or 0
+        
+        categories.append(UnifiedResult(
+            name="Language-Targeted Advertising",
+            revenue=language_required_revenue,
+            percentage=0,
+            paid_spots=language_required_paid,
+            bonus_spots=language_required_bonus,
+            total_spots=language_required_total,
+            avg_per_spot=language_required_revenue / language_required_total if language_required_total > 0 else 0
+        ))
+        
+        # 5. Review Category (Internal Ad Sales + other types, Other revenue types)
+        review_category_query = f"""
+        SELECT 
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
+            COUNT(*) as total_spots
+        FROM spots s
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND (
+            (s.revenue_type = 'Internal Ad Sales' AND s.spot_type IN ('PKG', 'CRD', 'AV', 'BB'))
+            OR s.revenue_type = 'Other'
+            OR s.revenue_type = 'Local'
+        )
+        """
+        
+        cursor.execute(review_category_query, year_params)
+        result = cursor.fetchone()
+        
+        review_revenue = result[0] or 0
+        review_paid = result[1] or 0
+        review_bonus = result[2] or 0
+        review_total = result[3] or 0
+        
+        categories.append(UnifiedResult(
+            name="Other/Review Required",
+            revenue=review_revenue,
+            percentage=0,
+            paid_spots=review_paid,
+            bonus_spots=review_bonus,
+            total_spots=review_total,
+            avg_per_spot=review_revenue / review_total if review_total > 0 else 0
         ))
         
         # Calculate percentages
@@ -252,394 +326,140 @@ class UpdatedUnifiedAnalysisEngine:
         
         return categories
     
-    def _get_base_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get all base spot IDs for multiple years"""
+    def get_unified_language_analysis(self, year_input: str = "2024") -> List[UnifiedResult]:
+        """Get language analysis using the new spot_language_assignments table"""
+        full_years, year_suffixes = self.parse_year_range(year_input)
         year_filter, year_params = self.build_year_filter(year_suffixes)
         
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_direct_response_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get Direct Response spot IDs for multiple years"""
-        year_filter, year_params = self.build_year_filter(year_suffixes)
-        
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND (COALESCE(a.agency_name, '') LIKE '%WorldLink%' OR 
-             COALESCE(s.bill_code, '') LIKE '%WorldLink%')
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_branded_content_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get Branded Content spot IDs for multiple years"""
-        year_filter, year_params = self.build_year_filter(year_suffixes)
-        
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND slb.spot_id IS NULL
-        AND s.spot_type = 'PRD'
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_services_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get Services spot IDs for multiple years"""
-        year_filter, year_params = self.build_year_filter(year_suffixes)
-        
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND slb.spot_id IS NULL
-        AND s.spot_type = 'SVC'
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_paid_programming_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get Paid Programming spot IDs for multiple years"""
-        year_filter, year_params = self.build_year_filter(year_suffixes)
-        
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND s.revenue_type = 'Paid Programming'
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_individual_language_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get Individual Language spot IDs for multiple years"""
-        year_filter, year_params = self.build_year_filter(year_suffixes)
-        
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
-        AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        AND s.revenue_type != 'Paid Programming'
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
-        AND slb.campaign_type = 'language_specific'
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_ros_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get ROS spot IDs for multiple years"""
-        year_filter, year_params = self.build_year_filter(year_suffixes)
-        
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
-        AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        AND s.revenue_type != 'Paid Programming'
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
-        AND slb.campaign_type = 'ros'
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_packages_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get Package spots for multiple years"""
-        year_filter, year_params = self.build_year_filter(year_suffixes)
-        
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND s.spot_type = 'PKG'
-        AND (s.time_in IS NULL OR s.time_out IS NULL OR s.time_in = '' OR s.time_out = '')
-        AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
-        AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        AND s.revenue_type != 'Paid Programming'
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _get_multi_language_spot_ids(self, year_suffixes: List[str]) -> Set[int]:
-        """Get Multi-Language spot IDs for multiple years"""
-        year_filter, year_params = self.build_year_filter(year_suffixes)
-        
-        query = f"""
-        SELECT DISTINCT s.spot_id
-        FROM spots s
-        LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        WHERE {year_filter}
-        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-        AND COALESCE(a.agency_name, '') NOT LIKE '%WorldLink%'
-        AND COALESCE(s.bill_code, '') NOT LIKE '%WorldLink%'
-        AND s.revenue_type != 'Paid Programming'
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'PRD')
-        AND NOT (slb.spot_id IS NULL AND s.spot_type = 'SVC')
-        AND slb.campaign_type = 'multi_language'
-        """
-        
-        cursor = self.db_connection.cursor()
-        cursor.execute(query, year_params)
-        return set(row[0] for row in cursor.fetchall())
-    
-    def _create_category_result(self, name: str, spot_ids: Set[int], year_suffixes: List[str]) -> UnifiedResult:
-        """Create a category result from spot IDs for multiple years"""
-        if not spot_ids:
-            return UnifiedResult(
-                name=name,
-                revenue=0,
-                percentage=0,
-                paid_spots=0,
-                bonus_spots=0,
-                total_spots=0,
-                avg_per_spot=0
-            )
-        
-        # Convert set to list for SQL IN clause
-        spot_ids_list = list(spot_ids)
-        
-        # Create placeholders for IN clause
-        placeholders = ','.join(['?' for _ in spot_ids_list])
-        
-        query = f"""
+        # Get language breakdown for spots that have language assignments
+        # Only include spots where language was actually determined (not default English)
+        language_query = f"""
         SELECT 
+            CASE 
+                WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+                WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
+                WHEN l.language_name = 'Hmong' THEN 'Hmong'
+                WHEN l.language_name IN ('Hindi', 'Punjabi', 'Bengali', 'Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
+                WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'  
+                WHEN l.language_name = 'Korean' THEN 'Korean'
+                WHEN l.language_name = 'Japanese' THEN 'Japanese'
+                WHEN l.language_name = 'English' THEN 'English'
+                ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
+            END as language,
             SUM(COALESCE(s.gross_rate, 0)) as revenue,
             COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
             COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
             COUNT(*) as total_spots
         FROM spots s
-        WHERE s.spot_id IN ({placeholders})
+        JOIN spot_language_assignments sla ON s.spot_id = sla.spot_id
+        LEFT JOIN languages l ON UPPER(sla.language_code) = UPPER(l.language_code)
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND s.revenue_type = 'Internal Ad Sales'
+        AND s.spot_type IN ('COM', 'BNS')
+        AND sla.assignment_method = 'direct_mapping'  -- Only spots with actual language targeting
+        GROUP BY CASE 
+            WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
+            WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
+            WHEN l.language_name = 'Hmong' THEN 'Hmong'
+            WHEN l.language_name IN ('Hindi', 'Punjabi', 'Bengali', 'Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
+            WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'
+            WHEN l.language_name = 'Korean' THEN 'Korean'
+            WHEN l.language_name = 'Japanese' THEN 'Japanese'
+            WHEN l.language_name = 'English' THEN 'English'
+            ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
+        END
+        HAVING SUM(COALESCE(s.gross_rate, 0)) > 0 OR COUNT(*) > 0
+        ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
         """
         
         cursor = self.db_connection.cursor()
-        cursor.execute(query, spot_ids_list)
-        result = cursor.fetchone()
+        cursor.execute(language_query, year_params)
         
-        revenue = result[0] or 0
-        paid_spots = result[1] or 0
-        bonus_spots = result[2] or 0
-        total_spots = result[3] or 0
-        
-        return UnifiedResult(
-            name=name,
-            revenue=revenue,
-            percentage=0,  # Will be calculated later
-            paid_spots=paid_spots,
-            bonus_spots=bonus_spots,
-            total_spots=total_spots,
-            avg_per_spot=revenue / total_spots if total_spots > 0 else 0
-        )
-    
-    def get_unified_language_analysis(self, year_input: str = "2024") -> List[UnifiedResult]:
-        """Get language analysis for multiple years"""
-        full_years, year_suffixes = self.parse_year_range(year_input)
-        languages = []
-        
-        # Get individual language breakdown (using only individual language spots)
-        individual_languages = self._get_individual_language_breakdown(year_suffixes)
-        languages.extend(individual_languages)
+        results = []
+        for row in cursor.fetchall():
+            language, revenue, paid_spots, bonus_spots, total_spots = row
+            results.append(UnifiedResult(
+                name=language,
+                revenue=revenue,
+                percentage=0,
+                paid_spots=paid_spots,
+                bonus_spots=bonus_spots,
+                total_spots=total_spots,
+                avg_per_spot=revenue / total_spots if total_spots > 0 else 0
+            ))
         
         # Calculate percentages based on total revenue from languages
-        total_revenue = sum(lang.revenue for lang in languages)
-        for lang in languages:
+        total_revenue = sum(lang.revenue for lang in results)
+        for lang in results:
             lang.percentage = (lang.revenue / total_revenue) * 100 if total_revenue > 0 else 0
         
-        # Sort by revenue descending
-        languages.sort(key=lambda x: x.revenue, reverse=True)
-        
-        return languages
+        return results
     
-    def _get_individual_language_breakdown(self, year_suffixes: List[str]) -> List[UnifiedResult]:
-            """FIXED: Get breakdown with SQLite-compatible SQL - handles both single and multi-block"""
-            
-            individual_lang_spots = self._get_individual_language_spot_ids(year_suffixes)
-            
-            if not individual_lang_spots:
-                return []
-            
-            spot_ids_list = list(individual_lang_spots)
-            placeholders = ','.join(['?' for _ in spot_ids_list])
-            
-            query = f"""
-            SELECT 
-                CASE 
-                    WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
-                    WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
-                    WHEN l.language_name = 'Hmong' THEN 'Hmong'
-                    WHEN l.language_name IN ('Hindi', 'Punjabi', 'Bengali', 'Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
-                    WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'
-                    WHEN l.language_name = 'Korean' THEN 'Korean'
-                    WHEN l.language_name = 'Japanese' THEN 'Japanese'
-                    WHEN l.language_name = 'English' THEN 'English'
-                    ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
-                END as language,
-                SUM(COALESCE(s.gross_rate, 0)) as revenue,
-                COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
-                COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
-                COUNT(*) as total_spots
-            FROM spots s
-            LEFT JOIN spot_language_blocks slb ON s.spot_id = slb.spot_id
-            LEFT JOIN language_blocks lb ON COALESCE(slb.block_id, slb.primary_block_id) = lb.block_id
-            LEFT JOIN languages l ON lb.language_id = l.language_id
-            WHERE s.spot_id IN ({placeholders})
-            AND slb.campaign_type = 'language_specific'  -- Only language_specific spots
-            AND (slb.block_id IS NOT NULL OR slb.primary_block_id IS NOT NULL)  -- Has block assignment
-            GROUP BY CASE 
-                WHEN l.language_name IN ('Mandarin', 'Cantonese') THEN 'Chinese'
-                WHEN l.language_name IN ('Tagalog', 'Filipino') THEN 'Filipino'
-                WHEN l.language_name = 'Hmong' THEN 'Hmong'
-                WHEN l.language_name IN ('Hindi', 'Punjabi', 'Bengali', 'Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
-                WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'
-                WHEN l.language_name = 'Korean' THEN 'Korean'
-                WHEN l.language_name = 'Japanese' THEN 'Japanese'
-                WHEN l.language_name = 'English' THEN 'English'
-                ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
-            END
-            HAVING SUM(COALESCE(s.gross_rate, 0)) > 0 OR COUNT(*) > 0
-            ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
-            """
-            
-            cursor = self.db_connection.cursor()
-            cursor.execute(query, spot_ids_list)
-            
-            results = []
-            for row in cursor.fetchall():
-                language, revenue, paid_spots, bonus_spots, total_spots = row
-                results.append(UnifiedResult(
-                    name=language,
-                    revenue=revenue,
-                    percentage=0,
-                    paid_spots=paid_spots,
-                    bonus_spots=bonus_spots,
-                    total_spots=total_spots,
-                    avg_per_spot=revenue / total_spots if total_spots > 0 else 0
-                ))
-            
-            return results
-    
-    def get_multi_language_analysis(self, year_input: str = "2024") -> Dict[str, Any]:
-        """Get detailed multi-language analysis for multiple years"""
-        if not MULTI_LANGUAGE_AVAILABLE:
-            return {
-                'summary': {
-                    'total_revenue': 0,
-                    'total_spots': 0,
-                    'message': 'Multi-language analyzer not available'
-                }
-            }
+    def get_assignment_method_analysis(self, year_input: str = "2024") -> List[UnifiedResult]:
+        """Get analysis by assignment method to understand how languages were assigned"""
+        full_years, year_suffixes = self.parse_year_range(year_input)
+        year_filter, year_params = self.build_year_filter(year_suffixes)
         
-        try:
-            analyzer = MultiLanguageAnalyzer(self.db_connection)
-            
-            # For multiyear, we need to modify the analyzer or aggregate results
-            full_years, year_suffixes = self.parse_year_range(year_input)
-            
-            # Get analysis for each year and aggregate
-            total_revenue = 0
-            total_spots = 0
-            all_customers = []
-            all_agencies = []
-            
-            for year in full_years:
-                summary = analyzer.get_summary(year)
-                customers = analyzer.get_customers(year)
-                agencies = analyzer.get_agencies(year)
-                
-                total_revenue += summary.total_revenue
-                total_spots += summary.total_spots
-                all_customers.extend(customers)
-                all_agencies.extend(agencies)
-            
-            # Aggregate customers and agencies
-            customer_dict = {}
-            for customer in all_customers:
-                if customer.customer_name in customer_dict:
-                    customer_dict[customer.customer_name].revenue += customer.revenue
-                    customer_dict[customer.customer_name].total_spots += customer.total_spots
-                else:
-                    customer_dict[customer.customer_name] = customer
-            
-            # Sort and return top customers
-            top_customers = sorted(customer_dict.values(), key=lambda x: x.revenue, reverse=True)[:10]
-            
-            return {
-                'summary': {
-                    'total_revenue': total_revenue,
-                    'total_spots': total_spots,
-                    'bns_percentage': 0,  # Would need to calculate across years
-                    'unique_customers': len(customer_dict),
-                    'unique_agencies': len(set(a.agency_name for a in all_agencies)),
-                    'years_analyzed': full_years
-                },
-                'top_customers': top_customers,
-                'top_agencies': all_agencies[:5]  # Simple approach for agencies
-            }
-        except Exception as e:
-            print(f"Warning: Error getting multi-language analysis: {e}")
-            return {
-                'summary': {
-                    'total_revenue': 0,
-                    'total_spots': 0,
-                    'error': str(e)
+        method_query = f"""
+        SELECT 
+            CASE 
+                WHEN sla.assignment_method = 'business_rule_default_english' THEN 'Business Rule Default English'
+                WHEN sla.assignment_method = 'direct_mapping' THEN 'Direct Language Mapping'
+                WHEN sla.assignment_method = 'business_review_required' THEN 'Business Review Required'
+                WHEN sla.assignment_method = 'undetermined_flagged' THEN 'Undetermined (Needs Review)'
+                WHEN sla.assignment_method = 'default_english' THEN 'Default English (Fallback)'
+                ELSE 'Other: ' || COALESCE(sla.assignment_method, 'Unknown')
+            END as assignment_method,
+            SUM(COALESCE(s.gross_rate, 0)) as revenue,
+            COUNT(CASE WHEN s.spot_type != 'BNS' OR s.spot_type IS NULL THEN 1 END) as paid_spots,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) as bonus_spots,
+            COUNT(*) as total_spots,
+            AVG(sla.confidence) as avg_confidence,
+            COUNT(CASE WHEN sla.requires_review = 1 THEN 1 END) as review_count
+        FROM spots s
+        JOIN spot_language_assignments sla ON s.spot_id = sla.spot_id
+        WHERE {year_filter}
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        GROUP BY CASE 
+            WHEN sla.assignment_method = 'business_rule_default_english' THEN 'Business Rule Default English'
+            WHEN sla.assignment_method = 'direct_mapping' THEN 'Direct Language Mapping'
+            WHEN sla.assignment_method = 'business_review_required' THEN 'Business Review Required'
+            WHEN sla.assignment_method = 'undetermined_flagged' THEN 'Undetermined (Needs Review)'
+            WHEN sla.assignment_method = 'default_english' THEN 'Default English (Fallback)'
+            ELSE 'Other: ' || COALESCE(sla.assignment_method, 'Unknown')
+        END
+        ORDER BY SUM(COALESCE(s.gross_rate, 0)) DESC
+        """
+        
+        cursor = self.db_connection.cursor()
+        cursor.execute(method_query, year_params)
+        
+        results = []
+        for row in cursor.fetchall():
+            method, revenue, paid_spots, bonus_spots, total_spots, avg_confidence, review_count = row
+            results.append(UnifiedResult(
+                name=method,
+                revenue=revenue,
+                percentage=0,
+                paid_spots=paid_spots,
+                bonus_spots=bonus_spots,
+                total_spots=total_spots,
+                avg_per_spot=revenue / total_spots if total_spots > 0 else 0,
+                details={
+                    'avg_confidence': avg_confidence or 0,
+                    'review_count': review_count or 0
                 }
-            }
+            ))
+        
+        # Calculate percentages
+        total_revenue = sum(result.revenue for result in results)
+        for result in results:
+            result.percentage = (result.revenue / total_revenue) * 100 if total_revenue > 0 else 0
+        
+        return results
     
     def validate_reconciliation(self, year_input: str = "2024") -> Dict[str, Any]:
         """Validate perfect reconciliation for multiyear analysis"""
@@ -662,58 +482,54 @@ class UpdatedUnifiedAnalysisEngine:
                 abs(base_totals['revenue'] - category_totals['revenue']) < 1.0 and
                 abs(base_totals['total_spots'] - category_totals['total_spots']) < 1
             ),
-            'packages_category_added': True,
-            'multi_language_integrated': MULTI_LANGUAGE_AVAILABLE,
-            'ros_included': ROS_AVAILABLE,
+            'new_assignment_system': True,
             'multiyear_support': True,
             'years_analyzed': base_totals['years']
         }
     
     def generate_updated_unified_tables(self, year_input: str = "2024") -> str:
-        """Generate both tables with multiyear support"""
+        """Generate comprehensive analysis report with multiyear support"""
         
         # Parse year range for display
         full_years, year_suffixes = self.parse_year_range(year_input)
         year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
         
-        # Get both analyses
+        # Get all analyses
         category_results = self.get_mutually_exclusive_categories(year_input)
         language_results = self.get_unified_language_analysis(year_input)
-        
-        # Get multi-language analysis
-        multi_language_analysis = self.get_multi_language_analysis(year_input)
+        assignment_method_results = self.get_assignment_method_analysis(year_input)
         
         # Validate reconciliation
         validation = self.validate_reconciliation(year_input)
         
-        # Generate category table
+        # Generate tables
         category_table = self._format_table(
             category_results,
-            "📊 Revenue Category Breakdown",
-            "Multiyear Category Performance - ROS Terminology + Packages",
+            "📊 Business Rule Category Breakdown",
+            "Revenue Categories Based on New Assignment System",
             year_display
         )
         
-        # Generate language table
         language_table = self._format_table(
             language_results,
-            "🌐 Language Analysis",
-            "Multiyear Individual Language Performance",
+            "🌐 Language-Targeted Advertising Analysis",
+            "Individual Language Performance (Direct Mapping Only)",
             year_display
         )
         
-        # Generate multi-language breakdown
-        multi_language_breakdown = self._format_multi_language_breakdown(multi_language_analysis)
-        
-        # Generate FAQ section
-        faq_section = self._generate_faq_section()
+        assignment_method_table = self._format_assignment_method_table(
+            assignment_method_results,
+            "🔧 Assignment Method Analysis",
+            "How Languages Were Assigned by the New System",
+            year_display
+        )
         
         # Generate report
-        return f"""# Multiyear Unified Revenue Analysis - {year_display}
+        return f"""# Updated Unified Revenue Analysis - {year_display}
 
-*Generated with multiyear support, perfect reconciliation, ROS terminology, and Packages category*
+*Generated with the new language assignment system using spot_language_assignments table*
 
-## 🎯 Multiyear Reconciliation Status
+## 🎯 System Update & Reconciliation Status
 
 - **Years Analyzed**: {', '.join(validation['base_totals']['years'])}
 - **Base Revenue**: ${validation['base_totals']['revenue']:,.2f}
@@ -721,267 +537,19 @@ class UpdatedUnifiedAnalysisEngine:
 - **Revenue Difference**: ${validation['revenue_difference']:,.2f}
 - **Spot Difference**: {validation['spot_difference']:,}
 - **Perfect Reconciliation**: {'✅ YES' if validation['perfect_reconciliation'] else '❌ NO'}
+- **New Assignment System**: {'✅ YES' if validation['new_assignment_system'] else '❌ NO'}
 - **Multiyear Support**: {'✅ YES' if validation['multiyear_support'] else '❌ NO'}
-- **Packages Category Added**: {'✅ YES' if validation['packages_category_added'] else '❌ NO'}
-- **Multi-Language Integrated**: {'✅ YES' if validation['multi_language_integrated'] else '❌ NO'}
 
 {category_table}
 
 {language_table}
 
-{multi_language_breakdown}
+{assignment_method_table}
 
-{self._generate_updated_reconciliation_notes()}
+{self._generate_updated_system_notes()}
 
-{faq_section}
+{self._generate_updated_faq_section()}
 """
-    
-    def _format_multi_language_breakdown(self, multi_language_analysis: Dict[str, Any]) -> str:
-        """Format multi-language analysis breakdown with multiyear support"""
-        
-        summary = multi_language_analysis['summary']
-        
-        if 'error' in summary:
-            return f"""## 🌍 Multi-Language (Cross-Audience) Category Breakdown
-
-### Analysis Error
-- **Status**: Multi-language analyzer encountered an error
-- **Error**: {summary['error']}
-- **Fallback**: Category totals shown in main table above
-
-"""
-        
-        if 'message' in summary:
-            return f"""## 🌍 Multi-Language (Cross-Audience) Category Breakdown
-
-### Analysis Status
-- **Status**: {summary['message']}
-- **Category Revenue**: See main category table above
-- **Note**: Basic category counting available, detailed analysis unavailable
-
-"""
-        
-        years_text = ""
-        if 'years_analyzed' in summary:
-            years_text = f"- **Years Analyzed**: {', '.join(summary['years_analyzed'])}\n"
-        
-        breakdown = f"""## 🌍 Multi-Language (Cross-Audience) Category Breakdown
-
-### Cross-Audience Performance
-{years_text}- **Total Revenue**: ${summary['total_revenue']:,.2f}
-- **Total Spots**: {summary['total_spots']:,}
-- **Unique Customers**: {summary['unique_customers']:,}
-- **Unique Agencies**: {summary['unique_agencies']:,}
-
-### Strategy Impact
-- **Multiyear Analysis**: Combined analysis across multiple years
-- **Simplified Logic**: Clean cross-audience targeting
-- **Better Language Blocks**: Proper language categorization
-- **ROS Integration**: Run on Schedule properly categorized
-- **Packages Separation**: Package deals properly categorized
-
-"""
-        
-        # Add top customers if available
-        if 'top_customers' in multi_language_analysis and multi_language_analysis['top_customers']:
-            breakdown += f"""### Top Cross-Audience Customers (Multiyear)
-| Customer | Total Spots | Revenue | Avg/Spot |
-|----------|-------------|---------|----------|
-"""
-            for customer in multi_language_analysis['top_customers'][:10]:
-                breakdown += f"| {customer.customer_name} | {customer.total_spots:,} | ${customer.revenue:,.2f} | ${customer.avg_per_spot:.2f} |\n"
-        
-        return breakdown
-    
-    def _generate_updated_reconciliation_notes(self) -> str:
-        """Generate updated reconciliation notes with multiyear support"""
-        return """## 📋 Multiyear Reconciliation Notes
-
-### Key Multiyear Features
-- **Flexible Year Input**: Support for single years (2024) or ranges (2023-2024)
-- **Combined Analysis**: Aggregates data across multiple years seamlessly
-- **Perfect Reconciliation**: Maintains accuracy across year boundaries
-- **Enhanced Reporting**: Shows multiyear totals and patterns
-
-### Multiyear Usage Examples
-- **Single Year**: `--year 2024`
-- **Two Years**: `--year 2023-2024`
-- **Three Years**: `--year 2022-2024`
-- **Any Range**: `--year 2020-2024`
-
-### Updated Precedence Rules (Multiyear)
-1. **Direct Response** → WorldLink agency advertising (all years)
-2. **Paid Programming** → All revenue_type = 'Paid Programming' (all years)
-3. **Branded Content (PRD)** → Internal production spots (all years)
-4. **Services (SVC)** → Station service spots (all years)
-5. **Individual Language Blocks** → Single language targeting (all years)
-6. **ROS (Run on Schedule)** → Broadcast sponsorships (all years)
-7. **Packages** → Package deals without time targeting (all years)
-8. **Multi-Language (Cross-Audience)** → Cross-audience targeting (all years)
-9. **Other Non-Language** → Everything else (all years)
-
-### Business Logic Improvements
-- **Multiyear Trends**: Identify patterns across multiple years
-- **Consistent Classification**: Same rules applied across all years
-- **Enhanced Reporting**: Better business intelligence for multiyear planning
-- **Flexible Analysis**: Single year or range analysis as needed
-
-### Technical Architecture
-- **Year Range Parsing**: Handles "2023-2024" format automatically
-- **Multi-Year Queries**: Optimized SQL for multiple year analysis
-- **Aggregate Functions**: Proper summing and counting across years
-- **Maintained Precision**: Perfect reconciliation across year boundaries
-
-## 🎯 Multiyear Validation Results
-
-All validation tests should show:
-- **Revenue Reconciliation**: 0.00 difference (across all years)
-- **Spot Count Reconciliation**: 0 difference (across all years)
-- **Category Coverage**: 100% of spots assigned (across all years)
-- **No Double Counting**: Each spot in exactly one category (across all years)
-- **9 Categories**: All categories properly segregated (across all years)
-
----
-
-*Generated by Updated Unified Analysis System v6.0 - Multiyear Support*"""
-    
-    def _generate_faq_section(self) -> str:
-        """Generate the comprehensive FAQ section with multiyear examples"""
-        return """---
-
-# Multiyear Language Assignment Rules - FAQ
-
-## How We Assign TV Spots to Language Categories (Multiyear Analysis)
-
-### The Business Problem
-TV spots need to be categorized across multiple years to understand long-term language audience targeting and revenue performance trends. Our system automatically assigns each spot based on when it airs and what language communities it reaches, now with full multiyear support.
-
----
-
-## Multiyear Assignment Rules (Simple FAQ)
-
-### Q: How do I analyze multiple years at once?
-
-**A:** Use the year range format in the command line:
-
-- **Single Year**: `--year 2024`
-- **Two Years**: `--year 2023-2024`
-- **Three Years**: `--year 2022-2024`
-- **Any Range**: `--year 2020-2024`
-
-**Example**: `python unified_analysis.py --year 2023-2024` analyzes both 2023 and 2024 together
-
----
-
-### Q: Why is a spot assigned to "Vietnamese" across 2023-2024?
-
-**A:** The spot runs during Vietnamese blocks in either or both years:
-
-- **2023 Vietnamese Blocks**: Spot runs during Vietnamese programming in 2023
-- **2024 Vietnamese Blocks**: Spot runs during Vietnamese programming in 2024
-- **Combined Analysis**: All Vietnamese spots from both years are aggregated
-
-**Example**: A regular Vietnamese advertiser with spots in both 2023 and 2024 will show combined revenue and spot counts
-
----
-
-### Q: How does ROS work across multiple years?
-
-**A:** ROS (Run on Schedule) spots are identified using the same rules in all years:
-
-- **Same Business Logic**: Long duration or all-day placement in any year
-- **Combined Totals**: All ROS spots from all years are summed together
-- **Consistent Classification**: Same advertiser patterns across years
-
-**Example**: A broad-reach advertiser with ROS spots in 2023 and 2024 will show combined multiyear performance
-
----
-
-### Q: What does "Packages" mean in multiyear analysis?
-
-**A:** Package deals are identified and combined across all years:
-
-- **Same Package Logic**: PKG spots without time targeting in any year
-- **Multiyear Packages**: Some packages may span multiple years
-- **Combined Revenue**: All package revenue from all years is aggregated
-
-**Example**: A monthly package deal running from late 2023 into 2024 will show combined performance
-
----
-
-### Q: How are percentages calculated in multiyear analysis?
-
-**A:** Percentages are calculated based on the combined multiyear totals:
-
-- **Combined Revenue**: Total revenue from all years in the range
-- **Combined Spots**: Total spots from all years in the range
-- **Percentage Calculation**: Each category's percentage of the multiyear total
-
-**Example**: If Vietnamese has $50K in 2023 and $60K in 2024, it shows $110K total and its percentage of the combined 2023-2024 revenue
-
----
-
-## Multiyear Analysis Benefits
-
-### Long-term Trends:
-- **Year-over-Year Growth**: See how language communities are growing
-- **Seasonal Patterns**: Identify patterns that span multiple years
-- **Business Planning**: Better data for multiyear strategic planning
-
-### Enhanced Reporting:
-- **Combined Performance**: Single report showing multiyear totals
-- **Consistent Classification**: Same rules applied across all years
-- **Flexible Analysis**: Choose any year range for analysis
-
-### Current Multiyear Impact:
-- **Any Year Range**: Analyze 2020-2024 or any other range
-- **Perfect Reconciliation**: Maintains accuracy across year boundaries
-- **Enhanced Intelligence**: Same operational reality capture across years
-
----
-
-## Multiyear Category Priority Order
-
-Our system applies the same rules in this order for all years (first match wins):
-
-1. **Direct Response** (WorldLink agency) - *All Years*
-2. **Paid Programming** (Revenue type classification) - *All Years*
-3. **Station Services** (Internal content) - *All Years*
-4. **Branded Content** (Internal production) - *All Years*
-5. **Enhanced Language Patterns** (Tagalog/Chinese patterns) - *All Years*
-6. **ROS Detection** (Long duration or specific time slots) - *All Years*
-7. **Packages** (Package deals without time targeting) - *All Years*
-8. **Individual Language Blocks** (Single language targeting) - *All Years*
-9. **Multi-Language** (Cross-cultural targeting) - *All Years*
-10. **Other Non-Language** (Everything else) - *All Years*
-
----
-
-## Multiyear Business Value
-
-### Strategic Planning:
-- **Multiyear Trends**: See 3-year trends for better planning
-- **Language Community Growth**: Track growth patterns across years
-- **Revenue Patterns**: Identify seasonal and long-term patterns
-- **Advertiser Behavior**: Understand multiyear advertiser patterns
-
-### Operational Intelligence:
-- **Combined Analysis**: Single report for multiyear periods
-- **Consistent Classification**: Same logic across all years
-- **Enhanced Accuracy**: Better business decisions with more data
-- **Flexible Reporting**: Any year range for any analysis need
-
----
-
-## Bottom Line
-
-The multiyear system automatically sorts every TV spot from any year range into the right bucket based on **when it airs**, **what languages it reaches**, and **advertiser intent**. You can now analyze single years or any range of years with the same accuracy and business intelligence.
-
-**Key Multiyear Benefit**: Analyze 2-5 years at once for better strategic planning, with the same 9-category classification system applied consistently across all years.
-
----
-
-*Multiyear FAQ Section - Updated Unified Analysis System v6.0*"""
     
     def _format_table(self, results: List[UnifiedResult], title: str, subtitle: str, year_display: str) -> str:
         """Format results into a table with multiyear support"""
@@ -1008,34 +576,241 @@ The multiyear system automatically sorts every TV spot from any year range into 
         table += f"| **TOTAL** | **${total_revenue:,.2f}** | **100.0%** | **{total_paid_spots:,}** | **{total_bonus_spots:,}** | **{total_all_spots:,}** | **${total_avg_per_spot:.2f}** |\n"
         
         return table
+    
+    def _format_assignment_method_table(self, results: List[UnifiedResult], title: str, subtitle: str, year_display: str) -> str:
+        """Format assignment method results into a table"""
+        
+        # Calculate totals
+        total_revenue = sum(r.revenue for r in results)
+        total_spots = sum(r.total_spots for r in results)
+        total_review = sum(r.details.get('review_count', 0) for r in results if r.details)
+        
+        # Build the table
+        table = f"""## {title}
+### {subtitle} ({year_display})
+| Assignment Method | Revenue | % of Total | Total Spots | Avg Confidence | Review Count |
+|-------------------|---------|------------|-------------|----------------|--------------|
+"""
+        
+        for result in results:
+            avg_confidence = result.details.get('avg_confidence', 0) if result.details else 0
+            review_count = result.details.get('review_count', 0) if result.details else 0
+            
+            table += f"| {result.name} | ${result.revenue:,.2f} | {result.percentage:.1f}% | {result.total_spots:,} | {avg_confidence:.2f} | {review_count:,} |\n"
+        
+        # Add total row
+        table += "|-------------------|---------|------------|-------------|----------------|--------------|\n"
+        table += f"| **TOTAL** | **${total_revenue:,.2f}** | **100.0%** | **{total_spots:,}** | **N/A** | **{total_review:,}** |\n"
+        
+        return table
+    
+    def _generate_updated_system_notes(self) -> str:
+        """Generate notes about the updated system"""
+        return """## 📋 Updated Language Assignment System Notes
+
+### Key System Changes
+- **New Assignment Logic**: Uses `spot_language_assignments` table instead of time blocks
+- **Business Rule Categories**: Based on `revenue_type` and `spot_type` combinations
+- **Assignment Methods**: Tracks how each language was assigned with confidence levels
+- **Simplified Categories**: Removed ROS, updated to match current business logic
+- **Review Flagging**: System flags spots requiring manual review
+
+### New Business Rule Categories
+1. **Direct Response Sales** → All spot types default to English (business rule)
+2. **Paid Programming** → All spot types default to English (business rule)  
+3. **Branded Content** → All spot types default to English (business rule)
+4. **Language-Targeted Advertising** → Internal Ad Sales + COM/BNS spots (language assignment required)
+5. **Other/Review Required** → Unusual combinations requiring manual review
+
+### Assignment Method Types
+- **Business Rule Default English**: Automatic English assignment based on revenue type
+- **Direct Language Mapping**: Language determined from spots.language_code
+- **Business Review Required**: Unusual revenue/spot combinations needing review
+- **Undetermined (Needs Review)**: Language code 'L' - requires manual determination
+- **Default English (Fallback)**: Missing language codes defaulted to English
+
+### Data Quality Features
+- **Confidence Scoring**: Each assignment has a confidence level (0.0-1.0)
+- **Review Flagging**: System identifies spots needing manual attention
+- **Assignment Tracking**: Records how each language was determined
+- **Perfect Reconciliation**: Every spot assigned to exactly one category
+
+## 🔧 Technical Implementation
+
+### Database Schema Updates
+- **spot_language_assignments** → Main assignment table with metadata
+- **languages** → Reference table for valid language codes
+- **spots** → Enhanced with language_code column
+- **Removed Dependencies** → No longer uses time block tables
+
+### Query Logic Changes
+- **Direct Mapping**: Uses spots.language_code → languages table joins
+- **Business Rules**: Revenue type and spot type combination logic
+- **Assignment Methods**: Tracks the logic used for each assignment
+- **Review Workflow**: Identifies and flags problematic spots
+
+---
+
+*Updated System - No longer uses time blocks or ROS categories*"""
+    
+    def _generate_updated_faq_section(self) -> str:
+        """Generate FAQ section for the updated system"""
+        return """---
+
+# Updated Language Assignment System - FAQ
+
+## How the New System Assigns TV Spots to Languages
+
+### The Updated Business Problem
+TV spots are now categorized using a simplified business rule system that assigns languages based on the `spots.language_code` column and business logic derived from `revenue_type` and `spot_type` combinations.
+
+---
+
+## Updated Assignment Rules (Simple FAQ)
+
+### Q: How does the new system work?
+
+**A:** The system uses three main approaches:
+
+1. **Business Rule Defaults**: Direct Response, Paid Programming, and Branded Content automatically default to English
+2. **Direct Language Mapping**: Internal Ad Sales spots with valid language codes get mapped to specific languages  
+3. **Review Categories**: Unusual combinations get flagged for manual review
+
+**Example**: A Vietnamese language code on an Internal Ad Sales commercial spot gets mapped to Vietnamese language
+
+---
+
+### Q: What happened to the time block system?
+
+**A:** The system was simplified:
+
+- **Old System**: Used complex time block matching and ROS detection
+- **New System**: Uses simple business rules based on revenue type and spot type
+- **Better Accuracy**: Fewer edge cases and clearer business logic
+- **Easier Maintenance**: Simpler rules mean fewer errors and easier updates
+
+---
+
+### Q: Why is a spot assigned to "Direct Response Sales"?
+
+**A:** Business rule categorization:
+
+- **Revenue Type**: `revenue_type = 'Direct Response Sales'`
+- **All Spot Types**: COM, BNS, PKG, etc. - all default to English
+- **Business Logic**: Direct response advertising doesn't target specific language communities
+- **Assignment Method**: `business_rule_default_english`
+
+**Example**: WorldLink agency spots automatically get categorized as Direct Response Sales → English
+
+---
+
+### Q: How does language targeting work now?
+
+**A:** Simplified language assignment:
+
+- **Target Category**: Internal Ad Sales + COM/BNS spots only
+- **Language Source**: `spots.language_code` column  
+- **Direct Mapping**: Language code maps to language name via `languages` table
+- **Assignment Method**: `direct_mapping`
+
+**Example**: Internal Ad Sales spot with language_code 'T' → Tagalog → Filipino language category
+
+---
+
+### Q: What does "Business Review Required" mean?
+
+**A:** Spots needing manual attention:
+
+- **Unusual Combinations**: Internal Ad Sales + non-commercial spot types (PKG, CRD, AV, BB)
+- **Other Revenue Types**: Revenue types that don't fit standard patterns
+- **Manual Review**: Require business analyst review to determine proper categorization
+- **Assignment Method**: `business_review_required`
+
+**Example**: Internal Ad Sales + PKG spot type combination needs manual review
+
+---
+
+### Q: How are confidence levels used?
+
+**A:** Assignment quality tracking:
+
+- **High Confidence (1.0)**: Direct mapping and business rule defaults
+- **Medium Confidence (0.5)**: Default fallbacks and review categories  
+- **Low Confidence (0.0)**: Undetermined language codes (L)
+- **Review Flagging**: Low confidence assignments get flagged for review
+
+**Example**: Direct language mapping has 1.0 confidence, undetermined has 0.0 confidence
+
+---
+
+## Updated System Benefits
+
+### Simplified Business Logic:
+- **Clear Rules**: Revenue type + spot type = category assignment
+- **Fewer Edge Cases**: Eliminated complex time block matching issues
+- **Better Accuracy**: More predictable and maintainable logic
+- **Easier Training**: Simpler rules for analysts to understand
+
+### Enhanced Data Quality:
+- **Confidence Scoring**: Every assignment has a quality score
+- **Review Workflow**: System identifies spots needing manual attention  
+- **Assignment Tracking**: Records how each language was determined
+- **Perfect Reconciliation**: Every spot in exactly one category
+
+### Operational Improvements:
+- **Faster Processing**: Simpler queries run much faster
+- **Better Reporting**: Clearer categories for business analysis
+- **Easier Maintenance**: Fewer complex rules to maintain
+- **Enhanced Debugging**: Assignment methods show exactly how decisions were made
+
+---
+
+## Updated Category Priority Order
+
+The new system applies business rules in this order (first match wins):
+
+1. **Direct Response Sales** (Revenue type = 'Direct Response Sales') - *All spot types → English*
+2. **Paid Programming** (Revenue type = 'Paid Programming') - *All spot types → English*  
+3. **Branded Content** (Revenue type = 'Branded Content') - *All spot types → English*
+4. **Language-Targeted Advertising** (Internal Ad Sales + COM/BNS) - *Language assignment required*
+5. **Other/Review Required** (Everything else) - *Manual review needed*
+
+---
+
+## Bottom Line
+
+The updated system automatically sorts every TV spot into the right category using **simple business rules** based on **revenue type** and **spot type**. Language assignments come from the `language_code` column with confidence scoring and review flagging for quality control.
+
+**Key Benefit**: Much simpler and more reliable than the old time block system, with better data quality and easier maintenance.
+
+---
+
+*Updated FAQ Section - New Language Assignment System*"""
 
 
 def main():
-    """Test the updated unified analysis system with multiyear support"""
+    """Test the updated unified analysis system with new language assignment system"""
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Updated Unified Analysis - Multiyear Support + ROS Terminology + Packages with FAQ",
+        description="Updated Unified Analysis - New Language Assignment System",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Multiyear Examples:
-  # Single year analysis
+Updated System Examples:
+  # Single year analysis with new system
   python unified_analysis.py --year 2024
   
   # Two year analysis
   python unified_analysis.py --year 2023-2024
   
-  # Three year analysis
-  python unified_analysis.py --year 2022-2024
+  # Assignment method analysis
+  python unified_analysis.py --year 2024 --assignment-methods-only
   
-  # Save multiyear report to file
-  python unified_analysis.py --year 2023-2024 --output multiyear_report.md
+  # Save report to file
+  python unified_analysis.py --year 2023-2024 --output updated_report.md
   
-  # Validate multiyear reconciliation
-  python unified_analysis.py --year 2023-2024 --validate-only
-  
-  # Multiyear multi-language analysis
-  python unified_analysis.py --year 2022-2024 --multi-language-only
+  # Validate reconciliation
+  python unified_analysis.py --year 2024 --validate-only
         """
     )
     
@@ -1043,18 +818,16 @@ Multiyear Examples:
                        help="Year to analyze - supports single year (2024) or range (2023-2024)")
     
     parser.add_argument("--output", metavar="FILE", 
-                       help="Save report to file (e.g., report.md, analysis.txt). "
-                            "Supports any text format - commonly used with .md for markdown files. "
-                            "If not specified, output goes to console.")
+                       help="Save report to file (e.g., report.md, analysis.txt)")
     
     parser.add_argument("--db-path", default="data/database/production.db", 
                        help="Database path (default: data/database/production.db)")
     
     parser.add_argument("--validate-only", action="store_true", 
-                       help="Run validation only - check reconciliation without generating full report")
+                       help="Run validation only - check reconciliation")
     
-    parser.add_argument("--multi-language-only", action="store_true", 
-                       help="Show only multi-language analysis - detailed cross-audience breakdown")
+    parser.add_argument("--assignment-methods-only", action="store_true", 
+                       help="Show only assignment method analysis")
     
     args = parser.parse_args()
     
@@ -1063,30 +836,25 @@ Multiyear Examples:
             if args.validate_only:
                 # Run validation test
                 validation = engine.validate_reconciliation(args.year)
-                print("🧪 Multiyear Analysis Validation Results:")
+                print("🧪 Updated System Validation Results:")
                 print("=" * 50)
                 print(f"✅ Years Analyzed: {', '.join(validation['base_totals']['years'])}")
                 print(f"✅ Base Revenue: ${validation['base_totals']['revenue']:,.2f}")
                 print(f"✅ Category Total: ${validation['category_totals']['revenue']:,.2f}")
                 print(f"✅ Revenue Difference: ${validation['revenue_difference']:,.2f}")
                 print(f"✅ Perfect Reconciliation: {'YES' if validation['perfect_reconciliation'] else 'NO'}")
+                print(f"✅ New Assignment System: {'YES' if validation['new_assignment_system'] else 'NO'}")
                 print(f"✅ Multiyear Support: {'YES' if validation['multiyear_support'] else 'NO'}")
-                print(f"✅ Packages Category Added: {'YES' if validation['packages_category_added'] else 'NO'}")
-                print(f"✅ Multi-Language Integrated: {'YES' if validation['multi_language_integrated'] else 'NO'}")
-                print(f"✅ ROS Included: {'YES' if validation['ros_included'] else 'NO'}")
-            elif args.multi_language_only:
-                # Show multi-language analysis only
-                multi_lang_analysis = engine.get_multi_language_analysis(args.year)
-                print("🌍 Multiyear Multi-Language Analysis:")
+            elif args.assignment_methods_only:
+                # Show assignment method analysis only
+                assignment_results = engine.get_assignment_method_analysis(args.year)
+                print("🔧 Assignment Method Analysis:")
                 print("=" * 50)
-                summary = multi_lang_analysis['summary']
-                if 'years_analyzed' in summary:
-                    print(f"Years Analyzed: {', '.join(summary['years_analyzed'])}")
-                print(f"Total Revenue: ${summary['total_revenue']:,.2f}")
-                print(f"Total Spots: {summary['total_spots']:,}")
-                if 'unique_customers' in summary:
-                    print(f"Unique Customers: {summary['unique_customers']:,}")
-                    print(f"Unique Agencies: {summary['unique_agencies']:,}")
+                for result in assignment_results:
+                    confidence = result.details.get('avg_confidence', 0) if result.details else 0
+                    review_count = result.details.get('review_count', 0) if result.details else 0
+                    print(f"{result.name}: ${result.revenue:,.2f} ({result.percentage:.1f}%) - {result.total_spots:,} spots")
+                    print(f"  Confidence: {confidence:.2f}, Review Count: {review_count:,}")
             else:
                 # Generate full report
                 report = engine.generate_updated_unified_tables(args.year)
@@ -1103,7 +871,7 @@ Multiyear Examples:
                     full_years, _ = engine.parse_year_range(args.year)
                     year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
                     
-                    print(f"✅ Multiyear unified report saved to {args.output}")
+                    print(f"✅ Updated unified report saved to {args.output}")
                     print(f"📅 Years analyzed: {year_display}")
                     print(f"📄 File size: {os.path.getsize(args.output):,} bytes")
                 else:
