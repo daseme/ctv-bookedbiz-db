@@ -31,7 +31,7 @@ def categorize_spot(revenue_type: Optional[str], spot_type: Optional[str]) -> Sp
         return SpotCategory.LANGUAGE_ASSIGNMENT_REQUIRED
     
     # Category 2: Review Category (5,872 spots)
-    if revenue_type == 'Internal Ad Sales' and spot_type in ['PKG', 'CRD', 'AV', 'BB']:
+    if revenue_type == 'Internal Ad Sales' and spot_type in ['PKG', 'CRD', 'AV']:
         return SpotCategory.REVIEW_CATEGORY
         
     if revenue_type == 'Other' and spot_type in ['COM', 'BNS', '']:

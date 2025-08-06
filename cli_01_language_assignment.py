@@ -2,6 +2,71 @@
 """
 Simplified Language Assignment CLI
 Assigns language codes based on spots.language_code column
+
+OVERVIEW:
+This CLI tool manages a two-step process for assigning language codes to advertising spots:
+
+1. CATEGORIZATION: Analyzes spots and categorizes them based on business rules
+   - LANGUAGE_ASSIGNMENT_REQUIRED: Spots that need algorithmic language detection
+   - REVIEW_CATEGORY: Spots requiring manual business review
+   - DEFAULT_ENGLISH: Spots that should default to English
+
+2. PROCESSING: Processes each category to assign actual language codes and set review flags
+   - Assigns specific language codes (EN, ES, etc.)
+   - Flags spots requiring manual review
+   - Updates spot_language_assignments table
+
+TYPICAL WORKFLOW:
+
+1. Initial Setup (run once):
+   --categorize-all                 # Categorize all uncategorized spots
+   --status-by-category            # Check category distribution
+
+2. Process Categories:
+   --process-language-required     # Process algorithmic assignments
+   --process-default-english       # Assign English to appropriate spots
+   --process-review-category       # Flag spots for business review
+   
+   OR use: --process-all-categories  # Process all categories at once
+
+3. Review and Monitor:
+   --status                        # Check assignment status
+   --review-required              # See spots needing manual review
+   --invalid-codes               # Check for invalid language codes
+
+4. Force Recategorization (when rules change):
+   --force-recategorize-all       # Recategorize entire dataset
+   --process-all-categories       # Reprocess with new logic
+
+TESTING OPTIONS:
+--test N                          # Test assignment with N spots
+--test-categorization N           # Test categorization with N spots
+
+STATUS/INSPECTION:
+--status                         # Overall assignment status
+--status-by-category            # Breakdown by category
+--processing-status             # Processing progress by category
+--undetermined                  # Spots with 'L' language code
+--all-review                    # All spots requiring review
+--invalid-codes                 # Invalid language codes
+
+EXAMPLES:
+python cli_01_language_assignment.py --status-by-category
+python cli_01_language_assignment.py --categorize-all
+python cli_01_language_assignment.py --process-all-categories
+python cli_01_language_assignment.py --review-required
+python cli_01_language_assignment.py --force-recategorize-all
+
+DATABASE:
+Default: data/database/production.db
+Override: --database path/to/database.db
+
+IMPORTANT NOTES:
+- Categorization determines WHICH spots get processed HOW
+- Processing assigns actual language codes and review flags  
+- Review flags are only updated during processing, not categorization
+- Force recategorization clears ALL categories and starts fresh
+- Trade revenue spots are excluded from processing
 """
 
 import argparse
@@ -9,6 +74,7 @@ import sqlite3
 import logging
 import sys
 import os
+from tqdm import tqdm
 from src.services.spot_categorization_service import SpotCategorizationService
 from src.models.spot_category import SpotCategory
 from src.services.language_processing_orchestrator import LanguageProcessingOrchestrator
@@ -39,6 +105,7 @@ def main():
     group.add_argument("--all-review", action="store_true", help="Show all spots requiring review")
     group.add_argument("--invalid-codes", action="store_true", help="Show invalid language codes")
     group.add_argument("--categorize-all", action="store_true", help="Categorize all uncategorized spots")
+    group.add_argument("--force-recategorize-all", action="store_true", help="Force recategorize ALL spots (including already categorized)")
     group.add_argument("--status-by-category", action="store_true", help="Show breakdown by category") 
     group.add_argument("--test-categorization", type=int, help="Test categorization with N spots")
     group.add_argument("--uncategorized", action="store_true", help="Show uncategorized spot count")
@@ -46,11 +113,9 @@ def main():
     group.add_argument("--process-review-category", action="store_true", help="Process review category spots")
     group.add_argument("--process-default-english", action="store_true", help="Process default English spots")
     group.add_argument("--process-all-categories", action="store_true", help="Process all categories")
+    group.add_argument("--process-all-remaining", action="store_true", help="Process all remaining categories (simple)")
     group.add_argument("--processing-status", action="store_true", help="Show processing status by category")
 
-
-
-    
     args = parser.parse_args()
     
     try:
@@ -75,6 +140,8 @@ def main():
                 assign_all(service)
             elif args.categorize_all:
                 categorize_all_spots(conn)
+            elif args.force_recategorize_all:
+                force_recategorize_all_spots(conn)
             elif args.status_by_category:
                 show_status_by_category(conn)
             elif args.test_categorization:
@@ -89,20 +156,59 @@ def main():
                 process_default_english(conn)
             elif args.process_all_categories:
                 process_all_categories(conn)
-            elif args.processing_status:
-                show_processing_status(conn)
-            elif args.process_review_category:
-                process_review_category_simple(conn)
-            elif args.process_default_english:
-                process_default_english_simple(conn)
             elif args.process_all_remaining:
                 process_all_categories_simple(conn)
+            elif args.processing_status:
+                show_processing_status(conn)
                 
     except Exception as e:
         print(f"❌ Error: {e}")
         return 1
     
     return 0
+
+def force_recategorize_all_spots(conn):
+    """Force recategorize ALL spots (including already categorized ones)"""
+    print(f"\n🔄 FORCE RECATEGORIZING ALL SPOTS...")
+    
+    # Get total count first
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM spots WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)")
+    total_count = cursor.fetchone()[0]
+    
+    print(f"Found {total_count:,} spots to recategorize...")
+    
+    # Confirm with user since this is destructive
+    confirm = input(f"\n⚠️  This will RECATEGORIZE ALL {total_count:,} spots (overwriting existing categories).\nProceed? (yes/no): ").strip().lower()
+    if confirm not in ["yes", "y"]:
+        print("❌ Force recategorization cancelled")
+        return
+    
+    # Step 1: Clear all existing categorizations to make them "uncategorized"
+    print("Clearing existing categorizations...")
+    cursor.execute("UPDATE spots SET spot_category = NULL WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)")
+    
+    # Also clear separate categorizations table if it exists
+    try:
+        cursor.execute("DELETE FROM spot_categorizations")
+    except sqlite3.OperationalError:
+        # Table doesn't exist, that's fine
+        pass
+    
+    conn.commit()
+    print("✅ Existing categorizations cleared")
+    
+    # Step 2: Use the existing working categorization method
+    print("Starting recategorization...")
+    service = SpotCategorizationService(conn)
+    results = service.categorize_all_uncategorized(batch_size=5000)
+    
+    print(f"\n🎉 FORCE RECATEGORIZATION COMPLETE:")
+    print(f"   • Total spots processed: {results['processed']:,}")
+    print(f"   • Successfully categorized: {results['categorized']:,}")
+    
+    # Show new category distribution
+    show_status_by_category(conn)
 
 def show_undetermined_spots(service):
     """Show spots with undetermined language (L code) - now part of review required"""
@@ -178,7 +284,15 @@ def test_assignments(service, count):
     
     print(f"Found {len(unassigned_spots)} unassigned spots to test...")
     
-    results = service.batch_assign_languages(unassigned_spots)
+    # Show progress if testing a significant number of spots
+    if count > 100:
+        tqdm.write("Processing assignments...")
+        results = {}
+        for spot in tqdm(unassigned_spots, desc="Testing spots", unit="spot"):
+            batch_results = service.batch_assign_languages([spot])
+            results.update(batch_results)
+    else:
+        results = service.batch_assign_languages(unassigned_spots)
     
     # Analyze results
     status_counts = {}
@@ -228,27 +342,6 @@ def show_invalid_codes(service):
         avg_str = f"${avg_rev:,.0f}" if avg_rev else "$0"
         print(f"{code:>6} {count:>8,} {total_str:>15} {avg_str:>12}")
 
-def show_all_review_required_spots(service):
-    """Show all spots requiring review with details"""
-    review_spots = service.get_review_required_spots(limit=50)
-    
-    print(f"\n🔍 ALL SPOTS REQUIRING REVIEW (showing first 50):")
-    print(f"{'Spot ID':>8} {'Code':>6} {'Bill Code':>15} {'Revenue':>10} {'Status':>12} {'Reason'}")
-    print("-" * 85)
-    
-    if not review_spots:
-        print("   No spots requiring review found.")
-        return
-    
-    for assignment in review_spots:
-        spot_data = service.queries.get_spot_language_data(assignment.spot_id)
-        revenue = f"${spot_data.gross_rate:,.0f}" if spot_data and spot_data.gross_rate else "N/A"
-        bill_code = spot_data.bill_code[:15] if spot_data and spot_data.bill_code else "N/A"
-        
-        reason = "Undetermined" if assignment.language_code == 'L' else "Invalid Code"
-        
-        print(f"{assignment.spot_id:>8} {assignment.language_code:>6} {bill_code:>15} {revenue:>10} {assignment.language_status.value:>12} {reason}")
-
 def batch_assign(service, count):
     """Batch assign languages"""
     print(f"\n🚀 BATCH ASSIGNMENT of {count} spots...")
@@ -262,11 +355,11 @@ def batch_assign(service, count):
     
     results = service.batch_assign_languages(unassigned_spots)
     
-    # Save assignments
+    # Save assignments with progress bar
     saved_count = 0
     error_count = 0
     
-    for assignment in results.values():
+    for assignment in tqdm(results.values(), desc="Saving assignments", unit="spot"):
         try:
             service.queries.save_language_assignment(assignment)
             saved_count += 1
@@ -300,14 +393,15 @@ def assign_all(service):
     total_saved = 0
     total_errors = 0
     
-    for i in range(0, len(unassigned_spots), batch_size):
+    for i in tqdm(range(0, len(unassigned_spots), batch_size), 
+                  desc="Processing batches", unit="batch"):
         batch = unassigned_spots[i:i + batch_size]
-        print(f"Processing batch {i//batch_size + 1} ({len(batch)} spots)...")
-        
         results = service.batch_assign_languages(batch)
         
-        # Save batch
-        for assignment in results.values():
+        # Save batch with inner progress bar
+        for assignment in tqdm(results.values(), 
+                              desc="Saving assignments", 
+                              leave=False, unit="spot"):
             try:
                 service.queries.save_language_assignment(assignment)
                 total_saved += 1
@@ -382,7 +476,6 @@ def show_uncategorized_count(conn):
     
     if len(uncategorized_spots) > 0:
         print(f"💡 Run --categorize-all to categorize all spots")
-        
 
 def process_language_required(conn):
     """Process language assignment required spots"""
@@ -451,10 +544,7 @@ def show_processing_status(conn):
         if total > 0:
             percentage = (processed / total * 100) if total > 0 else 0
             print(f"   • {category.value.replace('_', ' ').title()}: {processed:,}/{total:,} ({percentage:.1f}%)")
-    
 
-if __name__ == "__main__":
-    exit(main())
 def process_review_category_simple(conn):
     """Process review category spots (simple version)"""
     print(f"\n📋 PROCESSING REVIEW CATEGORY SPOTS...")
@@ -527,3 +617,6 @@ def process_all_categories_simple(conn):
     print(f"   • Total spots processed: {total_processed:,}")
     print(f"   • Spots requiring review: {total_review:,}")
     print(f"   • Spots with language assigned: {total_processed - total_review:,}")
+
+if __name__ == "__main__":
+    exit(main())
