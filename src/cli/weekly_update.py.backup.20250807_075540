@@ -356,13 +356,7 @@ class EnhancedWeeklyImporter:
             categorization_service = SpotCategorizationService(conn)
             
             # Get uncategorized spots for progress tracking
-            # Get uncategorized spots from current batch only
-            batch_spots_query = """
-                SELECT spot_id FROM spots 
-                WHERE import_batch_id = ? AND spot_category IS NULL
-            """
-            cursor = conn.execute(batch_spots_query, (batch_id,))
-            uncategorized_spots = [row[0] for row in cursor.fetchall()]
+            uncategorized_spots = categorization_service.get_uncategorized_spots()
             
             if uncategorized_spots:
                 print(f"   📊 Found {len(uncategorized_spots):,} uncategorized spots")
@@ -389,7 +383,7 @@ class EnhancedWeeklyImporter:
             orchestrator = LanguageProcessingOrchestrator(conn)
             
             # Get processing status for progress tracking
-            processing_results = orchestrator.process_batch_categories(batch_id)
+            processing_results = orchestrator.process_all_categories()
             
             # Extract detailed results from processing
             summary = processing_results['summary']
