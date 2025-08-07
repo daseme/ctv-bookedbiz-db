@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Set, Dict, Any
 from dataclasses import dataclass
+from tqdm import tqdm
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -56,7 +57,7 @@ class SmartFilteredImporter(BaseService):
         Returns:
             Analysis results
         """
-        print(f"🔍 Analyzing workbook: {excel_file}")
+        print(f"Analyzing workbook: {excel_file}")
         
         # Extract all months from Excel
         all_months = list(extract_broadcast_months_from_excel(excel_file))
@@ -75,19 +76,19 @@ class SmartFilteredImporter(BaseService):
                     continue
             all_months = filtered_months
         
-        print(f"📊 Found {len(all_months)} months in workbook: {sorted(all_months)}")
+        print(f"Found {len(all_months)} months in workbook: {sorted(all_months)}")
         
         # Check which months are already closed
         closed_months = self.month_service.get_closed_months(all_months)
         open_months = [month for month in all_months if month not in closed_months]
         
-        print(f"🔒 Already closed: {len(closed_months)} months")
+        print(f"Already closed: {len(closed_months)} months")
         for month in sorted(closed_months):
-            print(f"   📋 {month} - SKIP (already closed)")
+            print(f"   {month} - SKIP (already closed)")
         
-        print(f"📂 Open/new months: {len(open_months)} months")
+        print(f"Open/new months: {len(open_months)} months")
         for month in sorted(open_months):
-            print(f"   ✅ {month} - IMPORT")
+            print(f"   {month} - IMPORT")
         
         return {
             'total_months': len(all_months),
@@ -96,32 +97,27 @@ class SmartFilteredImporter(BaseService):
             'all_months': all_months
         }
     
-    def create_filtered_excel(self, source_excel: str, target_months: List[str], temp_file: str) -> str:
+    def _analyze_excel_structure(self, source_excel: str, target_months: List[str]) -> Dict[str, Any]:
         """
-        Create a temporary Excel file containing only specified months.
+        Phase 1: Analyze Excel structure and gather statistics.
         
         Args:
             source_excel: Original Excel file
-            target_months: Months to include
-            temp_file: Path for temporary filtered file
+            target_months: Months to include in analysis
             
         Returns:
-            Path to filtered Excel file
+            Analysis results dict
         """
-        print(f"📝 Creating filtered Excel with {len(target_months)} months...")
+        print(f"Phase 1: Analyzing Excel structure...")
         
-        from openpyxl import load_workbook, Workbook
+        from openpyxl import load_workbook
         from utils.broadcast_month_utils import BroadcastMonthParser
         
         parser = BroadcastMonthParser()
         
-        # Load source workbook
-        source_wb = load_workbook(source_excel, data_only=True)
+        # Load source workbook for analysis
+        source_wb = load_workbook(source_excel, read_only=True, data_only=True)
         source_ws = source_wb.active
-        
-        # Create new workbook
-        target_wb = Workbook()
-        target_ws = target_wb.active
         
         # Find Month column
         header_row = list(source_ws.iter_rows(min_row=1, max_row=1, values_only=True))[0]
@@ -133,45 +129,163 @@ class SmartFilteredImporter(BaseService):
                 break
         
         if month_col_index is None:
+            source_wb.close()
             raise ValueError("Month column not found in Excel file")
         
-        print(f"📍 Found Month column at index {month_col_index}")
+        # Get total rows for progress tracking
+        total_rows = source_ws.max_row - 1  # Subtract header row
+        
+        # Analyze with progress bar
+        month_stats = {}
+        total_target_rows = 0
+        
+        with tqdm(total=total_rows, desc="Analyzing structure", unit=" rows") as pbar:
+            for row_num, row in enumerate(source_ws.iter_rows(min_row=2, values_only=True), start=2):
+                pbar.update(1)
+                
+                if not any(cell for cell in row):
+                    continue
+                
+                # Analyze month distribution
+                if month_col_index < len(row):
+                    month_value = row[month_col_index]
+                    
+                    if month_value is not None:
+                        try:
+                            display_month = parser.parse_excel_date_to_broadcast_month(month_value)
+                            
+                            if display_month not in month_stats:
+                                month_stats[display_month] = 0
+                            month_stats[display_month] += 1
+                            
+                            if display_month in target_months:
+                                total_target_rows += 1
+                                
+                        except Exception:
+                            continue
+                
+                # Update description periodically
+                if row_num % 10000 == 0:
+                    pbar.set_description(f"Analyzed {len(month_stats)} months")
+        
+        source_wb.close()
+        
+        analysis_result = {
+            'header_row': header_row,
+            'month_col_index': month_col_index,
+            'total_rows': total_rows,
+            'month_stats': month_stats,
+            'target_row_estimate': total_target_rows,
+            'target_months': target_months
+        }
+        
+        print(f"Analysis complete:")
+        print(f"   Total rows: {total_rows:,}")
+        print(f"   Months found: {len(month_stats)} {sorted(month_stats.keys())}")
+        print(f"   Target months: {len(target_months)} {target_months}")
+        print(f"   Estimated target rows: {total_target_rows:,}")
+        
+        return analysis_result
+    
+    def _create_filtered_excel(self, source_excel: str, analysis: Dict[str, Any], temp_file: str) -> str:
+        """
+        Phase 2: Create filtered Excel file using analysis results.
+        
+        Args:
+            source_excel: Original Excel file
+            analysis: Results from analysis phase
+            temp_file: Path for temporary filtered file
+            
+        Returns:
+            Path to filtered Excel file
+        """
+        print(f"Phase 2: Creating filtered Excel...")
+        
+        from openpyxl import load_workbook, Workbook
+        from utils.broadcast_month_utils import BroadcastMonthParser
+        
+        parser = BroadcastMonthParser()
+        
+        # Load source workbook for filtering
+        source_wb = load_workbook(source_excel, read_only=True, data_only=True)
+        source_ws = source_wb.active
+        
+        # Create new workbook
+        target_wb = Workbook()
+        target_ws = target_wb.active
+        
+        # Get analysis data
+        header_row = analysis['header_row']
+        month_col_index = analysis['month_col_index']
+        total_rows = analysis['total_rows']
+        target_months = analysis['target_months']
         
         # Copy header row
         target_ws.append(header_row)
+        
         rows_copied = 0
         rows_skipped = 0
         
-        # Process data rows
-        for row_num, row in enumerate(source_ws.iter_rows(min_row=2, values_only=True), start=2):
-            if not any(cell for cell in row):
-                continue
-            
-            # Check if this row's month should be included
-            if month_col_index < len(row):
-                month_value = row[month_col_index]
+        # Filter with progress bar
+        with tqdm(total=total_rows, desc="Filtering rows", unit=" rows") as pbar:
+            for row_num, row in enumerate(source_ws.iter_rows(min_row=2, values_only=True), start=2):
+                pbar.update(1)
                 
-                if month_value is not None:
-                    try:
-                        display_month = parser.parse_excel_date_to_broadcast_month(month_value)
-                        
-                        if display_month in target_months:
-                            target_ws.append(row)
-                            rows_copied += 1
-                        else:
-                            rows_skipped += 1
+                if not any(cell for cell in row):
+                    continue
+                
+                # Check if this row's month should be included
+                if month_col_index < len(row):
+                    month_value = row[month_col_index]
+                    
+                    if month_value is not None:
+                        try:
+                            display_month = parser.parse_excel_date_to_broadcast_month(month_value)
                             
-                    except Exception:
-                        rows_skipped += 1
-                        continue
+                            if display_month in target_months:
+                                target_ws.append(row)
+                                rows_copied += 1
+                            else:
+                                rows_skipped += 1
+                                
+                        except Exception:
+                            rows_skipped += 1
+                            continue
+                
+                # Update progress description periodically
+                if row_num % 5000 == 0:
+                    pbar.set_description(f"Copied: {rows_copied:,} | Skipped: {rows_skipped:,}")
         
         # Save filtered workbook
         target_wb.save(temp_file)
         source_wb.close()
         target_wb.close()
         
-        print(f"✅ Filtered Excel created: {rows_copied:,} rows copied, {rows_skipped:,} rows skipped")
+        print(f"Filtered Excel created: {rows_copied:,} rows copied, {rows_skipped:,} rows skipped")
         return temp_file
+    
+    def create_filtered_excel(self, source_excel: str, target_months: List[str], temp_file: str) -> str:
+        """
+        Create a temporary Excel file containing only specified months using two-phase approach.
+        
+        Args:
+            source_excel: Original Excel file
+            target_months: Months to include
+            temp_file: Path for temporary filtered file
+            
+        Returns:
+            Path to filtered Excel file
+        """
+        try:
+            # Phase 1: Analyze Excel structure
+            analysis = self._analyze_excel_structure(source_excel, target_months)
+            
+            # Phase 2: Create filtered Excel
+            return self._create_filtered_excel(source_excel, analysis, temp_file)
+            
+        except Exception as e:
+            print(f"Error during Excel filtering: {str(e)}")
+            raise
     
     def execute_filtered_import(self, 
                               excel_file: str, 
@@ -213,16 +327,16 @@ class SmartFilteredImporter(BaseService):
             result.months_skipped_closed = analysis['closed_months']
             
             if not analysis['open_months']:
-                print("✅ All months are already closed - no import needed!")
+                print("All months are already closed - no import needed!")
                 result.success = True
                 return result
             
-            print(f"\n🎯 Import Plan:")
+            print(f"\nImport Plan:")
             print(f"  • Skip {len(analysis['closed_months'])} already-closed months")
             print(f"  • Import {len(analysis['open_months'])} open months: {analysis['open_months']}")
             
             if dry_run:
-                print(f"\n🔍 DRY RUN - No changes would be made")
+                print(f"\nDRY RUN - No changes would be made")
                 result.success = True
                 return result
             
@@ -231,6 +345,7 @@ class SmartFilteredImporter(BaseService):
             temp_path = Path(temp_excel)
             
             try:
+                print(f"\nStarting two-phase filtering process...")
                 filtered_file = self.create_filtered_excel(
                     excel_file, 
                     analysis['open_months'], 
@@ -238,7 +353,7 @@ class SmartFilteredImporter(BaseService):
                 )
                 
                 # Step 3: Import filtered data
-                print(f"\n🚀 Importing filtered data...")
+                print(f"\nStep 3: Importing filtered data...")
                 import_result = self.import_service.execute_month_replacement(
                     filtered_file,
                     'HISTORICAL' if close_imported_months else 'MANUAL',
@@ -251,11 +366,11 @@ class SmartFilteredImporter(BaseService):
                     result.records_imported = import_result.records_imported
                     result.months_closed = import_result.closed_months if close_imported_months else []
                     
-                    print(f"✅ Filtered import successful!")
-                    print(f"   📊 {result.records_imported:,} records imported")
-                    print(f"   📂 {len(result.months_imported)} months imported: {result.months_imported}")
+                    print(f"Filtered import successful!")
+                    print(f"   Records imported: {result.records_imported:,}")
+                    print(f"   Months imported: {len(result.months_imported)} {result.months_imported}")
                     if result.months_closed:
-                        print(f"   🔒 {len(result.months_closed)} months closed: {result.months_closed}")
+                        print(f"   Months closed: {len(result.months_closed)} {result.months_closed}")
                     
                 else:
                     result.error_messages.extend(import_result.error_messages)
@@ -264,7 +379,7 @@ class SmartFilteredImporter(BaseService):
                 # Clean up temporary file
                 if temp_path.exists():
                     temp_path.unlink()
-                    print(f"🧹 Cleaned up temporary file")
+                    print(f"Cleaned up temporary file")
             
             result.success = import_result.success if 'import_result' in locals() else False
             
@@ -314,14 +429,14 @@ Examples:
     
     # Validate inputs
     if not Path(args.excel_file).exists():
-        print(f"❌ Excel file not found: {args.excel_file}")
+        print(f"Excel file not found: {args.excel_file}")
         sys.exit(1)
     
     if not Path(args.db_path).exists():
-        print(f"❌ Database not found: {args.db_path}")
+        print(f"Database not found: {args.db_path}")
         sys.exit(1)
     
-    print(f"🚀 Smart Filtered Import Tool")
+    print(f"Smart Filtered Import Tool")
     print(f"Excel file: {args.excel_file}")
     print(f"Target year: {args.year}")
     print(f"Closed by: {args.closed_by}")
@@ -344,11 +459,11 @@ Examples:
         
         # Display results
         print(f"\n" + "=" * 60)
-        print(f"🎉 SMART FILTERED IMPORT {'PREVIEW' if args.dry_run else 'COMPLETED'}")
+        print(f"SMART FILTERED IMPORT {'PREVIEW' if args.dry_run else 'COMPLETED'}")
         print(f"=" * 60)
         
-        print(f"📊 Results:")
-        print(f"  Success: {'✅' if result.success else '❌'}")
+        print(f"Results:")
+        print(f"  Success: {'✓' if result.success else '✗'}")
         print(f"  Duration: {result.duration_seconds:.2f} seconds")
         print(f"  Total months in Excel: {result.total_months_in_excel}")
         print(f"  Months skipped (closed): {len(result.months_skipped_closed)}")
@@ -360,30 +475,30 @@ Examples:
                 print(f"  Months closed: {len(result.months_closed)}")
         
         if result.months_skipped_closed:
-            print(f"\n🔒 Skipped (already closed): {result.months_skipped_closed}")
+            print(f"\nSkipped (already closed): {result.months_skipped_closed}")
         
         if result.months_imported:
-            print(f"\n📂 Imported: {result.months_imported}")
+            print(f"\nImported: {result.months_imported}")
         
         if result.months_closed:
-            print(f"\n🔒 Closed: {result.months_closed}")
+            print(f"\nClosed: {result.months_closed}")
         
         if result.error_messages:
-            print(f"\n❌ Errors:")
+            print(f"\nErrors:")
             for error in result.error_messages:
                 print(f"  • {error}")
         
         if result.success and not args.dry_run:
-            print(f"\n✅ Smart import completed successfully!")
-            print(f"💡 Only new/open months were imported - closed months were protected")
+            print(f"\nSmart import completed successfully!")
+            print(f"Only new/open months were imported - closed months were protected")
         
         sys.exit(0 if result.success else 1)
         
     except KeyboardInterrupt:
-        print(f"\n❌ Import cancelled by user")
+        print(f"\nImport cancelled by user")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Unexpected error: {e}")
+        print(f"Unexpected error: {e}")
         if args.verbose:
             import traceback
             traceback.print_exc()

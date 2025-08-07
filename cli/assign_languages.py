@@ -75,19 +75,20 @@ import logging
 import sys
 import os
 from tqdm import tqdm
+
+# Add src directory to path FIRST (before other imports)
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+# NOW import the modules (after path is set)
 from src.services.spot_categorization_service import SpotCategorizationService
 from src.models.spot_category import SpotCategory
 from src.services.language_processing_orchestrator import LanguageProcessingOrchestrator
-from src.models.spot_category import SpotCategory
-
-# Add src directory to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
-
 from services.language_assignment_service import LanguageAssignmentService
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 

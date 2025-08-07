@@ -2,128 +2,116 @@
 
 Complete guide for all data import scenarios in the CTV Booked Business Database system.
 
-## 🎯 Overview
+## Overview
 
 This system provides bulletproof data import workflows with transaction management, automatic month protection, and memory-efficient processing for large Excel files.
 
-## 🏗️ System Architecture
+## System Architecture
 
+- **CLI Directory**: User-facing tools organized in `/cli/` for easy access
 - **BaseService**: Transaction management preventing deadlocks
 - **Month Closure Protection**: Closed months cannot be accidentally modified
 - **Memory-Efficient Processing**: Handles 400K+ records without issues
 - **Comprehensive Column Mapping**: Captures all 29 columns from any Excel format
+- **Language Assignment Integration**: Automatic categorization and processing
 - **Audit Trail**: Complete tracking of all import operations
 
 ---
 
-## 📋 Import Scenarios
+## CLI Tools Overview
 
-### 🏛️ **SCENARIO 1: Historical Annual Import**
+Your primary tools are now organized in the `cli/` directory:
+
+| **Tool** | **Purpose** | **Usage** |
+|----------|-------------|-----------|
+| `cli/import_closed_data.py` | **Primary import tool** | Monthly/historical imports |
+| `cli/assign_languages.py` | Language assignment processing | After imports |
+| `src/importers/smart_monthly_import.py` | Smart filtering from complete workbooks | As needed |
+
+---
+
+## Import Scenarios
+
+### **SCENARIO 1: Closed Month Import** ⭐ **PRIMARY WORKFLOW**
 
 **Use when:**
-- Initial database setup with full year of data
-- Complete refresh of historical data
-- Importing a complete annual report
+- Monthly process: importing newly closed month
+- Historical data import (annual or bulk)
+- Any data requiring permanent month closure protection
 
 **Command:**
 ```bash
-uv run python src/cli/bulk_import_historical.py data/raw/YYYY.xlsx --year YYYY --closed-by "Kurt" --db-path data/database/production.db
+python cli/import_closed_data.py data/raw/YYYY.xlsx --year YYYY --closed-by "Kurt"
 ```
 
 **What it does:**
-- ✅ Imports entire year (all 12 months)
-- ✅ Automatically closes ALL months (permanent protection)
-- ✅ Marks everything as historical
-- ✅ Handles 400K+ records efficiently
-- ✅ Memory-optimized streaming import
-- ✅ Complete audit trail
-
-
-**Get files from windows**
-'''
-scp "C:\Users\Kurt\Crossings TV Dropbox\kurt olmstead\Financial\Sales\WeeklyReports\ctv-bookedbiz-db\data\raw\2022.xlsx" daseme@raspberrypi:/opt/apps/ctv-bookedbiz-db/data/raw/
-'''
+- Imports closed sales data with progress tracking
+- Creates missing markets and schedule assignments as needed
+- Processes language assignments using business rules
+- Closes imported months permanently (read-only protection)
+- Provides comprehensive audit trail
 
 **Examples:**
 ```bash
-# Import complete 2024 annual data
-uv run python src/cli/bulk_import_historical.py data/raw/2024.xlsx --year 2024 --closed-by "Kurt" --db-path data/database/production.db
+# Monthly closed month import (typical workflow)
+python cli/import_closed_data.py data/raw/May-2025.xlsx --year 2025 --closed-by "Kurt"
 
-# Preview before importing (recommended)
-uv run python src/cli/bulk_import_historical.py data/raw/2024.xlsx --year 2024 --closed-by "Kurt" --db-path data/database/production.db --dry-run
+# Historical annual import (initial setup)
+python cli/import_closed_data.py data/raw/2024-complete.xlsx --year 2024 --closed-by "Kurt" --auto-setup
 
-# Import complete 2025 annual data (when year ends)
-uv run python src/cli/bulk_import_historical.py data/raw/2025.xlsx --year 2025 --closed-by "Kurt" --db-path data/database/production.db
+# Preview before importing
+python cli/import_closed_data.py data/raw/March-2025.xlsx --year 2025 --closed-by "Kurt" --dry-run
 ```
 
 **Expected Output:**
 ```
-🎉 OPTIMIZED HISTORICAL IMPORT COMPLETED
-📊 Results:
-  Success: ✅
-  Duration: 208.45 seconds
-  Records imported: 403,203
-  Months closed: ['Jan-24', 'Feb-24', ..., 'Dec-24']
-✅ All months permanently protected
+Production Sales Data Import Tool
+Excel file: data/raw/May-2025.xlsx
+Expected year: 2025
+Closed by: Kurt
+
+PRODUCTION IMPORT COMPLETED
+Overall Results:
+  Success: ✓
+  Duration: 45.23 seconds
+  Records imported: 15,432
+  Language assignments processed: 15,432
+  Flagged for review: 23
 ```
 
 ---
 
-### 📅 **SCENARIO 2: New Closed Month Import** ⭐
+### **SCENARIO 2: Smart Monthly Import from Complete Workbook**
 
 **Use when:**
-- Monthly process: adding newly closed month
-- You have complete workbook but only want to import new month
+- You have complete workbook but only want to import new months
 - Avoid duplicating already-imported months
+- Need intelligent filtering of closed vs open months
 
 **Command:**
 ```bash
-uv run python src/importers/smart_monthly_import.py data/raw/YYYY_complete.xlsx --year YYYY --closed-by "Kurt"
+python src/importers/smart_monthly_import.py data/raw/YYYY_complete.xlsx --year YYYY --closed-by "Kurt"
 ```
 
 **What it does:**
-- 🔍 Analyzes complete workbook intelligently
-- 🔒 Automatically skips already-closed months
-- ✅ Imports only new/open months
-- ✅ Automatically closes newly imported months
-- 🧹 Creates temp filtered file (auto-cleaned)
-- ✅ Full 29-column data capture
-- ⚡ Fast and efficient
+- Analyzes complete workbook intelligently
+- Automatically skips already-closed months
+- Imports only new/open months
+- Creates temp filtered file (auto-cleaned)
+- Full 29-column data capture
 
 **Examples:**
 ```bash
-# Add May-25 from complete 2025 workbook (skips Jan-Apr which are already closed)
-uv run python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx --year 2025 --closed-by "Kurt"
+# Add May-25 from complete 2025 workbook (skips already-closed months)
+python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx --year 2025 --closed-by "Kurt"
 
-# Dry run to see what would be imported (recommended)
-uv run python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx --year 2025 --closed-by "Kurt" --dry-run
-
-# Import without auto-closing (for testing)
-uv run python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx --year 2025 --closed-by "Kurt" --no-close
-```
-
-**Expected Output:**
-```
-📊 Found 5 months in workbook: ['Jan-25', 'Feb-25', 'Mar-25', 'Apr-25', 'May-25']
-🔒 Already closed: 4 months
-   📋 Jan-25 - SKIP (already closed)
-   📋 Feb-25 - SKIP (already closed)  
-   📋 Mar-25 - SKIP (already closed)
-   📋 Apr-25 - SKIP (already closed)
-📂 Open/new months: 1 months
-   ✅ May-25 - IMPORT
-
-🎯 Import Plan:
-  • Skip 4 already-closed months
-  • Import 1 open months: ['May-25']
-  
-✅ Smart import completed successfully!
-💡 Only new/open months were imported - closed months were protected
+# Preview what would be imported
+python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx --year 2025 --closed-by "Kurt" --dry-run
 ```
 
 ---
 
-### 🔄 **SCENARIO 3: Weekly Updates**
+### **SCENARIO 3: Weekly Updates**
 
 **Use when:**
 - Weekly business updates
@@ -132,227 +120,233 @@ uv run python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx 
 
 **Command:**
 ```bash
-uv run python src/cli/weekly_update.py data/raw/weekly_update.xlsx
+python src/cli/weekly_update.py data/raw/weekly_update.xlsx
 ```
 
 **What it does:**
-- ✅ Updates only open months
-- ⚠️ Blocks if file contains closed months (protection)
-- ✅ Replaces existing open month data
-- ❌ Does NOT close months
-- ✅ Fast incremental updates
+- Updates only open months
+- Blocks if file contains closed months (protection)
+- Replaces existing open month data
+- Does NOT close months
+- Fast incremental updates
 
 **Examples:**
 ```bash
 # Update current open months with latest bookings
-uv run python src/cli/weekly_update.py data/raw/june_2025_weekly.xlsx
+python src/cli/weekly_update.py data/raw/june_2025_weekly.xlsx
 
-# Preview what would be updated (recommended)
-uv run python src/cli/weekly_update.py data/raw/june_2025_weekly.xlsx --dry-run
-
-# Force update (skip confirmation)
-uv run python src/cli/weekly_update.py data/raw/june_2025_weekly.xlsx --force
-```
-
-**Expected Output (Success):**
-```
-🎉 WEEKLY UPDATE COMPLETED
-📊 Results:
-  Success: ✅
-  Months updated: 2
-  Records imported: 15,432
-  Records deleted: 14,203
-  Net change: +1,229
-✅ Weekly update completed successfully!
-```
-
-**Expected Output (Blocked):**
-```
-❌ Weekly update cannot proceed due to validation errors
-💡 Common solutions:
-  • Remove closed month data from Excel file
-  • Use smart_monthly_import.py for closed months
+# Preview what would be updated
+python src/cli/weekly_update.py data/raw/june_2025_weekly.xlsx --dry-run
 ```
 
 ---
 
-### 🛠️ **SCENARIO 4: Manual Month Management**
+### **SCENARIO 4: Manual Month Management**
 
 **Close a Single Month:**
 ```bash
-uv run python src/cli/close_month.py "Jun-25" --closed-by "Kurt" --notes "Month end closing"
+python src/cli/close_month.py "Jun-25" --closed-by "Kurt" --notes "Month end closing"
 ```
 
 **Check Month Status:**
 ```bash
-uv run python src/cli/close_month.py --status "Jun-25"
+python src/cli/close_month.py --status "Jun-25"
 ```
 
 **List All Closed Months:**
 ```bash
-uv run python src/cli/close_month.py --list
-```
-
-**Get Month Statistics:**
-```bash
-uv run python src/cli/close_month.py --month-stats "May-25"
-```
-
-**Examples:**
-```bash
-# Close current month
-uv run python src/cli/close_month.py "Jun-25" --closed-by "Kurt" --notes "End of month closing"
-
-# Check if month is closed
-uv run python src/cli/close_month.py --status "Jun-25"
-
-# View all closed months
-uv run python src/cli/close_month.py --list
-
-# Get detailed statistics
-uv run python src/cli/close_month.py --month-stats "May-25"
+python src/cli/close_month.py --list
 ```
 
 ---
 
-## 📊 Decision Flowchart
+## Language Assignment Integration
 
-```
-📁 What data do you have?
-│
-├── 📅 Complete year (annual report)
-│   └── Use: bulk_import_historical.py
-│
-├── 📅 Complete workbook with new month
-│   └── Use: smart_monthly_import.py ⭐ (RECOMMENDED)
-│
-├── 📅 Weekly update file (open months only)
-│   └── Use: weekly_update.py
-│
-└── 🛠️ Need to manage individual months
-    └── Use: close_month.py
+All closed month imports automatically process language assignments:
+
+### **Automatic Processing:**
+```bash
+# Import automatically includes language processing
+python cli/import_closed_data.py data/raw/May-2025.xlsx --year 2025 --closed-by "Kurt"
+
+# Check for spots requiring manual review
+python cli/assign_languages.py --review-required
 ```
 
-## 🎯 Typical Monthly Workflow
+### **Manual Language Processing:**
+```bash
+# If you need to run language assignment separately
+python cli/assign_languages.py --categorize-all
+python cli/assign_languages.py --process-all-categories
+python cli/assign_languages.py --status
+```
+
+### **Language Assignment Categories:**
+- **LANGUAGE_ASSIGNMENT_REQUIRED**: Algorithmic language detection needed
+- **REVIEW_CATEGORY**: Manual business review required
+- **DEFAULT_ENGLISH**: Should default to English based on business rules
+
+---
+
+## Decision Flowchart
+
+```
+What data do you have?
+│
+├── Closed month data (Excel file)
+│   └── Use: cli/import_closed_data.py ⭐ PRIMARY TOOL
+│
+├── Complete workbook with new month
+│   └── Use: src/importers/smart_monthly_import.py
+│
+├── Weekly update file (open months only)
+│   └── Use: src/cli/weekly_update.py
+│
+└── Need to manage individual months
+    └── Use: src/cli/close_month.py
+```
+
+## Typical Monthly Workflow
 
 ```bash
-# 1. New month becomes available in complete workbook
-uv run python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx --year 2025 --closed-by "Kurt"
+# 1. Import newly closed month (most common)
+python cli/import_closed_data.py data/raw/May-2025.xlsx --year 2025 --closed-by "Kurt"
 
-# 2. Throughout the month, update open months as needed
-uv run python src/cli/weekly_update.py data/raw/weekly_bookings.xlsx
+# 2. Check for spots requiring manual review
+python cli/assign_languages.py --review-required
 
-# 3. Manual month management if needed
-uv run python src/cli/close_month.py --status "current_month"
+# 3. Throughout the month, update open months as needed
+python src/cli/weekly_update.py data/raw/weekly_bookings.xlsx
 
-# 4. When month ends, it gets included in next month's complete workbook
-# (Repeat step 1 with updated workbook)
+# 4. Manual month management if needed
+python src/cli/close_month.py --status "current_month"
 ```
 
 ---
 
-## ⚠️ Important Notes
+## Important Notes
 
 ### **Safety First**
-- **Always use `--dry-run` first** on important imports
-- **Historical imports are permanent** - they close months forever
-- **Weekly updates are blocked** if file contains closed months (built-in protection)
-- **Smart monthly import** automatically protects closed months
+- Always use `--dry-run` first on important imports
+- Closed month imports are permanent - they close months forever
+- Weekly updates are blocked if file contains closed months (built-in protection)
+- Smart monthly import automatically protects closed months
 
 ### **Data Protection**
-- **Closed months cannot be modified** - system prevents accidental overwrites
-- **Complete audit trail** - every import is tracked with batch IDs
-- **Transaction safety** - no deadlocks or corruption
-- **Memory efficient** - handles large files without crashing
+- Closed months cannot be modified - system prevents accidental overwrites
+- Complete audit trail - every import is tracked with batch IDs
+- Transaction safety - no deadlocks or corruption
+- Memory efficient - handles large files without crashing
 
 ### **Column Mapping**
-- **Always captures 29 columns** from any Excel format
-- **Handles 2024 and 2025 format differences** automatically
-- **Maps alternative column names** (e.g., "Gross" vs "Unit rate Gross")
-- **Ignores unmapped columns** safely
+- Always captures 29 columns from any Excel format
+- Handles 2024 and 2025 format differences automatically
+- Maps alternative column names (e.g., "Gross" vs "Unit rate Gross")
+- Ignores unmapped columns safely
+
+### **Language Assignment**
+- All imports automatically process language assignments
+- Business rules categorize spots for appropriate processing
+- Manual review queue populated for complex cases
+- Complete integration with import workflow
 
 ---
 
-## 🏆 Your Perfect Setup
+## Tool Summary
 
-| Scenario | Tool | Use Case |
-|----------|------|----------|
-| **Annual Setup** | `bulk_import_historical.py` | Complete year import |
-| **Monthly Process** | `smart_monthly_import.py` ⭐ | **Your go-to tool!** |
-| **Weekly Updates** | `weekly_update.py` | Ongoing bookings |
-| **Month Management** | `close_month.py` | Individual month control |
+| Scenario | Tool | Use Case | Frequency |
+|----------|------|----------|-----------|
+| **Closed Month Import** | `cli/import_closed_data.py` ⭐ | **Primary tool for all closed data** | **Monthly/Historical** |
+| **Smart Filtering** | `src/importers/smart_monthly_import.py` | Complete workbook filtering | As needed |
+| **Weekly Updates** | `src/cli/weekly_update.py` | Open month updates | Weekly |
+| **Month Management** | `src/cli/close_month.py` | Individual month control | As needed |
+| **Language Assignment** | `cli/assign_languages.py` | Manual language processing | After imports |
 
 ---
 
-## 🚀 Quick Start Examples
+## Quick Start Examples
 
-### **Most Common: Add New Month**
+### **Most Common: Import Closed Month**
 ```bash
-# This is what you'll use most often
-uv run python src/importers/smart_monthly_import.py data/raw/2025_complete.xlsx --year 2025 --closed-by "Kurt"
+# This is your primary workflow
+python cli/import_closed_data.py data/raw/May-2025.xlsx --year 2025 --closed-by "Kurt"
+```
+
+### **Check Language Assignment Status**
+```bash
+# After any import, check for review items
+python cli/assign_languages.py --review-required
+python cli/assign_languages.py --status
 ```
 
 ### **Weekly Business Updates**
 ```bash
 # Update open months with latest bookings
-uv run python src/cli/weekly_update.py data/raw/current_bookings.xlsx --dry-run
-uv run python src/cli/weekly_update.py data/raw/current_bookings.xlsx
+python src/cli/weekly_update.py data/raw/current_bookings.xlsx --dry-run
+python src/cli/weekly_update.py data/raw/current_bookings.xlsx
 ```
 
 ### **Check System Status**
 ```bash
 # See what months are closed
-uv run python src/cli/close_month.py --list
+python src/cli/close_month.py --list
 
 # Check specific month
-uv run python src/cli/close_month.py --status "Jun-25"
+python src/cli/close_month.py --status "Jun-25"
 ```
 
 ---
 
-## 🎉 Success Indicators
+## Success Indicators
 
 **Successful Import:**
-- ✅ "Success: ✅" in results
-- ✅ Records imported count matches expectations
-- ✅ Months closed automatically (for historical/monthly imports)
-- ✅ No error messages
-- ✅ Duration reasonable (3-8 minutes for large files)
+- "Success: ✓" in results
+- Records imported count matches expectations
+- Months closed automatically (for closed month imports)
+- Language assignments processed
+- No error messages
+- Duration reasonable (1-8 minutes depending on file size)
 
 **System Health:**
-- ✅ Transaction management working (no "database locked" errors)
-- ✅ Memory usage stable (MB not GB)
-- ✅ Closed months protected from modification
-- ✅ Audit trail complete
+- Transaction management working (no "database locked" errors)
+- Memory usage stable (MB not GB)
+- Closed months protected from modification
+- Language assignments completed
+- Audit trail complete
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 **Common Issues:**
 
 1. **"Database locked" errors**
-   - ✅ **SOLVED** - BaseService transaction management eliminates this
+   - SOLVED - BaseService transaction management eliminates this
 
 2. **"Month already closed" errors**
-   - ✅ **SOLVED** - Smart monthly import automatically skips closed months
+   - SOLVED - Smart monthly import automatically skips closed months
 
 3. **Memory issues with large files**
-   - ✅ **SOLVED** - Streaming import handles 400K+ records efficiently
+   - SOLVED - Streaming import handles 400K+ records efficiently
 
 4. **Missing columns**
-   - ✅ **SOLVED** - Comprehensive column mapping captures all 29 columns
+   - SOLVED - Comprehensive column mapping captures all 29 columns
 
-5. **Transaction deadlocks**
-   - ✅ **SOLVED** - BaseService prevents nested transaction conflicts
+5. **Language assignment errors**
+   - Check: `uv run python cli/assign_languages.py --status`
+   - Review: `uv run python cli/assign_languages.py --review-required`
 
 ---
 
-## 📞 Quick Reference Commands
+## Quick Reference Commands
 
 ```bash
-# Most used command (monthly process)
-uv run python src/importers/smart_monthly_import.py data/raw/YYYY_complete.xlsx --year YYYY --closed-by "Kurt"
+# Primary import tool (monthly/historical)
+uv run python cli/import_closed_data.py data/raw/YYYY.xlsx --year YYYY --closed-by "Kurt"
+
+# Language assignment management
+uv run python cli/assign_languages.py --review-required
+uv run python cli/assign_languages.py --status
 
 # Check what months are closed
 uv run python src/cli/close_month.py --list
@@ -362,13 +356,10 @@ uv run python src/cli/weekly_update.py data/raw/weekly.xlsx --dry-run
 
 # Close individual month
 uv run python src/cli/close_month.py "Month-YY" --closed-by "Kurt"
-
-# Annual/historical import
-uv run python src/cli/bulk_import_historical.py data/raw/YYYY.xlsx --year YYYY --closed-by "Kurt"
 ```
 
 ---
 
-*This system provides bulletproof, production-ready data import workflows with complete protection against data corruption, transaction deadlocks, and accidental overwrites. All import operations are logged and auditable.*
+This system provides bulletproof, production-ready data import workflows with complete protection against data corruption, transaction deadlocks, and accidental overwrites. All import operations are logged and auditable with integrated language assignment processing.
 
-**🚀 You now have enterprise-grade data import capabilities!**
+**You now have enterprise-grade data import capabilities with intelligent language processing.**
