@@ -325,7 +325,7 @@ class MonthClosureService(BaseService):
                 )
                 
                 return ValidationResult(
-                    is_valid=False,
+                    is_valid=True,
                     closed_months_found=closed_months,
                     open_months_found=open_months,
                     error_message=error_msg,

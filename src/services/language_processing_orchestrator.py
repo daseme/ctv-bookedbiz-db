@@ -116,3 +116,60 @@ class LanguageProcessingOrchestrator:
                 status[f"{category_key}_total"] = total_count
         
         return status
+    def process_batch_categories(self, batch_id: str) -> Dict[str, Dict[str, int]]:
+        """Process all categories for a specific import batch"""
+        self.logger.info(f"Starting processing of batch {batch_id} categories...")
+        results = {}
+        
+        # Process Language Required (batch-specific)
+        self.logger.info(f"Processing Language Assignment Required category for batch {batch_id}...")
+        results['language_required'] = self.process_language_required_category_batch(batch_id)
+        
+        # Process Review Category (batch-specific)  
+        self.logger.info(f"Processing Review Category for batch {batch_id}...")
+        results['review_category'] = self.process_review_category_batch(batch_id)
+        
+        # Process Default English (batch-specific)
+        self.logger.info(f"Processing Default English category for batch {batch_id}...")
+        results['default_english'] = self.process_default_english_category_batch(batch_id)
+        
+        # Calculate summary
+        total_processed = (
+            results['language_required']['processed'] +
+            results['review_category']['processed'] + 
+            results['default_english']['processed']
+        )
+        
+        results['summary'] = {
+            'total_processed': total_processed,
+            'language_assigned': results['language_required']['assigned'],
+            'default_english_assigned': results['default_english']['assigned'],
+            'flagged_for_review': results['review_category']['flagged_for_review']
+        }
+        
+        self.logger.info(f"Batch {batch_id} processing complete: {total_processed} spots processed")
+        return results
+
+    def process_language_required_category_batch(self, batch_id: str) -> Dict[str, int]:
+        """Process LANGUAGE_ASSIGNMENT_REQUIRED spots for specific batch"""
+        spot_ids = self.language_service.get_spots_by_category_and_batch(SpotCategory.LANGUAGE_ASSIGNMENT_REQUIRED, batch_id)
+        if not spot_ids:
+            self.logger.info(f"No language assignment required spots found for batch {batch_id}")
+            return {"processed": 0, "assigned": 0, "errors": 0, "review_flagged": 0}
+        return self.language_service.process_language_required_spots(spot_ids)
+
+    def process_review_category_batch(self, batch_id: str) -> Dict[str, int]:
+        """Process REVIEW_CATEGORY spots for specific batch"""
+        spot_ids = self.language_service.get_spots_by_category_and_batch(SpotCategory.REVIEW_CATEGORY, batch_id)
+        if not spot_ids:
+            self.logger.info(f"No review category spots found for batch {batch_id}")
+            return {"processed": 0, "flagged_for_review": 0, "errors": 0}
+        return self.language_service.process_review_spots(spot_ids)
+
+    def process_default_english_category_batch(self, batch_id: str) -> Dict[str, int]:
+        """Process DEFAULT_ENGLISH spots for specific batch"""
+        spot_ids = self.language_service.get_spots_by_category_and_batch(SpotCategory.DEFAULT_ENGLISH, batch_id)
+        if not spot_ids:
+            self.logger.info(f"No default English spots found for batch {batch_id}")
+            return {"processed": 0, "assigned": 0, "errors": 0}
+        return self.language_service.process_default_english_spots(spot_ids)

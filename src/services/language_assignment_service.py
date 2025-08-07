@@ -493,3 +493,17 @@ class LanguageAssignmentService:
                 self.logger.info(f"Processed {total_saved:,}/{len(spot_ids):,} default English spots...")
         
         return {"processed": len(spot_ids), "assigned": total_saved, "errors": total_errors}
+
+    def get_spots_by_category_and_batch(self, category, batch_id: str, limit: Optional[int] = None) -> List[int]:
+        """Get spot IDs by category for a specific import batch"""
+        cursor = self.db.cursor()
+        query = """
+            SELECT spot_id FROM spots
+            WHERE spot_category = ? AND import_batch_id = ?
+            ORDER BY spot_id
+        """
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        cursor.execute(query, (category.value if hasattr(category, 'value') else category, batch_id))
+        return [row[0] for row in cursor.fetchall()]

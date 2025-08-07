@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-Enhanced weekly update command with automatic market setup.
+Enhanced weekly update command with automatic market setup and language assignment processing.
 Replaces open month data while protecting closed historical months.
-Automatically creates missing markets and schedule assignments as needed.
+Automatically creates missing markets, schedule assignments, and processes language assignments.
 """
 
 import sys
 import argparse
+import sqlite3
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Set
+
+# Add tqdm for progress bars
+from tqdm import tqdm
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -239,6 +243,186 @@ class WeeklyMarketSetupManager:
         }
 
 
+class EnhancedWeeklyImporter:
+    """Enhanced weekly importer with language assignment integration."""
+    
+    def __init__(self, db_connection: DatabaseConnection):
+        self.db = db_connection
+        self.market_manager = WeeklyMarketSetupManager(db_connection)
+        self.import_service = BroadcastMonthImportService(db_connection)
+    
+    def execute_enhanced_weekly_update(self, 
+                                     excel_file: str,
+                                     auto_setup_markets: bool = True,
+                                     dry_run: bool = False) -> Dict:
+        """
+        Execute enhanced weekly update with language assignment integration.
+        """
+        start_time = datetime.now()
+        batch_id = f"enhanced_weekly_{int(start_time.timestamp())}"
+        
+        print(f"🔄 Enhanced Weekly Update Starting...")
+        print(f"Excel file: {excel_file}")
+        print(f"Auto-setup markets: {auto_setup_markets}")
+        print(f"Dry run: {dry_run}")
+        print(f"Batch ID: {batch_id}")
+        print("=" * 60)
+        
+        results = {
+            'success': False,
+            'batch_id': batch_id,
+            'market_setup': None,
+            'import_result': None,
+            'language_assignment': None,  # NEW
+            'duration_seconds': 0,
+            'error_messages': []
+        }
+        
+        try:
+            # Step 1: Market setup (if enabled)
+            if auto_setup_markets and not dry_run:
+                print(f"🏗️  STEP 1: Automatic Market Setup")
+                market_setup_result = self.market_manager.execute_weekly_market_setup(excel_file)
+                results['market_setup'] = market_setup_result
+                
+                print(f"📊 Market Setup Results:")
+                print(f"   🆕 New markets found: {market_setup_result['new_markets_found']}")
+                print(f"   🏗️  Markets created: {market_setup_result['markets_created']}")
+                print(f"   🗓️  Schedule assignments created: {market_setup_result['schedules_created']}")
+                print()
+            
+            # Step 2: Weekly data import
+            print(f"📦 STEP 2: Weekly Data Import")
+            
+            if dry_run:
+                print(f"🔍 DRY RUN - No changes would be made")
+                summary = get_excel_import_summary(excel_file, self.db.db_path)
+                results['import_result'] = {
+                    'would_import': True,
+                    'months_found': len(summary['months_in_excel']),
+                    'total_spots': summary['total_existing_spots_affected']
+                }
+            else:
+                # Execute actual import with progress tracking
+                import_result = self.import_service.execute_month_replacement(
+                    excel_file,
+                    'WEEKLY_UPDATE',
+                    closed_by=None,
+                    dry_run=False
+                )
+                results['import_result'] = import_result
+                
+                # NEW: Step 3: Language Assignment Processing
+                if import_result.success:
+                    print(f"\n🎯 STEP 3: Language Assignment Processing")
+                    language_result = self._process_language_assignments(batch_id)
+                    results['language_assignment'] = language_result
+            
+            results['success'] = True
+            
+        except Exception as e:
+            error_msg = f"Enhanced weekly update failed: {str(e)}"
+            results['error_messages'].append(error_msg)
+            print(f"❌ {error_msg}")
+        
+        # Calculate total duration
+        results['duration_seconds'] = (datetime.now() - start_time).total_seconds()
+        
+        return results
+    
+    def _process_language_assignments(self, batch_id: str) -> Dict:
+        """
+        NEW: Process language assignments after import with comprehensive progress tracking.
+        """
+        language_result = {
+            'success': False,
+            'categorized': 0,
+            'processed': 0,
+            'language_assigned': 0,
+            'default_english_assigned': 0,
+            'flagged_for_review': 0,
+            'error_messages': []
+        }
+        
+        try:
+            # Import language assignment services
+            from services.spot_categorization_service import SpotCategorizationService
+            from services.language_processing_orchestrator import LanguageProcessingOrchestrator
+            
+            conn = sqlite3.connect(self.db.db_path)
+            
+            # Step 3a: Categorization with progress
+            print("🏷️  Categorizing spots for language assignment...")
+            categorization_service = SpotCategorizationService(conn)
+            
+            # Get uncategorized spots for progress tracking
+            # Get uncategorized spots from current batch only
+            batch_spots_query = """
+                SELECT spot_id FROM spots 
+                WHERE import_batch_id = ? AND spot_category IS NULL
+            """
+            cursor = conn.execute(batch_spots_query, (batch_id,))
+            uncategorized_spots = [row[0] for row in cursor.fetchall()]
+            
+            if uncategorized_spots:
+                print(f"   📊 Found {len(uncategorized_spots):,} uncategorized spots")
+                
+                # Categorize in batches with progress tracking
+                batch_size = 1000
+                total_categorized = 0
+                
+                with tqdm(total=len(uncategorized_spots), desc="🏷️  Categorizing spots", unit=" spots") as pbar:
+                    for i in range(0, len(uncategorized_spots), batch_size):
+                        batch = uncategorized_spots[i:i + batch_size]
+                        categorization_service.categorize_spots_batch(batch)
+                        total_categorized += len(batch)
+                        pbar.update(len(batch))
+                        pbar.set_description(f"🏷️  Categorized {total_categorized:,}/{len(uncategorized_spots):,}")
+                
+                language_result['categorized'] = len(uncategorized_spots)
+                print(f"   ✅ Categorization complete: {len(uncategorized_spots):,} spots categorized")
+            else:
+                print(f"   ✅ No uncategorized spots found - all spots already categorized")
+            
+            # Step 3b: Process all categories with progress
+            print("🎯 Processing language assignments...")
+            orchestrator = LanguageProcessingOrchestrator(conn)
+            
+            # Get processing status for progress tracking
+            processing_results = orchestrator.process_batch_categories(batch_id)
+            
+            # Extract detailed results from processing
+            summary = processing_results['summary']
+            language_result['processed'] = summary['total_processed']
+            language_result['language_assigned'] = summary['language_assigned']
+            language_result['default_english_assigned'] = summary['default_english_assigned']
+            language_result['flagged_for_review'] = summary['flagged_for_review']
+            language_result['success'] = True
+            
+            print(f"✅ Language assignment complete:")
+            print(f"   📊 Spots categorized: {language_result['categorized']:,}")
+            print(f"   🔤 Spots processed: {language_result['processed']:,}")
+            print(f"   🎯 Language assigned: {language_result['language_assigned']:,}")
+            print(f"   🇺🇸 Default English assigned: {language_result['default_english_assigned']:,}")
+            print(f"   📋 Flagged for review: {language_result['flagged_for_review']:,}")
+            
+            conn.close()
+            
+        except Exception as e:
+            error_msg = f"Language assignment processing failed: {str(e)}"
+            language_result['error_messages'].append(error_msg)
+            print(f"⚠️  {error_msg}")
+            
+            # Try to provide partial success info
+            try:
+                if 'conn' in locals():
+                    conn.close()
+            except:
+                pass
+        
+        return language_result
+
+
 def display_enhanced_weekly_preview(excel_file: str, db_path: str, auto_setup: bool):
     """Display what the enhanced weekly update would do."""
     print(f"📋 Enhanced Weekly Update Preview")
@@ -263,6 +447,14 @@ def display_enhanced_weekly_preview(excel_file: str, db_path: str, auto_setup: b
         
         # Standard import preview
         can_proceed = display_weekly_update_preview(excel_file, db_path)
+        
+        # NEW: Language assignment preview
+        if can_proceed:
+            print(f"\n🎯 Language Assignment Preview:")
+            print(f"   📋 All imported spots will be categorized for language assignment")
+            print(f"   🔤 Business rules will be applied automatically")
+            print(f"   📋 Spots requiring manual review will be flagged")
+            print(f"   🏷️  Categories: LANGUAGE_REQUIRED, DEFAULT_ENGLISH, REVIEW_CATEGORY")
         
         db_connection.close()
         return can_proceed
@@ -329,6 +521,7 @@ def get_user_confirmation(total_spots: int, open_months: int, new_markets: int =
     actions = [
         f"REPLACE {total_spots:,} existing spots",
         f"Update {open_months} open months",
+        "Process language assignments automatically",  # NEW
         "Preserve all closed/historical months"
     ]
     
@@ -351,14 +544,14 @@ def get_user_confirmation(total_spots: int, open_months: int, new_markets: int =
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Enhanced weekly update with automatic market setup",
+        description="Enhanced weekly update with automatic market setup and language assignment",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Standard weekly update (original functionality)
+  # Standard weekly update with language assignment
   python enhanced_weekly_update.py data/booked_business_current.xlsx
 
-  # Enhanced weekly update with automatic market setup
+  # Enhanced weekly update with automatic market setup and language assignment
   python enhanced_weekly_update.py data/booked_business_current.xlsx --auto-setup
 
   # Preview what would happen
@@ -368,6 +561,8 @@ Enhanced Features:
   • Automatic detection of new markets in weekly data
   • Missing market creation with proper naming
   • Schedule assignment setup for new markets
+  • Integrated language assignment processing with business rules
+  • Comprehensive progress tracking and reporting
   • Backward compatible with existing workflows
         """
     )
@@ -410,22 +605,6 @@ Enhanced Features:
             print(f"Mode: DRY RUN (no changes will be made)")
         print()
         
-        # Market setup results
-        market_setup_results = None
-        
-        # Execute market setup if enabled
-        if args.auto_setup and not args.dry_run:
-            db_connection = DatabaseConnection(args.db_path)
-            market_manager = WeeklyMarketSetupManager(db_connection)
-            market_setup_results = market_manager.execute_weekly_market_setup(args.excel_file)
-            db_connection.close()
-            
-            if market_setup_results['markets_created'] > 0:
-                print(f"✅ Market setup completed:")
-                print(f"   🆕 New markets created: {market_setup_results['markets_created']}")
-                print(f"   🗓️  Schedule assignments created: {market_setup_results['schedules_created']}")
-                print()
-        
         # Display enhanced preview and validate
         can_proceed = display_enhanced_weekly_preview(args.excel_file, args.db_path, args.auto_setup)
         
@@ -442,10 +621,8 @@ Enhanced Features:
             summary = get_excel_import_summary(args.excel_file, args.db_path)
             new_market_count = 0
             
-            if args.auto_setup and market_setup_results:
-                new_market_count = market_setup_results['markets_created']
-            elif args.auto_setup:
-                # Dry run - estimate new markets
+            if args.auto_setup:
+                # Estimate new markets
                 db_connection = DatabaseConnection(args.db_path)
                 market_manager = WeeklyMarketSetupManager(db_connection)
                 new_markets = market_manager.scan_excel_for_new_markets(args.excel_file)
@@ -463,19 +640,18 @@ Enhanced Features:
                 print(f"❌ Weekly update cancelled by user")
                 sys.exit(0)
         
-        # Execute the standard update
+        # Execute the enhanced update
         db_connection = DatabaseConnection(args.db_path)
-        service = BroadcastMonthImportService(db_connection)
+        importer = EnhancedWeeklyImporter(db_connection)
         
         try:
-            result = service.execute_month_replacement(
+            results = importer.execute_enhanced_weekly_update(
                 args.excel_file,
-                'WEEKLY_UPDATE',
-                closed_by=None,  # Not needed for weekly updates
-                dry_run=args.dry_run
+                args.auto_setup,
+                args.dry_run
             )
             
-            # Display results
+            # Display enhanced results
             print(f"\n{'='*60}")
             if args.dry_run:
                 print(f"🔍 ENHANCED WEEKLY UPDATE DRY RUN COMPLETED")
@@ -483,43 +659,67 @@ Enhanced Features:
                 print(f"🎉 ENHANCED WEEKLY UPDATE COMPLETED")
             print(f"{'='*60}")
             
+            print(f"📊 Overall Results:")
+            print(f"  Success: {'✅' if results['success'] else '❌'}")
+            print(f"  Duration: {results['duration_seconds']:.2f} seconds")
+            print(f"  Batch ID: {results['batch_id']}")
+            
             # Market setup results
-            if market_setup_results and not args.dry_run:
-                print(f"🏗️  Market Setup Results:")
-                print(f"   New markets found: {market_setup_results['new_markets_found']}")
-                print(f"   Markets created: {market_setup_results['markets_created']}")
-                print(f"   Schedule assignments created: {market_setup_results['schedules_created']}")
-                print(f"   Setup duration: {market_setup_results['duration_seconds']:.2f} seconds")
-                print()
+            if results['market_setup']:
+                setup = results['market_setup']
+                print(f"\n🏗️  Market Setup Results:")
+                print(f"  New markets found: {setup['new_markets_found']}")
+                print(f"  Markets created: {setup['markets_created']}")
+                print(f"  Schedule assignments created: {setup['schedules_created']}")
+                print(f"  Setup duration: {setup['duration_seconds']:.2f} seconds")
             
             # Import results
-            print(f"📦 Import Results:")
-            print(f"   Success: {'✅' if result.success else '❌'}")
-            print(f"   Batch ID: {result.batch_id}")
-            print(f"   Duration: {result.duration_seconds:.2f} seconds")
-            print(f"   Months updated: {len(result.broadcast_months_affected)}")
+            if results['import_result']:
+                import_res = results['import_result']
+                print(f"\n📦 Import Results:")
+                if not args.dry_run and hasattr(import_res, 'success'):
+                    print(f"  Records deleted: {import_res.records_deleted:,}")
+                    print(f"  Records imported: {import_res.records_imported:,}")
+                    print(f"  Net change: {import_res.records_imported - import_res.records_deleted:+,}")
+                    print(f"  Months affected: {len(import_res.broadcast_months_affected)}")
+                else:
+                    print(f"  Would import: {import_res.get('total_spots', 0):,} spots")
+                    print(f"  Months found: {import_res.get('months_found', 0)}")
             
-            if not args.dry_run:
-                print(f"   Records deleted: {result.records_deleted:,}")
-                print(f"   Records imported: {result.records_imported:,}")
-                print(f"   Net change: {result.records_imported - result.records_deleted:+,}")
+            # NEW: Language assignment results
+            if results['language_assignment']:
+                lang_res = results['language_assignment']
+                print(f"\n🎯 Language Assignment Results:")
+                print(f"  Spots categorized: {lang_res['categorized']:,}")
+                print(f"  Spots processed: {lang_res['processed']:,}")
+                print(f"  Language assigned: {lang_res['language_assigned']:,}")
+                print(f"  Default English assigned: {lang_res['default_english_assigned']:,}")
+                print(f"  Flagged for review: {lang_res['flagged_for_review']:,}")
+                print(f"  Success: {'✅' if lang_res['success'] else '❌'}")
+                
+                if lang_res['error_messages']:
+                    print(f"  Errors: {len(lang_res['error_messages'])}")
             
-            if result.error_messages:
+            if results['error_messages']:
                 print(f"\n❌ Errors:")
-                for error in result.error_messages:
+                for error in results['error_messages']:
                     print(f"  • {error}")
                 sys.exit(1)
             
-            if not args.dry_run and result.success:
+            if results['success'] and not args.dry_run:
                 print(f"\n✅ Enhanced weekly update completed successfully!")
                 print(f"📋 Summary:")
-                print(f"   • Updated {len(result.broadcast_months_affected)} open months")
-                if market_setup_results and market_setup_results['markets_created'] > 0:
-                    print(f"   • Created {market_setup_results['markets_created']} new markets")
+                print(f"   • Updated {len(results['import_result'].broadcast_months_affected) if results['import_result'] and hasattr(results['import_result'], 'broadcast_months_affected') else 'N/A'} open months")
+                if results['market_setup'] and results['market_setup']['markets_created'] > 0:
+                    print(f"   • Created {results['market_setup']['markets_created']} new markets")
+                if results['language_assignment'] and results['language_assignment']['success']:
+                    print(f"   • Processed {results['language_assignment']['processed']:,} language assignments")
                 print(f"   • Historical/closed months preserved")
                 print(f"   • Database ready for reporting")
                 
                 print(f"\n💡 Next steps:")
+                if results['language_assignment'] and results['language_assignment']['flagged_for_review'] > 0:
+                    print(f"   • Review flagged spots: uv run python cli/assign_languages.py --review-required")
                 print(f"   • Generate reports with updated data")
                 print(f"   • Close current month when ready: uv run python src/cli/close_month.py")
             

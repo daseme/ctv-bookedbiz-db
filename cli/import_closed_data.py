@@ -67,8 +67,9 @@ import sqlite3
 from tqdm import tqdm
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, str(Path(__file__).parent))  # Add cli dir
+sys.path.insert(0, str(Path(__file__).parent.parent))  # Add root dir  
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))  # Add src dir
 
 from services.broadcast_month_import_service import BroadcastMonthImportService
 from services.import_integration_utilities import get_excel_import_summary
