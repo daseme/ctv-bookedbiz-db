@@ -93,7 +93,7 @@ class ProductionExcelImporter:
         'Time out': 'time_out',
         'Length': 'length_seconds',
         'Media/Name/Program': 'media',
-        'Comments': 'program',
+        'Comments': 'comments',
         'Language': 'language_code',
         'Format': 'format',
         'Units-Spot count': 'sequence_number',

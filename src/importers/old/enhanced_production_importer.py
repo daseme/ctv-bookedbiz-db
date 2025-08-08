@@ -139,7 +139,7 @@ class EnhancedProductionExcelImporter:
         'Time In': 'time_in',
         'Time out': 'time_out',
         'Length': 'length_seconds',
-        'Comments': 'program',
+        'Comments': 'comments',  # Actual air times, sometimes other notes
         'Language': 'language_code',
         'Line': 'line_number',
         'Type': 'spot_type',

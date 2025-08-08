@@ -152,7 +152,7 @@ class SQLiteSpotRepository(SpotRepository, BaseService):
             time_out=row['time_out'],
             length_seconds=row['length_seconds'],
             media=row['media'],
-            program=row['program'],
+            comments=row['comments'],  # was program=row['program']
             language_code=row['language_code'],
             format=row['format'],
             sequence_number=row['sequence_number'],

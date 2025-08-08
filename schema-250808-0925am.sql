@@ -1,6 +1,6 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-08-05 10:57:18
+-- Generated on: 2025-08-08 09:25:49
 -- 
 -- SQLite Version: 3.40.1
 -- 
@@ -13,7 +13,7 @@
 
 PRAGMA foreign_keys = ON;
 
--- Tables (19)
+-- Tables (21)
 -- ============================================================
 
 -- Table: agencies
@@ -117,6 +117,43 @@ CREATE TABLE customers (
 -- Indexes for table: customers
 CREATE INDEX idx_customers_agency ON customers(agency_id);
 CREATE INDEX idx_customers_sector ON customers(sector_id);
+
+-- Table: entity_alias_history
+-- ----------------------------------------
+CREATE TABLE entity_alias_history (
+    history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias_id INTEGER,
+    action TEXT NOT NULL CHECK (action IN ('CREATE', 'UPDATE', 'DELETE', 'DEACTIVATE')),
+    old_values TEXT,
+    new_values TEXT,  
+    changed_by TEXT NOT NULL,
+    changed_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for table: entity_alias_history
+CREATE INDEX idx_entity_alias_history_alias ON entity_alias_history(alias_id);
+CREATE INDEX idx_entity_alias_history_date ON entity_alias_history(changed_date);
+
+-- Table: entity_aliases
+-- ----------------------------------------
+CREATE TABLE entity_aliases (
+    alias_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias_name TEXT NOT NULL,
+    entity_type TEXT NOT NULL CHECK (entity_type IN ('customer', 'agency')),
+    target_entity_id INTEGER NOT NULL,
+    confidence_score INTEGER DEFAULT 100 CHECK (confidence_score BETWEEN 1 AND 100),
+    created_by TEXT NOT NULL,
+    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT 1,
+    notes TEXT,
+    UNIQUE(alias_name, entity_type)
+);
+
+-- Indexes for table: entity_aliases
+CREATE INDEX idx_entity_aliases_created ON entity_aliases(created_date);
+CREATE INDEX idx_entity_aliases_lookup ON entity_aliases(alias_name, entity_type, is_active);
+CREATE INDEX idx_entity_aliases_target ON entity_aliases(target_entity_id, entity_type);
 
 -- Table: import_batches
 -- ----------------------------------------
@@ -443,7 +480,7 @@ CREATE TABLE spots (
         -- Spot details
         length_seconds TEXT,
         media TEXT,
-        program TEXT,
+        comments TEXT,
         language_code TEXT,  -- More descriptive than 'lang'
         format TEXT,
         sequence_number INTEGER,  -- More descriptive than 'number_field'
@@ -956,6 +993,6 @@ BEGIN
 END;
 
 -- End of schema export
--- Total tables: 19
+-- Total tables: 21
 -- Total views: 10
 -- Total triggers: 3
