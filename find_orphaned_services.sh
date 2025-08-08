@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# Script to find orphaned/unused service files
+# Script to show detailed dependencies for each service with line numbers and context
 # Run this from your project root directory
-
-echo "=== Finding Orphaned Services ==="
-echo
 
 # Auto-detect services directory location
 SERVICES_DIR=""
@@ -18,79 +15,109 @@ else
     exit 1
 fi
 
-echo "📁 Found services directory at: $SERVICES_DIR"
+echo "=== Detailed Service Dependencies Analysis ==="
+echo "📁 Services directory: $SERVICES_DIR"
 echo
 
 # Get all service files (excluding __init__.py and __pycache__)
 SERVICE_FILES=$(find "$SERVICES_DIR" -name "*.py" -not -name "__init__.py" | grep -v __pycache__ | sort)
 
-ORPHANED_SERVICES=()
-USED_SERVICES=()
-
 for service_file in $SERVICE_FILES; do
-    # Extract service name (remove .py extension and path)
     service_name=$(basename "$service_file" .py)
     
-    echo "Checking: $service_name"
-    
-    # Search for various ways this service might be referenced
-    # 1. Direct imports: from services.service_name import ...
-    # 2. Module imports: import services.service_name
-    # 3. String references (for dynamic imports)
-    # 4. Class name references (assuming service follows naming convention)
+    echo "🔍 ==============================================="
+    echo "📦 SERVICE: $service_name"
+    echo "   File: $service_file"
+    echo "🔍 ==============================================="
     
     # Convert snake_case to potential CamelCase class name
     class_name=$(echo "$service_name" | sed 's/_/ /g' | sed 's/\b\(.\)/\u\1/g' | sed 's/ //g')
     
-    found=0
+    found_any=false
     
-    # Search patterns (excluding the service file itself)
-    # Handle both direct services/ and src/services/ structures
-    patterns=(
+    echo "🔎 Searching for import patterns..."
+    
+    # Import patterns
+    import_patterns=(
         "from services.$service_name import"
         "import services.$service_name"
         "from services import.*$service_name"
-        "services\.$service_name"
         "from src\.services.$service_name import"
         "import src\.services.$service_name"
         "from src\.services import.*$service_name"
+    )
+    
+    for pattern in "${import_patterns[@]}"; do
+        results=$(grep -rn --include="*.py" --exclude-dir=__pycache__ --exclude="$service_file" "$pattern" . 2>/dev/null)
+        if [ -n "$results" ]; then
+            echo "  📥 IMPORTS ($pattern):"
+            while IFS= read -r line; do
+                echo "     $line"
+            done <<< "$results"
+            found_any=true
+            echo
+        fi
+    done
+    
+    echo "🔎 Searching for usage patterns..."
+    
+    # Usage patterns
+    usage_patterns=(
+        "services\.$service_name"
         "src\.services\.$service_name"
-        "$class_name"
+    )
+    
+    for pattern in "${usage_patterns[@]}"; do
+        results=$(grep -rn --include="*.py" --exclude-dir=__pycache__ --exclude="$service_file" "$pattern" . 2>/dev/null)
+        if [ -n "$results" ]; then
+            echo "  🔧 USAGE ($pattern):"
+            while IFS= read -r line; do
+                echo "     $line"
+            done <<< "$results"
+            found_any=true
+            echo
+        fi
+    done
+    
+    echo "🔎 Searching for class name references..."
+    
+    # Class name references
+    class_results=$(grep -rn --include="*.py" --exclude-dir=__pycache__ --exclude="$service_file" "$class_name" . 2>/dev/null)
+    if [ -n "$class_results" ]; then
+        echo "  🏛️  CLASS REFERENCES ($class_name):"
+        while IFS= read -r line; do
+            echo "     $line"
+        done <<< "$class_results"
+        found_any=true
+        echo
+    fi
+    
+    echo "🔎 Searching for string references..."
+    
+    # String references (for dynamic imports)
+    string_patterns=(
         "\"$service_name\""
         "'$service_name'"
     )
     
-    for pattern in "${patterns[@]}"; do
-        # Search entire codebase except the service file itself and __pycache__
-        if grep -r --include="*.py" --exclude-dir=__pycache__ --exclude="$service_file" -q "$pattern" .; then
-            found=1
-            break
+    for pattern in "${string_patterns[@]}"; do
+        results=$(grep -rn --include="*.py" --exclude-dir=__pycache__ --exclude="$service_file" "$pattern" . 2>/dev/null)
+        if [ -n "$results" ]; then
+            echo "  💬 STRING REFERENCES ($pattern):"
+            while IFS= read -r line; do
+                echo "     $line"
+            done <<< "$results"
+            found_any=true
+            echo
         fi
     done
     
-    if [ $found -eq 0 ]; then
-        ORPHANED_SERVICES+=("$service_file")
-        echo "  ❌ ORPHANED: $service_name"
+    if [ "$found_any" = false ]; then
+        echo "  ❌ NO REFERENCES FOUND - POTENTIALLY ORPHANED"
     else
-        USED_SERVICES+=("$service_file")
-        echo "  ✅ USED: $service_name"
+        echo "  ✅ SERVICE IS BEING USED"
     fi
+    
+    echo
     echo
 done
-
-echo "=== SUMMARY ==="
-echo
-echo "📊 Total services analyzed: $(echo "$SERVICE_FILES" | wc -l)"
-echo "✅ Used services: ${#USED_SERVICES[@]}"
-echo "❌ Potentially orphaned services: ${#ORPHANED_SERVICES[@]}"
-echo
-
-if [ ${#ORPHANED_SERVICES[@]} -gt 0 ]; then
-    echo "🗑️  POTENTIALLY ORPHANED SERVICES:"
-    for service in "${ORPHANED_SERVICES[@]}"; do
-        echo "   - $service"
-    done
-    echo
-    echo "⚠️  WARNING: Please manually verify these results before deletion!"
-    echo "   Some services might be used in ways not detected by this script."
-fi
