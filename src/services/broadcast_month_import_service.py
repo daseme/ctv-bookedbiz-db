@@ -33,36 +33,37 @@ from services.entity_alias_service import EntityAliasService
 logger = logging.getLogger(__name__)
 
 EXCEL_COLUMN_POSITIONS = {
-    0: 'bill_code',           # Bill Code
-    1: 'air_date',            # Start Date  
-    2: 'end_date',            # End Date
-    3: 'day_of_week',         # Day(s)
-    4: 'time_in',             # Time In
-    5: 'time_out',            # Time out
-    6: 'length_seconds',      # Length
-    7: 'program',             # Media/Name/Program
-    8: None,                  # Comments (ignore - not in schema)
-    9: 'language_code',       # Language
-    10: 'format',             # Format
-    11: 'sequence_number',    # Units-Spot count
-    12: 'line_number',        # Line
-    13: 'spot_type',          # Type
-    14: 'estimate',           # Agency/Episode# or cut number
-    15: 'gross_rate',         # Unit rate Gross
-    16: 'make_good',          # Make Good
-    17: 'spot_value',         # Spot Value
-    18: 'broadcast_month',    # Month
-    19: 'broker_fees',        # Broker Fees
-    20: 'priority',           # Sales/rep com: revenue sharing
-    21: 'station_net',        # Station Net
-    22: 'sales_person',       # Sales Person
-    23: 'revenue_type',       # Revenue Type
-    24: 'billing_type',       # Billing Type
-    25: 'agency_flag',        # Agency?
-    26: 'affidavit_flag',     # Affidavit?
-    27: 'contract',           # Notarize?
-    28: 'market_name',        # Market
+    0:  'bill_code',           # Bill Code
+    1:  'air_date',            # Start Date  
+    2:  'end_date',            # End Date
+    3:  'day_of_week',         # Day(s)
+    4:  'time_in',             # Time In
+    5:  'time_out',            # Time Out
+    6:  'length_seconds',      # Length
+    7:  'media',               # Media/Name/Program (was "program", now renamed)
+    8:  'comments',            # Comments (if we want to preserve both, otherwise make this `None`)
+    9:  'language_code',       # Language
+    10: 'format',              # Format
+    11: 'sequence_number',     # Units-Spot count
+    12: 'line_number',         # Line
+    13: 'spot_type',           # Type
+    14: 'estimate',            # Agency/Episode# or cut number
+    15: 'gross_rate',          # Unit rate Gross
+    16: 'make_good',           # Make Good
+    17: 'spot_value',          # Spot Value
+    18: 'broadcast_month',     # Month
+    19: 'broker_fees',         # Broker Fees
+    20: 'priority',            # Sales/rep com: revenue sharing
+    21: 'station_net',         # Station Net
+    22: 'sales_person',        # Sales Person
+    23: 'revenue_type',        # Revenue Type
+    24: 'billing_type',        # Billing Type
+    25: 'agency_flag',         # Agency?
+    26: 'affidavit_flag',      # Affidavit?
+    27: 'contract',            # Notarize?
+    28: 'market_name',         # Market
 }
+
 
 
 @contextlib.contextmanager
@@ -460,271 +461,163 @@ class BroadcastMonthImportService(BaseService):
     
     def _import_excel_data_with_progress(self, excel_file: str, batch_id: str, conn, allowed_months: List[str]) -> int:
         """
-        Import Excel data with comprehensive progress tracking and clean output.
+        Import Excel data using fixed column positions with comprehensive progress tracking.
         """
+        from openpyxl import load_workbook
+        from datetime import datetime
+        import re
+
         # Verify batch exists
         cursor = conn.execute("SELECT COUNT(*) FROM import_batches WHERE batch_id = ?", (batch_id,))
         if cursor.fetchone()[0] == 0:
             raise BroadcastMonthImportError(f"batch_id {batch_id} not found in import_batches table")
-        
+
         try:
-            from openpyxl import load_workbook
-            from datetime import datetime
-            import re
-            
-            # Load workbook with suppressed verbose logging
             with suppress_verbose_logging(), suppress_stdout_stderr():
                 workbook = load_workbook(excel_file, read_only=True, data_only=True)
                 worksheet = workbook.active
-            
-            # Get header row and build column mapping
-            header_row = next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))
-            
-            # Comprehensive column mapping (consolidated from working version)
-            column_mapping = {
-                # Core fields
-                'Bill Code': 'bill_code',
-                'Start Date': 'air_date',
-                'End Date': 'end_date',
-                'Time In': 'time_in',
-                'Time out': 'time_out',
-                'Length': 'length_seconds',
-                'Comments': 'program',
-                'Language': 'language_code',
-                'Line': 'line_number',
-                'Type': 'spot_type',
-                'Make Good': 'make_good',
-                'Spot Value': 'spot_value',
-                'Month': 'broadcast_month',
-                'Broker Fees': 'broker_fees',
-                'Revenue Type': 'revenue_type',
-                'Billing Type': 'billing_type',
-                'Market': 'market_name',
-                
-                # 2024/2025 format variations
-                'Day(s)': 'day_of_week',
-                'Day': 'day_of_week',
-                'Media/Name/Program': 'media',
-                'Show Name': 'media',
-                'Format': 'format',
-                'Show': 'format',
-                'Units-Spot count': 'sequence_number',
-                'Spots': 'sequence_number',
-                'Agency/Episode# or cut number': 'estimate',
-                'Estimate': 'estimate',
-                'Unit rate Gross': 'gross_rate',
-                'Gross': 'gross_rate',
-                ' Gross ': 'gross_rate',
-                'Sales/rep com: revenue sharing': 'priority',
-                'Priority': 'priority',
-                'Station Net': 'station_net',
-                'Net': 'station_net',
-                ' Net ': 'station_net',
-                'Sales Person': 'sales_person',
-                'AE': 'sales_person',
-                'Agency?': 'agency_flag',
-                'Agency': 'agency_flag',
-                'Affidavit?': 'affidavit_flag',
-                'Affidavit': 'affidavit_flag',
-                'Notarize?': 'contract',
-                'Notarize': 'contract',
-            }
 
-            # Build field indices
-            field_indices = {}
-            for i, header in enumerate(header_row):
-                if header and str(header).strip() in column_mapping:
-                    field_name = column_mapping[str(header).strip()]
-                    field_indices[field_name] = i
-
-            # Validate required columns
-            required_fields = ['bill_code', 'broadcast_month']
-            missing_fields = [field for field in required_fields if field not in field_indices]
-            if missing_fields:
-                raise BroadcastMonthImportError(f"Missing required columns: {missing_fields}")
-
-            # Count total records for progress tracking
-            total_records = worksheet.max_row - 1  # Exclude header
-            
+            total_records = worksheet.max_row - 1
             imported_count = 0
             skipped_count = 0
             filtered_count = 0
             unmatched_customers = set()
             unmatched_agencies = set()
 
-            # Process each data row with comprehensive progress tracking
             with tqdm(total=total_records, desc="📦 Processing Excel rows", unit=" rows") as pbar:
                 for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
                     pbar.update(1)
-                    
+
                     try:
-                        if not any(cell for cell in row):
+                        if not any(row):
                             continue
 
-                        # Extract broadcast month first for filtering
-                        month_col_index = field_indices.get('broadcast_month')
-                        if month_col_index is None or month_col_index >= len(row):
+                        # Use fixed position for broadcast_month
+                        month_col_index = [k for k, v in EXCEL_COLUMN_POSITIONS.items() if v == 'broadcast_month']
+                        if not month_col_index:
+                            skipped_count += 1
+                            continue
+                        month_value = row[month_col_index[0]]
+
+                        if not month_value:
                             skipped_count += 1
                             continue
 
-                        broadcast_month_raw = row[month_col_index]
-                        if not broadcast_month_raw:
-                            skipped_count += 1
-                            continue
-
-                        # Convert broadcast month format (suppress debug messages)
-                        with suppress_verbose_logging():
-                            try:
-                                raw_date = broadcast_month_raw.date() if hasattr(broadcast_month_raw, 'date') else broadcast_month_raw
-                                if hasattr(raw_date, 'strftime'):
-                                    broadcast_month_display = raw_date.strftime("%b-%y")
+                        # Format broadcast_month
+                        try:
+                            if hasattr(month_value, 'date'):
+                                bm_date = month_value.date()
+                            elif isinstance(month_value, str):
+                                for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"]:
+                                    try:
+                                        bm_date = datetime.strptime(month_value.strip(), fmt).date()
+                                        break
+                                    except:
+                                        continue
                                 else:
-                                    if isinstance(raw_date, str):
-                                        for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"]:
-                                            try:
-                                                parsed_date = datetime.strptime(raw_date.strip(), fmt)
-                                                broadcast_month_display = parsed_date.strftime("%b-%y")
-                                                break
-                                            except:
-                                                continue
-                                        else:
-                                            broadcast_month_display = raw_date.strip()
-                                    else:
-                                        parsed_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
-                                        broadcast_month_display = parsed_date.strftime("%b-%y")
-                            except:
-                                skipped_count += 1
-                                continue
-
-                        # Validate format
-                        if not re.match(r'^[A-Z][a-z]{2}-\d{2}$', broadcast_month_display):
+                                    bm_date = datetime.strptime(str(month_value), "%Y-%m-%d").date()
+                            else:
+                                bm_date = month_value
+                            broadcast_month_display = bm_date.strftime("%b-%y")
+                        except:
                             skipped_count += 1
                             continue
 
-                        # Filter: Skip if not in allowed months
                         if broadcast_month_display not in allowed_months:
                             filtered_count += 1
                             continue
 
-                        # Build spot data record
                         spot_data = {
                             'import_batch_id': batch_id,
                             'broadcast_month': broadcast_month_display,
                         }
 
-                        # Extract all available fields
-                        for field_name, col_index in field_indices.items():
-                            if col_index < len(row):
-                                raw_value = row[col_index]
-                                
-                                if raw_value is not None and raw_value != '':
-                                    if field_name == 'bill_code':
-                                        spot_data[field_name] = str(raw_value).strip()
-                                    elif field_name == 'air_date':
-                                        try:
-                                            if hasattr(raw_value, 'date'):
-                                                spot_data[field_name] = raw_value.date().isoformat()
-                                            else:
-                                                spot_data[field_name] = str(raw_value).strip()
-                                        except:
-                                            spot_data[field_name] = str(raw_value).strip()
-                                    elif field_name in ['gross_rate', 'station_net', 'spot_value', 'broker_fees']:
-                                        try:
-                                            spot_data[field_name] = float(raw_value) if raw_value else None
-                                        except:
-                                            spot_data[field_name] = None
-                                    elif field_name == 'broadcast_month':
-                                        pass  # Already processed
-                                    elif field_name == 'day_of_week':
-                                        try:
-                                            if raw_value:
-                                                with suppress_verbose_logging():
-                                                    spot_data[field_name] = normalize_broadcast_day(str(raw_value).strip())
-                                        except:
-                                            spot_data[field_name] = str(raw_value).strip() if raw_value else None
-                                    else:
-                                        spot_data[field_name] = str(raw_value).strip() if raw_value else None
+                        for col_idx, field_name in EXCEL_COLUMN_POSITIONS.items():
+                            if field_name and col_idx < len(row):
+                                val = row[col_idx]
+                                if val is None or val == '':
+                                    continue
 
-                        # Lookup market_id
-                        if 'market_name' in spot_data and spot_data['market_name']:
+                                if field_name == 'bill_code':
+                                    spot_data[field_name] = str(val).strip()
+                                elif field_name == 'air_date':
+                                    try:
+                                        spot_data[field_name] = val.date().isoformat() if hasattr(val, 'date') else str(val).strip()
+                                    except:
+                                        spot_data[field_name] = str(val).strip()
+                                elif field_name in ['gross_rate', 'station_net', 'spot_value', 'broker_fees']:
+                                    try:
+                                        spot_data[field_name] = float(val)
+                                    except:
+                                        spot_data[field_name] = None
+                                elif field_name == 'day_of_week':
+                                    try:
+                                        spot_data[field_name] = normalize_broadcast_day(str(val).strip())
+                                    except:
+                                        spot_data[field_name] = str(val).strip()
+                                elif field_name != 'broadcast_month':  # already handled
+                                    spot_data[field_name] = str(val).strip()
+
+                        if 'market_name' in spot_data:
                             market_id = self._lookup_market_id(spot_data['market_name'], conn)
                             if market_id:
                                 spot_data['market_id'] = market_id
 
-                        # Enhanced entity lookup with aliases (suppress verbose output)
-                        if 'bill_code' in spot_data and spot_data['bill_code']:
+                        if 'bill_code' in spot_data:
                             with suppress_verbose_logging():
                                 entities = self._lookup_entities_with_aliases(spot_data['bill_code'], conn)
-                            
                             if entities['customer_id']:
                                 spot_data['customer_id'] = entities['customer_id']
                             else:
                                 unmatched_customers.add(spot_data['bill_code'])
-                            
                             if entities['agency_id']:
                                 spot_data['agency_id'] = entities['agency_id']
                             else:
-                                # Only track if it has agency format
                                 if ':' in spot_data['bill_code']:
-                                    agency_part = spot_data['bill_code'].split(':', 1)[0].strip()
-                                    unmatched_agencies.add(agency_part)
+                                    unmatched_agencies.add(spot_data['bill_code'].split(':', 1)[0].strip())
 
-                        # Set default language_id
                         if 'language_id' not in spot_data:
                             spot_data['language_id'] = 1
 
-                        # Validate required fields
                         if not spot_data.get('bill_code') or not spot_data.get('air_date'):
                             skipped_count += 1
                             continue
 
-                        # Insert record (suppress any INSERT debug messages)
                         with suppress_verbose_logging():
                             fields = list(spot_data.keys())
-                            placeholders = ', '.join(['?' for _ in fields])
+                            placeholders = ', '.join(['?'] * len(fields))
                             field_names = ', '.join(fields)
                             values = [spot_data[field] for field in fields]
 
                             query = f"INSERT INTO spots ({field_names}) VALUES ({placeholders})"
-                            cursor = conn.execute(query, values)
+                            conn.execute(query, values)
                             imported_count += 1
-                        
-                        # Update progress description periodically
+
                         if imported_count % 1000 == 0:
                             pbar.set_description(f"📦 Imported {imported_count:,} records")
-                            
+
                     except Exception as row_error:
                         skipped_count += 1
-                        if skipped_count <= 5:  # Only log first few errors
+                        if skipped_count <= 5:
                             tqdm.write(f"⚠️ Row {row_num} error: {str(row_error)[:100]}...")
                         continue
 
             workbook.close()
-            
-            # Clean final summary
             tqdm.write(f"✅ Import complete: {imported_count:,} records imported")
-            if skipped_count > 0:
+            if skipped_count:
                 tqdm.write(f"⏭️ Skipped: {skipped_count:,} records (errors)")
-            if filtered_count > 0:
+            if filtered_count:
                 tqdm.write(f"🚫 Filtered: {filtered_count:,} records (closed months)")
-            
-            # Show entity matching summary (condensed)
-            if unmatched_customers and len(unmatched_customers) <= 10:
-                tqdm.write(f"⚠️ Unmatched customers: {len(unmatched_customers)} (showing first 10)")
-            elif unmatched_customers:
+            if unmatched_customers:
                 tqdm.write(f"⚠️ Unmatched customers: {len(unmatched_customers)}")
-                
-            if unmatched_agencies and len(unmatched_agencies) <= 10:
+            if unmatched_agencies:
                 tqdm.write(f"⚠️ Unmatched agencies: {len(unmatched_agencies)}")
-            elif unmatched_agencies:
-                tqdm.write(f"⚠️ Unmatched agencies: {len(unmatched_agencies)}")
-            
+
             return imported_count
-            
+
         except Exception as e:
-            error_msg = f"Excel import failed: {str(e)}"
-            tqdm.write(f"❌ {error_msg}")
-            raise BroadcastMonthImportError(error_msg)
+            raise BroadcastMonthImportError(f"Excel import failed: {e}")
+
 
     def _lookup_entities_with_aliases(self, bill_code: str, conn) -> dict:
         """
