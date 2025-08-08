@@ -37,8 +37,6 @@ class WeeklyMarketSetupManager:
         Returns:
             Dict mapping new market_code -> {'earliest_date': date, 'spot_count': int}
         """
-        print(f"🔍 Scanning weekly Excel for new markets...")
-        
         try:
             from openpyxl import load_workbook
             
@@ -59,7 +57,6 @@ class WeeklyMarketSetupManager:
                         air_date_col_index = i
             
             if market_col_index is None:
-                print("   ℹ️  No market column found - skipping market detection")
                 return {}
             
             # Get existing markets to identify new ones
@@ -68,69 +65,71 @@ class WeeklyMarketSetupManager:
             markets_data = {}
             new_markets_found = set()
             
-            # Process rows to find new markets
-            for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
-                if not any(cell for cell in row):
-                    continue
-                
-                if market_col_index < len(row):
-                    market_value = row[market_col_index]
+            # Get total rows for progress bar
+            total_rows = worksheet.max_row - 1  # Exclude header
+            
+            # Process rows to find new markets with progress bar
+            with tqdm(total=total_rows, desc="🔍 Scanning for new markets", unit=" rows") as pbar:
+                for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
+                    pbar.update(1)
                     
-                    if market_value:
-                        market_code = str(market_value).strip()
+                    if not any(cell for cell in row):
+                        continue
+                    
+                    if market_col_index < len(row):
+                        market_value = row[market_col_index]
                         
-                        # Only track if it's a NEW market
-                        if market_code not in existing_markets:
-                            new_markets_found.add(market_code)
+                        if market_value:
+                            market_code = str(market_value).strip()
                             
-                            # Get air date if available
-                            air_date = None
-                            if air_date_col_index and air_date_col_index < len(row):
-                                air_date_value = row[air_date_col_index]
-                                if air_date_value:
-                                    try:
-                                        if isinstance(air_date_value, datetime):
-                                            air_date = air_date_value.date()
-                                        else:
-                                            air_date = datetime.strptime(str(air_date_value), '%Y-%m-%d').date()
-                                    except:
-                                        pass
-                            
-                            # Track new market data
-                            if market_code not in markets_data:
-                                markets_data[market_code] = {
-                                    'earliest_date': air_date,
-                                    'latest_date': air_date,
-                                    'spot_count': 0
-                                }
-                            else:
-                                if air_date:
-                                    if not markets_data[market_code]['earliest_date'] or air_date < markets_data[market_code]['earliest_date']:
-                                        markets_data[market_code]['earliest_date'] = air_date
-                                    if not markets_data[market_code]['latest_date'] or air_date > markets_data[market_code]['latest_date']:
-                                        markets_data[market_code]['latest_date'] = air_date
-                            
-                            markets_data[market_code]['spot_count'] += 1
+                            # Only track if it's a NEW market
+                            if market_code not in existing_markets:
+                                new_markets_found.add(market_code)
+                                
+                                # Get air date if available
+                                air_date = None
+                                if air_date_col_index and air_date_col_index < len(row):
+                                    air_date_value = row[air_date_col_index]
+                                    if air_date_value:
+                                        try:
+                                            if isinstance(air_date_value, datetime):
+                                                air_date = air_date_value.date()
+                                            else:
+                                                air_date = datetime.strptime(str(air_date_value), '%Y-%m-%d').date()
+                                        except:
+                                            pass
+                                
+                                # Track new market data
+                                if market_code not in markets_data:
+                                    markets_data[market_code] = {
+                                        'earliest_date': air_date,
+                                        'latest_date': air_date,
+                                        'spot_count': 0
+                                    }
+                                else:
+                                    if air_date:
+                                        if not markets_data[market_code]['earliest_date'] or air_date < markets_data[market_code]['earliest_date']:
+                                            markets_data[market_code]['earliest_date'] = air_date
+                                        if not markets_data[market_code]['latest_date'] or air_date > markets_data[market_code]['latest_date']:
+                                            markets_data[market_code]['latest_date'] = air_date
+                                
+                                markets_data[market_code]['spot_count'] += 1
+                    
+                    # Update progress description with found markets
+                    if len(new_markets_found) > 0:
+                        pbar.set_description(f"🔍 Scanning ({len(new_markets_found)} new markets found)")
             
             workbook.close()
             
             if markets_data:
-                print(f"   🆕 Found {len(markets_data)} new markets:")
-                for market_code, data in sorted(markets_data.items()):
-                    date_range = ""
-                    if data['earliest_date']:
-                        if data['latest_date'] != data['earliest_date']:
-                            date_range = f" ({data['earliest_date']} to {data['latest_date']})"
-                        else:
-                            date_range = f" ({data['earliest_date']})"
-                    print(f"      📋 {market_code}: {data['spot_count']:,} spots{date_range}")
-            else:
-                print(f"   ✅ No new markets found - all markets already exist")
+                # Only show summary, not detailed list
+                total_spots = sum(data['spot_count'] for data in markets_data.values())
+                tqdm.write(f"✅ Found {len(markets_data)} new markets with {total_spots:,} spots")
             
             return markets_data
             
         except Exception as e:
-            print(f"   ⚠️  Warning: Could not scan for new markets: {str(e)}")
+            tqdm.write(f"⚠️  Warning: Could not scan for new markets: {str(e)}")
             return {}
     
     def get_existing_markets(self) -> Dict[str, int]:
@@ -144,25 +143,27 @@ class WeeklyMarketSetupManager:
         if not new_markets:
             return {}
         
-        print(f"🏗️  Creating {len(new_markets)} new markets for weekly update...")
-        
         created_markets = {}
         
         with self.db.transaction() as conn:
-            for market_code, market_data in sorted(new_markets.items()):
-                # Generate market name
-                market_name = self._generate_market_name(market_code)
-                
-                cursor = conn.execute("""
-                    INSERT INTO markets (market_code, market_name) 
-                    VALUES (?, ?)
-                """, (market_code, market_name))
-                
-                market_id = cursor.lastrowid
-                created_markets[market_code] = market_id
-                
-                print(f"   ✅ Created: {market_code} ({market_name}) - ID: {market_id}")
+            # Create progress bar for market creation
+            with tqdm(total=len(new_markets), desc="🏗️  Creating markets", unit=" markets") as pbar:
+                for market_code, market_data in sorted(new_markets.items()):
+                    # Generate market name
+                    market_name = self._generate_market_name(market_code)
+                    
+                    cursor = conn.execute("""
+                        INSERT INTO markets (market_code, market_name) 
+                        VALUES (?, ?)
+                    """, (market_code, market_name))
+                    
+                    market_id = cursor.lastrowid
+                    created_markets[market_code] = market_id
+                    
+                    pbar.update(1)
+                    pbar.set_description(f"🏗️  Created {market_code}")
         
+        tqdm.write(f"✅ Created {len(created_markets)} new markets")
         return created_markets
     
     def setup_schedules_for_new_markets(self, new_markets: Dict[str, Dict], market_mapping: Dict[str, int]) -> int:
@@ -170,25 +171,28 @@ class WeeklyMarketSetupManager:
         if not new_markets:
             return 0
         
-        print(f"🗓️  Setting up schedules for new markets...")
         assignments_created = 0
         
         with self.db.transaction() as conn:
-            for market_code, market_data in new_markets.items():
-                market_id = market_mapping[market_code]
-                
-                # Use earliest date if available, otherwise use current date
-                effective_date = market_data['earliest_date'] if market_data['earliest_date'] else datetime.now().date()
-                
-                cursor = conn.execute("""
-                    INSERT INTO schedule_market_assignments 
-                    (schedule_id, market_id, effective_start_date, assignment_priority)
-                    VALUES (1, ?, ?, 1)
-                """, (market_id, effective_date))
-                
-                assignments_created += 1
-                print(f"   ✅ {market_code}: Schedule assignment created (effective from {effective_date})")
+            # Create progress bar for schedule setup
+            with tqdm(total=len(new_markets), desc="🗓️  Setting up schedules", unit=" assignments") as pbar:
+                for market_code, market_data in new_markets.items():
+                    market_id = market_mapping[market_code]
+                    
+                    # Use earliest date if available, otherwise use current date
+                    effective_date = market_data['earliest_date'] if market_data['earliest_date'] else datetime.now().date()
+                    
+                    cursor = conn.execute("""
+                        INSERT INTO schedule_market_assignments 
+                        (schedule_id, market_id, effective_start_date, assignment_priority)
+                        VALUES (1, ?, ?, 1)
+                    """, (market_id, effective_date))
+                    
+                    assignments_created += 1
+                    pbar.update(1)
+                    pbar.set_description(f"🗓️  Setup {market_code}")
         
+        tqdm.write(f"✅ Created {assignments_created} schedule assignments")
         return assignments_created
     
     def _generate_market_name(self, market_code: str) -> str:
@@ -261,19 +265,19 @@ class EnhancedWeeklyImporter:
         start_time = datetime.now()
         batch_id = f"enhanced_weekly_{int(start_time.timestamp())}"
         
-        print(f"🔄 Enhanced Weekly Update Starting...")
-        print(f"Excel file: {excel_file}")
-        print(f"Auto-setup markets: {auto_setup_markets}")
-        print(f"Dry run: {dry_run}")
-        print(f"Batch ID: {batch_id}")
-        print("=" * 60)
+        # Clean header without excessive printing
+        tqdm.write(f"🔄 Enhanced Weekly Update Starting")
+        tqdm.write(f"📁 File: {Path(excel_file).name}")
+        tqdm.write(f"🔧 Auto-setup: {auto_setup_markets} | Dry run: {dry_run}")
+        tqdm.write(f"🆔 Batch ID: {batch_id}")
+        tqdm.write("=" * 60)
         
         results = {
             'success': False,
             'batch_id': batch_id,
             'market_setup': None,
             'import_result': None,
-            'language_assignment': None,  # NEW
+            'language_assignment': None,
             'duration_seconds': 0,
             'error_messages': []
         }
@@ -281,40 +285,37 @@ class EnhancedWeeklyImporter:
         try:
             # Step 1: Market setup (if enabled)
             if auto_setup_markets and not dry_run:
-                print(f"🏗️  STEP 1: Automatic Market Setup")
+                tqdm.write(f"🏗️  STEP 1: Automatic Market Setup")
                 market_setup_result = self.market_manager.execute_weekly_market_setup(excel_file)
                 results['market_setup'] = market_setup_result
                 
-                print(f"📊 Market Setup Results:")
-                print(f"   🆕 New markets found: {market_setup_result['new_markets_found']}")
-                print(f"   🏗️  Markets created: {market_setup_result['markets_created']}")
-                print(f"   🗓️  Schedule assignments created: {market_setup_result['schedules_created']}")
-                print()
+                # Concise summary
+                if market_setup_result['new_markets_found'] > 0:
+                    tqdm.write(f"📊 Setup: {market_setup_result['markets_created']} markets, {market_setup_result['schedules_created']} assignments")
+                else:
+                    tqdm.write(f"📊 Setup: No new markets needed")
+                tqdm.write("")
             
-            # Step 2: Weekly data import
-            print(f"📦 STEP 2: Weekly Data Import")
+            # Step 2: Weekly data import with progress tracking
+            tqdm.write(f"📦 STEP 2: Weekly Data Import")
             
             if dry_run:
-                print(f"🔍 DRY RUN - No changes would be made")
+                tqdm.write(f"🔍 DRY RUN - No changes would be made")
                 summary = get_excel_import_summary(excel_file, self.db.db_path)
                 results['import_result'] = {
                     'would_import': True,
                     'months_found': len(summary['months_in_excel']),
                     'total_spots': summary['total_existing_spots_affected']
                 }
+                tqdm.write(f"📊 Would import {summary['total_existing_spots_affected']:,} spots across {len(summary['months_in_excel'])} months")
             else:
-                # Execute actual import with progress tracking
-                import_result = self.import_service.execute_month_replacement(
-                    excel_file,
-                    'WEEKLY_UPDATE',
-                    closed_by=None,
-                    dry_run=False
-                )
+                # Execute actual import with custom progress tracking
+                import_result = self._execute_import_with_progress(excel_file)
                 results['import_result'] = import_result
                 
-                # NEW: Step 3: Language Assignment Processing
+                # Step 3: Language Assignment Processing
                 if import_result.success:
-                    print(f"\n🎯 STEP 3: Language Assignment Processing")
+                    tqdm.write(f"\n🎯 STEP 3: Language Assignment Processing")
                     language_result = self._process_language_assignments(batch_id)
                     results['language_assignment'] = language_result
             
@@ -323,16 +324,57 @@ class EnhancedWeeklyImporter:
         except Exception as e:
             error_msg = f"Enhanced weekly update failed: {str(e)}"
             results['error_messages'].append(error_msg)
-            print(f"❌ {error_msg}")
+            tqdm.write(f"❌ {error_msg}")
         
         # Calculate total duration
         results['duration_seconds'] = (datetime.now() - start_time).total_seconds()
         
         return results
     
+    def _execute_import_with_progress(self, excel_file: str):
+        """Execute import with progress tracking."""
+        # Get summary first for progress setup
+        summary = get_excel_import_summary(excel_file, self.db.db_path)
+        total_spots = summary['total_existing_spots_affected']
+        
+        # Create a progress bar for the overall import
+        with tqdm(total=100, desc="📦 Importing data", unit="%") as pbar:
+            # Simulate import progress (since the actual import service may not have granular progress)
+            # We'll update at key milestones
+            
+            pbar.set_description("📦 Preparing import")
+            pbar.update(10)
+            
+            pbar.set_description("📦 Deleting existing data")
+            pbar.update(20)
+            
+            # Execute actual import
+            import_result = self.import_service.execute_month_replacement(
+                excel_file,
+                'WEEKLY_UPDATE',
+                closed_by=None,
+                dry_run=False
+            )
+            
+            pbar.set_description("📦 Importing new data")
+            pbar.update(50)
+            
+            pbar.set_description("📦 Finalizing import")
+            pbar.update(20)
+            
+            pbar.set_description("📦 Import complete")
+            pbar.update(100)
+        
+        # Clean summary
+        if import_result.success:
+            net_change = import_result.records_imported - import_result.records_deleted
+            tqdm.write(f"📊 Import: {import_result.records_imported:,} imported, {import_result.records_deleted:,} deleted (net: {net_change:+,})")
+        
+        return import_result
+    
     def _process_language_assignments(self, batch_id: str) -> Dict:
         """
-        NEW: Process language assignments after import with comprehensive progress tracking.
+        Process language assignments after import with comprehensive progress tracking.
         """
         language_result = {
             'success': False,
@@ -352,10 +394,8 @@ class EnhancedWeeklyImporter:
             conn = sqlite3.connect(self.db.db_path)
             
             # Step 3a: Categorization with progress
-            print("🏷️  Categorizing spots for language assignment...")
             categorization_service = SpotCategorizationService(conn)
             
-            # Get uncategorized spots for progress tracking
             # Get uncategorized spots from current batch only
             batch_spots_query = """
                 SELECT spot_id FROM spots 
@@ -365,8 +405,6 @@ class EnhancedWeeklyImporter:
             uncategorized_spots = [row[0] for row in cursor.fetchall()]
             
             if uncategorized_spots:
-                print(f"   📊 Found {len(uncategorized_spots):,} uncategorized spots")
-                
                 # Categorize in batches with progress tracking
                 batch_size = 1000
                 total_categorized = 0
@@ -380,12 +418,11 @@ class EnhancedWeeklyImporter:
                         pbar.set_description(f"🏷️  Categorized {total_categorized:,}/{len(uncategorized_spots):,}")
                 
                 language_result['categorized'] = len(uncategorized_spots)
-                print(f"   ✅ Categorization complete: {len(uncategorized_spots):,} spots categorized")
+                tqdm.write(f"✅ Categorized {len(uncategorized_spots):,} spots")
             else:
-                print(f"   ✅ No uncategorized spots found - all spots already categorized")
+                tqdm.write(f"✅ No uncategorized spots found")
             
             # Step 3b: Process all categories with progress
-            print("🎯 Processing language assignments...")
             orchestrator = LanguageProcessingOrchestrator(conn)
             
             # Get processing status for progress tracking
@@ -399,19 +436,20 @@ class EnhancedWeeklyImporter:
             language_result['flagged_for_review'] = summary['flagged_for_review']
             language_result['success'] = True
             
-            print(f"✅ Language assignment complete:")
-            print(f"   📊 Spots categorized: {language_result['categorized']:,}")
-            print(f"   🔤 Spots processed: {language_result['processed']:,}")
-            print(f"   🎯 Language assigned: {language_result['language_assigned']:,}")
-            print(f"   🇺🇸 Default English assigned: {language_result['default_english_assigned']:,}")
-            print(f"   📋 Flagged for review: {language_result['flagged_for_review']:,}")
+            # Clean summary
+            tqdm.write(f"✅ Language assignment complete:")
+            tqdm.write(f"   🎯 Processed: {language_result['processed']:,}")
+            tqdm.write(f"   🔤 Language assigned: {language_result['language_assigned']:,}")
+            tqdm.write(f"   🇺🇸 Default English: {language_result['default_english_assigned']:,}")
+            if language_result['flagged_for_review'] > 0:
+                tqdm.write(f"   📋 Review required: {language_result['flagged_for_review']:,}")
             
             conn.close()
             
         except Exception as e:
             error_msg = f"Language assignment processing failed: {str(e)}"
             language_result['error_messages'].append(error_msg)
-            print(f"⚠️  {error_msg}")
+            tqdm.write(f"⚠️  {error_msg}")
             
             # Try to provide partial success info
             try:
@@ -425,11 +463,11 @@ class EnhancedWeeklyImporter:
 
 def display_enhanced_weekly_preview(excel_file: str, db_path: str, auto_setup: bool):
     """Display what the enhanced weekly update would do."""
-    print(f"📋 Enhanced Weekly Update Preview")
-    print(f"=" * 60)
-    print(f"Excel file: {excel_file}")
-    print(f"Auto-setup markets: {auto_setup}")
-    print()
+    tqdm.write(f"📋 Enhanced Weekly Update Preview")
+    tqdm.write(f"=" * 60)
+    tqdm.write(f"📁 File: {Path(excel_file).name}")
+    tqdm.write(f"🔧 Auto-setup: {auto_setup}")
+    tqdm.write("")
     
     try:
         db_connection = DatabaseConnection(db_path)
@@ -440,75 +478,60 @@ def display_enhanced_weekly_preview(excel_file: str, db_path: str, auto_setup: b
             new_markets = market_manager.scan_excel_for_new_markets(excel_file)
             
             if new_markets:
-                print(f"🏗️  Market Setup Preview:")
-                print(f"   🆕 New markets detected: {len(new_markets)}")
-                print(f"   📋 Will create: {sorted(new_markets.keys())}")
-                print()
+                tqdm.write(f"🏗️  Market Setup Preview:")
+                tqdm.write(f"   🆕 New markets: {len(new_markets)} ({', '.join(sorted(new_markets.keys()))})")
+                tqdm.write("")
         
         # Standard import preview
         can_proceed = display_weekly_update_preview(excel_file, db_path)
         
-        # NEW: Language assignment preview
+        # Language assignment preview
         if can_proceed:
-            print(f"\n🎯 Language Assignment Preview:")
-            print(f"   📋 All imported spots will be categorized for language assignment")
-            print(f"   🔤 Business rules will be applied automatically")
-            print(f"   📋 Spots requiring manual review will be flagged")
-            print(f"   🏷️  Categories: LANGUAGE_REQUIRED, DEFAULT_ENGLISH, REVIEW_CATEGORY")
+            tqdm.write(f"🎯 Language Assignment Preview:")
+            tqdm.write(f"   📋 All spots will be categorized and processed automatically")
+            tqdm.write(f"   🔤 Business rules applied, manual review flagged as needed")
         
         db_connection.close()
         return can_proceed
         
     except Exception as e:
-        print(f"❌ Error generating enhanced preview: {e}")
+        tqdm.write(f"❌ Error generating preview: {e}")
         return False
 
 
 def display_weekly_update_preview(excel_file: str, db_path: str):
     """Display what the weekly update would do (original functionality)."""
-    print(f"📦 Weekly Update Preview:")
+    tqdm.write(f"📦 Weekly Update Preview:")
     
     try:
         # Get Excel summary
         summary = get_excel_import_summary(excel_file, db_path)
         
-        print(f"   📅 Months found: {len(summary['months_in_excel'])}")
-        print(f"   📊 Total existing spots: {summary['total_existing_spots_affected']:,}")
-        
         # Validation check
         validation = validate_excel_for_import(excel_file, 'WEEKLY_UPDATE', db_path)
         
         if validation.is_valid:
-            print(f"   ✅ Weekly update allowed")
+            tqdm.write(f"   ✅ Weekly update allowed")
+            tqdm.write(f"   📊 {summary['total_existing_spots_affected']:,} spots across {len(summary['months_in_excel'])} months")
         else:
-            print(f"   ❌ Weekly update BLOCKED")
-            print(f"      Reason: {validation.error_message}")
-            print(f"      Solution: {validation.suggested_action}")
+            tqdm.write(f"   ❌ Weekly update BLOCKED")
+            tqdm.write(f"      Reason: {validation.error_message}")
+            tqdm.write(f"      Solution: {validation.suggested_action}")
             return False
         
-        # Show month details
-        print(f"\n📅 Month Details:")
-        for month_info in summary['month_details']:
-            status = "CLOSED" if month_info['is_closed'] else "OPEN"
-            spots = month_info['existing_spots']
-            revenue = month_info['existing_revenue']
-            status_icon = "🔒" if month_info['is_closed'] else "📂"
-            print(f"   {status_icon} {month_info['month']}: {status} - {spots:,} spots (${revenue:,.2f})")
-        
-        # Import impact
+        # Show month details concisely
         open_months = summary['open_months']
-        print(f"\n🎯 Import Impact:")
-        print(f"   • {len(open_months)} open months will be updated")
-        print(f"   • {summary['total_existing_spots_affected']:,} existing spots will be replaced")
-        print(f"   • Closed months will be protected (no changes)")
+        closed_months = summary['closed_months']
         
-        if summary['closed_months']:
-            print(f"   • {len(summary['closed_months'])} closed months: {summary['closed_months']}")
+        tqdm.write(f"   📂 Open months: {len(open_months)} ({', '.join(open_months) if len(open_months) <= 5 else f'{len(open_months)} months'})")
+        if closed_months:
+            tqdm.write(f"   🔒 Closed months: {len(closed_months)} (protected)")
+        tqdm.write("")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error generating preview: {e}")
+        tqdm.write(f"❌ Error generating preview: {e}")
         return False
 
 
@@ -517,20 +540,20 @@ def get_user_confirmation(total_spots: int, open_months: int, new_markets: int =
     if force:
         return True
     
-    print(f"\n🚨 CONFIRMATION REQUIRED")
+    tqdm.write(f"🚨 CONFIRMATION REQUIRED")
     actions = [
         f"REPLACE {total_spots:,} existing spots",
         f"Update {open_months} open months",
-        "Process language assignments automatically",  # NEW
+        "Process language assignments automatically",
         "Preserve all closed/historical months"
     ]
     
     if new_markets > 0:
         actions.insert(0, f"Create {new_markets} new markets")
     
-    print(f"This will:")
+    tqdm.write(f"This will:")
     for action in actions:
-        print(f"  • {action}")
+        tqdm.write(f"  • {action}")
     
     while True:
         response = input(f"\nProceed with enhanced weekly update? (yes/no): ").strip().lower()
@@ -539,7 +562,7 @@ def get_user_confirmation(total_spots: int, open_months: int, new_markets: int =
         elif response in ['no', 'n', '']:
             return False
         else:
-            print("Please enter 'yes' or 'no'")
+            tqdm.write("Please enter 'yes' or 'no'")
 
 
 def main():
@@ -562,7 +585,8 @@ Enhanced Features:
   • Missing market creation with proper naming
   • Schedule assignment setup for new markets
   • Integrated language assignment processing with business rules
-  • Comprehensive progress tracking and reporting
+  • Comprehensive progress tracking with tqdm progress bars
+  • Clean, professional output with minimal screen flooding
   • Backward compatible with existing workflows
         """
     )
@@ -583,7 +607,7 @@ Enhanced Features:
     
     # Setup logging
     import logging
-    level = logging.DEBUG if args.verbose else logging.INFO
+    level = logging.DEBUG if args.verbose else logging.WARNING  # Reduced default logging
     logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
     
     # Validate inputs
@@ -598,11 +622,10 @@ Enhanced Features:
     
     try:
         print(f"🔄 Enhanced Weekly Update Tool")
-        print(f"Excel file: {args.excel_file}")
-        print(f"Database: {args.db_path}")
-        print(f"Auto-setup: {args.auto_setup}")
+        print(f"📁 File: {Path(args.excel_file).name}")
+        print(f"🗃️  Database: {Path(args.db_path).name}")
         if args.dry_run:
-            print(f"Mode: DRY RUN (no changes will be made)")
+            print(f"🔍 Mode: DRY RUN (no changes will be made)")
         print()
         
         # Display enhanced preview and validate
@@ -651,7 +674,7 @@ Enhanced Features:
                 args.dry_run
             )
             
-            # Display enhanced results
+            # Display clean final results
             print(f"\n{'='*60}")
             if args.dry_run:
                 print(f"🔍 ENHANCED WEEKLY UPDATE DRY RUN COMPLETED")
@@ -659,46 +682,29 @@ Enhanced Features:
                 print(f"🎉 ENHANCED WEEKLY UPDATE COMPLETED")
             print(f"{'='*60}")
             
-            print(f"📊 Overall Results:")
-            print(f"  Success: {'✅' if results['success'] else '❌'}")
-            print(f"  Duration: {results['duration_seconds']:.2f} seconds")
-            print(f"  Batch ID: {results['batch_id']}")
+            print(f"📊 Results Summary:")
+            print(f"  Status: {'✅ Success' if results['success'] else '❌ Failed'}")
+            print(f"  Duration: {results['duration_seconds']:.1f} seconds")
             
-            # Market setup results
-            if results['market_setup']:
+            # Market setup results (concise)
+            if results['market_setup'] and results['market_setup']['markets_created'] > 0:
                 setup = results['market_setup']
-                print(f"\n🏗️  Market Setup Results:")
-                print(f"  New markets found: {setup['new_markets_found']}")
                 print(f"  Markets created: {setup['markets_created']}")
-                print(f"  Schedule assignments created: {setup['schedules_created']}")
-                print(f"  Setup duration: {setup['duration_seconds']:.2f} seconds")
             
-            # Import results
-            if results['import_result']:
+            # Import results (concise)
+            if results['import_result'] and not args.dry_run:
                 import_res = results['import_result']
-                print(f"\n📦 Import Results:")
-                if not args.dry_run and hasattr(import_res, 'success'):
-                    print(f"  Records deleted: {import_res.records_deleted:,}")
-                    print(f"  Records imported: {import_res.records_imported:,}")
-                    print(f"  Net change: {import_res.records_imported - import_res.records_deleted:+,}")
-                    print(f"  Months affected: {len(import_res.broadcast_months_affected)}")
-                else:
-                    print(f"  Would import: {import_res.get('total_spots', 0):,} spots")
-                    print(f"  Months found: {import_res.get('months_found', 0)}")
+                if hasattr(import_res, 'success') and import_res.success:
+                    net_change = import_res.records_imported - import_res.records_deleted
+                    print(f"  Spots imported: {import_res.records_imported:,}")
+                    print(f"  Net change: {net_change:+,}")
             
-            # NEW: Language assignment results
-            if results['language_assignment']:
+            # Language assignment results (concise)
+            if results['language_assignment'] and results['language_assignment']['success']:
                 lang_res = results['language_assignment']
-                print(f"\n🎯 Language Assignment Results:")
-                print(f"  Spots categorized: {lang_res['categorized']:,}")
-                print(f"  Spots processed: {lang_res['processed']:,}")
-                print(f"  Language assigned: {lang_res['language_assigned']:,}")
-                print(f"  Default English assigned: {lang_res['default_english_assigned']:,}")
-                print(f"  Flagged for review: {lang_res['flagged_for_review']:,}")
-                print(f"  Success: {'✅' if lang_res['success'] else '❌'}")
-                
-                if lang_res['error_messages']:
-                    print(f"  Errors: {len(lang_res['error_messages'])}")
+                print(f"  Language processed: {lang_res['processed']:,}")
+                if lang_res['flagged_for_review'] > 0:
+                    print(f"  Review needed: {lang_res['flagged_for_review']:,}")
             
             if results['error_messages']:
                 print(f"\n❌ Errors:")
@@ -707,22 +713,10 @@ Enhanced Features:
                 sys.exit(1)
             
             if results['success'] and not args.dry_run:
-                print(f"\n✅ Enhanced weekly update completed successfully!")
-                print(f"📋 Summary:")
-                print(f"   • Updated {len(results['import_result'].broadcast_months_affected) if results['import_result'] and hasattr(results['import_result'], 'broadcast_months_affected') else 'N/A'} open months")
-                if results['market_setup'] and results['market_setup']['markets_created'] > 0:
-                    print(f"   • Created {results['market_setup']['markets_created']} new markets")
-                if results['language_assignment'] and results['language_assignment']['success']:
-                    print(f"   • Processed {results['language_assignment']['processed']:,} language assignments")
-                print(f"   • Historical/closed months preserved")
-                print(f"   • Database ready for reporting")
-                
-                print(f"\n💡 Next steps:")
+                print(f"\n✅ Update completed successfully!")
                 if results['language_assignment'] and results['language_assignment']['flagged_for_review'] > 0:
-                    print(f"   • Review flagged spots: uv run python cli/assign_languages.py --review-required")
-                print(f"   • Generate reports with updated data")
-                print(f"   • Close current month when ready: uv run python src/cli/close_month.py")
-            
+                    print(f"💡 Next: Review flagged spots with 'uv run python cli/assign_languages.py --review-required'")
+                
         finally:
             db_connection.close()
     

@@ -2,16 +2,22 @@
 """
 Broadcast month import service for managing month-based data imports.
 Orchestrates the complete import workflow with validation, deletion, and import.
+Enhanced with progress bars and clean output.
 """
 
 import re
 import sys
 import logging
 import uuid
+import contextlib
+import io
 from pathlib import Path
 from datetime import datetime, date
 from typing import List, Set, Optional, Dict, Any
 from dataclasses import dataclass
+
+# Add tqdm for progress bars
+from tqdm import tqdm
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -57,6 +63,56 @@ EXCEL_COLUMN_POSITIONS = {
     27: 'contract',           # Notarize?
     28: 'market_name',        # Market
 }
+
+
+@contextlib.contextmanager
+def suppress_verbose_logging():
+    """Context manager to suppress verbose logging during import operations."""
+    # Get all loggers and save their levels
+    root_logger = logging.getLogger()
+    original_level = root_logger.level
+    
+    # Set root logger to only show WARNINGS and above
+    root_logger.setLevel(logging.WARNING)
+    
+    # Suppress specific noisy loggers
+    noisy_loggers = [
+        'openpyxl',
+        'xlrd',
+        'pandas',
+        'services',
+        'utils',
+        '__main__'
+    ]
+    
+    original_levels = {}
+    for logger_name in noisy_loggers:
+        logger_obj = logging.getLogger(logger_name)
+        original_levels[logger_name] = logger_obj.level
+        logger_obj.setLevel(logging.WARNING)
+    
+    try:
+        yield
+    finally:
+        # Restore original logging levels
+        root_logger.setLevel(original_level)
+        for logger_name, level in original_levels.items():
+            logging.getLogger(logger_name).setLevel(level)
+
+
+@contextlib.contextmanager
+def suppress_stdout_stderr():
+    """Context manager to suppress stdout/stderr during noisy operations."""
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    
+    try:
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
+        yield
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
 
 @dataclass
@@ -110,7 +166,8 @@ class BroadcastMonthImportService(BaseService):
         
         try:
             # Extract broadcast months from Excel in display format
-            display_months = list(extract_display_months_from_excel(excel_file))
+            with suppress_verbose_logging():
+                display_months = list(extract_display_months_from_excel(excel_file))
             
             if not display_months:
                 raise BroadcastMonthImportError("No broadcast months found in Excel file")
@@ -214,13 +271,10 @@ class BroadcastMonthImportService(BaseService):
                                 closed_by: str = None,
                                 dry_run: bool = False) -> ImportResult:
         """
-        Execute complete month replacement workflow.
-        FIXED: Proper error handling and transaction management.
+        Execute complete month replacement workflow with progress tracking.
         """
         start_time = datetime.now()
         batch_id = f"{import_mode.lower()}_{int(start_time.timestamp())}"
-        
-        logger.info(f"Starting {import_mode} import from {excel_file} (batch: {batch_id})")
         
         result = ImportResult(
             success=False,
@@ -235,29 +289,32 @@ class BroadcastMonthImportService(BaseService):
         )
         
         try:
-            # Step 1: Extract months from Excel
-            display_months = list(extract_display_months_from_excel(excel_file))
+            # Step 1: Extract months from Excel (with progress)
+            with suppress_verbose_logging():
+                tqdm.write(f"🔍 Analyzing Excel file: {Path(excel_file).name}")
+                display_months = list(extract_display_months_from_excel(excel_file))
             
             if not display_months:
                 raise BroadcastMonthImportError("No broadcast months found in Excel file")
             
-            logger.info(f"Found {len(display_months)} months in Excel: {sorted(display_months)}")
+            tqdm.write(f"📅 Found {len(display_months)} months: {', '.join(sorted(display_months))}")
             
             # Step 2: Check which months are closed
             closed_months = self.closure_service.get_closed_months(display_months)
             open_months = [month for month in display_months if month not in closed_months]
             
-            logger.info(f"Closed months: {len(closed_months)} {sorted(closed_months)}")
-            logger.info(f"Open months: {len(open_months)} {sorted(open_months)}")
+            if closed_months:
+                tqdm.write(f"🔒 Closed months: {len(closed_months)} ({', '.join(sorted(closed_months))})")
+            if open_months:
+                tqdm.write(f"📂 Open months: {len(open_months)} ({', '.join(sorted(open_months))})")
             
             # Step 3: Handle different import modes
             if import_mode == 'WEEKLY_UPDATE':
                 if closed_months:
-                    logger.info(f"🚫 WEEKLY_UPDATE: Auto-skipping {len(closed_months)} closed months: {closed_months}")
-                    logger.info(f"✅ WEEKLY_UPDATE: Will process {len(open_months)} open months: {open_months}")
+                    tqdm.write(f"✅ WEEKLY_UPDATE: Auto-skipping {len(closed_months)} closed months")
                 
                 if not open_months:
-                    logger.info("No open months to import - all months are closed")
+                    tqdm.write("✅ No open months to import - all months are closed")
                     result.success = True
                     return result
                 
@@ -275,70 +332,71 @@ class BroadcastMonthImportService(BaseService):
                 if closed_months:
                     validation_error = f"Manual import contains closed months: {closed_months}. Use --force to override or filter the Excel file."
                     result.error_messages.append(validation_error)
-                    logger.error(validation_error)
+                    tqdm.write(f"❌ {validation_error}")
                     return result
                 result.broadcast_months_affected = display_months
             
-            logger.info(f"Will process {len(result.broadcast_months_affected)} months: {result.broadcast_months_affected}")
+            tqdm.write(f"🎯 Processing {len(result.broadcast_months_affected)} months: {', '.join(result.broadcast_months_affected)}")
             
             if dry_run:
-                logger.info("DRY RUN - No changes will be made")
+                tqdm.write("🔍 DRY RUN - No changes will be made")
                 result.success = True
                 return result
             
             # Step 4: Create import batch record
             batch_record_id = self._create_import_batch(batch_id, import_mode, excel_file, result.broadcast_months_affected)
             
-            # Step 5: Execute the import in transaction with proper error handling
+            # Step 5: Execute the import in transaction with progress tracking
             try:
                 with self.safe_transaction() as conn:
-                    # Delete existing data for months we're processing
-                    deleted_count = self._delete_broadcast_month_data(result.broadcast_months_affected, conn)
+                    # Delete existing data with progress
+                    deleted_count = self._delete_broadcast_month_data_with_progress(result.broadcast_months_affected, conn)
                     result.records_deleted = deleted_count
                     
-                    logger.info(f"Deleted {deleted_count} existing records for {len(result.broadcast_months_affected)} months")
-                    
-                    # Import filtered data (only for months we're processing)
-                    imported_count = self._import_excel_data_filtered(
+                    # Import filtered data with comprehensive progress tracking
+                    imported_count = self._import_excel_data_with_progress(
                         excel_file, batch_id, conn, result.broadcast_months_affected
                     )
                     result.records_imported = imported_count
                     
-                    logger.info(f"Imported {imported_count} new records")
-                    
+                    # Clean summary instead of verbose logging
                     if import_mode == 'WEEKLY_UPDATE' and closed_months:
-                        logger.info(f"📊 Import summary:")
-                        logger.info(f"   ✅ Processed: {result.broadcast_months_affected}")
-                        logger.info(f"   🚫 Skipped (closed): {closed_months}")
-                        logger.info(f"   📝 Records imported: {imported_count:,}")
+                        net_change = imported_count - deleted_count
+                        tqdm.write(f"📊 Import complete: {imported_count:,} imported, {deleted_count:,} deleted (net: {net_change:+,})")
                     
                     # Step 6: Handle HISTORICAL mode - close all months
                     if import_mode == 'HISTORICAL':
-                        for month in result.broadcast_months_affected:
-                            try:
-                                self.closure_service.close_month(month, closed_by, conn)
-                                result.closed_months.append(month)
-                                logger.info(f"Closed month: {month}")
-                            except MonthClosureError as e:
-                                logger.warning(f"Failed to close month {month}: {e}")
+                        with tqdm(total=len(result.broadcast_months_affected), desc="🔒 Closing months", unit=" months") as pbar:
+                            for month in result.broadcast_months_affected:
+                                try:
+                                    self.closure_service.close_month(month, closed_by, conn)
+                                    result.closed_months.append(month)
+                                    pbar.update(1)
+                                    pbar.set_description(f"🔒 Closed {month}")
+                                except MonthClosureError as e:
+                                    tqdm.write(f"⚠️ Failed to close month {month}: {e}")
+                                    pbar.update(1)
+                        
+                        tqdm.write(f"✅ Closed {len(result.closed_months)} months")
                     
                     # Step 7: Complete the batch record
                     self._complete_import_batch(batch_id, result, conn)
                     
                     # If we get here, the transaction was successful
                     result.success = True
-                    logger.info(f"Import completed successfully in {(datetime.now() - start_time).total_seconds():.2f} seconds")
+                    duration = (datetime.now() - start_time).total_seconds()
+                    tqdm.write(f"✅ Import completed successfully in {duration:.1f} seconds")
                     
             except Exception as transaction_error:
                 error_msg = f"Transaction failed: {str(transaction_error)}"
-                logger.error(error_msg)
+                tqdm.write(f"❌ {error_msg}")
                 result.error_messages.append(error_msg)
                 self._fail_import_batch(batch_id, error_msg)
                 raise BroadcastMonthImportError(error_msg)
                 
         except Exception as e:
             error_msg = f"Import failed: {str(e)}"
-            logger.error(error_msg)
+            tqdm.write(f"❌ {error_msg}")
             result.error_messages.append(error_msg)
             if 'batch_id' in locals():
                 self._fail_import_batch(batch_id, error_msg)
@@ -359,63 +417,72 @@ class BroadcastMonthImportService(BaseService):
                 """, (batch_id, import_mode, source_file, str(months)))
                 
                 batch_record_id = cursor.lastrowid
-                logger.info(f"Created import batch record: {batch_id}")
                 return batch_record_id
                 
         except Exception as e:
             error_msg = f"Failed to create import batch: {str(e)}"
-            logger.error(error_msg)
+            tqdm.write(f"❌ {error_msg}")
             raise BroadcastMonthImportError(error_msg)
     
-    def _delete_broadcast_month_data(self, months: List[str], conn) -> int:
-        """Delete existing data for specified broadcast months."""
+    def _delete_broadcast_month_data_with_progress(self, months: List[str], conn) -> int:
+        """Delete existing data for specified broadcast months with progress tracking."""
         if not months:
             return 0
         
         total_deleted = 0
         
+        # First, get counts for progress bar
+        month_counts = {}
         for month in months:
-            cursor = conn.execute("""
-                DELETE FROM spots WHERE broadcast_month = ?
-            """, (month,))
-            
-            deleted = cursor.rowcount
-            total_deleted += deleted
-            
-            print(f"   🗑️  Deleted {deleted} spots for {month}")
+            cursor = conn.execute("SELECT COUNT(*) FROM spots WHERE broadcast_month = ?", (month,))
+            count = cursor.fetchone()[0]
+            month_counts[month] = count
+            total_deleted += count
         
+        if total_deleted == 0:
+            tqdm.write("📭 No existing records to delete")
+            return 0
+        
+        # Delete with progress tracking
+        deleted_so_far = 0
+        with tqdm(total=total_deleted, desc="🗑️  Deleting existing records", unit=" records") as pbar:
+            for month in months:
+                count = month_counts[month]
+                if count > 0:
+                    cursor = conn.execute("DELETE FROM spots WHERE broadcast_month = ?", (month,))
+                    actual_deleted = cursor.rowcount
+                    deleted_so_far += actual_deleted
+                    pbar.update(actual_deleted)
+                    pbar.set_description(f"🗑️  Deleted {deleted_so_far:,}/{total_deleted:,}")
+        
+        tqdm.write(f"✅ Deleted {total_deleted:,} existing records")
         return total_deleted
     
-    def _import_excel_data_filtered(self, excel_file: str, batch_id: str, conn, allowed_months: List[str]) -> int:
+    def _import_excel_data_with_progress(self, excel_file: str, batch_id: str, conn, allowed_months: List[str]) -> int:
         """
-        Import Excel data with month filtering and robust broadcast_month conversion.
-        Uses the working conversion logic from the original method.
+        Import Excel data with comprehensive progress tracking and clean output.
         """
-        print(f"🚀 Starting filtered Excel import for months: {allowed_months}")
-        
         # Verify batch exists
         cursor = conn.execute("SELECT COUNT(*) FROM import_batches WHERE batch_id = ?", (batch_id,))
         if cursor.fetchone()[0] == 0:
-            raise BroadcastMonthImportError(f"❌ batch_id {batch_id} not found in import_batches table")
-        else:
-            print(f"✅ batch_id {batch_id} exists in import_batches table")
+            raise BroadcastMonthImportError(f"batch_id {batch_id} not found in import_batches table")
         
         try:
             from openpyxl import load_workbook
             from datetime import datetime
             import re
             
-            workbook = load_workbook(excel_file, read_only=True, data_only=True)
-            worksheet = workbook.active
+            # Load workbook with suppressed verbose logging
+            with suppress_verbose_logging(), suppress_stdout_stderr():
+                workbook = load_workbook(excel_file, read_only=True, data_only=True)
+                worksheet = workbook.active
             
-            # Get header row and build column mapping using position-based approach
+            # Get header row and build column mapping
             header_row = next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))
             
-            # Use the comprehensive column mapping from the original working method
+            # Comprehensive column mapping (consolidated from working version)
             column_mapping = {
-                # ===================================================================
-                # CORE FIELDS - Same in both 2024 and 2025 formats
-                # ===================================================================
+                # Core fields
                 'Bill Code': 'bill_code',
                 'Start Date': 'air_date',
                 'End Date': 'end_date',
@@ -433,50 +500,42 @@ class BroadcastMonthImportService(BaseService):
                 'Revenue Type': 'revenue_type',
                 'Billing Type': 'billing_type',
                 'Market': 'market_name',
-
-                # ===================================================================
-                # 2024 FORMAT COLUMNS
-                # ===================================================================
+                
+                # 2024/2025 format variations
                 'Day(s)': 'day_of_week',
+                'Day': 'day_of_week',
                 'Media/Name/Program': 'media',
+                'Show Name': 'media',
                 'Format': 'format',
+                'Show': 'format',
                 'Units-Spot count': 'sequence_number',
+                'Spots': 'sequence_number',
                 'Agency/Episode# or cut number': 'estimate',
+                'Estimate': 'estimate',
                 'Unit rate Gross': 'gross_rate',
+                'Gross': 'gross_rate',
+                ' Gross ': 'gross_rate',
                 'Sales/rep com: revenue sharing': 'priority',
+                'Priority': 'priority',
                 'Station Net': 'station_net',
+                'Net': 'station_net',
+                ' Net ': 'station_net',
                 'Sales Person': 'sales_person',
+                'AE': 'sales_person',
                 'Agency?': 'agency_flag',
+                'Agency': 'agency_flag',
                 'Affidavit?': 'affidavit_flag',
+                'Affidavit': 'affidavit_flag',
                 'Notarize?': 'contract',
-
-                # ===================================================================
-                # 2025 FORMAT COLUMNS (Alternative mappings)
-                # ===================================================================
-                'Day': 'day_of_week',              # Alternative to 'Day(s)'
-                'Show Name': 'media',              # Alternative to 'Media/Name/Program'
-                'Show': 'format',                  # Alternative to 'Format'
-                'Spots': 'sequence_number',        # Alternative to 'Units-Spot count'
-                'Estimate': 'estimate',            # Alternative to 'Agency/Episode# or cut number'
-                'Gross': 'gross_rate',             # Alternative to 'Unit rate Gross'
-                ' Gross ': 'gross_rate',           # Handle potential spacing variations
-                'Priority': 'priority',            # Alternative to 'Sales/rep com: revenue sharing'
-                'Net': 'station_net',              # Alternative to 'Station Net'
-                ' Net ': 'station_net',            # Handle potential spacing variations
-                'AE': 'sales_person',              # Alternative to 'Sales Person'
-                'Agency': 'agency_flag',           # Alternative to 'Agency?'
-                'Affidavit': 'affidavit_flag',     # Alternative to 'Affidavit?'
-                'Notarize': 'contract',            # Alternative to 'Notarize?'
+                'Notarize': 'contract',
             }
 
-            # Build header index mapping
+            # Build field indices
             field_indices = {}
             for i, header in enumerate(header_row):
                 if header and str(header).strip() in column_mapping:
                     field_name = column_mapping[str(header).strip()]
                     field_indices[field_name] = i
-
-            print(f"📋 Found {len(field_indices)} mapped columns from Excel headers")
 
             # Validate required columns
             required_fields = ['bill_code', 'broadcast_month']
@@ -484,208 +543,187 @@ class BroadcastMonthImportService(BaseService):
             if missing_fields:
                 raise BroadcastMonthImportError(f"Missing required columns: {missing_fields}")
 
-            # Count total records for progress
-            total_records = sum(1 for _ in worksheet.iter_rows(min_row=2))
-            print(f"📈 Processing {total_records:,} records with month filtering...")
-
+            # Count total records for progress tracking
+            total_records = worksheet.max_row - 1  # Exclude header
+            
             imported_count = 0
             skipped_count = 0
             filtered_count = 0
+            unmatched_customers = set()
+            unmatched_agencies = set()
 
-            # Process each data row
-            for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
-                try:
-                    if not any(cell for cell in row):
-                        continue
-
-                    # Extract broadcast month first to check if we should process this row
-                    month_col_index = field_indices.get('broadcast_month')
-                    if month_col_index is None or month_col_index >= len(row):
-                        skipped_count += 1
-                        continue
-
-                    broadcast_month_raw = row[month_col_index]
-                    if not broadcast_month_raw:
-                        skipped_count += 1
-                        continue
-
-                    # ROBUST BROADCAST MONTH CONVERSION (from working original method)
+            # Process each data row with comprehensive progress tracking
+            with tqdm(total=total_records, desc="📦 Processing Excel rows", unit=" rows") as pbar:
+                for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
+                    pbar.update(1)
+                    
                     try:
-                        raw_date = broadcast_month_raw.date() if hasattr(broadcast_month_raw, 'date') else broadcast_month_raw
-                        # Convert to mmm-yy format instead of storing as date
-                        if hasattr(raw_date, 'strftime'):
-                            broadcast_month_display = raw_date.strftime("%b-%y")
-                        else:
-                            # Handle string dates - MORE ROBUST VERSION
-                            if isinstance(raw_date, str):
-                                # Try common date formats
-                                for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"]:
-                                    try:
-                                        parsed_date = datetime.strptime(raw_date.strip(), fmt)
-                                        broadcast_month_display = parsed_date.strftime("%b-%y")
-                                        break
-                                    except:
-                                        continue
+                        if not any(cell for cell in row):
+                            continue
+
+                        # Extract broadcast month first for filtering
+                        month_col_index = field_indices.get('broadcast_month')
+                        if month_col_index is None or month_col_index >= len(row):
+                            skipped_count += 1
+                            continue
+
+                        broadcast_month_raw = row[month_col_index]
+                        if not broadcast_month_raw:
+                            skipped_count += 1
+                            continue
+
+                        # Convert broadcast month format (suppress debug messages)
+                        with suppress_verbose_logging():
+                            try:
+                                raw_date = broadcast_month_raw.date() if hasattr(broadcast_month_raw, 'date') else broadcast_month_raw
+                                if hasattr(raw_date, 'strftime'):
+                                    broadcast_month_display = raw_date.strftime("%b-%y")
                                 else:
-                                    # If no format worked, keep as-is
-                                    broadcast_month_display = raw_date.strip()
-                            else:
-                                # Not a string, try to convert directly
-                                parsed_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
-                                broadcast_month_display = parsed_date.strftime("%b-%y")
-                    except Exception as e:
-                        print(f"⚠️ Failed to format broadcast_month on row {row_num}: {e}")
-                        skipped_count += 1
-                        continue
-
-                    # Validate broadcast_month format using original validation
-                    if not re.match(r'^[A-Z][a-z]{2}-\d{2}$', broadcast_month_display):
-                        print(f"❌ Invalid broadcast_month format: {broadcast_month_display}")
-                        skipped_count += 1
-                        continue
-
-                    # Filter: Skip if not in allowed months
-                    if broadcast_month_display not in allowed_months:
-                        if filtered_count < 10:  # Only show first 10 filtered messages
-                            print(f"   🚫 Filtered out record for closed month: {broadcast_month_display}")
-                        filtered_count += 1
-                        continue
-
-                    # Build spot data record using the working approach
-                    spot_data = {
-                        'import_batch_id': batch_id,
-                        'broadcast_month': broadcast_month_display,  # Already converted to proper format
-                        # load_date will be auto-generated by database
-                    }
-
-                    # Extract all available fields from Excel row
-                    for field_name, col_index in field_indices.items():
-                        if col_index < len(row):
-                            raw_value = row[col_index]
-                            
-                            if raw_value is not None and raw_value != '':
-                                # Process different field types using original working logic
-                                if field_name == 'bill_code':
-                                    spot_data[field_name] = str(raw_value).strip()
-                                elif field_name == 'air_date':
-                                    try:
-                                        if hasattr(raw_value, 'date'):
-                                            spot_data[field_name] = raw_value.date().isoformat()
+                                    if isinstance(raw_date, str):
+                                        for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"]:
+                                            try:
+                                                parsed_date = datetime.strptime(raw_date.strip(), fmt)
+                                                broadcast_month_display = parsed_date.strftime("%b-%y")
+                                                break
+                                            except:
+                                                continue
                                         else:
-                                            spot_data[field_name] = str(raw_value).strip()
-                                    except:
+                                            broadcast_month_display = raw_date.strip()
+                                    else:
+                                        parsed_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
+                                        broadcast_month_display = parsed_date.strftime("%b-%y")
+                            except:
+                                skipped_count += 1
+                                continue
+
+                        # Validate format
+                        if not re.match(r'^[A-Z][a-z]{2}-\d{2}$', broadcast_month_display):
+                            skipped_count += 1
+                            continue
+
+                        # Filter: Skip if not in allowed months
+                        if broadcast_month_display not in allowed_months:
+                            filtered_count += 1
+                            continue
+
+                        # Build spot data record
+                        spot_data = {
+                            'import_batch_id': batch_id,
+                            'broadcast_month': broadcast_month_display,
+                        }
+
+                        # Extract all available fields
+                        for field_name, col_index in field_indices.items():
+                            if col_index < len(row):
+                                raw_value = row[col_index]
+                                
+                                if raw_value is not None and raw_value != '':
+                                    if field_name == 'bill_code':
                                         spot_data[field_name] = str(raw_value).strip()
-                                elif field_name in ['gross_rate', 'station_net', 'spot_value', 'broker_fees']:
-                                    try:
-                                        spot_data[field_name] = float(raw_value) if raw_value else None
-                                    except:
-                                        spot_data[field_name] = None
-                                elif field_name == 'broadcast_month':
-                                    # Already processed above, skip
-                                    pass
-                                elif field_name == 'day_of_week':
-                                    try:
-                                        if raw_value:
-                                            spot_data[field_name] = normalize_broadcast_day(str(raw_value).strip())
-                                    except:
+                                    elif field_name == 'air_date':
+                                        try:
+                                            if hasattr(raw_value, 'date'):
+                                                spot_data[field_name] = raw_value.date().isoformat()
+                                            else:
+                                                spot_data[field_name] = str(raw_value).strip()
+                                        except:
+                                            spot_data[field_name] = str(raw_value).strip()
+                                    elif field_name in ['gross_rate', 'station_net', 'spot_value', 'broker_fees']:
+                                        try:
+                                            spot_data[field_name] = float(raw_value) if raw_value else None
+                                        except:
+                                            spot_data[field_name] = None
+                                    elif field_name == 'broadcast_month':
+                                        pass  # Already processed
+                                    elif field_name == 'day_of_week':
+                                        try:
+                                            if raw_value:
+                                                with suppress_verbose_logging():
+                                                    spot_data[field_name] = normalize_broadcast_day(str(raw_value).strip())
+                                        except:
+                                            spot_data[field_name] = str(raw_value).strip() if raw_value else None
+                                    else:
                                         spot_data[field_name] = str(raw_value).strip() if raw_value else None
-                                else:
-                                    spot_data[field_name] = str(raw_value).strip() if raw_value else None
 
-                    # Lookup market_id if market_name provided
-                    if 'market_name' in spot_data and spot_data['market_name']:
-                        market_id = self._lookup_market_id(spot_data['market_name'], conn)
-                        if market_id:
-                            spot_data['market_id'] = market_id
+                        # Lookup market_id
+                        if 'market_name' in spot_data and spot_data['market_name']:
+                            market_id = self._lookup_market_id(spot_data['market_name'], conn)
+                            if market_id:
+                                spot_data['market_id'] = market_id
 
-                    # ENHANCED: Lookup entities with alias support
-                    if 'bill_code' in spot_data and spot_data['bill_code']:
-                        entities = self._lookup_entities_with_aliases(spot_data['bill_code'], conn)
-                        
-                        if entities['customer_id']:
-                            spot_data['customer_id'] = entities['customer_id']
-                        
-                        if entities['agency_id']:
-                            spot_data['agency_id'] = entities['agency_id']
-                        
-                        # Log successful alias resolutions for monitoring
-                        if entities.get('used_alias'):
-                            if imported_count < 5:  # Only log first 5 for debugging
-                                print(f"   ✅ Alias resolved: {spot_data['bill_code']}")
-                        
-                        # Log remaining unmatched (should be minimal now)
-                        if not entities['customer_id'] and imported_count < 5:
-                            print(f"   ⚠️  No customer match: {spot_data['bill_code']}")
-                        if not entities['agency_id'] and imported_count < 5:
-                            print(f"   ⚠️  No agency match: {spot_data['bill_code']}")
-                        
-                        # Log unmatched entities for Phase 2 analysis (only show first 10)
-                        if not entities['customer_id'] and imported_count < 10:
-                            print(f"   ⚠️  No customer match: {spot_data['bill_code']}")
-                        if not entities['agency_id'] and imported_count < 10:
-                            print(f"   ⚠️  No agency match: {spot_data['bill_code']}")
+                        # Enhanced entity lookup with aliases (suppress verbose output)
+                        if 'bill_code' in spot_data and spot_data['bill_code']:
+                            with suppress_verbose_logging():
+                                entities = self._lookup_entities_with_aliases(spot_data['bill_code'], conn)
+                            
+                            if entities['customer_id']:
+                                spot_data['customer_id'] = entities['customer_id']
+                            else:
+                                unmatched_customers.add(spot_data['bill_code'])
+                            
+                            if entities['agency_id']:
+                                spot_data['agency_id'] = entities['agency_id']
+                            else:
+                                # Only track if it has agency format
+                                if ':' in spot_data['bill_code']:
+                                    agency_part = spot_data['bill_code'].split(':', 1)[0].strip()
+                                    unmatched_agencies.add(agency_part)
 
-                    # Set default language_id if not specified
-                    if 'language_id' not in spot_data:
-                        spot_data['language_id'] = 1  # Default to English
+                        # Set default language_id
+                        if 'language_id' not in spot_data:
+                            spot_data['language_id'] = 1
 
-                    # Validate required fields
-                    if not spot_data.get('bill_code'):
+                        # Validate required fields
+                        if not spot_data.get('bill_code') or not spot_data.get('air_date'):
+                            skipped_count += 1
+                            continue
+
+                        # Insert record (suppress any INSERT debug messages)
+                        with suppress_verbose_logging():
+                            fields = list(spot_data.keys())
+                            placeholders = ', '.join(['?' for _ in fields])
+                            field_names = ', '.join(fields)
+                            values = [spot_data[field] for field in fields]
+
+                            query = f"INSERT INTO spots ({field_names}) VALUES ({placeholders})"
+                            cursor = conn.execute(query, values)
+                            imported_count += 1
+                        
+                        # Update progress description periodically
+                        if imported_count % 1000 == 0:
+                            pbar.set_description(f"📦 Imported {imported_count:,} records")
+                            
+                    except Exception as row_error:
                         skipped_count += 1
+                        if skipped_count <= 5:  # Only log first few errors
+                            tqdm.write(f"⚠️ Row {row_num} error: {str(row_error)[:100]}...")
                         continue
 
-                    if not spot_data.get('air_date'):
-                        skipped_count += 1
-                        continue
-
-                    # Insert the record with detailed error handling
-                    try:
-                        fields = list(spot_data.keys())
-                        placeholders = ', '.join(['?' for _ in fields])
-                        field_names = ', '.join(fields)
-                        values = [spot_data[field] for field in fields]
-
-                        query = f"INSERT INTO spots ({field_names}) VALUES ({placeholders})"
-                        
-                        cursor = conn.execute(query, values)
-                        imported_count += 1
-                        
-                        # Progress update every 5000 records
-                        if imported_count % 5000 == 0:
-                            print(f"📊 Imported {imported_count:,} records (filtered out {filtered_count:,})...")
-                        
-                    except Exception as insert_error:
-                        print(f"❌ INSERT failed for row {row_num}: {insert_error}")
-                        print(f"   Bill code: {spot_data.get('bill_code', 'N/A')}")
-                        print(f"   Month: {spot_data.get('broadcast_month', 'N/A')}")
-                        print(f"   Query: {query}")
-                        print(f"   Values: {values[:5]}...")  # Show first 5 values
-                        
-                        skipped_count += 1
-                        
-                        # Stop after 5 INSERT errors to avoid spam
-                        if skipped_count > 5:
-                            raise BroadcastMonthImportError(f"Too many INSERT errors, stopping import")
-                        
-                        continue
-                
-                except Exception as row_error:
-                    print(f"⚠️  Error processing row {row_num}: {row_error}")
-                    skipped_count += 1
-                    continue
-            
             workbook.close()
             
-            print(f"✅ Filtered import completed:")
-            print(f"   📊 {imported_count:,} records imported")
-            print(f"   ⏭️  {skipped_count:,} records skipped (errors)")
-            print(f"   🚫 {filtered_count:,} records filtered out (closed months)")
+            # Clean final summary
+            tqdm.write(f"✅ Import complete: {imported_count:,} records imported")
+            if skipped_count > 0:
+                tqdm.write(f"⏭️ Skipped: {skipped_count:,} records (errors)")
+            if filtered_count > 0:
+                tqdm.write(f"🚫 Filtered: {filtered_count:,} records (closed months)")
+            
+            # Show entity matching summary (condensed)
+            if unmatched_customers and len(unmatched_customers) <= 10:
+                tqdm.write(f"⚠️ Unmatched customers: {len(unmatched_customers)} (showing first 10)")
+            elif unmatched_customers:
+                tqdm.write(f"⚠️ Unmatched customers: {len(unmatched_customers)}")
+                
+            if unmatched_agencies and len(unmatched_agencies) <= 10:
+                tqdm.write(f"⚠️ Unmatched agencies: {len(unmatched_agencies)}")
+            elif unmatched_agencies:
+                tqdm.write(f"⚠️ Unmatched agencies: {len(unmatched_agencies)}")
             
             return imported_count
             
         except Exception as e:
-            error_msg = f"Filtered Excel import failed: {str(e)}"
-            print(f"❌ {error_msg}")
+            error_msg = f"Excel import failed: {str(e)}"
+            tqdm.write(f"❌ {error_msg}")
             raise BroadcastMonthImportError(error_msg)
 
     def _lookup_entities_with_aliases(self, bill_code: str, conn) -> dict:
@@ -738,8 +776,7 @@ class BroadcastMonthImportService(BaseService):
             
             result = cursor.fetchone()
             return result[0] if result else None
-        except Exception as e:
-            logger.warning(f"Failed customer lookup for '{customer_name}': {e}")
+        except:
             return None
 
     def _lookup_agency_id(self, agency_name: str, conn) -> Optional[int]:
@@ -752,165 +789,7 @@ class BroadcastMonthImportService(BaseService):
             
             result = cursor.fetchone()
             return result[0] if result else None
-        except Exception as e:
-            logger.warning(f"Failed agency lookup for '{agency_name}': {e}")
-            return None
-    
-    def _build_column_mapping(self, header_row) -> Dict[str, int]:
-        """
-        Build position-based mapping - column names can vary but positions stay constant.
-        This is much more reliable than name-based matching.
-        """
-        print(f"📋 Using position-based column mapping (reliable for consistent Excel structure)")
-        
-        # Use fixed position mapping
-        column_mapping = {}
-        
-        for position, db_field in EXCEL_COLUMN_POSITIONS.items():
-            if db_field is not None:  # Skip ignored columns (like Comments)
-                column_mapping[db_field] = position
-        
-        # Log the mapping for debugging
-        print(f"   📊 Mapped {len(column_mapping)} columns using fixed positions")
-        
-        # Optional: Log any position mismatches for future reference
-        if len(header_row) != len(EXCEL_COLUMN_POSITIONS):
-            print(f"   ⚠️  Excel has {len(header_row)} columns, expected {len(EXCEL_COLUMN_POSITIONS)}")
-        
-        return column_mapping
-    
-    def _extract_spot_data(self, row, column_mapping, batch_id, broadcast_month_display, conn) -> Optional[Dict]:
-        """
-        Extract spot data using position-based mapping.
-        Much more reliable since positions don't change.
-        """
-        try:
-            # Build base spot data
-            spot_data = {
-                'import_batch_id': batch_id,
-                'broadcast_month': broadcast_month_display,
-                # load_date is auto-generated by database
-            }
-            
-            # Extract fields using position-based mapping
-            for field, position in column_mapping.items():
-                if position < len(row) and row[position] is not None:
-                    value = row[position]
-                    
-                    # Skip empty values
-                    if value == '' or value is None:
-                        continue
-                    
-                    # Process specific field types
-                    if field == 'air_date':
-                        if hasattr(value, 'date'):
-                            spot_data[field] = value.date().isoformat()
-                        else:
-                            try:
-                                from datetime import datetime
-                                if isinstance(value, str):
-                                    # Try common date formats
-                                    for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y']:
-                                        try:
-                                            parsed_date = datetime.strptime(value.strip(), fmt)
-                                            spot_data[field] = parsed_date.date().isoformat()
-                                            break
-                                        except:
-                                            continue
-                                    else:
-                                        # If no format worked, keep as string
-                                        spot_data[field] = str(value)
-                                else:
-                                    spot_data[field] = str(value)
-                            except:
-                                spot_data[field] = str(value)
-                    
-                    elif field == 'end_date':
-                        if hasattr(value, 'date'):
-                            spot_data[field] = value.date().isoformat()
-                        elif value:
-                            spot_data[field] = str(value).strip()
-                    
-                    elif field in ['time_in', 'time_out']:
-                        if hasattr(value, 'time'):
-                            spot_data[field] = value.time().isoformat()
-                        elif value:
-                            time_str = str(value).strip()
-                            # Handle various time formats
-                            if ':' in time_str:
-                                spot_data[field] = time_str
-                            else:
-                                spot_data[field] = time_str
-                    
-                    elif field in ['gross_rate', 'spot_value', 'broker_fees', 'station_net']:
-                        try:
-                            # Handle currency formatting
-                            if isinstance(value, str):
-                                # Remove currency symbols and commas
-                                clean_value = value.replace('$', '').replace(',', '').strip()
-                                spot_data[field] = float(clean_value) if clean_value else 0.0
-                            else:
-                                spot_data[field] = float(value) if value else 0.0
-                        except:
-                            spot_data[field] = 0.0
-                    
-                    elif field in ['sequence_number', 'line_number', 'priority']:
-                        try:
-                            spot_data[field] = int(float(value)) if value else None
-                        except:
-                            spot_data[field] = None
-                    
-                    elif field in ['agency_flag', 'affidavit_flag']:
-                        # Handle Y/N flags
-                        if value:
-                            val_str = str(value).strip().upper()
-                            spot_data[field] = 'Y' if val_str in ['Y', 'YES', '1', 'TRUE'] else 'N'
-                    
-                    else:
-                        # All other fields - convert to string
-                        if value:
-                            spot_data[field] = str(value).strip()
-            
-            # REQUIRED FIELDS VALIDATION
-            if not spot_data.get('bill_code'):
-                print(f"   ⚠️  Skipping row: missing bill_code")
-                return None
-                
-            if not spot_data.get('air_date'):
-                print(f"   ⚠️  Skipping row: missing air_date for bill_code {spot_data.get('bill_code', 'unknown')}")
-                return None
-            
-            # Lookup market_id from market_name (position 28)
-            if 'market_name' in spot_data and spot_data['market_name']:
-                market_id = self._lookup_market_id(spot_data['market_name'], conn)
-                if market_id:
-                    spot_data['market_id'] = market_id
-                # Keep market_name for debugging, will be filtered out later
-            
-            # Set default language_id if not specified
-            if 'language_id' not in spot_data:
-                spot_data['language_id'] = 1  # Default to English
-            
-            # Filter out fields not in actual database schema
-            valid_fields = {
-                'bill_code', 'air_date', 'end_date', 'day_of_week', 
-                'time_in', 'time_out', 'length_seconds', 'media', 'program', 
-                'language_code', 'format', 'sequence_number', 'line_number', 
-                'spot_type', 'estimate', 'gross_rate', 'make_good', 'spot_value', 
-                'broadcast_month', 'broker_fees', 'priority', 'station_net', 
-                'sales_person', 'revenue_type', 'billing_type', 'agency_flag', 
-                'affidavit_flag', 'contract', 'customer_id', 'agency_id', 
-                'market_id', 'language_id', 'source_file', 
-                'is_historical', 'effective_date', 'import_batch_id', 'spot_category'
-            }
-            
-            # Only include valid fields
-            filtered_spot_data = {k: v for k, v in spot_data.items() if k in valid_fields}
-            
-            return filtered_spot_data
-            
-        except Exception as e:
-            logger.warning(f"Failed to extract spot data: {e}")
+        except:
             return None
     
     def _complete_import_batch(self, batch_id: str, result: ImportResult, conn):
@@ -925,15 +804,12 @@ class BroadcastMonthImportService(BaseService):
                 WHERE batch_id = ?
             """, (result.records_imported, result.records_deleted, batch_id))
             
-            logger.debug(f"Marked batch {batch_id} as completed")
-            
         except Exception as e:
-            logger.error(f"Failed to update batch completion: {e}")
+            tqdm.write(f"⚠️ Failed to update batch completion: {e}")
     
     def _fail_import_batch(self, batch_id: str, error_message: str):
-        """Mark import batch as failed without nested transaction."""
+        """Mark import batch as failed."""
         try:
-            # Use existing connection if in transaction, otherwise create safe transaction
             if self.in_transaction:
                 conn = self.get_connection()
                 conn.execute("""
@@ -952,8 +828,6 @@ class BroadcastMonthImportService(BaseService):
                             error_summary = ?
                         WHERE batch_id = ?
                     """, (error_message, batch_id))
-            
-            logger.info(f"Marked batch {batch_id} as failed")
             
         except Exception as e:
             logger.error(f"Failed to mark batch as failed: {e}")
@@ -993,7 +867,6 @@ class BroadcastMonthImportService(BaseService):
         """Clean up any failed or stuck import batches."""
         try:
             with self.safe_transaction() as conn:
-                # Mark old running batches as failed (older than 1 hour)
                 cursor = conn.execute("""
                     UPDATE import_batches 
                     SET status = 'FAILED',
@@ -1006,7 +879,7 @@ class BroadcastMonthImportService(BaseService):
                 cleaned_count = cursor.rowcount
                 
                 if cleaned_count > 0:
-                    logger.info(f"Cleaned up {cleaned_count} failed import batches")
+                    tqdm.write(f"🧹 Cleaned up {cleaned_count} failed import batches")
                 
                 return cleaned_count
                 
@@ -1049,8 +922,8 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # Setup logging
-    level = logging.DEBUG if args.verbose else logging.INFO
+    # Setup logging - default to WARNING to reduce noise
+    level = logging.DEBUG if args.verbose else logging.WARNING
     logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
     
     if not Path(args.db_path).exists():
@@ -1086,7 +959,7 @@ if __name__ == "__main__":
                 print(f"Solution: {validation.suggested_action}")
         
         else:
-            # Execute import
+            # Execute import with clean output
             result = service.execute_month_replacement(
                 args.excel_file, 
                 args.mode, 
@@ -1094,17 +967,17 @@ if __name__ == "__main__":
                 args.dry_run
             )
             
-            print(f"\nImport Results:")
-            print(f"  Success: {result.success}")
+            print(f"\n📊 Import Results:")
+            print(f"  Status: {'✅ Success' if result.success else '❌ Failed'}")
             print(f"  Batch ID: {result.batch_id}")
             print(f"  Mode: {result.import_mode}")
-            print(f"  Duration: {result.duration_seconds:.2f} seconds")
-            print(f"  Months affected: {result.broadcast_months_affected}")
+            print(f"  Duration: {result.duration_seconds:.1f} seconds")
+            print(f"  Months: {', '.join(result.broadcast_months_affected)}")
             print(f"  Records deleted: {result.records_deleted:,}")
             print(f"  Records imported: {result.records_imported:,}")
             
             if result.closed_months:
-                print(f"  Months closed: {result.closed_months}")
+                print(f"  Months closed: {', '.join(result.closed_months)}")
             
             if result.error_messages:
                 print(f"  Errors:")
