@@ -3,6 +3,19 @@
 ## Scope
 This tool identifies and normalizes customer names from `spots.bill_code` and matches them to existing `customers` or `entity_aliases` using **blocking keys** + **RapidFuzz token scoring**.
 
+What it does: Aggregates revenue to the canonical customer using your approved aliases in entity_aliases.
+
+Key: We join spots → (billcode_customer_map optional) → entity_aliases → customers.
+
+    If an alias exists, we use entity_aliases.target_entity_id.
+
+    If no alias but the extracted name already equals a customers.normalized_name, we use that.
+
+    Otherwise the row is tagged [UNRESOLVED] so you can triage.
+
+billcode_customer_map (optional): A tiny helper mapping of bill_code → extracted_name produced by the analyzer (same raw string you reviewed in the UI). It ensures the SQL sees the same extracted text you approved, without trying to re-parse bill_code in SQL. If you don’t have this table yet, create it and populate it from the analyzer’s distinct bill codes + extracted names.
+
+
 It supports:
 - **Exact & alias matches** (via DB lookup)
 - **High-confidence & review candidates** (fuzzy match)
@@ -62,3 +75,90 @@ Recommendations
 
     Install dependencies:
     pip install rapidfuzz metaphone Unidecode flask
+
+
+    Queries:
+
+    Customer Totals
+
+    -- Requires: entity_aliases (customer aliases you approved)
+-- Optional but recommended: billcode_customer_map(bill_code TEXT PRIMARY KEY, alias_name TEXT NOT NULL)
+--   -> alias_name = the extracted client string you reviewed (same as in the UI)
+
+WITH base AS (
+  SELECT
+    s.station_net,
+    s.bill_code,
+    COALESCE(m.alias_name, s.bill_code) AS extracted_name  -- fallback if map not populated
+  FROM spots s
+  LEFT JOIN billcode_customer_map m
+    ON m.bill_code = s.bill_code
+),
+resolved AS (
+  SELECT
+    -- Resolve to canonical customer via alias first, then direct name match
+    COALESCE(c_by_alias.customer_id, c_by_name.customer_id)    AS customer_id,
+    COALESCE(c_by_alias.normalized_name, c_by_name.normalized_name,
+             '[UNRESOLVED]')                                   AS customer_name,
+    b.station_net
+  FROM base b
+  -- 1) alias path (preferred)
+  LEFT JOIN entity_aliases ea
+    ON ea.entity_type = 'customer'
+   AND ea.is_active = 1
+   AND ea.alias_name = b.extracted_name
+  LEFT JOIN customers c_by_alias
+    ON c_by_alias.customer_id = ea.target_entity_id
+  -- 2) direct match fallback (for exact names already in customers)
+  LEFT JOIN customers c_by_name
+    ON c_by_name.normalized_name = b.extracted_name
+)
+SELECT
+  customer_id,
+  customer_name,
+  SUM(station_net) AS total_revenue
+FROM resolved
+GROUP BY customer_id, customer_name
+ORDER BY total_revenue DESC;
+
+
+Query (customer × month)
+
+WITH base AS (
+  SELECT
+    s.station_net,
+    s.bill_code,
+    s.broadcast_month,
+    COALESCE(m.alias_name, s.bill_code) AS extracted_name
+  FROM spots s
+  LEFT JOIN billcode_customer_map m
+    ON m.bill_code = s.bill_code
+),
+resolved AS (
+  SELECT
+    COALESCE(c_by_alias.customer_id, c_by_name.customer_id)    AS customer_id,
+    COALESCE(c_by_alias.normalized_name, c_by_name.normalized_name,
+             '[UNRESOLVED]')                                   AS customer_name,
+    b.broadcast_month,
+    b.station_net
+  FROM base b
+  LEFT JOIN entity_aliases ea
+    ON ea.entity_type = 'customer'
+   AND ea.is_active = 1
+   AND ea.alias_name = b.extracted_name
+  LEFT JOIN customers c_by_alias
+    ON c_by_alias.customer_id = ea.target_entity_id
+  LEFT JOIN customers c_by_name
+    ON c_by_name.normalized_name = b.extracted_name
+)
+SELECT
+  customer_id,
+  customer_name,
+  broadcast_month,
+  SUM(station_net) AS total_revenue
+FROM resolved
+GROUP BY customer_id, customer_name, broadcast_month
+ORDER BY broadcast_month, total_revenue DESC;
+
+
+
