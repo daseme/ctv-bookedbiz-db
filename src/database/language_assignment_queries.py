@@ -80,25 +80,33 @@ class LanguageAssignmentQueries:
         """, (min_value,))
         return [row[0] for row in cursor.fetchall()]
     
-    def save_language_assignment(self, assignment: LanguageAssignment):
-        """Save language assignment with review flags"""
-        cursor = self.db.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO spot_language_assignments 
-            (spot_id, language_code, language_status, confidence, assignment_method, 
-             assigned_date, requires_review, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    # LanguageAssignmentQueries.save_language_assignment
+    def save_language_assignment(self, a: LanguageAssignment) -> None:
+        cur = self.db.cursor()
+        cur.execute("""
+            INSERT INTO spot_language_assignments
+                (spot_id, language_code, language_status, confidence,
+                assignment_method, requires_review, notes, assigned_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(spot_id) DO UPDATE SET
+                language_code    = excluded.language_code,
+                language_status  = excluded.language_status,
+                confidence       = excluded.confidence,
+                assignment_method= excluded.assignment_method,
+                requires_review  = excluded.requires_review,
+                notes            = excluded.notes,
+                assigned_date    = CURRENT_TIMESTAMP
         """, (
-            assignment.spot_id,
-            assignment.language_code,
-            assignment.language_status.value,
-            assignment.confidence,
-            assignment.assignment_method,
-            assignment.assigned_date.isoformat(),
-            assignment.requires_review,
-            assignment.notes
+            a.spot_id,
+            a.language_code,
+            a.language_status.value if hasattr(a.language_status, "value") else a.language_status,
+            a.confidence,
+            a.assignment_method,
+            1 if a.requires_review else 0,
+            a.notes,
         ))
         self.db.commit()
+
     
     def get_unassigned_spots(self, limit: Optional[int] = None) -> List[int]:
         """Get spots without language assignments"""

@@ -161,4 +161,50 @@ GROUP BY customer_id, customer_name, broadcast_month
 ORDER BY broadcast_month, total_revenue DESC;
 
 
+AGENCY NEXT PROJECT:
+
+# Agency Normalization – Developer Kickoff
+
+## Current State
+- **Bill codes** often have the format: `agency_name:customer_name`.
+- Our current customer matching pipeline (`src/services/customer_matching/normalization.py`) now includes:
+  - `extract_billcode_parts(...) -> (agency_raw, customer_raw)`
+  - `extract_customer_from_bill_code(...)` for backward compatibility.
+- Customer matching **only** normalizes the **customer** segment. Agency info is preserved **raw**.
+
+## Goal for Agency Normalization Tool
+- Build a parallel tool to:
+  1. **Normalize agency names** consistently (casefold, punctuation removal, business suffix cleanup, etc.).
+  2. Maintain a mapping of raw → normalized agencies.
+  3. Detect alias/variant agencies (e.g., `H&L Agency Co` vs. `H and L Agency Company`).
+  4. Provide match statistics, CSV exports, and alias suggestions (similar to customer tool).
+  5. Optionally store canonical agencies in an `agencies` table with an `entity_aliases` entry for agency type.
+
+## Schema Considerations
+- Likely need:
+  - `agencies` table (id, normalized_name, is_active, etc.).
+  - `entity_aliases` can be reused by setting `entity_type = 'agency'`.
+  - Optionally, `agency_id` foreign key in `spots` (if you want direct joins later).
+- Migration would follow the pattern of `001_review_queue.sql` for customer review.
+
+## Approach
+- Create `src/services/agency_matching/normalization.py` (start from customer normalizer; adjust patterns for agency-specific suffixes like “Agency”, “Media”, “Partners”).
+- Create `src/services/agency_matching/blocking_matcher.py` (clone customer blocking matcher; adapt to `agencies` table).
+- Build CLI: `src/cli/agencies.py` (mirror `customer_names.py`).
+- Add batch loader + review UI reusing the current review system, but filter by `entity_type='agency'`.
+
+## Key Lessons from Customer Tool
+- **Single normalization function** used everywhere.
+- **Blocking keys** for performance on Pi.
+- Use **RapidFuzz token scoring** for robustness.
+- Store raw + normalized strings for auditability.
+- Preserve original bill_code for reference.
+- Keep analyzer read-only; writes go through controlled queue/approval UI.
+
+---
+**Next Steps:**
+1. Copy `normalization.py` → `agency_matching/normalization.py` and update suffix/noise lists.
+2. Implement blocking matcher for agencies.
+3. Create migration for `agencies` table and `entity_aliases` support.
+4. Hook into review queue & UI.
 

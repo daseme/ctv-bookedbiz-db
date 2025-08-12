@@ -1,6 +1,6 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-08-08 09:25:49
+-- Generated on: 2025-08-11 14:16:43
 -- 
 -- SQLite Version: 3.40.1
 -- 
@@ -13,7 +13,7 @@
 
 PRAGMA foreign_keys = ON;
 
--- Tables (21)
+-- Tables (22)
 -- ============================================================
 
 -- Table: agencies
@@ -97,6 +97,33 @@ CREATE TABLE customer_mappings (
 -- Indexes for table: customer_mappings
 CREATE INDEX idx_customer_mappings_original ON customer_mappings(original_name);
 
+-- Table: customer_match_review
+-- ----------------------------------------
+CREATE TABLE customer_match_review (
+  id                INTEGER PRIMARY KEY,
+  bill_code_name_raw TEXT NOT NULL,
+  norm_name          TEXT NOT NULL,
+  suggested_customer_id INTEGER,
+  suggested_customer_name TEXT,
+  best_score         REAL NOT NULL,
+  revenue            REAL NOT NULL,
+  spot_count         INTEGER NOT NULL,
+  first_seen         TEXT,
+  last_seen          TEXT,
+  months             TEXT,  -- pipe '|' separated
+  suggestions_json   TEXT NOT NULL, -- [{name, score}, ...]
+  status             TEXT NOT NULL DEFAULT 'pending', -- pending|approved|rejected|aliased
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  decided_at         TEXT,
+  decided_by         TEXT,
+  notes              TEXT
+);
+
+-- Indexes for table: customer_match_review
+CREATE INDEX ix_cmr_normname ON customer_match_review(norm_name);
+CREATE INDEX ix_cmr_revenue ON customer_match_review(revenue DESC);
+CREATE INDEX ix_cmr_status ON customer_match_review(status);
+
 -- Table: customers
 -- ----------------------------------------
 CREATE TABLE customers (
@@ -117,6 +144,7 @@ CREATE TABLE customers (
 -- Indexes for table: customers
 CREATE INDEX idx_customers_agency ON customers(agency_id);
 CREATE INDEX idx_customers_sector ON customers(sector_id);
+CREATE INDEX ix_customers_normalized_name ON customers(normalized_name);
 
 -- Table: entity_alias_history
 -- ----------------------------------------
@@ -154,6 +182,7 @@ CREATE TABLE entity_aliases (
 CREATE INDEX idx_entity_aliases_created ON entity_aliases(created_date);
 CREATE INDEX idx_entity_aliases_lookup ON entity_aliases(alias_name, entity_type, is_active);
 CREATE INDEX idx_entity_aliases_target ON entity_aliases(target_entity_id, entity_type);
+CREATE INDEX ix_aliases_name_active ON entity_aliases(alias_name, entity_type, is_active);
 
 -- Table: import_batches
 -- ----------------------------------------
@@ -993,6 +1022,6 @@ BEGIN
 END;
 
 -- End of schema export
--- Total tables: 21
+-- Total tables: 22
 -- Total views: 10
 -- Total triggers: 3
