@@ -735,8 +735,6 @@ class UpdatedUnifiedAnalysisEngine:
     def _generate_updated_system_notes(self) -> str:
         return """## 📋 Updated Language Assignment System Notes
 
-- Treat **BB like COM** for Language-Targeted Advertising.
-- Remove **BB** from the unusual IAS spot type review bucket (PKG/CRD/AV only).
 - 'L' (undetermined) always requires manual review.
 - Valid non-'L' language codes on COM/BB/BNS avoid review via direct mapping.
 

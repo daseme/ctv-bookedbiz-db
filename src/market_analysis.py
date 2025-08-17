@@ -610,11 +610,15 @@ class UpdatedMarketAnalysisEngine:
         for method, data in sorted_methods:
             method_display = {
                 'direct_mapping': 'Direct Language Mapping',
-                'business_rule_default_english': 'Business Rule Default English',  
+                'business_rule_default_english': 'Business Rule Default English',
+                'auto_default_com_bb': 'Business Rule Default English (COM/BB)',
+                'default_english': 'Default English (Fallback)',
                 'business_review_required': 'Business Review Required',
                 'undetermined_flagged': 'Undetermined Language',
-                'default_english': 'Default English Fallback'
+                'invalid_code_flagged': 'Invalid Language Code',
+                'error_fallback': 'Error Fallback',
             }.get(method, method)
+
             
             table += f"| {method_display} | {data['spots']:,} | {data['spot_percentage']:.1f}% | ${data['revenue']:,.2f} | {data['revenue_percentage']:.1f}% |\n"
         
@@ -737,35 +741,11 @@ class UpdatedMarketAnalysisEngine:
 
 ### Analysis Components
 
-#### Language Performance Summary
-- **Purpose**: Shows performance of each directly-targeted language
-- **Data**: Only spots with `assignment_method = 'direct_mapping'`
-- **Grouping**: Languages consolidated (Mandarin + Cantonese = Chinese)
-- **Quality**: High confidence assignments only
-
-#### Language by Market Breakdown  
-- **Purpose**: Cross-tabulation of languages and markets
-- **Metrics**: Revenue with percentages by language and market
-- **Scope**: Only confirmed language targeting
-- **Geography**: Based on spot market_name with CMP consolidation
-
-#### Market Summary
-- **Purpose**: Market-level performance and language dominance
-- **Metrics**: Total revenue, top language, language count per market
-- **Analysis**: Geographic concentration and specialization
-- **CMP Impact**: Shows combined CHI+CMP+MSP performance
 
 #### Assignment Method Context
 - **Purpose**: Shows how spots were categorized in new system
 - **Transparency**: Breakdown by assignment method
 - **Scope**: Market analysis uses only direct_mapping spots
-
-### Key Improvements
-- **Better Accuracy**: No ambiguous time block associations
-- **Business Clarity**: Clear separation of targeted vs. default assignments
-- **Quality Control**: Confidence scoring and review flagging
-- **Simplified Logic**: Direct mapping from language codes to languages
-- **Geographic Simplification**: CMP market consolidation for cleaner analysis
 
 ### Business Rules Applied
 1. **Direct Response Sales** → Default English (excluded from market analysis)
@@ -773,13 +753,6 @@ class UpdatedMarketAnalysisEngine:
 3. **Branded Content** → Default English (excluded from market analysis)
 4. **Internal Ad Sales + COM/BNS** → Language assignment required → Market analysis
 5. **Other Combinations** → Review required (excluded from market analysis)
-
-### Technical Implementation
-- **Primary Query**: Joins spots → spot_language_assignments → languages
-- **Filtering**: assignment_method = 'direct_mapping' AND revenue_type = 'Internal Ad Sales'
-- **Language Grouping**: Language name consolidation with CASE statements
-- **Market Grouping**: Market consolidation with CASE statements (CHI/CMP/MSP → CMP)
-- **Market Field**: Uses spots.market_name with consolidation logic
 
 ### Multiyear Support
 - **Year Ranges**: Supports "2023-2024" format for multiyear analysis

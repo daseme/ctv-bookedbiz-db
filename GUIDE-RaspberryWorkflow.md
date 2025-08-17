@@ -129,34 +129,200 @@ sudo systemctl disable flaskapp
 3. **Service runs automatically**: No need to manually start after Pi reboots
 4. **Service auto-restarts**: If the app crashes, systemd will restart it automatically
 
-### 3. Database Management
+# 3. Database Management — Server‑First with Nightly Dropbox Backup
 
-#### Database Sync Commands
+**Principle:** We work on the **server copy** of the database and **do not** auto‑download from Dropbox. A nightly **systemd timer** uploads the current DB to Dropbox as an off‑site backup. Manual download is **only for recovery**.
+
+---
+
+## Components Added
+
+- **Primary DB (authoritative)**
+  - `/opt/apps/ctv-bookedbiz-db/data/database/production.db`
+
+- **Python entrypoint (unchanged)**
+  - `cli_db_sync.py` (supports `test | upload | backup | info | list-backups | list`)
+
+- **Virtualenv (for systemd)**
+  - `/opt/apps/ctv-bookedbiz-db/.venv` with `dropbox` + `python-dotenv`
+
+- **Wrapper executable**
+  - `/opt/apps/ctv-bookedbiz-db/bin/db_sync.sh`
+    - Runs the upload via the venv python
+    - Uses `flock` to prevent overlap
+    - Sends failure notifications if configured (`NTFY_TOPIC` / `SLACK_WEBHOOK_URL`)
+
+- **Secrets (root-only)**
+  - `/etc/ctv-db-sync.env`
+    - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
+    - Optional: `DROPBOX_DB_PATH`, `NTFY_TOPIC`, `SLACK_WEBHOOK_URL`
+    - Permissions: `root:root`, `600`
+
+- **systemd units**
+  - `/etc/systemd/system/ctv-db-sync.service` (runs the wrapper once)
+  - `/etc/systemd/system/ctv-db-sync.timer` (schedules daily run, e.g., `02:05` local)
+
+- **Logs**
+  - `/var/log/ctv-db-sync/sync.log` (append)
+  - Optional logrotate at `/etc/logrotate.d/ctv-db-sync`
+
+- **Permissions model**
+  - App tree: `daseme:ctvapps`, mode `2775` (setgid) so `jellee26` can collaborate
+  - Secrets remain root-only
+
+---
+
+## Daily Backup Flow (Automated)
+
+1. **Timer fires daily** (e.g., `02:05`) → runs `db_sync.sh`.
+2. Wrapper starts venv python and calls:
+   ```bash
+   python cli_db_sync.py upload
+   ```
+3. Script uploads `/opt/apps/ctv-bookedbiz-db/data/database/production.db` to Dropbox (default path `/database.db`) using **chunked upload** for large files.
+4. Success/failure is logged to `/var/log/ctv-db-sync/sync.log`. Failures can notify via ntfy/Slack if configured.
+
+**Service/timer control**
 ```bash
-# Download latest database from Dropbox
-python db_sync.py download
+# One-off run now
+sudo systemctl start ctv-db-sync.service
 
-# Upload local changes to Dropbox
-python db_sync.py upload
+# Enable and show timer
+sudo systemctl enable --now ctv-db-sync.timer
+systemctl list-timers | grep ctv-db-sync
 
-# Create timestamped backup
-python db_sync.py backup
-
-# Get database information
-python db_sync.py info
-
-# List available backups
-python db_sync.py list-backups
-
-# Explore Dropbox folder structure
-python db_sync.py list [folder-path]
+# Status + recent logs
+sudo systemctl status ctv-db-sync.service -l --no-pager
+tail -n 200 /var/log/ctv-db-sync/sync.log
 ```
 
-#### Database Workflow
-1. **Always download** before starting work: `python db_sync.py download`
-2. **Create backups** before major schema changes: `python db_sync.py backup`
-3. **Upload regularly** during development: `python db_sync.py upload`
-4. **Coordinate with team** - communicate when making major database changes
+---
+
+## Manual Commands (When Needed)
+
+```bash
+# Test Dropbox auth/account
+python cli_db_sync.py test
+
+# Upload immediately (e.g., after major changes)
+python cli_db_sync.py upload
+
+# Create a timestamped backup in Dropbox (/backups/)
+python cli_db_sync.py backup
+# or with a custom name
+python cli_db_sync.py backup pre_migration_backup.db
+
+# Inspect the tracked DB in Dropbox
+python cli_db_sync.py info
+
+# List backups under /backups
+python cli_db_sync.py list-backups
+
+# Explore a Dropbox folder (default root)
+python cli_db_sync.py list /backups
+```
+
+> **Note:** We **do not** auto-download daily. Use `download` **only for recovery**:
+```bash
+# Restore from a specific Dropbox file (manual recovery step)
+python cli_db_sync.py download
+# (then stop dependent services, replace local DB, and restart services)
+```
+
+---
+
+## Operational Notes
+
+- **Single-writer discipline:** Treat `production.db` as the single source of truth; coordinate schema changes.
+- **Before schema migrations:** run `python cli_db_sync.py backup`.
+- **After heavy imports/changes:** optionally force an early upload (`python cli_db_sync.py upload`).
+
+**Health checks**
+```bash
+/opt/apps/ctv-bookedbiz-db/.venv/bin/python -c "import dropbox; print('dropbox OK')"
+ls -lh /opt/apps/ctv-bookedbiz-db/data/database/production.db
+```
+
+**Troubleshooting quick hits**
+- `ModuleNotFoundError: dropbox` → (re)install in venv:
+  ```bash
+  /opt/apps/ctv-bookedbiz-db/.venv/bin/pip install -U dropbox python-dotenv
+  ```
+- `invalid_access_token` → refresh token/app key/secret mismatch in `/etc/ctv-db-sync.env`. Re-issue token and update file.
+- No logs → verify `ExecStart` uses shell redirection to `/var/log/ctv-db-sync/sync.log`.
+
+---
+
+## systemd Unit Snippets (Reference)
+
+**Service** (key lines):
+```ini
+[Unit]
+Description=CTV DB -> Dropbox daily upload
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=daseme
+Group=ctvapps
+WorkingDirectory=/opt/apps/ctv-bookedbiz-db
+EnvironmentFile=/etc/ctv-db-sync.env
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/daseme/.local/bin"
+ExecStart=/usr/bin/env bash -c '/opt/apps/ctv-bookedbiz-db/bin/db_sync.sh >>/var/log/ctv-db-sync/sync.log 2>&1'
+TimeoutStartSec=600
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/opt/apps/ctv-bookedbiz-db /tmp /var/log/ctv-db-sync
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+CapabilityBoundingSet=
+```
+
+**Timer** (daily at 02:05):
+```ini
+[Unit]
+Description=Run CTV DB upload daily
+
+[Timer]
+OnCalendar=*-*-* 02:05:00
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+**Logrotate** (optional):
+```conf
+/var/log/ctv-db-sync/sync.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+    create 0664 daseme ctvapps
+    su root root
+    sharedscripts
+    postrotate
+        :
+    endscript
+}
+```
+
+---
+
+## Policy: Server‑First Workflow
+
+1. **Authoritative copy lives on the server** at `/opt/apps/ctv-bookedbiz-db/data/database/production.db`.
+2. **Nightly timed upload** backs up to Dropbox (off‑site safety).
+3. **No daily downloads** from Dropbox.
+4. **Download is for recovery only**, or for cloning to a fresh environment.
+
 
 ### 4. VS Code Remote Development
 
