@@ -257,23 +257,7 @@ SELECT DISTINCT broadcast_month FROM spots ORDER BY broadcast_month DESC LIMIT 5
 
 ---
 
-## 🎯 **Performance Benchmarks**
 
-### **Expected Processing Times**
-- **Stage 1 (Language Assignment):** 5-10 minutes per 100K spots
-- **Stage 2 (Business Rules):** 5-10 minutes per 100K spots
-- **Database operations:** <1 second per 1K records
-- **Export operations:** 2-5 minutes per 100K spots
-
-### **Memory Usage Expectations**
-- **Normal operation:** <2GB RAM usage
-- **Large datasets:** <8GB RAM usage
-- **Memory leak indicators:** Continuous growth >10GB
-
-### **CPU Usage Patterns**
-- **Active processing:** 80-100% CPU usage
-- **Database waiting:** 5-15% CPU usage
-- **Stuck process:** 0% CPU usage for >5 minutes
 
 ---
 

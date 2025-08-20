@@ -151,53 +151,60 @@ class UpdatedUnifiedAnalysisEngine:
 
     def get_business_category_assignment_method_crosstab(self, year_input: str = "2024"):
         """
-        Build a cross-tab (Business Category × Assignment Method).
-        Counts spots and sums revenue per cell.
-        Business categories mirror get_mutually_exclusive_categories().
-        Methods mirror get_assignment_method_analysis() plus auto_default_com_bb + invalid_code_flagged.
+        Cross-tab: Business Category × Assignment Method (includes Leased Airtime).
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
         year_filter, year_params = self.build_year_filter(year_suffixes)
 
         sql = f"""
         WITH scoped AS (
-        SELECT
-            s.spot_id,
-            s.gross_rate,
-            s.revenue_type,
-            UPPER(COALESCE(s.spot_type, '')) AS spot_type,
-            CASE
-            WHEN s.revenue_type = 'Direct Response Sales' THEN 'Direct Response Sales'
-            WHEN s.revenue_type = 'Paid Programming' THEN 'Paid Programming'
-            WHEN s.revenue_type = 'Branded Content' THEN 'Branded Content'
-            -- Treat BB like COM here (per updated understanding)
-            WHEN s.revenue_type = 'Internal Ad Sales' AND UPPER(COALESCE(s.spot_type,'')) IN ('COM','BNS','BB')
-                THEN 'Language-Targeted Advertising'
-            ELSE 'Other/Review Required'
-            END AS business_category
-        FROM spots s
-        WHERE {year_filter}
+            SELECT
+                s.spot_id,
+                s.gross_rate,
+                s.revenue_type,
+                UPPER(COALESCE(s.spot_type, '')) AS spot_type,
+                CASE
+                    WHEN s.revenue_type = 'Direct Response Sales' THEN 'Direct Response Sales'
+                    WHEN s.revenue_type = 'Paid Programming'      THEN 'Paid Programming'
+                    WHEN s.revenue_type = 'Branded Content'       THEN 'Branded Content'
+                    WHEN s.revenue_type = 'Leased Airtime'        THEN 'Leased Airtime'
+                    WHEN s.revenue_type = 'Internal Ad Sales'
+                        AND UPPER(COALESCE(s.spot_type,'')) IN ('COM','BNS','BB')
+                        THEN 'Language-Targeted Advertising'
+                    ELSE 'Other/Review Required'
+                END AS business_category
+            FROM spots s
+            WHERE {year_filter}
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
             AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
         )
         SELECT
-        scoped.business_category AS business_category,
-        CASE
-            WHEN sla.assignment_method = 'business_rule_default_english' THEN 'Business Rule Default English'
-            WHEN sla.assignment_method = 'direct_mapping' THEN 'Direct Language Mapping'
-            WHEN sla.assignment_method = 'business_review_required' THEN 'Business Review Required'
-            WHEN sla.assignment_method = 'undetermined_flagged' THEN 'Undetermined (Needs Review)'
-            WHEN sla.assignment_method IN ('default_english','default_english_fallback') THEN 'Default English (Fallback)'
-            WHEN sla.assignment_method = 'auto_default_com_bb' THEN 'Auto Default English (COM/BB)'
-            WHEN sla.assignment_method = 'invalid_code_flagged' THEN 'Invalid Code Flagged'
-            WHEN sla.spot_id IS NULL THEN 'No Assignment Record'
-            ELSE 'Other/Unknown'
-        END AS method_label,
-        COUNT(*) AS spots,
-        SUM(COALESCE(scoped.gross_rate,0)) AS revenue,
-        SUM(CASE WHEN COALESCE(sla.requires_review,0) = 1 THEN 1 ELSE 0 END) AS review_count
+            scoped.business_category AS business_category,
+            CASE
+                WHEN sla.assignment_method = 'direct_mapping'
+                    THEN 'Direct Language Mapping'
+                WHEN sla.assignment_method = 'business_rule_default_english'
+                    THEN 'Business Rule Default English'
+                WHEN sla.assignment_method = 'auto_default_com_bb'
+                    THEN 'Auto Default English (COM/BB)'
+                WHEN sla.assignment_method = 'default_english'
+                    THEN 'Default English (Fallback)'
+                WHEN sla.assignment_method = 'business_review_required'
+                    THEN 'Business Review Required'
+                WHEN sla.assignment_method = 'undetermined_flagged'
+                    THEN 'Undetermined (Needs Review)'
+                WHEN sla.assignment_method = 'invalid_code_flagged'
+                    THEN 'Invalid Code Flagged'
+                WHEN sla.assignment_method IS NULL
+                    THEN 'No Assignment Record'
+                ELSE 'Other/Unknown'
+            END AS method_label,
+            COUNT(*) AS spots,
+            SUM(COALESCE(scoped.gross_rate,0)) AS revenue,
+            SUM(CASE WHEN COALESCE(sla.requires_review,0) = 1 THEN 1 ELSE 0 END) AS review_count
         FROM scoped
-        LEFT JOIN spot_language_assignments sla ON scoped.spot_id = sla.spot_id
+        LEFT JOIN spot_language_assignments sla
+            ON scoped.spot_id = sla.spot_id
         GROUP BY business_category, method_label
         ORDER BY business_category, method_label;
         """
@@ -206,7 +213,6 @@ class UpdatedUnifiedAnalysisEngine:
         cur.execute(sql, year_params)
         rows = cur.fetchall()
 
-        # Pivot into {row -> {col -> {spots,revenue,review_count}}}
         method_order = [
             "Direct Language Mapping",
             "Business Rule Default English",
@@ -223,6 +229,7 @@ class UpdatedUnifiedAnalysisEngine:
             "Paid Programming",
             "Branded Content",
             "Language-Targeted Advertising",
+            "Leased Airtime",
             "Other/Review Required",
         ]
 
@@ -236,7 +243,6 @@ class UpdatedUnifiedAnalysisEngine:
             }
             methods_seen.add(method_label)
 
-        # Keep only encountered methods but in stable preferred order
         cols = [m for m in method_order if m in methods_seen]
         rows_ordered = [c for c in category_order if c in table] + [
             c for c in table.keys() if c not in category_order
@@ -244,19 +250,22 @@ class UpdatedUnifiedAnalysisEngine:
 
         return {"rows": rows_ordered, "cols": cols, "cells": table}
 
+
     # ---------------- Categories (mutually exclusive) ----------------
 
     def get_mutually_exclusive_categories(self, year_input: str = "2024") -> List[UnifiedResult]:
         """
         Categories based on business rules:
-          1) Direct Response Sales
-          2) Paid Programming
-          3) Branded Content
-          4) Language-Targeted Advertising (Internal Ad Sales + COM/BNS/BB)
-          5) Other/Review Required (IAS with PKG/CRD/AV, or revenue_type Other/Local)
+        1) Direct Response Sales
+        2) Paid Programming
+        3) Branded Content
+        4) Language-Targeted Advertising (Internal Ad Sales + COM/BNS/BB)
+        5) Leased Airtime  # <-- ADD THIS CATEGORY
+        6) Other/Review Required (IAS with PKG/CRD/AV, or revenue_type Other)
         """
         _, suffixes = self.parse_year_range(year_input)
         yf, yp = self.build_year_filter(suffixes)
+
         cur = self.db_connection.cursor()
 
         def fetch(q: str) -> Tuple[float, int, int, int]:
@@ -271,9 +280,11 @@ class UpdatedUnifiedAnalysisEngine:
 
         base_where = f"""
         WHERE {yf}
-          AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-          AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
         """
+
+        cats: List[UnifiedResult] = []
 
         # 1) Direct Response Sales
         q1 = f"""
@@ -284,12 +295,10 @@ class UpdatedUnifiedAnalysisEngine:
             COUNT(*) AS total_spots
         FROM spots s
         {base_where}
-          AND s.revenue_type = 'Direct Response Sales'
+        AND s.revenue_type = 'Direct Response Sales'
         """
         rev, paid, bns, tot = fetch(q1)
-        cats: List[UnifiedResult] = [
-            UnifiedResult("Direct Response Sales", rev, 0, paid, bns, tot, rev / tot if tot else 0)
-        ]
+        cats.append(UnifiedResult("Direct Response Sales", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
         # 2) Paid Programming
         q2 = f"""
@@ -300,7 +309,7 @@ class UpdatedUnifiedAnalysisEngine:
             COUNT(*) AS total_spots
         FROM spots s
         {base_where}
-          AND s.revenue_type = 'Paid Programming'
+        AND s.revenue_type = 'Paid Programming'
         """
         rev, paid, bns, tot = fetch(q2)
         cats.append(UnifiedResult("Paid Programming", rev, 0, paid, bns, tot, rev / tot if tot else 0))
@@ -314,12 +323,12 @@ class UpdatedUnifiedAnalysisEngine:
             COUNT(*) AS total_spots
         FROM spots s
         {base_where}
-          AND s.revenue_type = 'Branded Content'
+        AND s.revenue_type = 'Branded Content'
         """
         rev, paid, bns, tot = fetch(q3)
         cats.append(UnifiedResult("Branded Content", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
-        # 4) Language-Targeted Advertising (IAS + COM/BNS/BB)  <-- BB now included
+        # 4) Language-Targeted Advertising (IAS + COM/BNS/BB)
         q4 = f"""
         SELECT 
             SUM(COALESCE(s.gross_rate, 0)) AS revenue,
@@ -328,13 +337,13 @@ class UpdatedUnifiedAnalysisEngine:
             COUNT(*) AS total_spots
         FROM spots s
         {base_where}
-          AND s.revenue_type = 'Internal Ad Sales'
-          AND s.spot_type IN ('COM','BNS','BB')
+        AND s.revenue_type = 'Internal Ad Sales'
+        AND s.spot_type IN ('COM','BNS','BB')
         """
         rev, paid, bns, tot = fetch(q4)
         cats.append(UnifiedResult("Language-Targeted Advertising", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
-        # 5) Other/Review Required (IAS with PKG/CRD/AV; revenue_type Other/Local)  <-- BB removed here
+        # 5) Leased Airtime  <-- ADD THIS NEW CATEGORY
         q5 = f"""
         SELECT 
             SUM(COALESCE(s.gross_rate, 0)) AS revenue,
@@ -343,15 +352,31 @@ class UpdatedUnifiedAnalysisEngine:
             COUNT(*) AS total_spots
         FROM spots s
         {base_where}
-          AND (
-                (s.revenue_type = 'Internal Ad Sales' AND s.spot_type IN ('PKG','CRD','AV'))
-             OR s.revenue_type = 'Other'
-             OR s.revenue_type = 'Local'
-          )
+        AND s.revenue_type = 'Leased Airtime'
         """
         rev, paid, bns, tot = fetch(q5)
+        cats.append(UnifiedResult("Leased Airtime", rev, 0, paid, bns, tot, rev / tot if tot else 0))
+
+        # 6) Other/Review Required
+        q6 = f"""
+        SELECT 
+            SUM(COALESCE(s.gross_rate, 0)) AS revenue,
+            COUNT(CASE WHEN s.spot_type IS NULL OR s.spot_type <> 'BNS' THEN 1 END) AS paid_spots,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) AS bonus_spots,
+            COUNT(*) AS total_spots
+        FROM spots s
+        {base_where}
+        AND (
+                (s.revenue_type = 'Internal Ad Sales' AND s.spot_type IN ('PKG','CRD','AV'))
+            OR (s.revenue_type = 'Internal Ad Sales' AND COALESCE(s.spot_type, '') = '')
+            OR s.revenue_type = 'Other'
+        )
+        """
+
+        rev, paid, bns, tot = fetch(q6)
         cats.append(UnifiedResult("Other/Review Required", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
+        # Calculate percentages
         total_rev = sum(c.revenue for c in cats)
         for c in cats:
             c.percentage = (c.revenue / total_rev * 100) if total_rev else 0
@@ -758,6 +783,7 @@ Business Rule Categories:
 - **Does the analysis use spot categories?**  
   It uses the same business rules directly (revenue_type + spot_type) aligned with the assignment system.
 """
+
 
     def generate_updated_unified_tables(self, year_input: str = "2024") -> str:
         full_years, _ = self.parse_year_range(year_input)

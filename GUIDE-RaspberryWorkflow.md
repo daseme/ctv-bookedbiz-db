@@ -28,6 +28,10 @@ This document outlines the collaborative development workflow for the CTV Booked
 └── [your Flask app files]
 ```
 
+
+## Move files from your local computer to the raspberry pi
+scp "C:\Users\Kurt\Crossings TV Dropbox\kurt olmstead\Financial\Sales\WeeklyReports\ctv-bookedbiz-db\data\raw\2021.xlsx" daseme@raspberrypi:/opt/apps/ctv-bookedbiz-db/data/raw/2021.xlsx
+
 ## Team Members
 - **daseme**: Primary developer with Pi admin access
 - **jellee26**: Collaborative developer with ctv-dev group access
@@ -73,6 +77,8 @@ uv pip freeze > requirements.txt
 
 # Restart Flask app after code changes
 sudo systemctl restart flaskapp
+# watch logs if needed
+sudo journalctl -u flaskapp -f
 ```
 
 #### Ending Work Session

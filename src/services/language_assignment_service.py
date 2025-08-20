@@ -161,22 +161,17 @@ class LanguageAssignmentService:
         """Summary of spots requiring manual review, excluding COM/BB spot types."""
         cur = self.db.cursor()
         cur.execute("""
-            WITH filtered AS (
-                SELECT s.language_code, s.gross_rate
-                FROM spots s
-                WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-                  AND UPPER(COALESCE(s.spot_type, '')) NOT IN ('COM','BB')
-            )
             SELECT
-                SUM(CASE WHEN language_code = 'L' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN language_code = 'L' AND gross_rate >= 1000 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN language_code IS NOT NULL
-                          AND language_code != 'L'
-                          AND l.language_id IS NULL
-                         THEN 1 ELSE 0 END)
-            FROM filtered
-            LEFT JOIN languages l
-              ON UPPER(filtered.language_code) = UPPER(l.language_code);
+                SUM(CASE WHEN s.language_code = 'L' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN s.language_code = 'L' AND s.gross_rate >= 1000 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN s.language_code IS NOT NULL
+                            AND s.language_code != 'L'
+                            AND l.language_id IS NULL
+                        THEN 1 ELSE 0 END)
+            FROM spots s
+            LEFT JOIN languages l ON s.language_code = l.language_code
+            WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+            AND UPPER(COALESCE(s.spot_type, '')) NOT IN ('COM','BB')
         """)
         row = cur.fetchone() or (0, 0, 0)
         undetermined_count = int(row[0] or 0)

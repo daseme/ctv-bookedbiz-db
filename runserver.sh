@@ -8,7 +8,7 @@ if [ -n "$PID" ]; then
   kill -9 $PID
 fi
 
-uvicorn src.web.asgi:asgi_app --host 100.81.73.46 --port 8000
+uvicorn src.web.asgi:app --host 0.0.0.0 --port 8000
 
 # Note: Adjust the host IP as necessary for your environment.
 # To run this script, ensure it has execute permissions:

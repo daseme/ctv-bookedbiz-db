@@ -422,6 +422,7 @@ class ReportDataService:
         query = """
         SELECT DISTINCT 
             CASE 
+                WHEN broadcast_month LIKE '%-21' THEN 2021
                 WHEN broadcast_month LIKE '%-22' THEN 2022
                 WHEN broadcast_month LIKE '%-23' THEN 2023
                 WHEN broadcast_month LIKE '%-24' THEN 2024

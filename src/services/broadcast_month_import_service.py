@@ -13,7 +13,7 @@ import contextlib
 import io
 from pathlib import Path
 from datetime import datetime, date
-from typing import List, Set, Optional, Dict, Any
+from typing import List, Set, Optional, Dict, Any, Callable
 from dataclasses import dataclass
 
 # Add tqdm for progress bars
@@ -137,6 +137,34 @@ class ImportResult:
             self.closed_months = []
 
 
+def build_revenue_type_normalizer() -> Callable[[Optional[str]], Optional[str]]:
+    """Pure normalizer: A&O variants → 'Internal Ad Sales'; else passthrough."""
+    def _norm(v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        key = re.sub(r'[\s\./-]+', '', v.lower()).replace('&', 'and')
+        return 'Internal Ad Sales' if key in {'ao', 'aando'} else v
+    return _norm
+
+def build_spot_type_normalizer() -> Callable[[Optional[str]], str]:
+    """Pure normalizer for CHECK constraint on spots.spot_type."""
+    allowed = {'AV','BB','BNS','COM','CRD','PKG','PRD','PRG','SVC',''}
+    aliases = {
+        'SPOT': 'COM',
+        'COMMERCIAL': 'COM',
+        'BONUS': 'BNS',
+        'PKG': 'PKG',
+        'PROD': 'PRD',
+        'PROGRAM': 'PRG',
+        'SERVICE': 'SVC',
+    }
+    def _norm(v: Optional[str]) -> str:
+        x = (v or '').strip().upper()
+        x = aliases.get(x, x)
+        return x if x in allowed else ''
+    return _norm
+
+
 class BroadcastMonthImportError(Exception):
     """Raised when there's an error with import operations."""
     pass
@@ -148,6 +176,8 @@ class BroadcastMonthImportService(BaseService):
         self.closure_service = MonthClosureService(db_connection)
         self.parser = BroadcastMonthParser()
         self.alias_service = EntityAliasService(db_connection)
+        self.normalize_revenue_type = build_revenue_type_normalizer()
+        self.normalize_spot_type = build_spot_type_normalizer()
     
     def validate_import(self, excel_file: str, import_mode: str) -> ValidationResult:
         """
@@ -365,21 +395,21 @@ class BroadcastMonthImportService(BaseService):
                         net_change = imported_count - deleted_count
                         tqdm.write(f"📊 Import complete: {imported_count:,} imported, {deleted_count:,} deleted (net: {net_change:+,})")
                     
-                    # Step 6: Handle HISTORICAL mode - close all months
+                    # Step 6: Handle HISTORICAL mode - close all months (atomic, same transaction)
                     if import_mode == 'HISTORICAL':
                         with tqdm(total=len(result.broadcast_months_affected), desc="🔒 Closing months", unit=" months") as pbar:
                             for month in result.broadcast_months_affected:
                                 try:
-                                    self.closure_service.close_month(month, closed_by, conn)
+                                    # NOTE: use the "with_connection" variant to reuse this txn/conn
+                                    self.closure_service.close_broadcast_month_with_connection(month, closed_by, conn)
                                     result.closed_months.append(month)
                                     pbar.update(1)
                                     pbar.set_description(f"🔒 Closed {month}")
                                 except MonthClosureError as e:
                                     tqdm.write(f"⚠️ Failed to close month {month}: {e}")
                                     pbar.update(1)
-                        
                         tqdm.write(f"✅ Closed {len(result.closed_months)} months")
-                    
+
                     # Step 7: Complete the batch record
                     self._complete_import_batch(batch_id, result, conn)
                     
@@ -531,7 +561,7 @@ class BroadcastMonthImportService(BaseService):
                             'import_batch_id': batch_id,
                             'broadcast_month': broadcast_month_display,
                         }
-
+                        
                         for col_idx, field_name in EXCEL_COLUMN_POSITIONS.items():
                             if field_name and col_idx < len(row):
                                 val = row[col_idx]
@@ -540,23 +570,34 @@ class BroadcastMonthImportService(BaseService):
 
                                 if field_name == 'bill_code':
                                     spot_data[field_name] = str(val).strip()
+
                                 elif field_name == 'air_date':
                                     try:
                                         spot_data[field_name] = val.date().isoformat() if hasattr(val, 'date') else str(val).strip()
                                     except:
                                         spot_data[field_name] = str(val).strip()
+
                                 elif field_name in ['gross_rate', 'station_net', 'spot_value', 'broker_fees']:
                                     try:
                                         spot_data[field_name] = float(val)
                                     except:
                                         spot_data[field_name] = None
+
                                 elif field_name == 'day_of_week':
                                     try:
                                         spot_data[field_name] = normalize_broadcast_day(str(val).strip())
                                     except:
                                         spot_data[field_name] = str(val).strip()
-                                elif field_name != 'broadcast_month':  # already handled
+
+                                elif field_name == 'revenue_type':  # NEW: normalize A&O → Internal Ad Sales
+                                    spot_data[field_name] = self.normalize_revenue_type(str(val).strip())
+
+                                elif field_name == 'spot_type':     # NEW: enforce CHECK constraint
+                                    spot_data[field_name] = self.normalize_spot_type(str(val).strip())
+
+                                elif field_name != 'broadcast_month':  # already handled above
                                     spot_data[field_name] = str(val).strip()
+
 
                         if 'market_name' in spot_data:
                             market_id = self._lookup_market_id(spot_data['market_name'], conn)
