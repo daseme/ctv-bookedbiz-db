@@ -158,7 +158,6 @@ class UpdatedUnifiedAnalysisEngine:
 
     def get_business_category_assignment_method_crosstab(self, year_input: str = "2024"):
         """
-        Cross-tab: Business Category × Assignment Method (includes Leased Airtime).
         Language-Targeted Advertising now includes ALL Internal Ad Sales spots.
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
@@ -175,7 +174,6 @@ class UpdatedUnifiedAnalysisEngine:
                     WHEN s.revenue_type = 'Direct Response Sales' THEN 'Direct Response Sales'
                     WHEN s.revenue_type = 'Paid Programming'      THEN 'Paid Programming'
                     WHEN s.revenue_type = 'Branded Content'       THEN 'Branded Content'
-                    WHEN s.revenue_type = 'Leased Airtime'        THEN 'Leased Airtime'
                     WHEN s.revenue_type = 'Internal Ad Sales'     THEN 'Internal Ad Sales'
                     ELSE 'Other/Review Required'
                 END AS business_category
@@ -235,7 +233,6 @@ class UpdatedUnifiedAnalysisEngine:
             "Direct Response Sales",
             "Paid Programming",
             "Branded Content",    
-            "Leased Airtime",
             "Other/Review Required",
         ]
 
@@ -266,7 +263,6 @@ class UpdatedUnifiedAnalysisEngine:
         2) Direct Response Sales
         3) Paid Programming
         4) Branded Content
-        5) Leased Airtime
         6) Other/Review Required (only revenue_type = 'Other' now)
         """
         _, suffixes = self.parse_year_range(year_input)
@@ -348,21 +344,8 @@ class UpdatedUnifiedAnalysisEngine:
         rev, paid, bns, tot = fetch(q3)
         cats.append(UnifiedResult("Branded Content", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
-        # 5) Leased Airtime
-        q5 = f"""
-        SELECT 
-            SUM(COALESCE(s.gross_rate, 0)) AS revenue,
-            COUNT(CASE WHEN s.spot_type IS NULL OR s.spot_type <> 'BNS' THEN 1 END) AS paid_spots,
-            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) AS bonus_spots,
-            COUNT(*) AS total_spots
-        FROM spots s
-        {base_where}
-        AND s.revenue_type = 'Leased Airtime'
-        """
-        rev, paid, bns, tot = fetch(q5)
-        cats.append(UnifiedResult("Leased Airtime", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
-        # 6) Other/Review Required (only revenue_type = 'Other' now)
+        # 5) Other/Review Required (only revenue_type = 'Other' now)
         q6 = f"""
         SELECT 
             SUM(COALESCE(s.gross_rate, 0)) AS revenue,
@@ -550,7 +533,7 @@ class UpdatedUnifiedAnalysisEngine:
             " OR sla.confidence < 0.5"
             " OR sla.spot_id IS NULL"
             " OR s.revenue_type = 'Other'"
-            " OR s.revenue_type NOT IN ('Direct Response Sales','Paid Programming','Branded Content','Internal Ad Sales','Leased Airtime')"
+            " OR s.revenue_type NOT IN ('Direct Response Sales','Paid Programming','Branded Content','Internal Ad Sales')"
             ")"
         )
 
@@ -609,7 +592,6 @@ class UpdatedUnifiedAnalysisEngine:
                 WHEN s.revenue_type = 'Direct Response Sales' THEN 'Direct Response Sales'
                 WHEN s.revenue_type = 'Paid Programming'      THEN 'Paid Programming'
                 WHEN s.revenue_type = 'Branded Content'       THEN 'Branded Content'
-                WHEN s.revenue_type = 'Leased Airtime'        THEN 'Leased Airtime'
                 WHEN s.revenue_type = 'Internal Ad Sales'     THEN 'Internal Ad Sales'
                 ELSE 'Other/Review Required'
             END AS business_category,
