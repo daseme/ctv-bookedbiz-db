@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """
-Updated Unified Analysis System - Using New Language Assignment System
-====================================================================
+Updated Unified Analysis System
+==================================================================
 
-This system works with the new language assignment system that uses the
-spot_language_assignments table instead of time blocks.
+This system now defines Language-Targeted Advertising as simply:
+- revenue_type = 'Internal Ad Sales' (regardless of spot_type)
 
-Key updates here:
-- Treat BB like COM for Language-Targeted Advertising (IAS + COM/BNS/BB)
-- Remove BB from the “unusual” IAS spot type review bucket
-- Keep 'L' (undetermined) as review; valid non-'L' codes on COM/BB/BNS avoid review
-- Adds --export-review to write a review CSV using the same filters as the bash script
+Previously it was:
+- revenue_type = 'Internal Ad Sales' AND spot_type IN ('COM','BNS','BB')
+
+This change simplifies the business logic and moves all Internal Ad Sales spots
+into the Language-Targeted Advertising category.
+
+Key changes:
+- Language-Targeted Advertising now includes ALL Internal Ad Sales spots
+- Other/Review Required category no longer includes Internal Ad Sales spots with unusual spot types
+- All related queries updated consistently
 
 Default English (Fallback)
 ----------------------------
@@ -22,7 +27,7 @@ What it is
 
         the spot is not a COM/BB case (those have their own business-rule default), and
 
-        there isn’t another determinate rule.
+        there isn't another determinate rule.
 
     We write an assignment with:
 
@@ -34,10 +39,10 @@ What it is
 
         requires_review = 0 (not auto-sent to the review bin, but auditable)
 
-Think of it as: “We didn’t get a code, so we’ll assume English for now—mark it as a lower-confidence default.”
+Think of it as: "We didn't get a code, so we'll assume English for now—mark it as a lower-confidence default."
 What it is not
 
-    Not the same as Business Rule Default English (business_rule_default_english or auto_default_com_bb) which is high confidence (1.0) because the business rules dictate English (e.g., Direct Response, Paid Programming, Branded Content, or COM/BB with missing/‘L’).
+    Not the same as Business Rule Default English (business_rule_default_english or auto_default_com_bb) which is high confidence (1.0) because the business rules dictate English (e.g., Direct Response, Paid Programming, Branded Content, or COM/BB with missing/'L').
 
     Not used for 'L' codes → those are Undetermined (undetermined_flagged, review = 1).
 
@@ -45,7 +50,7 @@ What it is not
 
 Why we keep it separate
 
-    It lets you audit “assumed English due to missing data” (lower confidence) separately from “English by rule” (high confidence).
+    It lets you audit "assumed English due to missing data" (lower confidence) separately from "English by rule" (high confidence).
 
     If a valid language code appears later, a re-run flips these from default_english → direct_mapping.
 """
@@ -77,6 +82,8 @@ class UpdatedUnifiedAnalysisEngine:
     """
     Updated unified analysis engine using the new language assignment system
     with multiyear support and simplified business rule categories.
+    
+    Language-Targeted Advertising now includes ALL Internal Ad Sales spots.
     """
 
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -152,6 +159,7 @@ class UpdatedUnifiedAnalysisEngine:
     def get_business_category_assignment_method_crosstab(self, year_input: str = "2024"):
         """
         Cross-tab: Business Category × Assignment Method (includes Leased Airtime).
+        Language-Targeted Advertising now includes ALL Internal Ad Sales spots.
         """
         full_years, year_suffixes = self.parse_year_range(year_input)
         year_filter, year_params = self.build_year_filter(year_suffixes)
@@ -168,9 +176,7 @@ class UpdatedUnifiedAnalysisEngine:
                     WHEN s.revenue_type = 'Paid Programming'      THEN 'Paid Programming'
                     WHEN s.revenue_type = 'Branded Content'       THEN 'Branded Content'
                     WHEN s.revenue_type = 'Leased Airtime'        THEN 'Leased Airtime'
-                    WHEN s.revenue_type = 'Internal Ad Sales'
-                        AND UPPER(COALESCE(s.spot_type,'')) IN ('COM','BNS','BB')
-                        THEN 'Language-Targeted Advertising'
+                    WHEN s.revenue_type = 'Internal Ad Sales'     THEN 'Internal Ad Sales'
                     ELSE 'Other/Review Required'
                 END AS business_category
             FROM spots s
@@ -225,10 +231,10 @@ class UpdatedUnifiedAnalysisEngine:
             "Other/Unknown",
         ]
         category_order = [
+            "Internal Ad Sales",
             "Direct Response Sales",
             "Paid Programming",
-            "Branded Content",
-            "Language-Targeted Advertising",
+            "Branded Content",    
             "Leased Airtime",
             "Other/Review Required",
         ]
@@ -256,12 +262,12 @@ class UpdatedUnifiedAnalysisEngine:
     def get_mutually_exclusive_categories(self, year_input: str = "2024") -> List[UnifiedResult]:
         """
         Categories based on business rules:
-        1) Direct Response Sales
-        2) Paid Programming
-        3) Branded Content
-        4) Language-Targeted Advertising (Internal Ad Sales + COM/BNS/BB)
-        5) Leased Airtime  # <-- ADD THIS CATEGORY
-        6) Other/Review Required (IAS with PKG/CRD/AV, or revenue_type Other)
+        1) Internal Ad Sales spots
+        2) Direct Response Sales
+        3) Paid Programming
+        4) Branded Content
+        5) Leased Airtime
+        6) Other/Review Required (only revenue_type = 'Other' now)
         """
         _, suffixes = self.parse_year_range(year_input)
         yf, yp = self.build_year_filter(suffixes)
@@ -286,7 +292,21 @@ class UpdatedUnifiedAnalysisEngine:
 
         cats: List[UnifiedResult] = []
 
-        # 1) Direct Response Sales
+        # 1) Internal Ad Sales
+        q4 = f"""
+        SELECT 
+            SUM(COALESCE(s.gross_rate, 0)) AS revenue,
+            COUNT(CASE WHEN s.spot_type IS NULL OR s.spot_type <> 'BNS' THEN 1 END) AS paid_spots,
+            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) AS bonus_spots,
+            COUNT(*) AS total_spots
+        FROM spots s
+        {base_where}
+        AND s.revenue_type = 'Internal Ad Sales'
+        """
+        rev, paid, bns, tot = fetch(q4)
+        cats.append(UnifiedResult("Internal Ad Sales", rev, 0, paid, bns, tot, rev / tot if tot else 0))
+
+        # 2) Direct Response Sales
         q1 = f"""
         SELECT 
             SUM(COALESCE(s.gross_rate, 0)) AS revenue,
@@ -300,7 +320,7 @@ class UpdatedUnifiedAnalysisEngine:
         rev, paid, bns, tot = fetch(q1)
         cats.append(UnifiedResult("Direct Response Sales", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
-        # 2) Paid Programming
+        # 3) Paid Programming
         q2 = f"""
         SELECT 
             SUM(COALESCE(s.gross_rate, 0)) AS revenue,
@@ -314,7 +334,7 @@ class UpdatedUnifiedAnalysisEngine:
         rev, paid, bns, tot = fetch(q2)
         cats.append(UnifiedResult("Paid Programming", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
-        # 3) Branded Content
+        # 4) Branded Content
         q3 = f"""
         SELECT 
             SUM(COALESCE(s.gross_rate, 0)) AS revenue,
@@ -328,22 +348,7 @@ class UpdatedUnifiedAnalysisEngine:
         rev, paid, bns, tot = fetch(q3)
         cats.append(UnifiedResult("Branded Content", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
-        # 4) Language-Targeted Advertising (IAS + COM/BNS/BB)
-        q4 = f"""
-        SELECT 
-            SUM(COALESCE(s.gross_rate, 0)) AS revenue,
-            COUNT(CASE WHEN s.spot_type IS NULL OR s.spot_type <> 'BNS' THEN 1 END) AS paid_spots,
-            COUNT(CASE WHEN s.spot_type = 'BNS' THEN 1 END) AS bonus_spots,
-            COUNT(*) AS total_spots
-        FROM spots s
-        {base_where}
-        AND s.revenue_type = 'Internal Ad Sales'
-        AND s.spot_type IN ('COM','BNS','BB')
-        """
-        rev, paid, bns, tot = fetch(q4)
-        cats.append(UnifiedResult("Language-Targeted Advertising", rev, 0, paid, bns, tot, rev / tot if tot else 0))
-
-        # 5) Leased Airtime  <-- ADD THIS NEW CATEGORY
+        # 5) Leased Airtime
         q5 = f"""
         SELECT 
             SUM(COALESCE(s.gross_rate, 0)) AS revenue,
@@ -357,7 +362,7 @@ class UpdatedUnifiedAnalysisEngine:
         rev, paid, bns, tot = fetch(q5)
         cats.append(UnifiedResult("Leased Airtime", rev, 0, paid, bns, tot, rev / tot if tot else 0))
 
-        # 6) Other/Review Required
+        # 6) Other/Review Required (only revenue_type = 'Other' now)
         q6 = f"""
         SELECT 
             SUM(COALESCE(s.gross_rate, 0)) AS revenue,
@@ -366,11 +371,7 @@ class UpdatedUnifiedAnalysisEngine:
             COUNT(*) AS total_spots
         FROM spots s
         {base_where}
-        AND (
-                (s.revenue_type = 'Internal Ad Sales' AND s.spot_type IN ('PKG','CRD','AV'))
-            OR (s.revenue_type = 'Internal Ad Sales' AND COALESCE(s.spot_type, '') = '')
-            OR s.revenue_type = 'Other'
-        )
+        AND s.revenue_type = 'Other'
         """
 
         rev, paid, bns, tot = fetch(q6)
@@ -386,8 +387,8 @@ class UpdatedUnifiedAnalysisEngine:
 
     def get_unified_language_analysis(self, year_input: str = "2024") -> List[UnifiedResult]:
         """
-        Only count *actual* language targeting (assignment_method='direct_mapping')
-        for IAS + COM/BNS/BB.
+        Simplified language categorization: Only main business-relevant categories,
+        everything else goes to "Other: Undetermined"
         """
         _, suffixes = self.parse_year_range(year_input)
         yf, yp = self.build_year_filter(suffixes)
@@ -395,15 +396,23 @@ class UpdatedUnifiedAnalysisEngine:
         q = f"""
         SELECT 
             CASE 
-                WHEN l.language_name IN ('Mandarin','Cantonese') THEN 'Chinese'
-                WHEN l.language_name IN ('Tagalog','Filipino')   THEN 'Filipino'
-                WHEN l.language_name = 'Hmong'                   THEN 'Hmong'
-                WHEN l.language_name IN ('Hindi','Punjabi','Bengali','Gujarati') OR l.language_name = 'South Asian' THEN 'South Asian'
-                WHEN l.language_name = 'Vietnamese'              THEN 'Vietnamese'
-                WHEN l.language_name = 'Korean'                  THEN 'Korean'
-                WHEN l.language_name = 'Japanese'                THEN 'Japanese'
-                WHEN l.language_name = 'English'                 THEN 'English'
-                ELSE 'Other: ' || COALESCE(l.language_name, 'Unknown')
+                -- Main Business Categories (Pure/Clean Language Groups)
+                WHEN l.language_name IN ('Mandarin','Cantonese','Mandarin/Cantonese') THEN 'Chinese'
+                WHEN l.language_name IN ('Tagalog','Filipino') THEN 'Filipino'
+                WHEN l.language_name = 'Vietnamese' THEN 'Vietnamese'
+                WHEN l.language_name = 'Hmong' THEN 'Hmong'
+                WHEN l.language_name IN ('Hindi','Punjabi','South Asian') THEN 'South Asian'
+                WHEN l.language_name = 'Korean' THEN 'Korean'
+                WHEN l.language_name = 'Japanese' THEN 'Japanese'
+                WHEN l.language_name = 'English' THEN 'English'
+                
+                -- Everything Else = Undetermined
+                -- This includes:
+                -- - Multi-language codes that span groups (M,V; C,M,Hm; M,C,V; etc.)
+                -- - 'L' (undetermined)
+                -- - Unknown codes (13, 3, 5, A, F)
+                -- - Languages not in main categories (Russian, Spanish)
+                ELSE 'Other: Undetermined'
             END AS language,
             SUM(COALESCE(s.gross_rate,0)) AS revenue,
             COUNT(CASE WHEN s.spot_type IS NULL OR s.spot_type <> 'BNS' THEN 1 END) AS paid_spots,
@@ -413,10 +422,9 @@ class UpdatedUnifiedAnalysisEngine:
         JOIN spot_language_assignments sla ON s.spot_id = sla.spot_id
         LEFT JOIN languages l ON UPPER(sla.language_code) = UPPER(l.language_code)
         WHERE {yf}
-          AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-          AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
-          AND s.revenue_type = 'Internal Ad Sales'
-          AND s.spot_type IN ('COM','BNS','BB')
+        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
+        AND s.revenue_type = 'Internal Ad Sales'
         GROUP BY 1
         HAVING SUM(COALESCE(s.gross_rate,0)) > 0 OR COUNT(*) > 0
         ORDER BY revenue DESC
@@ -515,6 +523,7 @@ class UpdatedUnifiedAnalysisEngine:
             "new_assignment_system": True,
             "multiyear_support": True,
             "years_analyzed": base["years"],
+            "language_targeted_advertising_change": "Now includes ALL Internal Ad Sales spots (not just COM/BNS/BB)",
         }
 
     # ---------------- Review export (Python version of the bash script) ----------------
@@ -533,7 +542,7 @@ class UpdatedUnifiedAnalysisEngine:
             return "AND sla.confidence < 0.5"
         if t == "fallback":
             return "AND sla.assignment_method IN ('default_english','business_rule_default_english','auto_default_com_bb')"
-        # all
+        # all - updated to remove Internal Ad Sales spot type filters
         return (
             "AND ("
             " sla.assignment_method IN ('business_review_required','undetermined_flagged','invalid_code_flagged')"
@@ -541,8 +550,7 @@ class UpdatedUnifiedAnalysisEngine:
             " OR sla.confidence < 0.5"
             " OR sla.spot_id IS NULL"
             " OR s.revenue_type = 'Other'"
-            " OR s.revenue_type NOT IN ('Direct Response Sales','Paid Programming','Branded Content','Internal Ad Sales')"
-            " OR (s.revenue_type = 'Internal Ad Sales' AND s.spot_type NOT IN ('COM','BNS','BB'))"
+            " OR s.revenue_type NOT IN ('Direct Response Sales','Paid Programming','Branded Content','Internal Ad Sales','Leased Airtime')"
             ")"
         )
 
@@ -601,8 +609,8 @@ class UpdatedUnifiedAnalysisEngine:
                 WHEN s.revenue_type = 'Direct Response Sales' THEN 'Direct Response Sales'
                 WHEN s.revenue_type = 'Paid Programming'      THEN 'Paid Programming'
                 WHEN s.revenue_type = 'Branded Content'       THEN 'Branded Content'
-                WHEN s.revenue_type = 'Internal Ad Sales' AND s.spot_type IN ('COM','BNS','BB')
-                    THEN 'Language-Targeted Advertising'
+                WHEN s.revenue_type = 'Leased Airtime'        THEN 'Leased Airtime'
+                WHEN s.revenue_type = 'Internal Ad Sales'     THEN 'Internal Ad Sales'
                 ELSE 'Other/Review Required'
             END AS business_category,
             CASE 
@@ -614,8 +622,6 @@ class UpdatedUnifiedAnalysisEngine:
                 WHEN sla.language_status = 'invalid'                    THEN 'Invalid Language Code'
                 WHEN sla.confidence < 0.5                               THEN 'Low Confidence Assignment'
                 WHEN sla.requires_review = 1                            THEN 'System Flagged for Review'
-                WHEN s.revenue_type = 'Internal Ad Sales' AND s.spot_type NOT IN ('COM','BNS','BB')
-                     THEN 'Internal Ad Sales with unusual spot type'
                 WHEN sla.spot_id IS NULL                                THEN 'No Language Assignment Record'
                 ELSE 'Other Review Required'
             END AS review_reason,
@@ -757,33 +763,34 @@ class UpdatedUnifiedAnalysisEngine:
 
 
     def _generate_updated_system_notes(self) -> str:
-        return """## 📋 Updated Language Assignment System Notes
+        return """## 📋 Language Assignment System Notes
 
+**Key Change**: Language-Targeted Advertising now includes **ALL** Internal Ad Sales spots, regardless of spot type.
+
+- Previously: Internal Ad Sales + spot_type IN ('COM', 'BNS', 'BB')
+- Now: **ALL** Internal Ad Sales spots (COM, BNS, BB, PKG, CRD, AV, PRG, SVC, etc.)
+
+Other Notes:
 - 'L' (undetermined) always requires manual review.
-- Valid non-'L' language codes on COM/BB/BNS avoid review via direct mapping.
+- Valid non-'L' language codes avoid review via direct mapping.
+- Other/Review Required category now only includes revenue_type = 'Other'.
 
-Business Rule Categories:
-1. Direct Response Sales
-2. Paid Programming
-3. Branded Content
-4. Language-Targeted Advertising (IAS + COM/BNS/BB)
-5. Other/Review Required
 """
 
     def _generate_updated_faq_section(self) -> str:
-        return """## FAQ (Updated)
+        return """## FAQ 
 
-- **Why is a COM/BB spot not in review?**  
-  If it has a valid, non-'L' language code, it's directly mapped and does **not** require review.
+- **Why are PKG/CRD/AV spots no longer in review?**  
+  They are now classified as Internal Ad Sales since they have revenue_type = 'Internal Ad Sales'.
 
-- **Why do some IAS spots fall into review?**  
-  IAS with unusual spot types (PKG/CRD/AV), or with 'L', or invalid codes.
+- **What changed about Language-Targeted Advertising?**  
+  It now includes ALL Internal Ad Sales spots, not just COM/BNS/BB. This simplifies the business logic.
+
+- **Why do some spots still fall into review?**  
+  Only spots with revenue_type = 'Other', invalid language codes, low confidence assignments, or system flags.
 
 - **Does the analysis use spot categories?**  
-  It uses the same business rules directly (revenue_type + spot_type) aligned with the assignment system.
-
-- **What is Default English (Fallback)?
-  Default English (Fallback) represents spots where the system assigned English as the target language due to missing or incomplete language data, rather than explicit business rules or direct language codes.
+  The new system focuses primarily on revenue_type for business categorization, with spot_type being less critical.
 """
 
 
@@ -793,61 +800,41 @@ Business Rule Categories:
 
         categories = self.get_mutually_exclusive_categories(year_input)
         languages = self.get_unified_language_analysis(year_input)
-        methods = self.get_assignment_method_analysis(year_input)
         validation = self.validate_reconciliation(year_input)
 
         category_table = self._format_table(
-            categories, "📊 Business Rule Category Breakdown", "Revenue Categories (Updated Rules)", year_display
+            categories, "📊 Business Rule Category Breakdown", "Revenue Categories", year_display
         )
         language_table = self._format_table(
-            languages, "🌐 Language-Targeted Advertising Analysis", "Direct Mapping Only", year_display
-        )
-        method_table = self._format_assignment_method_table(
-            methods, "🔧 Assignment Method Analysis", "How Languages Were Assigned", year_display
-        )
-        # Cross-tab: Business Category × Assignment Method
-        xtab = self.get_business_category_assignment_method_crosstab(year_input)
-        crosstab_md = self._format_crosstab_counts_table(
-            xtab,
-            "📐 Business Category × Assignment Method",
-            "How each business bucket breaks down by assignment path",
-            year_display,
+            languages, "🌐 Language-Targeted Advertising", "Internal Ad Sales by Language", year_display
         )
 
-        return f"""# Updated Unified Revenue Analysis - {year_display}
+        return f"""# Language-Targeted Advertising Analysis - {year_display}
 
+    ## 🎯 Reconciliation
 
+    - **Years**: {', '.join(validation['base_totals']['years'])}
+    - **Base Revenue**: ${validation['base_totals']['revenue']:,.2f}
+    - **Category Total**: ${validation['category_totals']['revenue']:,.2f}
+    - **Revenue Δ**: ${validation['revenue_difference']:,.2f}
+    - **Spots Δ**: {validation['spot_difference']:,}
+    - **Perfect?**: {'✅ YES' if validation['perfect_reconciliation'] else '❌ NO'}
 
-*New language assignment system using `spot_language_assignments`*
+    {category_table}
 
-## 🎯 Reconciliation
+    {language_table}
 
-- **Years**: {', '.join(validation['base_totals']['years'])}
-- **Base Revenue**: ${validation['base_totals']['revenue']:,.2f}
-- **Category Total**: ${validation['category_totals']['revenue']:,.2f}
-- **Revenue Δ**: ${validation['revenue_difference']:,.2f}
-- **Spots Δ**: {validation['spot_difference']:,}
-- **Perfect?**: {'✅ YES' if validation['perfect_reconciliation'] else '❌ NO'}
+    {self._generate_updated_system_notes()}
 
-{category_table}
-
-{language_table}
-
-{method_table}
-
-{crosstab_md}
-
-{self._generate_updated_system_notes()}
-
-{self._generate_updated_faq_section()}
-"""
+    {self._generate_updated_faq_section()}
+    """
 
 
 def main():
     import argparse
 
     p = argparse.ArgumentParser(
-        description="Updated Unified Analysis - New Language Assignment System",
+        description="Updated Unified Analysis - Language-Targeted Advertising Fix",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -890,6 +877,7 @@ Examples:
                 print(f"Category Total: ${v['category_totals']['revenue']:,.2f}")
                 print(f"Revenue Δ: ${v['revenue_difference']:,.2f}")
                 print(f"Perfect: {'YES' if v['perfect_reconciliation'] else 'NO'}")
+                print(f"Change: {v['language_targeted_advertising_change']}")
                 return
 
             if args.assignment_methods_only:
