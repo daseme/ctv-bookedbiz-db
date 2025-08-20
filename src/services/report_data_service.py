@@ -1,398 +1,317 @@
+#!/usr/bin/env python3
 # src/services/report_data_service.py
 """
-Report Data Service for preparing structured report data.
-Handles data aggregation, transformation, and caching for report generation.
+Report Data Service (Broadcast-Month–centric, AE-normalized)
+
+Changes:
+- Scope all queries by broadcast_month (mmm-yy). No air_date coupling.
+- AE filtering normalized (UPPER/TRIM) with explicit 'Unknown' handling.
+- COUNT(*) + COALESCE fixes.
+- Removed lru_cache on methods that take db_connection (avoid unhashable-arg cache errors).
 """
+
 import logging
 import time
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, date
 from decimal import Decimal
-from functools import lru_cache
-import calendar
 
 from services.container import get_container
 from models.report_data import (
     ReportMetadata, ReportFilters, MonthlyRevenueReportData,
     AEPerformanceReportData, QuarterlyPerformanceReportData, SectorPerformanceReportData,
     CustomerMonthlyRow, AEPerformanceData, QuarterlyData, SectorData, CustomerSectorData,
-    MonthStatus, create_customer_monthly_row_from_dict, create_month_status_from_closure_data
+    MonthStatus, create_month_status_from_closure_data
 )
 from utils.template_formatters import calculate_statistics
 
 logger = logging.getLogger(__name__)
 
+# ---------- Helpers ----------
+
+def _bm_like(year: int) -> str:
+    return f"%-{str(year)[-2:]}"
+
+def _ae_where_clause(ae_filter: Optional[str], column: str = "s.sales_person") -> Tuple[str, List[Any]]:
+    """
+    Build predicate/params for AE filter.
+    'Unknown' → NULL or empty sales_person on raw columns,
+    OR 'UNKNOWN' when filtering on pre-normalized ae_key.
+    """
+    if not ae_filter or ae_filter.strip().lower() == "all":
+        return "", []
+    val = ae_filter.strip()
+    if column == "ae_key":  # already normalized to uppercase or 'UNKNOWN'
+        if val.lower() == "unknown":
+            return "ae_key = 'UNKNOWN'", []
+        return "ae_key = UPPER(TRIM(?))", [val]
+    # raw column path
+    if val.lower() == "unknown":
+        return f"( {column} IS NULL OR TRIM({column}) = '' )", []
+    return f"UPPER(TRIM({column})) = UPPER(TRIM(?))", [val]
+
+def _bm_case_month(expr: str = "s.broadcast_month") -> str:
+    return f"""
+        CASE 
+            WHEN {expr} LIKE 'Jan-%' THEN '01'
+            WHEN {expr} LIKE 'Feb-%' THEN '02'
+            WHEN {expr} LIKE 'Mar-%' THEN '03'
+            WHEN {expr} LIKE 'Apr-%' THEN '04'
+            WHEN {expr} LIKE 'May-%' THEN '05'
+            WHEN {expr} LIKE 'Jun-%' THEN '06'
+            WHEN {expr} LIKE 'Jul-%' THEN '07'
+            WHEN {expr} LIKE 'Aug-%' THEN '08'
+            WHEN {expr} LIKE 'Sep-%' THEN '09'
+            WHEN {expr} LIKE 'Oct-%' THEN '10'
+            WHEN {expr} LIKE 'Nov-%' THEN '11'
+            WHEN {expr} LIKE 'Dec-%' THEN '12'
+        END
+    """.strip()
+
+def _bm_case_year(expr: str = "broadcast_month") -> str:
+    return f"""
+        CASE 
+            WHEN {expr} LIKE '%-21' THEN 2021
+            WHEN {expr} LIKE '%-22' THEN 2022
+            WHEN {expr} LIKE '%-23' THEN 2023
+            WHEN {expr} LIKE '%-24' THEN 2024
+            WHEN {expr} LIKE '%-25' THEN 2025
+            WHEN {expr} LIKE '%-26' THEN 2026
+            WHEN {expr} LIKE '%-27' THEN 2027
+            WHEN {expr} LIKE '%-28' THEN 2028
+            WHEN {expr} LIKE '%-29' THEN 2029
+            WHEN {expr} LIKE '%-30' THEN 2030
+        END
+    """.strip()
+
+# ---------- Service ----------
 
 class ReportDataService:
-    """
-    Service for preparing structured report data.
-    Uses existing services and repositories to aggregate and format data for reports.
-    """
-    
     def __init__(self, container=None):
-        """Initialize with service container."""
         self.container = container or get_container()
         self._cache_enabled = self.container.get_config('CACHE_ENABLED', True)
-        self._cache_ttl = self.container.get_config('CACHE_TTL', 300)  # 5 minutes
-        
+        self._cache_ttl = self.container.get_config('CACHE_TTL', 300)  # seconds
+
+    # ----- Public API -----
+
     def get_monthly_revenue_report_data(
-        self, 
-        year: int, 
+        self,
+        year: int,
         filters: Optional[ReportFilters] = None
     ) -> MonthlyRevenueReportData:
-        """
-        Get complete monthly revenue report data for report5.html.
-        
-        Args:
-            year: Year to generate report for
-            filters: Optional filters to apply
-            
-        Returns:
-            MonthlyRevenueReportData object ready for template consumption
-        """
         start_time = time.time()
-        
-        if filters is None:
-            filters = ReportFilters(year=year)
-        
-        logger.info(f"Generating monthly revenue report for year {year}")
-        
-        try:
-            # Get database connection
-            db_connection = self.container.get('database_connection')
-            
-            # Get customer monthly revenue data
-            revenue_data = self._get_customer_monthly_revenue(db_connection, year, filters)
-            
-            # Get available years
-            available_years = self._get_available_years(db_connection)
-            
-            # Get AE list
-            ae_list = self._get_ae_list(db_connection)
-            
-            # Get revenue types
-            revenue_types = self._get_revenue_types(db_connection)
-            
-            # Get month closure status
-            month_status = self._get_month_status(db_connection, year)
-            
-            # Calculate statistics based on selected revenue field
-            revenue_field = filters.revenue_field if filters.revenue_field else 'gross'
-            revenue_data_dicts = []
-            for row in revenue_data:
-                row_dict = row.to_dict()
-                # Override 'total' with the selected revenue field total
-                if revenue_field == 'net':
-                    row_dict['total'] = float(row.total_net)
-                else:
-                    row_dict['total'] = float(row.total_gross)
-                revenue_data_dicts.append(row_dict)
-            
-            stats = calculate_statistics(revenue_data_dicts)
-            
-            # Create metadata
-            data_last_updated = self._get_data_last_updated(db_connection)
-            processing_time = (time.time() - start_time) * 1000
-            metadata = ReportMetadata(
-                report_type="monthly_revenue",
-                parameters={'year': year, 'filters': filters.to_dict()},
-                row_count=len(revenue_data),
-                processing_time_ms=processing_time,
-                data_last_updated=data_last_updated
-            )
-            
-            # Build complete report data
-            report_data = MonthlyRevenueReportData(
-                selected_year=year,
-                available_years=available_years,
-                total_customers=stats['total_customers'],
-                active_customers=stats['active_customers'],
-                total_revenue=Decimal(str(round(stats['total_revenue'], 2))),  # Round here
-                avg_monthly_revenue=Decimal(str(round(stats['avg_monthly_revenue'], 2))),  # Round here
-                revenue_data=revenue_data,
-                ae_list=ae_list,
-                revenue_types=revenue_types,
-                month_status=month_status,
-                filters=filters,
-                metadata=metadata
-            )
-            
-            # Log processing time
-            logger.info(f"Monthly revenue report generated in {processing_time:.1f}ms")
-            return report_data
-        
-        except Exception as e:
-            logger.error(f"Error generating monthly revenue report: {e}")
-            raise
-    
+        filters = filters or ReportFilters(year=year)
+        logger.info("Monthly revenue report year=%s filters=%s", year, filters.to_dict())
+
+        db = self.container.get('database_connection')
+
+        revenue_data = self._get_customer_monthly_revenue(db, year, filters)
+        available_years = self._get_available_years(db)
+        ae_list = self._get_ae_list(db, year)  # year-scoped for correctness in older years
+        revenue_types = self._get_revenue_types(db)
+        month_status = self._get_month_status(db, year)
+
+        # Stats based on chosen field
+        revenue_field = (filters.revenue_field or 'gross').lower()
+        rows_for_stats: List[Dict[str, Any]] = []
+        for r in revenue_data:
+            d = r.to_dict()
+            d['total'] = float(r.total_net) if revenue_field == 'net' else float(r.total_gross)
+            rows_for_stats.append(d)
+        stats = calculate_statistics(rows_for_stats)
+
+        data_last_updated = self._get_data_last_updated(db)
+        processing_time = (time.time() - start_time) * 1000.0
+
+        metadata = ReportMetadata(
+            report_type="monthly_revenue",
+            parameters={'year': year, 'filters': filters.to_dict()},
+            row_count=len(revenue_data),
+            processing_time_ms=processing_time,
+            data_last_updated=data_last_updated
+        )
+
+        return MonthlyRevenueReportData(
+            selected_year=year,
+            available_years=available_years,
+            total_customers=stats['total_customers'],
+            active_customers=stats['active_customers'],
+            total_revenue=Decimal(str(round(stats['total_revenue'], 2))),
+            avg_monthly_revenue=Decimal(str(round(stats['avg_monthly_revenue'], 2))),
+            revenue_data=revenue_data,
+            ae_list=ae_list,
+            revenue_types=revenue_types,
+            month_status=month_status,
+            filters=filters,
+            metadata=metadata
+        )
+
     def get_ae_performance_report_data(
-        self, 
+        self,
         filters: Optional[ReportFilters] = None
     ) -> AEPerformanceReportData:
-        """
-        Get AE performance report data.
-        
-        Args:
-            filters: Optional filters to apply
-            
-        Returns:
-            AEPerformanceReportData object
-        """
         start_time = time.time()
-        
-        if filters is None:
-            filters = ReportFilters()
-        
-        logger.info("Generating AE performance report")
-        
-        try:
-            db_connection = self.container.get('database_connection')
-            
-            # Get AE performance data
-            ae_data = self._get_ae_performance_data(db_connection, filters)
-            
-            # Calculate summary statistics
-            total_revenue = sum(ae.total_revenue for ae in ae_data)
-            performance_pcts = [ae.performance_pct for ae in ae_data if ae.performance_pct is not None]
-            avg_performance_pct = sum(performance_pcts) / len(performance_pcts) if performance_pcts else None
-            top_performer = max(ae_data, key=lambda x: x.total_revenue).ae_name if ae_data else None
-            
-            # Create metadata
-            processing_time = (time.time() - start_time) * 1000
-            metadata = ReportMetadata(
-                report_type="ae_performance",
-                parameters={'filters': filters.to_dict()},
-                row_count=len(ae_data),
-                processing_time_ms=processing_time
-            )
-            
-            return AEPerformanceReportData(
-                ae_performance=ae_data,
-                total_revenue=total_revenue,
-                avg_performance_pct=avg_performance_pct,
-                top_performer=top_performer,
-                filters=filters,
-                metadata=metadata
-            )
-            
-        except Exception as e:
-            logger.error(f"Error generating AE performance report: {e}")
-            raise
-    
+        filters = filters or ReportFilters()
+        logger.info("AE performance report filters=%s", filters.to_dict())
+
+        db = self.container.get('database_connection')
+        ae_data = self._get_ae_performance_data(db, filters)
+
+        total_revenue = sum(ae.total_revenue for ae in ae_data)
+        pcts = [ae.performance_pct for ae in ae_data if getattr(ae, "performance_pct", None) is not None]
+        avg_performance_pct = (sum(pcts) / len(pcts)) if pcts else None
+        top_performer = max(ae_data, key=lambda x: x.total_revenue).ae_name if ae_data else None
+
+        metadata = ReportMetadata(
+            report_type="ae_performance",
+            parameters={'filters': filters.to_dict()},
+            row_count=len(ae_data),
+            processing_time_ms=(time.time() - start_time) * 1000.0
+        )
+
+        return AEPerformanceReportData(
+            ae_performance=ae_data,
+            total_revenue=total_revenue,
+            avg_performance_pct=avg_performance_pct,
+            top_performer=top_performer,
+            filters=filters,
+            metadata=metadata
+        )
+
     def get_quarterly_performance_data(
-        self, 
+        self,
         filters: Optional[ReportFilters] = None
     ) -> QuarterlyPerformanceReportData:
-        """
-        Get quarterly performance report data.
-        
-        Args:
-            filters: Optional filters to apply
-            
-        Returns:
-            QuarterlyPerformanceReportData object
-        """
         start_time = time.time()
-        
-        if filters is None:
-            filters = ReportFilters()
-        
-        logger.info("Generating quarterly performance report")
-        
-        try:
-            db_connection = self.container.get('database_connection')
-            
-            # Get quarterly data
-            quarterly_data = self._get_quarterly_data(db_connection, filters)
-            
-            # Get AE performance data
-            ae_data = self._get_ae_performance_data(db_connection, filters)
-            
-            # Calculate total revenue
-            total_revenue = sum(q.total_revenue for q in quarterly_data)
-            
-            # Determine current year
-            current_year = filters.year or date.today().year
-            
-            # Create metadata
-            processing_time = (time.time() - start_time) * 1000
-            metadata = ReportMetadata(
-                report_type="quarterly_performance",
-                parameters={'filters': filters.to_dict()},
-                row_count=len(quarterly_data),
-                processing_time_ms=processing_time
-            )
-            
-            return QuarterlyPerformanceReportData(
-                current_year=current_year,
-                quarterly_data=quarterly_data,
-                ae_performance=ae_data,
-                total_revenue=total_revenue,
-                filters=filters,
-                metadata=metadata
-            )
-            
-        except Exception as e:
-            logger.error(f"Error generating quarterly performance report: {e}")
-            raise
-    
+        filters = filters or ReportFilters()
+        logger.info("Quarterly performance report filters=%s", filters.to_dict())
+
+        db = self.container.get('database_connection')
+        quarterly_data = self._get_quarterly_data(db, filters)
+        ae_data = self._get_ae_performance_data(db, filters)
+        total_revenue = sum(q.total_revenue for q in quarterly_data)
+        current_year = filters.year or date.today().year
+
+        metadata = ReportMetadata(
+            report_type="quarterly_performance",
+            parameters={'filters': filters.to_dict()},
+            row_count=len(quarterly_data),
+            processing_time_ms=(time.time() - start_time) * 1000.0
+        )
+
+        return QuarterlyPerformanceReportData(
+            current_year=current_year,
+            quarterly_data=quarterly_data,
+            ae_performance=ae_data,
+            total_revenue=total_revenue,
+            filters=filters,
+            metadata=metadata
+        )
+
     def get_sector_performance_data(
-        self, 
+        self,
         filters: Optional[ReportFilters] = None
     ) -> SectorPerformanceReportData:
-        """
-        Get sector performance report data.
-        
-        Args:
-            filters: Optional filters to apply
-            
-        Returns:
-            SectorPerformanceReportData object
-        """
         start_time = time.time()
-        
-        if filters is None:
-            filters = ReportFilters()
-        
-        logger.info("Generating sector performance report")
-        
-        try:
-            db_connection = self.container.get('database_connection')
-            
-            # Get sector data
-            sectors = self._get_sector_data(db_connection, filters)
-            
-            # Get top customers by sector
-            top_customers = self._get_top_customers_by_sector(db_connection, filters)
-            
-            # Calculate totals
-            total_revenue = sum(sector.total_revenue for sector in sectors)
-            sector_count = len(sectors)
-            
-            # Create metadata
-            processing_time = (time.time() - start_time) * 1000
-            metadata = ReportMetadata(
-                report_type="sector_performance",
-                parameters={'filters': filters.to_dict()},
-                row_count=len(sectors),
-                processing_time_ms=processing_time
-            )
-            
-            return SectorPerformanceReportData(
-                sectors=sectors,
-                top_customers_by_sector=top_customers,
-                total_revenue=total_revenue,
-                sector_count=sector_count,
-                filters=filters,
-                metadata=metadata
-            )
-            
-        except Exception as e:
-            logger.error(f"Error generating sector performance report: {e}")
-            raise
-    
+        filters = filters or ReportFilters()
+        logger.info("Sector performance report filters=%s", filters.to_dict())
+
+        db = self.container.get('database_connection')
+        sectors = self._get_sector_data(db, filters)
+        top_customers = self._get_top_customers_by_sector(db, filters)
+
+        total_revenue = sum(sector.total_revenue for sector in sectors)
+
+        metadata = ReportMetadata(
+            report_type="sector_performance",
+            parameters={'filters': filters.to_dict()},
+            row_count=len(sectors),
+            processing_time_ms=(time.time() - start_time) * 1000.0
+        )
+
+        return SectorPerformanceReportData(
+            sectors=sectors,
+            top_customers_by_sector=top_customers,
+            total_revenue=total_revenue,
+            sector_count=len(sectors),
+            filters=filters,
+            metadata=metadata
+        )
+
+    # ----- Internals -----
+
     def _get_customer_monthly_revenue(
-        self, 
-        db_connection, 
-        year: int, 
+        self,
+        db_connection,
+        year: int,
         filters: ReportFilters
     ) -> List[CustomerMonthlyRow]:
-        """Get customer monthly revenue breakdown from database."""
-        
-        # FIXED: Use pattern matching for mmm-yy format instead of strftime
-        # Convert year to yy format (e.g., 2025 -> '25')
-        year_suffix = str(year)[-2:]  # Get last 2 digits
-        
-        # Build base query with proper date handling using broadcast_month - fetch BOTH gross and net
-        base_query = """
+        month_expr = _bm_case_month("s.broadcast_month")
+        query = f"""
             SELECT
                 c.customer_id,
-                COALESCE(a.agency_name || ' : ', '') || c.normalized_name as customer,
-                COALESCE(s.sales_person, 'Unknown') as ae,
-                COALESCE(s.revenue_type, 'Regular') as revenue_type,
-                sect.sector_name as sector,
+                COALESCE(a.agency_name || ' : ', '') || c.normalized_name AS customer,
                 CASE 
-                    WHEN s.broadcast_month LIKE 'Jan-%' THEN '01'
-                    WHEN s.broadcast_month LIKE 'Feb-%' THEN '02'
-                    WHEN s.broadcast_month LIKE 'Mar-%' THEN '03'
-                    WHEN s.broadcast_month LIKE 'Apr-%' THEN '04'
-                    WHEN s.broadcast_month LIKE 'May-%' THEN '05'
-                    WHEN s.broadcast_month LIKE 'Jun-%' THEN '06'
-                    WHEN s.broadcast_month LIKE 'Jul-%' THEN '07'
-                    WHEN s.broadcast_month LIKE 'Aug-%' THEN '08'
-                    WHEN s.broadcast_month LIKE 'Sep-%' THEN '09'
-                    WHEN s.broadcast_month LIKE 'Oct-%' THEN '10'
-                    WHEN s.broadcast_month LIKE 'Nov-%' THEN '11'
-                    WHEN s.broadcast_month LIKE 'Dec-%' THEN '12'
-                END as month,
-                ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) as gross_revenue,
-                ROUND(SUM(COALESCE(s.station_net, 0)), 2) as net_revenue
+                  WHEN s.sales_person IS NULL OR TRIM(s.sales_person) = '' THEN 'Unknown'
+                  ELSE TRIM(s.sales_person)
+                END AS ae,
+                COALESCE(s.revenue_type, 'Regular') AS revenue_type,
+                sect.sector_name AS sector,
+                {month_expr} AS month,
+                ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
+                ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue
             FROM spots s
             LEFT JOIN customers c ON s.customer_id = c.customer_id
-            LEFT JOIN agencies a ON s.agency_id = a.agency_id
-            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+            LEFT JOIN agencies  a ON s.agency_id = a.agency_id
+            LEFT JOIN sectors  sect ON c.sector_id = sect.sector_id
             WHERE s.broadcast_month LIKE ?
-            AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-            AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
+              AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+              AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
         """
-        
-        # FIXED: Use pattern matching for year filter
-        params = [f"%-{year_suffix}"]  # e.g., '%-25' for 2025
-        
-        # Add filters
+        params: List[Any] = [_bm_like(year)]
+
         if filters.customer_search:
-            base_query += " AND LOWER(c.normalized_name) LIKE LOWER(?)"
+            query += " AND LOWER(c.normalized_name) LIKE LOWER(?)"
             params.append(f"%{filters.customer_search}%")
-            
-        if filters.ae_filter and filters.ae_filter != 'all':
-            base_query += " AND s.sales_person = ?"
-            params.append(filters.ae_filter)
-            
+
+        ae_sql, ae_params = _ae_where_clause(filters.ae_filter, "s.sales_person")
+        if ae_sql:
+            query += f" AND {ae_sql}"
+            params.extend(ae_params)
+
         if filters.revenue_type and filters.revenue_type != 'all':
-            base_query += " AND s.revenue_type = ?"
+            query += " AND s.revenue_type = ?"
             params.append(filters.revenue_type)
-        
-        base_query += " GROUP BY c.customer_id, c.normalized_name, s.sales_person, s.revenue_type, sect.sector_name, month"
-        
-        # Execute query
+
+        query += " GROUP BY c.customer_id, c.normalized_name, ae, revenue_type, sect.sector_name, month"
+
         conn = db_connection.connect()
-        cursor = conn.execute(base_query, params)
-        raw_results = cursor.fetchall()
+        rows = conn.execute(query, params).fetchall()
         conn.close()
-        
-        # Transform results into CustomerMonthlyRow objects
-        customer_data = {}
-        
-        for row in raw_results:
-            key = (row[0], row[1], row[2], row[3])  # customer_id, customer, ae, revenue_type
-            
-            if key not in customer_data:
-                customer_data[key] = {
-                    'customer_id': row[0],
-                    'customer': row[1],
-                    'ae': row[2],
-                    'revenue_type': row[3],
-                    'sector': row[4],
-                    'months_gross': {},
-                    'months_net': {}
+
+        buckets: Dict[Any, Dict[str, Any]] = {}
+        for customer_id, customer, ae, revenue_type, sector, month_txt, gross, net in rows:
+            key = (customer_id, customer, ae, revenue_type)
+            if key not in buckets:
+                buckets[key] = {
+                    'customer_id': customer_id,
+                    'customer': customer,
+                    'ae': ae,
+                    'revenue_type': revenue_type,
+                    'sector': sector,
+                    'months_gross': {m: Decimal('0') for m in range(1, 13)},
+                    'months_net':   {m: Decimal('0') for m in range(1, 13)},
                 }
-                # Initialize all months to 0
-                for month in range(1, 13):
-                    customer_data[key]['months_gross'][month] = Decimal('0')
-                    customer_data[key]['months_net'][month] = Decimal('0')
-            
-            # Set the actual month values for both gross and net
             try:
-                month_num = int(row[5])
-                if 1 <= month_num <= 12:
-                    customer_data[key]['months_gross'][month_num] = Decimal(str(row[6]))  # gross_revenue
-                    customer_data[key]['months_net'][month_num] = Decimal(str(row[7]))    # net_revenue
-            except (ValueError, TypeError):
-                continue  # Skip invalid month values
-        
-        # Convert to CustomerMonthlyRow objects
-        result = []
-        for data in customer_data.values():
+                mnum = int(month_txt)
+                if 1 <= mnum <= 12:
+                    buckets[key]['months_gross'][mnum] = Decimal(str(gross))
+                    buckets[key]['months_net'][mnum]   = Decimal(str(net))
+            except (TypeError, ValueError):
+                pass
+
+        result: List[CustomerMonthlyRow] = []
+        for data in buckets.values():
             row = CustomerMonthlyRow(
                 customer_id=data['customer_id'],
                 customer=data['customer'],
@@ -400,316 +319,263 @@ class ReportDataService:
                 revenue_type=data['revenue_type'],
                 sector=data['sector']
             )
-            
-            # Set all monthly values
-            for month in range(1, 13):
-                gross_val = data['months_gross'][month]
-                net_val = data['months_net'][month]
-                row.set_month_value(month, gross_val, net_val)
-            
+            for m in range(1, 13):
+                row.set_month_value(m, data['months_gross'][m], data['months_net'][m])
             result.append(row)
-        
-        # Sort by total revenue descending (using gross for consistency)
-        result.sort(key=lambda x: x.total, reverse=True)
-        
-        logger.debug(f"Retrieved {len(result)} customer monthly records for year {year}")
+
+        result.sort(key=lambda x: x.total, reverse=True)  # keep existing behavior
         return result
-    
-    @lru_cache(maxsize=128)
+
     def _get_available_years(self, db_connection) -> List[int]:
-        """Get list of available years from database using broadcast_month."""
-        # FIXED: Extract year from mmm-yy format using pattern matching
-        query = """
-        SELECT DISTINCT 
-            CASE 
-                WHEN broadcast_month LIKE '%-21' THEN 2021
-                WHEN broadcast_month LIKE '%-22' THEN 2022
-                WHEN broadcast_month LIKE '%-23' THEN 2023
-                WHEN broadcast_month LIKE '%-24' THEN 2024
-                WHEN broadcast_month LIKE '%-25' THEN 2025
-                WHEN broadcast_month LIKE '%-26' THEN 2026
-                WHEN broadcast_month LIKE '%-27' THEN 2027
-                WHEN broadcast_month LIKE '%-28' THEN 2028
-                WHEN broadcast_month LIKE '%-29' THEN 2029
-                WHEN broadcast_month LIKE '%-30' THEN 2030
-            END as year
-        FROM spots 
-        WHERE broadcast_month IS NOT NULL
-        AND broadcast_month != ''
-        AND broadcast_month LIKE '%-__'
-        ORDER BY year DESC
+        query = f"""
+            SELECT DISTINCT {_bm_case_year('broadcast_month')} AS year
+            FROM spots
+            WHERE broadcast_month IS NOT NULL
+              AND broadcast_month <> ''
+              AND broadcast_month LIKE '%-__'
+            ORDER BY year DESC
         """
-        
         conn = db_connection.connect()
-        cursor = conn.execute(query)
-        years = []
-        for row in cursor.fetchall():
-            if row[0] is not None:
-                years.append(int(row[0]))
+        years = [int(r[0]) for r in conn.execute(query).fetchall() if r[0] is not None]
         conn.close()
-        
-        # Remove duplicates and sort
         return sorted(list(set(years)), reverse=True)
-    
-    @lru_cache(maxsize=128)
-    def _get_ae_list(self, db_connection) -> List[str]:
-        """Get list of Account Executives."""
-        query = """
-        SELECT DISTINCT sales_person
-        FROM spots 
-        WHERE sales_person IS NOT NULL 
-        AND sales_person != ''
-        ORDER BY sales_person
+
+    def _get_ae_list(self, db_connection, year: Optional[int] = None) -> List[str]:
+        q = """
+            SELECT MIN(TRIM(sales_person)) AS ae_display
+            FROM spots
+            WHERE sales_person IS NOT NULL AND TRIM(sales_person) <> ''
         """
-        
+        params: List[Any] = []
+        if year:
+            q += " AND broadcast_month LIKE ?"
+            params.append(_bm_like(year))
+        q += " GROUP BY UPPER(TRIM(sales_person)) ORDER BY ae_display"
         conn = db_connection.connect()
-        cursor = conn.execute(query)
-        ae_list = [row[0] for row in cursor.fetchall()]
+        names = [r[0] for r in conn.execute(q, params).fetchall()]
         conn.close()
-        
-        return ae_list
-    
-    @lru_cache(maxsize=128)
+        return names
+
     def _get_revenue_types(self, db_connection) -> List[str]:
-        """Get list of revenue types."""
         query = """
-        SELECT DISTINCT COALESCE(revenue_type, 'Regular') as revenue_type
-        FROM spots 
-        WHERE revenue_type != 'Trade' OR revenue_type IS NULL
-        ORDER BY revenue_type
+            SELECT DISTINCT COALESCE(revenue_type, 'Regular') AS revenue_type
+            FROM spots
+            WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+            ORDER BY revenue_type
         """
-        
         conn = db_connection.connect()
-        cursor = conn.execute(query)
-        revenue_types = [row[0] for row in cursor.fetchall()]
+        types_ = [r[0] for r in conn.execute(query).fetchall()]
         conn.close()
-        
-        return revenue_types
-    
+        return types_
+
     def _get_month_status(self, db_connection, year: int) -> List[MonthStatus]:
-        """Get month closure status for the year."""
-        query = """
-        SELECT broadcast_month, closed_date, closed_by
-        FROM month_closures
-        WHERE broadcast_month LIKE ?
-        """
-        
-        # FIXED: Use pattern matching for mmm-yy format
-        year_suffix = str(year)[-2:]  # Get last 2 digits of year
-        pattern = f"%-{year_suffix}"
-        
+        query = "SELECT broadcast_month, closed_date, closed_by FROM month_closures WHERE broadcast_month LIKE ?"
         conn = db_connection.connect()
-        cursor = conn.execute(query, (pattern,))
-        closures = [{'broadcast_month': row[0], 'closed_date': row[1], 'closed_by': row[2]} 
-                   for row in cursor.fetchall()]
+        rows = conn.execute(query, (_bm_like(year),)).fetchall()
         conn.close()
-        
+        closures = [{'broadcast_month': r[0], 'closed_date': r[1], 'closed_by': r[2]} for r in rows]
         return create_month_status_from_closure_data(closures, year)
-    
+
     def _get_ae_performance_data(self, db_connection, filters: ReportFilters) -> List[AEPerformanceData]:
-        """Get AE performance data from database using broadcast_month."""
         query = """
-        SELECT
-            s.sales_person,
-            COUNT(*) as spot_count,
-            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) as total_revenue,
-            ROUND(AVG(COALESCE(s.gross_rate, 0)), 2) as avg_rate,
-            MIN(s.air_date) as first_spot_date,
-            MAX(s.air_date) as last_spot_date
-        FROM spots s
-        LEFT JOIN customers c ON s.customer_id = c.customer_id
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
-        WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
+            WITH norm AS (
+                SELECT
+                    CASE
+                        WHEN s.sales_person IS NULL OR TRIM(s.sales_person) = '' THEN 'UNKNOWN'
+                        ELSE UPPER(TRIM(s.sales_person))
+                    END AS ae_key,
+                    TRIM(COALESCE(s.sales_person, 'Unknown')) AS ae_display,
+                    s.gross_rate,
+                    s.air_date,
+                    s.broadcast_month
+                FROM spots s
+                LEFT JOIN customers c ON s.customer_id = c.customer_id
+                WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                  AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
+            )
+            SELECT
+                MIN(ae_display) AS ae_name,
+                COUNT(*) AS spot_count,
+                ROUND(SUM(COALESCE(gross_rate, 0)), 2) AS total_revenue,
+                ROUND(AVG(COALESCE(gross_rate, 0)), 2) AS avg_rate,
+                MIN(air_date) AS first_spot_date,
+                MAX(air_date) AS last_spot_date
+            FROM norm
+            WHERE 1=1
         """
-        
-        params = []
-        
-        # FIXED: Use pattern matching for year filter
+        params: List[Any] = []
+        where: List[str] = []
         if filters.year:
-            year_suffix = str(filters.year)[-2:]
-            query += " AND s.broadcast_month LIKE ?"
-            params.append(f"%-{year_suffix}")
-        
-        # Add date filters using air_date (these work with actual dates)
-        if filters.start_date:
-            query += " AND s.air_date >= ?"
-            params.append(filters.start_date)
-        if filters.end_date:
-            query += " AND s.air_date <= ?"
-            params.append(filters.end_date)
-        
-        query += " GROUP BY s.sales_person ORDER BY total_revenue DESC"
-        
+            where.append("broadcast_month LIKE ?")
+            params.append(_bm_like(filters.year))
+        ae_sql, ae_params = _ae_where_clause(filters.ae_filter, "ae_key")
+        if ae_sql:
+            where.append(ae_sql)
+            params.extend(ae_params)
+        if where:
+            query += " AND " + " AND ".join(where)
+        query += " GROUP BY ae_key ORDER BY total_revenue DESC"
+
         conn = db_connection.connect()
-        cursor = conn.execute(query, params)
-        
-        ae_data = []
-        for row in cursor.fetchall():
-            ae_data.append(AEPerformanceData(
-                ae_name=row[0],
-                spot_count=row[1],
-                total_revenue=Decimal(str(row[2])),
-                avg_rate=Decimal(str(row[3])),
-                first_spot_date=datetime.strptime(row[4], '%Y-%m-%d').date() if row[4] else None,
-                last_spot_date=datetime.strptime(row[5], '%Y-%m-%d').date() if row[5] else None
-            ))
-        
+        rows = conn.execute(query, params).fetchall()
         conn.close()
-        return ae_data
-    
+
+        out: List[AEPerformanceData] = []
+        for r in rows:
+            out.append(AEPerformanceData(
+                ae_name=r[0],
+                spot_count=r[1],
+                total_revenue=Decimal(str(r[2])),
+                avg_rate=Decimal(str(r[3])),
+                first_spot_date=datetime.strptime(r[4], '%Y-%m-%d').date() if r[4] else None,
+                last_spot_date=datetime.strptime(r[5], '%Y-%m-%d').date() if r[5] else None
+            ))
+        return out
+
     def _get_quarterly_data(self, db_connection, filters: ReportFilters) -> List[QuarterlyData]:
-        """Get quarterly performance data using broadcast_month."""
-        query = """
-        SELECT 
+        quarter_case = """
             CASE 
-                WHEN broadcast_month LIKE 'Jan-%' OR broadcast_month LIKE 'Feb-%' OR broadcast_month LIKE 'Mar-%' THEN 'Q1'
-                WHEN broadcast_month LIKE 'Apr-%' OR broadcast_month LIKE 'May-%' OR broadcast_month LIKE 'Jun-%' THEN 'Q2'
-                WHEN broadcast_month LIKE 'Jul-%' OR broadcast_month LIKE 'Aug-%' OR broadcast_month LIKE 'Sep-%' THEN 'Q3'
-                WHEN broadcast_month LIKE 'Oct-%' OR broadcast_month LIKE 'Nov-%' OR broadcast_month LIKE 'Dec-%' THEN 'Q4'
-            END as quarter,
-            CASE 
-                WHEN broadcast_month LIKE '%-23' THEN 2023
-                WHEN broadcast_month LIKE '%-24' THEN 2024
-                WHEN broadcast_month LIKE '%-25' THEN 2025
-                WHEN broadcast_month LIKE '%-26' THEN 2026
-                WHEN broadcast_month LIKE '%-27' THEN 2027
-                WHEN broadcast_month LIKE '%-28' THEN 2028
-                WHEN broadcast_month LIKE '%-29' THEN 2029
-                WHEN broadcast_month LIKE '%-30' THEN 2030
-            END as year,
-            COUNT(*) as spot_count,
-            ROUND(SUM(gross_rate), 2) as total_revenue,
-            ROUND(AVG(gross_rate), 2) as avg_rate
-        FROM spots
-        WHERE broadcast_month IS NOT NULL 
-        AND gross_rate IS NOT NULL
-        AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+              WHEN s.broadcast_month LIKE 'Jan-%' OR s.broadcast_month LIKE 'Feb-%' OR s.broadcast_month LIKE 'Mar-%' THEN 'Q1'
+              WHEN s.broadcast_month LIKE 'Apr-%' OR s.broadcast_month LIKE 'May-%' OR s.broadcast_month LIKE 'Jun-%' THEN 'Q2'
+              WHEN s.broadcast_month LIKE 'Jul-%' OR s.broadcast_month LIKE 'Aug-%' OR s.broadcast_month LIKE 'Sep-%' THEN 'Q3'
+              WHEN s.broadcast_month LIKE 'Oct-%' OR s.broadcast_month LIKE 'Nov-%' OR s.broadcast_month LIKE 'Dec-%' THEN 'Q4'
+            END
+        """.strip()
+        year_case = _bm_case_year("s.broadcast_month")
+        query = f"""
+            SELECT 
+                {quarter_case} AS quarter,
+                {year_case}   AS year,
+                COUNT(*) AS spot_count,
+                ROUND(SUM(COALESCE(s.gross_rate,0)), 2) AS total_revenue,
+                ROUND(AVG(COALESCE(s.gross_rate,0)), 2) AS avg_rate
+            FROM spots s
+            WHERE s.broadcast_month IS NOT NULL
+              AND s.gross_rate IS NOT NULL
+              AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         """
-        
-        params = []
+        params: List[Any] = []
+        where: List[str] = []
         if filters.year:
-            year_suffix = str(filters.year)[-2:]
-            query += " AND broadcast_month LIKE ?"
-            params.append(f"%-{year_suffix}")
-        
+            where.append("s.broadcast_month LIKE ?")
+            params.append(_bm_like(filters.year))
+        ae_sql, ae_params = _ae_where_clause(filters.ae_filter, "s.sales_person")
+        if ae_sql:
+            where.append(ae_sql)
+            params.extend(ae_params)
+        if where:
+            query += " AND " + " AND ".join(where)
         query += " GROUP BY quarter, year ORDER BY year DESC, quarter"
-        
+
         conn = db_connection.connect()
-        cursor = conn.execute(query, params)
-        
-        quarterly_data = []
-        for row in cursor.fetchall():
-            quarterly_data.append(QuarterlyData(
-                quarter=row[0],
-                year=int(row[1]),
-                spot_count=row[2],
-                total_revenue=Decimal(str(row[3])),
-                avg_rate=Decimal(str(row[4]))
-            ))
-        
+        rows = conn.execute(query, params).fetchall()
         conn.close()
-        return quarterly_data
-    
+
+        out: List[QuarterlyData] = []
+        for r in rows:
+            out.append(QuarterlyData(
+                quarter=r[0],
+                year=int(r[1]),
+                spot_count=r[2],
+                total_revenue=Decimal(str(r[3])),
+                avg_rate=Decimal(str(r[4]))
+            ))
+        return out
+
     def _get_sector_data(self, db_connection, filters: ReportFilters) -> List[SectorData]:
-        """Get sector performance data using broadcast_month."""
         query = """
-        SELECT 
-            s.sector_name,
-            s.sector_code,
-            COUNT(sp.*) as spot_count,
-            ROUND(SUM(sp.gross_rate), 2) as total_revenue,
-            ROUND(AVG(sp.gross_rate), 2) as avg_rate
-        FROM spots sp
-        JOIN customers c ON sp.customer_id = c.customer_id
-        JOIN sectors s ON c.sector_id = s.sector_id
-        WHERE sp.gross_rate IS NOT NULL
-        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+            SELECT 
+                sctr.sector_name,
+                sctr.sector_code,
+                COUNT(*) AS spot_count,
+                ROUND(SUM(COALESCE(sp.gross_rate,0)), 2) AS total_revenue,
+                ROUND(AVG(COALESCE(sp.gross_rate,0)), 2) AS avg_rate
+            FROM spots sp
+            JOIN customers c   ON sp.customer_id = c.customer_id
+            JOIN sectors  sctr ON c.sector_id = sctr.sector_id
+            WHERE sp.gross_rate IS NOT NULL
+              AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
         """
-        
-        params = []
+        params: List[Any] = []
+        where: List[str] = []
         if filters.year:
-            year_suffix = str(filters.year)[-2:]
-            query += " AND sp.broadcast_month LIKE ?"
-            params.append(f"%-{year_suffix}")
-        
-        query += " GROUP BY s.sector_id, s.sector_name, s.sector_code ORDER BY total_revenue DESC"
-        
+            where.append("sp.broadcast_month LIKE ?")
+            params.append(_bm_like(filters.year))
+        ae_sql, ae_params = _ae_where_clause(filters.ae_filter, "sp.sales_person")
+        if ae_sql:
+            where.append(ae_sql)
+            params.extend(ae_params)
+        if where:
+            query += " AND " + " AND ".join(where)
+        query += " GROUP BY sctr.sector_id, sctr.sector_name, sctr.sector_code ORDER BY total_revenue DESC"
+
         conn = db_connection.connect()
-        cursor = conn.execute(query, params)
-        
-        sector_data = []
-        for row in cursor.fetchall():
-            sector_data.append(SectorData(
-                sector_name=row[0],
-                sector_code=row[1],
-                spot_count=row[2],
-                total_revenue=Decimal(str(row[3])),
-                avg_rate=Decimal(str(row[4]))
-            ))
-        
+        rows = conn.execute(query, params).fetchall()
         conn.close()
-        return sector_data
-    
+
+        out: List[SectorData] = []
+        for r in rows:
+            out.append(SectorData(
+                sector_name=r[0],
+                sector_code=r[1],
+                spot_count=r[2],
+                total_revenue=Decimal(str(r[3])),
+                avg_rate=Decimal(str(r[4]))
+            ))
+        return out
+
     def _get_top_customers_by_sector(self, db_connection, filters: ReportFilters) -> List[CustomerSectorData]:
-        """Get top customers by sector using broadcast_month."""
         query = """
-        SELECT 
-            s.sector_name,
-            c.normalized_name as customer_name,
-            COUNT(sp.*) as spot_count,
-            ROUND(SUM(sp.gross_rate), 2) as total_revenue
-        FROM spots sp
-        JOIN customers c ON sp.customer_id = c.customer_id
-        JOIN sectors s ON c.sector_id = s.sector_id
-        WHERE sp.gross_rate IS NOT NULL
-        AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+            SELECT 
+                sctr.sector_name,
+                c.normalized_name AS customer_name,
+                COUNT(*) AS spot_count,
+                ROUND(SUM(COALESCE(sp.gross_rate,0)), 2) AS total_revenue
+            FROM spots sp
+            JOIN customers c   ON sp.customer_id = c.customer_id
+            JOIN sectors  sctr ON c.sector_id = sctr.sector_id
+            WHERE sp.gross_rate IS NOT NULL
+              AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
         """
-        
-        params = []
+        params: List[Any] = []
+        where: List[str] = []
         if filters.year:
-            year_suffix = str(filters.year)[-2:]
-            query += " AND sp.broadcast_month LIKE ?"
-            params.append(f"%-{year_suffix}")
-        
-        query += " GROUP BY s.sector_id, c.customer_id ORDER BY s.sector_name, total_revenue DESC"
-        
+            where.append("sp.broadcast_month LIKE ?")
+            params.append(_bm_like(filters.year))
+        ae_sql, ae_params = _ae_where_clause(filters.ae_filter, "sp.sales_person")
+        if ae_sql:
+            where.append(ae_sql)
+            params.extend(ae_params)
+        if where:
+            query += " AND " + " AND ".join(where)
+        query += " GROUP BY sctr.sector_id, c.customer_id ORDER BY sctr.sector_name, total_revenue DESC"
+
         conn = db_connection.connect()
-        cursor = conn.execute(query, params)
-        
-        customer_data = []
-        for row in cursor.fetchall():
-            customer_data.append(CustomerSectorData(
-                sector_name=row[0],
-                customer_name=row[1],
-                spot_count=row[2],
-                total_revenue=Decimal(str(row[3]))
+        rows = conn.execute(query, params).fetchall()
+        conn.close()
+
+        out: List[CustomerSectorData] = []
+        for r in rows:
+            out.append(CustomerSectorData(
+                sector_name=r[0],
+                customer_name=r[1],
+                spot_count=r[2],
+                total_revenue=Decimal(str(r[3]))
             ))
-        
-        conn.close()
-        return customer_data
-    
+        return out
+
     def _get_data_last_updated(self, db_connection) -> datetime:
-        """Get when the data was actually last updated."""
-        query = """
-        SELECT MAX(load_date) as last_update
-        FROM spots 
-        WHERE load_date IS NOT NULL
-        """
-        
+        query = "SELECT MAX(load_date) AS last_update FROM spots WHERE load_date IS NOT NULL"
         conn = db_connection.connect()
-        cursor = conn.execute(query)
-        result = cursor.fetchone()
+        row = conn.execute(query).fetchone()
         conn.close()
-        
-        if result[0]:
-            return datetime.fromisoformat(result[0])
-        else:
-            return datetime.now()  # Fallback
+        if row and row[0]:
+            try:
+                return datetime.fromisoformat(row[0])
+            except Exception:
+                pass
+        return datetime.now()
 
-
-# Factory function for service container
+# Factory
 def create_report_data_service():
-    """Create ReportDataService instance."""
     return ReportDataService()
