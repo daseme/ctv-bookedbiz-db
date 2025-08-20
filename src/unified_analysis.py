@@ -417,7 +417,6 @@ class UpdatedUnifiedAnalysisEngine:
           AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL OR s.spot_type = 'BNS')
           AND s.revenue_type = 'Internal Ad Sales'
           AND s.spot_type IN ('COM','BNS','BB')
-          AND sla.assignment_method = 'direct_mapping'
         GROUP BY 1
         HAVING SUM(COALESCE(s.gross_rate,0)) > 0 OR COUNT(*) > 0
         ORDER BY revenue DESC
@@ -782,6 +781,9 @@ Business Rule Categories:
 
 - **Does the analysis use spot categories?**  
   It uses the same business rules directly (revenue_type + spot_type) aligned with the assignment system.
+
+- **What is Default English (Fallback)?
+  Default English (Fallback) represents spots where the system assigned English as the target language due to missing or incomplete language data, rather than explicit business rules or direct language codes.
 """
 
 
