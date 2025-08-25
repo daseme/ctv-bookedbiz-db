@@ -607,6 +607,7 @@ def initialize_services():
             class MockReportData:
                 def __init__(self):
                     self.total_customers = 0
+                    self.active_customers = 0
                     self.total_revenue = 0.0
                     self.revenue_by_month = {}
                     self.customer_data = []
@@ -616,6 +617,7 @@ def initialize_services():
                     return {
                         "message": "Railway mock service - database not available",
                         "total_customers": self.total_customers,
+                        "active_customers": self.active_customers,
                         "total_revenue": self.total_revenue,
                         "revenue_by_month": self.revenue_by_month,
                         "customer_data": self.customer_data,
@@ -651,7 +653,7 @@ def initialize_services():
         return container
         
     except Exception as e:
-        print(f"💥 Service initialization failed: {e}")
+        print("💥 Service initialization failed:", e)
         import traceback
         traceback.print_exc()
         raise
