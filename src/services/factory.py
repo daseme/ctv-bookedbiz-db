@@ -465,33 +465,27 @@ def configure_container_from_environment():
 def initialize_services():
     """Initialize all services with proper dependency injection."""
     import os
-    
-    # Railway-specific minimal initialization
-    if os.getenv('RAILWAY_ENVIRONMENT') == 'true':
-        print("🚂 Railway mode: Skipping complex services for cloud failover")
-        # Only initialize essential services for API endpoints
-        try:
-            container.get('database_service')
-            print("✓ Database service initialized for Railway")
-        except Exception as e:
-            print(f"⚠️ Database service failed, continuing anyway: {e}")
-        return  # Skip all other problematic services
-    
+   
+    # Check for Railway/minimal mode using existing variable
+    if os.getenv('SKIP_PIPELINE_SERVICE') == 'true':
+        print("Railway mode: Skipping complex services for cloud failover")
+        return  # Skip ALL service initialization for Railway
+   
     # Full initialization for pi-ctv/pi2
-    print("🏠 Full mode: Initializing all services")
-    
+    print("Full mode: Initializing all services")
+   
     try:
         # Configure from environment
         configure_container_from_environment()
-        
+       
         # Register all services
         register_default_services()
-        
+       
         # Validate service health
         _validate_service_container_health()
-        
+       
         logger.info("Service container initialized successfully with critical fixes applied")
-        
+       
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")
         raise ServiceCreationError(f"Service initialization failed: {e}") from e
