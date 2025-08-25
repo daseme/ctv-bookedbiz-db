@@ -602,17 +602,41 @@ def initialize_services():
         container = get_container()
         print(f"📦 Using container: {type(container).__name__}")
         
-        # Register report_data_service directly 
+        # Register report_data_service with comprehensive mock
         def create_mock_report_service():
             class MockReportData:
+                def __init__(self):
+                    self.total_customers = 0
+                    self.total_revenue = 0.0
+                    self.revenue_by_month = {}
+                    self.customer_data = []
+                    self.month_data = []
+                    
                 def to_dict(self):
-                    return {"message": "Railway mock service", "data": []}
+                    return {
+                        "message": "Railway mock service - database not available",
+                        "total_customers": self.total_customers,
+                        "total_revenue": self.total_revenue,
+                        "revenue_by_month": self.revenue_by_month,
+                        "customer_data": self.customer_data,
+                        "month_data": self.month_data,
+                        "data": []
+                    }
             
             class MockReportService:
                 def get_customer_revenue_data(self, *args, **kwargs):
-                    return {"message": "Railway mock service", "data": []}
+                    return MockReportData()
                 
                 def get_monthly_revenue_report_data(self, year, filters=None):
+                    return MockReportData()
+                
+                def get_ae_performance_report_data(self, filters=None):
+                    return MockReportData()
+                
+                def get_quarterly_performance_data(self, filters=None):
+                    return MockReportData()
+                
+                def get_sector_performance_data(self, filters=None):
                     return MockReportData()
             
             return MockReportService()
