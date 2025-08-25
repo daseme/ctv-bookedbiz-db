@@ -45,128 +45,89 @@ ENV PATH="/home/ctvapp/.local/bin:$PATH"
 # Copy application code
 COPY --chown=ctvapp:ctvapp . .
 
-# Create Railway startup script
-RUN cat > /app/railway_startup.sh << 'EOF'
-#!/bin/bash
-# Railway startup script - Downloads database and starts the app
-set -e  # Exit on any error
+# Create Railway database sync Python script
+RUN echo 'import os\n\
+import sys\n\
+import dropbox\n\
+from dropbox.exceptions import AuthError, ApiError\n\
+import sqlite3\n\
+\n\
+def download_database():\n\
+    print("🔄 Starting Railway database download...")\n\
+    app_key = os.getenv("DROPBOX_APP_KEY")\n\
+    app_secret = os.getenv("DROPBOX_APP_SECRET")\n\
+    refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN")\n\
+    \n\
+    if not all([app_key, app_secret, refresh_token]):\n\
+        print("❌ Missing Dropbox credentials")\n\
+        return False\n\
+    \n\
+    try:\n\
+        print("🔐 Authenticating with Dropbox...")\n\
+        dbx = dropbox.Dropbox(app_key=app_key, app_secret=app_secret, oauth2_refresh_token=refresh_token)\n\
+        account = dbx.users_get_current_account()\n\
+        print(f"✅ Connected as: {account.email}")\n\
+        \n\
+        dropbox_path = "/database.db"\n\
+        local_path = "/app/data/database/production.db"\n\
+        print(f"📥 Downloading {dropbox_path}...")\n\
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)\n\
+        dbx.files_download_to_file(local_path, dropbox_path)\n\
+        \n\
+        if os.path.exists(local_path):\n\
+            file_size = os.path.getsize(local_path)\n\
+            print(f"✅ Database downloaded! Size: {file_size:,} bytes")\n\
+            return True\n\
+        return False\n\
+    except Exception as e:\n\
+        print(f"❌ Download error: {e}")\n\
+        return False\n\
+\n\
+def create_minimal_database():\n\
+    print("🗄️ Creating minimal database...")\n\
+    try:\n\
+        db_path = "/app/data/database/production.db"\n\
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)\n\
+        conn = sqlite3.connect(db_path)\n\
+        conn.execute("CREATE TABLE IF NOT EXISTS health_check (id INTEGER PRIMARY KEY, status TEXT)")\n\
+        conn.execute("INSERT INTO health_check (status) VALUES (\"healthy\")")\n\
+        conn.execute("CREATE TABLE IF NOT EXISTS spots (id INTEGER PRIMARY KEY, customer_name TEXT, revenue REAL DEFAULT 0)")\n\
+        conn.commit()\n\
+        conn.close()\n\
+        print("✅ Minimal database created")\n\
+        return True\n\
+    except Exception as e:\n\
+        print(f"❌ Database creation failed: {e}")\n\
+        return False\n\
+\n\
+if __name__ == "__main__":\n\
+    print("🚂 Railway Database Setup Starting...")\n\
+    os.makedirs("/app/data/database", exist_ok=True)\n\
+    os.makedirs("/app/data/processed", exist_ok=True)\n\
+    \n\
+    if not os.path.exists("/app/data/database/production.db"):\n\
+        print("🗄️ Database not found, attempting download...")\n\
+        if not download_database():\n\
+            print("🚨 Download failed, creating minimal database...")\n\
+            create_minimal_database()\n\
+    else:\n\
+        print("✅ Database already exists")\n\
+    \n\
+    print("🚀 Database setup completed")\n\
+' > /app/railway_db_setup.py
 
-echo "🚂 Railway Startup Script Starting..."
+# Create simple startup script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "🚂 Railway Startup Script Starting..."\n\
+python3 /app/railway_db_setup.py\n\
+echo "🚀 Starting Flask application..."\n\
+exec "$@"\n\
+' > /app/railway_startup.sh
 
-# Create data directories if they don't exist
-mkdir -p /app/data/database /app/data/processed /app/logs
-
-echo "📁 Data directories created"
-
-# Download database from Dropbox if it doesn't exist
-if [ ! -f "/app/data/database/production.db" ]; then
-    echo "🗄️ Database not found, downloading from Dropbox..."
-    
-    # Use Python to download database
-    python3 << 'PYTHON_EOF'
-import os
-import sys
-import dropbox
-from dropbox.exceptions import AuthError, ApiError
-
-def download_database():
-    print("🔄 Starting Railway database download...")
-    
-    # Get Dropbox credentials from environment
-    app_key = os.getenv('DROPBOX_APP_KEY')
-    app_secret = os.getenv('DROPBOX_APP_SECRET')
-    refresh_token = os.getenv('DROPBOX_REFRESH_TOKEN')
-    
-    if not all([app_key, app_secret, refresh_token]):
-        print("❌ Missing Dropbox credentials in environment variables")
-        return False
-    
-    try:
-        print("🔐 Authenticating with Dropbox...")
-        dbx = dropbox.Dropbox(
-            app_key=app_key,
-            app_secret=app_secret,
-            oauth2_refresh_token=refresh_token
-        )
-        
-        account = dbx.users_get_current_account()
-        print(f"✅ Connected as: {account.email}")
-        
-        # Download database
-        dropbox_path = "/database.db"
-        local_path = "/app/data/database/production.db"
-        
-        print(f"📥 Downloading {dropbox_path} to {local_path}...")
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        dbx.files_download_to_file(local_path, dropbox_path)
-        
-        if os.path.exists(local_path):
-            file_size = os.path.getsize(local_path)
-            print(f"✅ Database downloaded successfully!")
-            print(f"📊 File size: {file_size:,} bytes")
-            return True
-        else:
-            print("❌ Download failed - file not found after download")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Database download error: {e}")
-        return False
-
-def create_minimal_database():
-    print("🗄️ Creating minimal database for Railway...")
-    try:
-        import sqlite3
-        db_path = "/app/data/database/production.db"
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        
-        conn = sqlite3.connect(db_path)
-        conn.execute('''CREATE TABLE IF NOT EXISTS health_check (
-            id INTEGER PRIMARY KEY,
-            status TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        conn.execute("INSERT INTO health_check (status) VALUES ('healthy')")
-        
-        # Basic spots table for compatibility
-        conn.execute('''CREATE TABLE IF NOT EXISTS spots (
-            id INTEGER PRIMARY KEY,
-            customer_name TEXT,
-            revenue REAL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        
-        conn.commit()
-        conn.close()
-        print("✅ Minimal database created")
-        return True
-    except Exception as e:
-        print(f"❌ Failed to create minimal database: {e}")
-        return False
-
-# Main execution
-if not download_database():
-    print("🚨 Download failed, creating minimal database...")
-    create_minimal_database()
-PYTHON_EOF
-
-    if [ -f "/app/data/database/production.db" ]; then
-        echo "✅ Database setup completed"
-        echo "📊 Database size: $(du -h /app/data/database/production.db | cut -f1)"
-    else
-        echo "❌ Database setup failed"
-        exit 1
-    fi
-else
-    echo "✅ Database already exists"
-fi
-
-echo "🚀 Starting Flask application..."
-exec "$@"
-EOF
-
-# Make startup script executable and set proper ownership
-RUN chmod +x /app/railway_startup.sh && chown ctvapp:ctvapp /app/railway_startup.sh
+# Make scripts executable and set proper ownership
+RUN chmod +x /app/railway_startup.sh /app/railway_db_setup.py && \
+    chown ctvapp:ctvapp /app/railway_startup.sh /app/railway_db_setup.py
 
 # Create necessary directories with proper permissions
 RUN mkdir -p data/database data/processed logs && \
