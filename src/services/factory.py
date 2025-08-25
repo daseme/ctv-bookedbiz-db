@@ -607,6 +607,10 @@ def initialize_services():
             class MockReportService:
                 def get_customer_revenue_data(self, *args, **kwargs):
                     return {"message": "Railway mock service", "data": []}
+                
+                def get_monthly_revenue_report_data(self, year, filters=None):
+                    return {"message": "Railway mock service", "data": []}
+            
             return MockReportService()
         
         container.register_factory('report_data_service', create_mock_report_service)
