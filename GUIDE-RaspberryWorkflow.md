@@ -330,6 +330,270 @@ WantedBy=timers.target
 4. **Download is for recovery only**, or for cloning to a fresh environment.
 
 
+### 3. Docker Development (Pi2 - Control Station Alpha)
+
+Pi2 serves as the Docker development and testing environment, providing containerized deployment capabilities for both local testing and cloud deployment preparation.
+
+#### Docker Architecture
+- **Pi2 Docker Host**: Container build and test environment
+- **Multi-stage Builds**: Optimized production images with uvicorn ASGI server
+- **Volume Mounts**: Database persistence via Docker volumes
+- **Health Checks**: Automatic container health monitoring
+- **Railway Ready**: Containers configured for cloud deployment
+
+#### Container Management
+
+**Build and Test Cycle:**
+```bash
+# Connect to pi2 (Docker host)
+ssh daseme@100.96.96.109
+cd /opt/apps/ctv-bookedbiz-db
+
+# Pull latest code changes
+git pull origin main
+
+# Build Docker image
+docker build -t ctv-flask .
+
+# Test container locally
+docker run -d --name ctv-test \
+  -p 8000:8000 \
+  -v ./data/database:/app/data/database \
+  ctv-flask
+
+# Health check
+curl http://localhost:8000/api/system-stats
+docker logs ctv-test
+
+# Clean up test container
+docker stop ctv-test && docker rm ctv-test
+```
+
+**Docker Service Integration:**
+```bash
+# Run with Docker Compose (full environment)
+docker-compose up -d
+
+# View running containers
+docker ps
+
+# Check container health
+docker-compose ps
+
+# View logs
+docker-compose logs ctv-flask
+
+# Stop all services
+docker-compose down
+```
+
+#### Docker File Structure
+```
+/opt/apps/ctv-bookedbiz-db/
+├── Dockerfile                   # Production container image
+├── .dockerignore               # Build optimization
+├── docker-compose.yml          # Multi-environment orchestration
+├── railway.json               # Railway deployment config (optional)
+└── docker/                    # Docker variants (optional)
+    ├── Dockerfile.dev         # Development with hot reload
+    └── Dockerfile.railway     # Railway-optimized version
+```
+
+#### Container Development Workflow
+
+**Daily Container Testing:**
+```bash
+# After code changes on pi-ctv, test in container on pi2
+ssh daseme@100.96.96.109
+cd /opt/apps/ctv-bookedbiz-db
+git pull origin main
+
+# Quick container test
+docker build -t ctv-flask . && \
+docker run --rm -p 8000:8000 \
+  -v ./data/database:/app/data/database \
+  ctv-flask &
+
+# Test API endpoint
+curl http://localhost:8000/api/system-stats
+
+# Kill test container
+docker ps -q --filter ancestor=ctv-flask | xargs docker kill
+```
+
+**Production Simulation:**
+```bash
+# Test with production-like environment
+docker run -d --name ctv-production-test \
+  -p 8000:8000 \
+  -v ./data/database:/app/data/database \
+  -e FLASK_ENV=production \
+  --restart unless-stopped \
+  ctv-flask
+
+# Monitor for extended period
+docker stats ctv-production-test
+
+# Production health check
+docker exec ctv-production-test curl -f http://localhost:8000/api/system-stats
+```
+
+#### Failover Integration
+
+**Docker Failover Testing:**
+```bash
+# Test containerized failover scenario
+# 1. Stop pi-ctv service (simulate failure)
+ssh daseme@100.81.73.46
+sudo systemctl stop flaskapp
+
+# 2. Start container backup on pi2
+ssh daseme@100.96.96.109
+cd /opt/apps/ctv-bookedbiz-db
+python cli_db_sync.py download  # Get latest database
+
+# 3. Start containerized backup
+docker run -d --name ctv-failover \
+  -p 8000:8000 \
+  -v ./data/database:/app/data/database \
+  ctv-flask
+
+# 4. Verify failover works
+curl http://100.96.96.109:8000/api/system-stats
+
+# 5. Clean up after test
+docker stop ctv-failover && docker rm ctv-failover
+```
+
+#### Cloud Deployment Preparation
+
+**Railway Deployment Testing:**
+```bash
+# Test Railway-compatible configuration
+docker build -f docker/Dockerfile.railway -t ctv-railway . 
+
+# Test with Railway-style environment variables
+docker run -d --name ctv-railway-test \
+  -p 8000:8000 \
+  -e PORT=8000 \
+  -e RAILWAY_ENVIRONMENT=production \
+  -v ./data/database:/app/data/database \
+  ctv-railway
+
+# Validate Railway compatibility
+curl http://localhost:8000/api/system-stats
+docker logs ctv-railway-test
+```
+
+#### Docker Maintenance
+
+**Container Cleanup:**
+```bash
+# Remove unused containers
+docker container prune -f
+
+# Remove unused images
+docker image prune -f
+
+# Remove unused volumes (be careful!)
+docker volume prune -f
+
+# Full system cleanup (use sparingly)
+docker system prune -af
+```
+
+**Image Management:**
+```bash
+# List local images
+docker images
+
+# Remove specific image
+docker rmi ctv-flask
+
+# Tag for deployment
+docker tag ctv-flask:latest daseme/ctv-flask:latest
+
+# Push to Docker Hub (if configured)
+docker push daseme/ctv-flask:latest
+```
+
+#### Monitoring Integration
+
+**Docker + Control Station Alpha:**
+- **Container Health**: Docker health checks integrate with monitoring
+- **Resource Usage**: Monitor container CPU/memory via `docker stats`
+- **Log Aggregation**: Container logs via `docker logs` and `journalctl`
+- **Service Discovery**: Containers accessible via Tailscale network
+
+**Health Monitoring:**
+```bash
+# Monitor container resource usage
+docker stats --no-stream
+
+# Check container health status
+docker inspect --format='{{.State.Health.Status}}' container-name
+
+# View health check logs
+docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' container-name
+```
+
+#### Docker Commands Quick Reference
+
+**Essential Docker Commands:**
+```bash
+# Build and run
+docker build -t ctv-flask .
+docker run -d -p 8000:8000 --name ctv-test ctv-flask
+
+# Inspect and debug
+docker ps                    # List running containers
+docker logs container-name   # View logs
+docker exec -it container-name /bin/bash  # Shell access
+docker inspect container-name  # Detailed info
+
+# Cleanup
+docker stop container-name   # Stop container
+docker rm container-name     # Remove container
+docker rmi image-name        # Remove image
+
+# Docker Compose
+docker-compose up -d         # Start all services
+docker-compose down          # Stop all services
+docker-compose logs          # View all logs
+docker-compose ps           # List services
+```
+
+**Volume Management:**
+```bash
+# List volumes
+docker volume ls
+
+# Create named volume
+docker volume create ctv-data
+
+# Run with named volume
+docker run -v ctv-data:/app/data/database ctv-flask
+
+# Backup volume data
+docker run --rm -v ctv-data:/data -v $(pwd):/backup alpine tar czf /backup/backup.tar.gz -C /data .
+```
+
+#### Integration with Existing Workflow
+
+**Docker fits into the existing workflow as:**
+1. **Development Testing**: Validate changes in containerized environment
+2. **Failover Capability**: Alternative deployment method for pi2
+3. **Cloud Preparation**: Ready-to-deploy containers for Railway/cloud
+4. **Production Consistency**: Same uvicorn ASGI server across all environments
+5. **Monitoring Enhancement**: Container metrics integrate with Control Station Alpha
+
+**When to Use Docker:**
+- **Testing new features** in isolated environment
+- **Preparing cloud deployments** 
+- **Simulating production** conditions locally
+- **Emergency failover** with consistent environment
+- **Debugging environment** issues
+
 ### 4. VS Code Remote Development
 
 #### Initial Setup (One-time per developer)
