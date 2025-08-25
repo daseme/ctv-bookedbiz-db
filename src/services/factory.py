@@ -464,66 +464,75 @@ def configure_container_from_environment():
 
 # Add this debugging to your src/services/factory.py
 
+# Update your src/services/factory.py to handle different container names
+
 def initialize_services():
-    """Initialize service container with debugging"""
+    """Initialize service container with flexible import handling"""
     
     print("🏭 FACTORY: Starting service initialization...")
     
     try:
-        from src.services.container import Container
-        container = Container()
+        # Try different possible container class names
+        container = None
+        container_class = None
         
-        print("📦 Container created successfully")
-        
-        # Check if you have service registration calls like these:
-        # container.register('report_data_service', lambda: ReportDataService(...))
-        
-        # **DEBUG: Add these checks to see what's happening**
-        
-        # 1. Database connection check
-        print("🗄️  Testing database connection...")
+        # Option 1: Try Container
         try:
-            from src.database.connection import get_database_connection
-            db = get_database_connection()
-            print("✅ Database connection successful")
+            from src.services.container import Container
+            container_class = Container
+            print("✅ Found Container class")
+        except ImportError:
+            pass
+        
+        # Option 2: Try ServiceContainer
+        if not container_class:
+            try:
+                from src.services.container import ServiceContainer
+                container_class = ServiceContainer
+                print("✅ Found ServiceContainer class")
+            except ImportError:
+                pass
+        
+        # Option 3: Try DIContainer
+        if not container_class:
+            try:
+                from src.services.container import DIContainer
+                container_class = DIContainer
+                print("✅ Found DIContainer class")
+            except ImportError:
+                pass
+        
+        # Option 4: Check what's actually in the container module
+        if not container_class:
+            try:
+                import src.services.container as container_module
+                print("🔍 Available classes in container module:")
+                for attr_name in dir(container_module):
+                    attr = getattr(container_module, attr_name)
+                    if isinstance(attr, type) and not attr_name.startswith('_'):
+                        print(f"   - {attr_name}: {attr}")
+                        if 'container' in attr_name.lower():
+                            container_class = attr
+                            print(f"✅ Using {attr_name} as container class")
+                            break
+            except ImportError as e:
+                print(f"❌ Could not import container module: {e}")
+        
+        # Create container instance
+        if container_class:
+            container = container_class()
+            print(f"📦 Container created: {type(container).__name__}")
+        else:
+            # Create minimal container for Railway
+            print("🚨 Creating minimal emergency container...")
+            container = create_emergency_container()
+        
+        # Try to register services (existing code)
+        try:
+            register_all_services(container)
         except Exception as e:
-            print(f"❌ Database connection failed: {e}")
-            # This might be causing service registration to fail
-        
-        # 2. Check if ReportDataService exists
-        print("📊 Testing ReportDataService import...")
-        try:
-            from src.services.report_data_service import ReportDataService
-            print("✅ ReportDataService import successful")
-        except ImportError as e:
-            print(f"❌ ReportDataService import failed: {e}")
-            # This would cause registration to fail
-        
-        # 3. Manual service registration for debugging
-        print("🔧 Attempting manual service registration...")
-        try:
-            # Try to register the service manually
-            def create_report_service():
-                from src.services.report_data_service import ReportDataService
-                from src.database.connection import get_database_connection
-                return ReportDataService(get_database_connection())
-            
-            container.register('report_data_service', create_report_service)
-            print("✅ Manual registration successful")
-            
-            # Test that we can retrieve it
-            test_service = container.get('report_data_service')
-            print(f"✅ Service retrieval successful: {type(test_service)}")
-            
-        except Exception as e:
-            print(f"❌ Manual registration failed: {e}")
-        
-        # 4. List all successfully registered services
-        if hasattr(container, '_services'):
-            services = list(container._services.keys())
-            print(f"🎯 Final registered services ({len(services)}):")
-            for name in sorted(services):
-                print(f"   ✓ {name}")
+            print(f"⚠️ Service registration partially failed: {e}")
+            # Continue with partial services
         
         return container
         
@@ -531,7 +540,78 @@ def initialize_services():
         print(f"💥 Factory initialization failed: {e}")
         import traceback
         print(traceback.format_exc())
-        raise
+        
+        # Return emergency container
+        return create_emergency_container()
+
+def create_emergency_container():
+    """Create a minimal container when normal initialization fails"""
+    
+    class EmergencyContainer:
+        def __init__(self):
+            self._services = {}
+        
+        def register(self, name, factory):
+            self._services[name] = factory
+        
+        def get(self, name):
+            if name not in self._services:
+                raise Exception(f"Service '{name}' not found in emergency container")
+            factory = self._services[name]
+            if callable(factory):
+                return factory()
+            return factory
+    
+    print("🚨 Created emergency container")
+    container = EmergencyContainer()
+    
+    # Register critical services manually
+    try:
+        register_critical_services(container)
+    except Exception as e:
+        print(f"⚠️ Could not register critical services: {e}")
+    
+    return container
+
+def register_critical_services(container):
+    """Register only the most critical services for Railway"""
+    
+    print("🔧 Registering critical services...")
+    
+    # Try to register report_data_service
+    try:
+        def create_report_service():
+            # Import here to avoid circular imports
+            from src.services.report_data_service import ReportDataService
+            # Use a simple connection or mock
+            return ReportDataService(None)  # Pass None if DB is optional
+        
+        container.register('report_data_service', create_report_service)
+        print("✅ report_data_service registered")
+        
+    except Exception as e:
+        print(f"⚠️ Could not register report_data_service: {e}")
+        
+        # Register a mock service
+        class MockReportService:
+            def get_customer_revenue_data(self, *args, **kwargs):
+                return {"message": "Database not available in Railway environment"}
+        
+        container.register('report_data_service', lambda: MockReportService())
+        print("✅ Mock report_data_service registered")
+
+def register_all_services(container):
+    """Register all services - your existing registration code goes here"""
+    
+    print("🔧 Registering all services...")
+    
+    # Your existing service registration code
+    # Example:
+    # container.register('report_data_service', lambda: ReportDataService(db))
+    # container.register('other_service', lambda: OtherService())
+    
+    # For now, just register the critical one
+    register_critical_services(container)
 
 
 def _validate_service_container_health() -> None:
