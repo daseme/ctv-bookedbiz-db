@@ -462,33 +462,76 @@ def configure_container_from_environment():
     logger.debug(f"Container configuration: {config}")
 
 
+# Add this debugging to your src/services/factory.py
+
 def initialize_services():
-    """Initialize all services with proper dependency injection."""
-    import os
-   
-    # Check for Railway/minimal mode using existing variable
-    if os.getenv('SKIP_PIPELINE_SERVICE') == 'true':
-        print("Railway mode: Skipping complex services for cloud failover")
-        return  # Skip ALL service initialization for Railway
-   
-    # Full initialization for pi-ctv/pi2
-    print("Full mode: Initializing all services")
-   
+    """Initialize service container with debugging"""
+    
+    print("🏭 FACTORY: Starting service initialization...")
+    
     try:
-        # Configure from environment
-        configure_container_from_environment()
-       
-        # Register all services
-        register_default_services()
-       
-        # Validate service health
-        _validate_service_container_health()
-       
-        logger.info("Service container initialized successfully with critical fixes applied")
-       
+        from src.services.container import Container
+        container = Container()
+        
+        print("📦 Container created successfully")
+        
+        # Check if you have service registration calls like these:
+        # container.register('report_data_service', lambda: ReportDataService(...))
+        
+        # **DEBUG: Add these checks to see what's happening**
+        
+        # 1. Database connection check
+        print("🗄️  Testing database connection...")
+        try:
+            from src.database.connection import get_database_connection
+            db = get_database_connection()
+            print("✅ Database connection successful")
+        except Exception as e:
+            print(f"❌ Database connection failed: {e}")
+            # This might be causing service registration to fail
+        
+        # 2. Check if ReportDataService exists
+        print("📊 Testing ReportDataService import...")
+        try:
+            from src.services.report_data_service import ReportDataService
+            print("✅ ReportDataService import successful")
+        except ImportError as e:
+            print(f"❌ ReportDataService import failed: {e}")
+            # This would cause registration to fail
+        
+        # 3. Manual service registration for debugging
+        print("🔧 Attempting manual service registration...")
+        try:
+            # Try to register the service manually
+            def create_report_service():
+                from src.services.report_data_service import ReportDataService
+                from src.database.connection import get_database_connection
+                return ReportDataService(get_database_connection())
+            
+            container.register('report_data_service', create_report_service)
+            print("✅ Manual registration successful")
+            
+            # Test that we can retrieve it
+            test_service = container.get('report_data_service')
+            print(f"✅ Service retrieval successful: {type(test_service)}")
+            
+        except Exception as e:
+            print(f"❌ Manual registration failed: {e}")
+        
+        # 4. List all successfully registered services
+        if hasattr(container, '_services'):
+            services = list(container._services.keys())
+            print(f"🎯 Final registered services ({len(services)}):")
+            for name in sorted(services):
+                print(f"   ✓ {name}")
+        
+        return container
+        
     except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
-        raise ServiceCreationError(f"Service initialization failed: {e}") from e
+        print(f"💥 Factory initialization failed: {e}")
+        import traceback
+        print(traceback.format_exc())
+        raise
 
 
 def _validate_service_container_health() -> None:
