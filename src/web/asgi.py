@@ -20,7 +20,8 @@ from web.app import create_development_app
 from asgiref.wsgi import WsgiToAsgi
 
 # Create Flask app
-flask_app = create_development_app()
+environment = os.getenv('FLASK_ENV', 'production') 
+flask_app = create_app(environment)
 
 # Convert to ASGI
 asgi_app = WsgiToAsgi(flask_app)
