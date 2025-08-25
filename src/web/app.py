@@ -23,7 +23,8 @@ def create_app(environment: Optional[str] = None) -> Flask:
     """
     Flask application factory with clean architecture.
     """
-    print("🚨 DEBUG: create_app function called with config:", config_name)
+    print("🚨 DEBUG: create_app function called!")
+    print("🚨 DEBUG: create_app function called with:", environment)
     # Load configuration
     settings = get_settings(environment)
     
