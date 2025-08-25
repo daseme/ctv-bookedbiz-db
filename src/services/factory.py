@@ -592,7 +592,6 @@ def configure_container_from_environment():
     logger.info(f"Configured container for environment: {config['ENVIRONMENT']}")
     logger.debug(f"Container configuration: {config}")
 
-
 def initialize_services():
     """Initialize services using real service factory functions with debugging"""
     print("🏭 FACTORY: Starting service initialization...")
@@ -606,22 +605,24 @@ def initialize_services():
         container = get_container()
         print(f"📦 Using container: {type(container).__name__}")
         
-        # Try to register each service individually to see which fails
+        # Register all required services
         print("🔧 Registering database_connection...")
-        try:
-            container.register_singleton('database_connection', create_database_connection)
-            print("✅ database_connection registered")
-        except Exception as e:
-            print(f"❌ database_connection failed: {e}")
+        container.register_singleton('database_connection', create_database_connection)
+        print("✅ database_connection registered")
         
         print("🔧 Registering report_data_service...")
-        try:
-            container.register_singleton('report_data_service', create_report_data_service)
-            print("✅ report_data_service registered")
-        except Exception as e:
-            print(f"❌ report_data_service failed: {e}")
+        container.register_singleton('report_data_service', create_report_data_service)
+        print("✅ report_data_service registered")
         
-        # List what actually got registered
+        print("🔧 Registering pipeline_service...")
+        container.register_singleton('pipeline_service', create_pipeline_service)
+        print("✅ pipeline_service registered")
+        
+        print("🔧 Registering budget_service...")
+        container.register_singleton('budget_service', create_budget_service)
+        print("✅ budget_service registered")
+        
+        # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
         
@@ -632,6 +633,7 @@ def initialize_services():
         import traceback
         traceback.print_exc()
         raise
+        
 
 def create_emergency_container():
     """Create a minimal container when normal initialization fails"""
