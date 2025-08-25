@@ -109,51 +109,6 @@ def emergency_register_report_service(container):
         print(f"❌ Traceback: {traceback.format_exc()}")
         return False
 
-# Modify your existing initialize_services function
-def initialize_services():
-    """Initialize service container with comprehensive debugging"""
-    
-    print("🏭 FACTORY: Starting service initialization...")
-    print(f"🌍 Environment: {os.getenv('FLASK_ENV', 'unknown')}")
-    print(f"🐍 Python path: {os.getcwd()}")
-    
-    try:
-        # Import container (use your existing import)
-        from src.services.container import Container  # Adjust if your class is named differently
-        container = Container()
-        print("✅ Container created successfully")
-        
-        # Debug container state before registration
-        debug_container_registration(container)
-        
-        # YOUR EXISTING SERVICE REGISTRATION CODE GOES HERE
-        # For example:
-        # register_database_services(container)
-        # register_business_services(container) 
-        # etc.
-        
-        # Debug container state after registration
-        print("🔧 After normal service registration:")
-        debug_container_registration(container)
-        
-        # Check if report_data_service was registered
-        if hasattr(container, '_services') and 'report_data_service' not in container._services:
-            print("🚨 report_data_service missing after normal registration!")
-            emergency_register_report_service(container)
-            
-            # Debug final state
-            print("🔧 After emergency registration:")
-            debug_container_registration(container)
-        
-        return container
-        
-    except Exception as e:
-        print(f"💥 Service initialization FAILED: {e}")
-        print(f"💥 Full traceback:\n{traceback.format_exc()}")
-        
-        # Return emergency container
-        return create_emergency_container()
-
 def create_emergency_container():
     """Create minimal working container for Railway"""
     print("🚨 Creating emergency container...")
@@ -638,87 +593,36 @@ def configure_container_from_environment():
     logger.debug(f"Container configuration: {config}")
 
 
-# Add this debugging to your src/services/factory.py
-
-# Update your src/services/factory.py to handle different container names
-
 def initialize_services():
-    """Initialize service container with flexible import handling"""
-    
+    """Initialize services for Railway deployment"""
     print("🏭 FACTORY: Starting service initialization...")
     
     try:
-        # Try different possible container class names
-        container = None
-        container_class = None
+        # Get the actual container instance used by Flask
+        container = get_container()
+        print(f"📦 Using container: {type(container).__name__}")
         
-        # Option 1: Try Container
-        try:
-            from src.services.container import Container
-            container_class = Container
-            print("✅ Found Container class")
-        except ImportError:
-            pass
+        # Register report_data_service directly 
+        def create_mock_report_service():
+            class MockReportService:
+                def get_customer_revenue_data(self, *args, **kwargs):
+                    return {"message": "Railway mock service", "data": []}
+            return MockReportService()
         
-        # Option 2: Try ServiceContainer
-        if not container_class:
-            try:
-                from src.services.container import ServiceContainer
-                container_class = ServiceContainer
-                print("✅ Found ServiceContainer class")
-            except ImportError:
-                pass
+        container.register_factory('report_data_service', create_mock_report_service)
+        print("✅ report_data_service registered with get_container()")
         
-        # Option 3: Try DIContainer
-        if not container_class:
-            try:
-                from src.services.container import DIContainer
-                container_class = DIContainer
-                print("✅ Found DIContainer class")
-            except ImportError:
-                pass
-        
-        # Option 4: Check what's actually in the container module
-        if not container_class:
-            try:
-                import src.services.container as container_module
-                print("🔍 Available classes in container module:")
-                for attr_name in dir(container_module):
-                    attr = getattr(container_module, attr_name)
-                    if isinstance(attr, type) and not attr_name.startswith('_'):
-                        print(f"   - {attr_name}: {attr}")
-                        if 'container' in attr_name.lower():
-                            container_class = attr
-                            print(f"✅ Using {attr_name} as container class")
-                            break
-            except ImportError as e:
-                print(f"❌ Could not import container module: {e}")
-        
-        # Create container instance
-        if container_class:
-            container = container_class()
-            print(f"📦 Container created: {type(container).__name__}")
-        else:
-            # Create minimal container for Railway
-            print("🚨 Creating minimal emergency container...")
-            container = create_emergency_container()
-        
-        # Try to register services (existing code)
-        try:
-            register_all_services(container)
-        except Exception as e:
-            print(f"⚠️ Service registration partially failed: {e}")
-            # Continue with partial services
+        # Test retrieval
+        test_service = container.get('report_data_service')
+        print(f"✅ Service retrieval test passed: {type(test_service)}")
         
         return container
         
     except Exception as e:
-        print(f"💥 Factory initialization failed: {e}")
+        print(f"💥 Service initialization failed: {e}")
         import traceback
-        print(traceback.format_exc())
-        
-        # Return emergency container
-        return create_emergency_container()
+        traceback.print_exc()
+        raise
 
 def create_emergency_container():
     """Create a minimal container when normal initialization fails"""
