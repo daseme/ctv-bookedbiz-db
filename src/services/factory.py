@@ -609,6 +609,7 @@ def initialize_services():
                     self.total_customers = 5
                     self.active_customers = 3
                     self.total_revenue = 125000.0
+                    self.avg_monthly_revenue = 10416.67  # Add this missing attribute
                     self.revenue_by_month = {"2024-01": 10000, "2024-02": 12000}
                     self.customer_data = []
                     self.month_data = []
@@ -619,6 +620,7 @@ def initialize_services():
                         "total_customers": self.total_customers,
                         "active_customers": self.active_customers,
                         "total_revenue": self.total_revenue,
+                        "avg_monthly_revenue": self.avg_monthly_revenue,
                         "revenue_by_month": self.revenue_by_month,
                         "customer_data": self.customer_data,
                         "month_data": self.month_data,
