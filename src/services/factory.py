@@ -463,7 +463,23 @@ def configure_container_from_environment():
 
 
 def initialize_services():
-    """Initialize the service container with default configuration and enhanced error handling."""
+    """Initialize all services with proper dependency injection."""
+    import os
+    
+    # Railway-specific minimal initialization
+    if os.getenv('RAILWAY_ENVIRONMENT') == 'true':
+        print("🚂 Railway mode: Skipping complex services for cloud failover")
+        # Only initialize essential services for API endpoints
+        try:
+            container.get('database_service')
+            print("✓ Database service initialized for Railway")
+        except Exception as e:
+            print(f"⚠️ Database service failed, continuing anyway: {e}")
+        return  # Skip all other problematic services
+    
+    # Full initialization for pi-ctv/pi2
+    print("🏠 Full mode: Initializing all services")
+    
     try:
         # Configure from environment
         configure_container_from_environment()
