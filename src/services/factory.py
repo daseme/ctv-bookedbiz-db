@@ -78,7 +78,7 @@ def emergency_register_report_service(container):
             return ReportDataService(db_connection)
         
         # Register the service
-        container.register('report_data_service', create_report_service)
+        container.register_factory('report_data_service', create_report_service)
         print("✅ report_data_service manually registered")
         
         # Test the registration
@@ -100,7 +100,7 @@ def emergency_register_report_service(container):
                     "status": "mock_service"
                 }
         
-        container.register('report_data_service', lambda: MockReportService())
+        container.register_factory('report_data_service', lambda: MockReportService())
         print("✅ Mock report_data_service registered for Railway")
         return True
         
