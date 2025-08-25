@@ -49,6 +49,11 @@ RUN mkdir -p data/database logs && \
 # Set PATH to include user-installed packages
 ENV PATH="/home/ctvapp/.local/bin:$PATH"
 
+# Create necessary directories with proper permissions
+RUN mkdir -p data/database data/processed logs && \
+    chown -R ctvapp:ctvapp data/ logs/ && \
+    chmod 755 data/ logs/
+
 # Switch to non-root user
 USER ctvapp
 
