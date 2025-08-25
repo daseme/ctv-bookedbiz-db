@@ -141,7 +141,7 @@ class DropboxDBSync:
                         )
                         cursor.offset = f.tell()
                 
-                print(f"✓ Large file upload completed")
+                print("✓ Large file upload completed")
                 return True
                 
         except Exception as e:
@@ -210,7 +210,7 @@ class DropboxDBSync:
                         self.dropbox_db_path, 
                         mode=dropbox.files.WriteMode.overwrite
                     )
-                print(f"✓ Database uploaded to Dropbox")
+                print("✓ Database uploaded to Dropbox")
                 return True
                 
         except Exception as e:
@@ -329,7 +329,7 @@ def main():
     elif action == "info":
         info = sync.get_db_info()
         if info:
-            print(f"Database info:")
+            print("Database info:")
             print(f"  Name: {info['name']}")
             print(f"  Size: {info['size_formatted']}")
             print(f"  Modified: {info['modified']}")
