@@ -622,7 +622,12 @@ def initialize_services():
                         "revenue_by_month": self.revenue_by_month,
                         "customer_data": self.customer_data,
                         "month_data": self.month_data,
-                        "data": []
+                        "data": [],
+                        "metadata": {
+                            "data_last_updated": "2025-08-25T12:00:00Z",
+                            "database_status": "mock",
+                            "environment": "railway"
+                        }
                     }
             
             class MockReportService:
