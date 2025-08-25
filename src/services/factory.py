@@ -762,7 +762,7 @@ def register_critical_services(container):
             # Use a simple connection or mock
             return ReportDataService(None)  # Pass None if DB is optional
         
-        container.register('report_data_service', create_report_service)
+        container.register_factory('report_data_service', create_report_service)
         print("✅ report_data_service registered")
         
     except Exception as e:
@@ -773,7 +773,7 @@ def register_critical_services(container):
             def get_customer_revenue_data(self, *args, **kwargs):
                 return {"message": "Database not available in Railway environment"}
         
-        container.register('report_data_service', lambda: MockReportService())
+        container.register_factory('report_data_service', lambda: MockReportService())
         print("✅ Mock report_data_service registered")
 
 def register_all_services(container):
