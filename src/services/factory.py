@@ -594,74 +594,36 @@ def configure_container_from_environment():
 
 
 def initialize_services():
-    """Initialize services for Railway deployment"""
+    """Initialize services using real service factory functions with debugging"""
     print("🏭 FACTORY: Starting service initialization...")
     
     try:
-        # Get the actual container instance used by Flask
+        # Configure container from environment first
+        print("📋 Configuring container from environment...")
+        configure_container_from_environment()
+        
+        # Get container
         container = get_container()
         print(f"📦 Using container: {type(container).__name__}")
         
-        # Register report_data_service with comprehensive mock
-        def create_mock_report_service():
-            class MockReportData:
-                def __init__(self):
-                    self.total_customers = 5
-                    self.active_customers = 3
-                    self.total_revenue = 125000.0
-                    self.avg_monthly_revenue = 10416.67  # Add this missing attribute
-                    self.revenue_by_month = {"2024-01": 10000, "2024-02": 12000}
-                    self.customer_data = []
-                    self.month_data = []
-                    
-                def to_dict(self):
-                    return {
-                        "message": "Railway demo service - full database not available",
-                        "total_customers": self.total_customers,
-                        "active_customers": self.active_customers,
-                        "total_revenue": self.total_revenue,
-                        "avg_monthly_revenue": self.avg_monthly_revenue,
-                        "revenue_by_month": self.revenue_by_month,
-                        "customer_data": self.customer_data,
-                        "month_data": self.month_data,
-                        "data": [],
-                        "metadata": {
-                            "data_last_updated": "2025-08-25T12:00:00Z",
-                            "processing_time_ms": 150.5,
-                            "database_status": "railway_demo",
-                            "environment": "railway",
-                            "record_count": 5
-                        }
-                    }
-            
-            class MockReportService:
-                def get_customer_revenue_data(self, *args, **kwargs):
-                    return MockReportData()
-                
-                def get_monthly_revenue_report_data(self, year, filters=None):
-                    return MockReportData()
-                
-                def get_ae_performance_report_data(self, filters=None):
-                    return MockReportData()
-                
-                def get_quarterly_performance_data(self, filters=None):
-                    return MockReportData()
-                
-                def get_sector_performance_data(self, filters=None):
-                    return MockReportData()
-            
-            return MockReportService()
+        # Try to register each service individually to see which fails
+        print("🔧 Registering database_connection...")
+        try:
+            container.register_singleton('database_connection', create_database_connection)
+            print("✅ database_connection registered")
+        except Exception as e:
+            print(f"❌ database_connection failed: {e}")
         
-        container.register_factory('report_data_service', create_mock_report_service)
-        print("✅ report_data_service registered")
+        print("🔧 Registering report_data_service...")
+        try:
+            container.register_singleton('report_data_service', create_report_data_service)
+            print("✅ report_data_service registered")
+        except Exception as e:
+            print(f"❌ report_data_service failed: {e}")
         
-        # Test retrieval
-        test_service = container.get('report_data_service')
-        print(f"✅ Service retrieval test passed: {type(test_service)}")
-        
-        # List all services
+        # List what actually got registered
         services = container.list_services()
-        print(f"📋 Total services registered: {len(services)}")
+        print(f"📋 Final registered services: {services}")
         
         return container
         
