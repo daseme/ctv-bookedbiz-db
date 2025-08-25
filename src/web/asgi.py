@@ -16,7 +16,6 @@ os.environ.setdefault('DB_PATH', str(project_root / 'data' / 'database' / 'produ
 os.environ.setdefault('DATA_PATH', str(project_root / 'data' / 'processed'))
 
 # Import the Flask app and create ASGI adapter
-from web.app import create_development_app
 from asgiref.wsgi import WsgiToAsgi
 
 # Create Flask app
