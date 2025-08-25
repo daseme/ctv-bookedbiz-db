@@ -1,0 +1,93 @@
+# Docker Compose for CTV BookedBiz Flask App
+# Supports both development and production scenarios
+
+version: '3.8'
+
+services:
+  # Main Flask application
+  ctv-flask:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_PATH=/app/data/database/production.db
+    volumes:
+      # Mount database directory for persistence
+      - ./data/database:/app/data/database
+      # Mount logs for debugging
+      - ./logs:/app/logs
+    networks:
+      - ctv-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/system-stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development version (with live reload)
+  ctv-flask-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev  # Alternative dev dockerfile
+      target: development
+    ports:
+      - "5000:5000"  # Development port
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      # Mount source code for live reload
+      - .:/app
+      - ./data/database:/app/data/database
+    networks:
+      - ctv-network
+    profiles:
+      - dev  # Only start with --profile dev
+
+  # Railway deployment version
+  ctv-flask-railway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_PATH=/app/data/database/production.db
+      - RAILWAY_ENVIRONMENT=production
+      - PORT=8000
+    volumes:
+      # Railway provides persistent volumes
+      - ctv-data:/app/data/database
+    profiles:
+      - railway
+    restart: unless-stopped
+    command: ["uvicorn", "src.web.asgi:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+
+  # Database sync utility (for manual operations)
+  ctv-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_PATH=/app/data/database/production.db
+    volumes:
+      - ./data/database:/app/data/database
+    networks:
+      - ctv-network
+    profiles:
+      - sync
+    command: ["python", "cli_db_sync.py", "download"]
+    restart: "no"
+
+volumes:
+  # Named volume for Railway persistent storage
+  ctv-data:
+    driver: local
+
+networks:
+  ctv-network:
+    driver: bridge
