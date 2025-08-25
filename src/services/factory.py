@@ -604,12 +604,16 @@ def initialize_services():
         
         # Register report_data_service directly 
         def create_mock_report_service():
+            class MockReportData:
+                def to_dict(self):
+                    return {"message": "Railway mock service", "data": []}
+            
             class MockReportService:
                 def get_customer_revenue_data(self, *args, **kwargs):
                     return {"message": "Railway mock service", "data": []}
                 
                 def get_monthly_revenue_report_data(self, year, filters=None):
-                    return {"message": "Railway mock service", "data": []}
+                    return MockReportData()
             
             return MockReportService()
         
