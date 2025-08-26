@@ -78,6 +78,24 @@ class PipelineService:
     # Include all the critical fixes methods from the previous implementation
     # [Previous methods: _ensure_data_integrity, _ensure_json_files_exist, etc.]
     
+
+    def _ensure_db_schema_exists(self) -> None:
+        """
+        Back-compat shim: older factories call this. Delegate to the current
+        schema routine or to the DB layer if that’s where it lives now.
+        """
+        # Preferred: current method name on the service
+        if hasattr(self, "ensure_schema") and callable(getattr(self, "ensure_schema")):
+            self.ensure_schema()
+            return
+        # Fallback: DB layer migration/ensure helpers if present
+        target = (
+            getattr(getattr(self, "db", None), "ensure_schema", None)
+            or getattr(getattr(self, "db", None), "_ensure_db_schema_exists", None)
+        )
+        if callable(target):
+            target()
+            
     def _ensure_data_integrity(self):
         """Ensure data files exist and are consistent."""
         if self.data_source in [DataSourceType.JSON_ONLY, DataSourceType.JSON_PRIMARY]:
