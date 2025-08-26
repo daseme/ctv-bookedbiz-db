@@ -155,5 +155,12 @@ EXPOSE 8000
 # Use startup script as entrypoint
 ENTRYPOINT ["/app/railway_startup.sh"]
 
+# ensure writable volume mountpoint
+USER root
+RUN mkdir -p /app/data && chmod 0777 /app/data
+# keep running as root (SQLite + single worker is fine)
+# CMD/ENTRYPOINT stay as they are (uvicorn etc.)
+
+
 # Use Uvicorn ASGI server (matches pi-ctv and pi2 production setup)
 CMD ["uvicorn", "src.web.asgi:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
