@@ -1,30 +1,16 @@
 # src/web/asgi.py
 """
-ASGI application for Uvicorn with proper WSGI adapter.
+ASGI entrypoint: wrap Flask (WSGI) for Uvicorn.
 """
 import os
-import sys
-from pathlib import Path
+from uvicorn.middleware.wsgi import WSGIMiddleware
+from src.web.app import create_app  # PYTHONPATH should include /app
 
-# Add project root to Python path
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root / 'src'))
+# Respect service env; don't override if already set by Railway
+ENV = os.getenv("ENVIRONMENT") or os.getenv("FLASK_ENV") or "production"
 
-# Set environment variables
-os.environ.setdefault('PROJECT_ROOT', str(project_root))
-os.environ.setdefault('DB_PATH', str(project_root / 'data' / 'database' / 'production.db'))
-os.environ.setdefault('DATA_PATH', str(project_root / 'data' / 'processed'))
+# Create the Flask app (WSGI)
+flask_app = create_app(ENV)
 
-# Import the Flask app and create ASGI adapter
-from asgiref.wsgi import WsgiToAsgi
-from src.web.app import create_app
-
-# Create Flask app
-environment = os.getenv('FLASK_ENV', 'production') 
-flask_app = create_app(environment)
-
-# Convert to ASGI
-asgi_app = WsgiToAsgi(flask_app)
-
-# Export the ASGI application
-app = asgi_app
+# Wrap into ASGI for Uvicorn
+app = WSGIMiddleware(flask_app)

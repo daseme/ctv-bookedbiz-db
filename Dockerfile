@@ -67,4 +67,5 @@ USER root
 ENTRYPOINT ["/app/railway_startup.sh"]
 
 # IMPORTANT: single worker for SQLite; ASGI target matches your earlier logs
-CMD ["uvicorn", "src.web.asgi:flask_app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "src.web.asgi:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
