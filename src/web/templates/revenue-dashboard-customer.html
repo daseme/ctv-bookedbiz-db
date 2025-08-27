@@ -328,6 +328,7 @@
     <div class="control-group">
         <label for="sortBy">Sort By</label>
         <select id="sortBy">
+            <option value="ae_customer">AE then Customer</option>
             <option value="total_desc">Total (High to Low)</option>
             <option value="customer">Customer Name</option>
             <option value="total_asc">Total (Low to High)</option>
@@ -505,6 +506,12 @@ class RevenueReportManager {
     sortData() {
         const sortBy = document.getElementById('sortBy').value;
         this.filteredData.sort((a, b) => {
+            if (sortBy === 'ae_customer') {
+                // Sort by AE first, then customer
+                const aeCompare = a.ae.localeCompare(b.ae);
+                if (aeCompare !== 0) return aeCompare;
+                return a.customer.localeCompare(b.customer);
+            }
             if (sortBy === 'customer') return a.customer.localeCompare(b.customer);
             if (sortBy === 'total_asc') return (Number(a.total)||0) - (Number(b.total)||0);
             return (Number(b.total)||0) - (Number(a.total)||0); // total_desc

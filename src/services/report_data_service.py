@@ -323,8 +323,10 @@ class ReportDataService:
             for m in range(1, 13):
                 row.set_month_value(m, data['months_gross'][m], data['months_net'][m])
             result.append(row)
-
-        result.sort(key=lambda x: x.total, reverse=True)  # keep existing behavior
+        print(f"DEBUG: First few rows before sort: {[(r.ae, r.customer) for r in result[:5]]}")
+        result.sort(key=lambda x: (x.ae.upper(), x.customer.upper()))
+        print(f"DEBUG: First few rows after sort: {[(r.ae, r.customer) for r in result[:5]]}")
+        result.sort(key=lambda x: (x.ae.upper(), x.customer.upper()))
         return result
 
     def _get_available_years(self, db_connection) -> List[int]:
