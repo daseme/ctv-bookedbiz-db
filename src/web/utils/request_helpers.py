@@ -9,8 +9,8 @@ from datetime import date
 import json
 from functools import wraps
 
-from models.report_data import ReportFilters
-from utils.template_formatters import serialize_for_javascript
+from src.models.report_data import ReportFilters
+from src.utils.template_formatters import serialize_for_javascript
 
 logger = logging.getLogger(__name__)
 

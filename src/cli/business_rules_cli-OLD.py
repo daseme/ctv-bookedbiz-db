@@ -20,7 +20,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.services.business_rules_service import BusinessRulesService
 # Note: Enhanced service import will be added when we fix that file too
-from models.business_rules_models import BusinessRuleType, SpotData
+from src.models.business_rules_models import BusinessRuleType, SpotData
 
 
 class BusinessRulesCLI:

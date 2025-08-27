@@ -12,8 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.services.month_closure_service import MonthClosureService, MonthClosureError
-from utils.broadcast_month_utils import BroadcastMonthParser
-from database.connection import DatabaseConnection
+from src.utils.broadcast_month_utils import BroadcastMonthParser
+from src.database.connection import DatabaseConnection
 
 
 def display_month_status(month: str, service: MonthClosureService):

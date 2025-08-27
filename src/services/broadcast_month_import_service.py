@@ -22,12 +22,12 @@ from tqdm import tqdm
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from database.connection import DatabaseConnection
+from src.database.connection import DatabaseConnection
 from src.services.month_closure_service import MonthClosureService, ValidationResult, MonthClosureError
 from src.services.import_integration_utilities import extract_display_months_from_excel, validate_excel_for_import
-from utils.broadcast_month_utils import BroadcastMonthParser, extract_broadcast_months_from_excel
+from src.utils.broadcast_month_utils import BroadcastMonthParser, extract_broadcast_months_from_excel
 from src.services.base_service import BaseService
-from utils.broadcast_month_utils import normalize_broadcast_day
+from src.utils.broadcast_month_utils import normalize_broadcast_day
 from src.services.entity_alias_service import EntityAliasService
 
 logger = logging.getLogger(__name__)

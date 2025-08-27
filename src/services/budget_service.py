@@ -278,7 +278,7 @@ class BudgetService:
             logger.error(f"Error syncing budget data to JSON: {e}")
     
     def _get_company_budget_totals_db(self, year: int) -> Dict[int, float]:
-        """Get company budget totals from database."""
+        """Get company budget totals from src.database."""
         if not self.db_path:
             return {}
         
@@ -306,7 +306,7 @@ class BudgetService:
             conn.close()
     
     def _get_quarterly_budget_summary_db(self, year: int) -> Dict[str, Dict[int, float]]:
-        """Get quarterly budget summary from database."""
+        """Get quarterly budget summary from src.database."""
         if not self.db_path:
             return {}
         
@@ -438,7 +438,7 @@ class BudgetService:
             }
     
     def _validate_budget_data_db(self, year: int) -> Dict[str, Any]:
-        """Validate budget data from database."""
+        """Validate budget data from src.database."""
         if not self.db_path:
             return {'is_valid': False, 'error': 'No database configured'}
         

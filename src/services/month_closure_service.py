@@ -15,8 +15,8 @@ from dataclasses import dataclass
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from database.connection import DatabaseConnection
-from utils.broadcast_month_utils import BroadcastMonthParser, BroadcastMonthParseError
+from src.database.connection import DatabaseConnection
+from src.utils.broadcast_month_utils import BroadcastMonthParser, BroadcastMonthParseError
 from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)

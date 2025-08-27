@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 # Import your models - adjust path as needed  
-from models.entities import Spot, Customer
+from src.models.entities import Spot, Customer
 
 class SpotRepository(ABC):
     """Abstract repository for spot data operations."""

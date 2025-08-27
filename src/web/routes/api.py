@@ -216,7 +216,7 @@ def get_ae_summary(ae_id: str):
         current_year = datetime.now().year
         
         # Create filters - FIXED to use correct ReportFilters parameters
-        from models.report_data import ReportFilters
+        from src.models.report_data import ReportFilters
         
         # Check what parameters ReportFilters accepts by creating basic filter first
         try:

@@ -25,10 +25,10 @@ except ImportError:
     
     from importers.excel_reader import ExcelReader, ExcelReadError
     from src.services.bill_code_parser import BillCodeParser, BillCodeParseError
-    from repositories.sqlite_repositories import SQLiteSpotRepository, SQLiteCustomerRepository, ReferenceDataRepository
-    from database.connection import DatabaseConnection
-    from models.entities import Spot, Customer
-    from models.validators import SpotValidator, CustomerValidator
+    from src.repositories.sqlite_repositories import SQLiteSpotRepository, SQLiteCustomerRepository, ReferenceDataRepository
+    from src.database.connection import DatabaseConnection
+    from src.models.entities import Spot, Customer
+    from src.models.validators import SpotValidator, CustomerValidator
     from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)

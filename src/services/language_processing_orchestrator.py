@@ -4,8 +4,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from models.spot_category import SpotCategory
-from models.language_assignment import LanguageAssignment, LanguageStatus
+from src.models.spot_category import SpotCategory
+from src.models.language_assignment import LanguageAssignment, LanguageStatus
 from src.services.language_assignment_service import LanguageAssignmentService
 from src.services.spot_categorization_service import SpotCategorizationService
 

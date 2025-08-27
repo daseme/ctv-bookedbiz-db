@@ -4,9 +4,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from models.language_assignment import LanguageAssignment, LanguageStatus
-from database.language_assignment_queries import LanguageAssignmentQueries
-from models.spot_category import SpotCategory
+from src.models.language_assignment import LanguageAssignment, LanguageStatus
+from src.database.language_assignment_queries import LanguageAssignmentQueries
+from src.models.spot_category import SpotCategory
 
 class LanguageAssignmentService:
     """Language assignment with undetermined language detection"""

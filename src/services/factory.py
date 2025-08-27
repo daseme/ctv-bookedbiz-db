@@ -166,7 +166,7 @@ def create_database_connection(db_path: Optional[str] = None):
     try:
         # Try to import DatabaseConnection
         try:
-            from database.connection import DatabaseConnection
+            from src.database.connection import DatabaseConnection
         except ImportError:
             logger.warning("DatabaseConnection not available - using mock")
             # Return a mock for testing

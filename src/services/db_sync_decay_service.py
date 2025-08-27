@@ -461,7 +461,7 @@ def simple_ae_decay_check(ae_service, pipeline_service, ae_id: str) -> Dict[str,
                             from datetime import datetime
                             year, month_num = month.split('-')
                             
-                            from models.report_data import ReportFilters
+                            from src.models.report_data import ReportFilters
                             filters = ReportFilters(year=int(year), ae_name=ae_name)
                             
                             monthly_data = self.report_service.get_monthly_revenue_report_data(int(year), filters)

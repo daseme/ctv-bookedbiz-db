@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from database.connection import DatabaseConnection
+from src.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 
@@ -485,7 +485,7 @@ class ExampleService(BaseService):
 # Utility functions for testing and validation
 def test_transaction_detection():
     """Test function to validate transaction state detection."""
-    from database.connection import DatabaseConnection
+    from src.database.connection import DatabaseConnection
     
     # This would normally use your actual test database
     test_db_path = ":memory:"  # In-memory database for testing
@@ -527,7 +527,7 @@ def test_transaction_detection():
 
 def test_decorators():
     """Test function to validate transaction decorators."""
-    from database.connection import DatabaseConnection
+    from src.database.connection import DatabaseConnection
     
     test_db_path = ":memory:"
     db_conn = DatabaseConnection(test_db_path)

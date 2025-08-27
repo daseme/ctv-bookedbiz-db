@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from models.spot_category import SpotCategory, categorize_spot
+from src.models.spot_category import SpotCategory, categorize_spot
 
 class SpotCategorizationService:
     """Service for categorizing spots based on business rules"""

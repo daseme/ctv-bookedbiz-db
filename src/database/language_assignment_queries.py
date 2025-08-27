@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from models.language_assignment import SpotLanguageData, LanguageAssignment
+from src.models.language_assignment import SpotLanguageData, LanguageAssignment
 
 class LanguageAssignmentQueries:
     """Database operations with undetermined language support"""

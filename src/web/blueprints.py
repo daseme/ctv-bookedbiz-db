@@ -23,7 +23,7 @@ from src.web.routes.health import health_bp
 from src.web.routes.language_blocks import language_blocks_bp
 from src.web.routes.pipeline_decay_api import decay_api_bp
 from src.services.container import get_container
-from utils.template_formatters import register_template_filters
+from src.utils.template_formatters import register_template_filters
 
 logger = logging.getLogger(__name__)
 

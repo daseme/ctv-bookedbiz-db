@@ -15,7 +15,7 @@ from pathlib import Path
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
-from utils.broadcast_month_utils import normalize_broadcast_day
+from src.utils.broadcast_month_utils import normalize_broadcast_day
 
 
 
@@ -601,7 +601,7 @@ class EnhancedProductionExcelImporter:
 
                 # Track stats (after normalization)
                 try:
-                    from utils.broadcast_month_utils import BroadcastMonthParser
+                    from src.utils.broadcast_month_utils import BroadcastMonthParser
                     display = BroadcastMonthParser().parse_excel_date_to_broadcast_month(
                         spot_data["broadcast_month"]
                     )

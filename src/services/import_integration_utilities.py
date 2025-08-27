@@ -12,9 +12,9 @@ from datetime import datetime, date
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.broadcast_month_utils import extract_broadcast_months_from_excel, BroadcastMonthParser
+from src.utils.broadcast_month_utils import extract_broadcast_months_from_excel, BroadcastMonthParser
 from src.services.month_closure_service import MonthClosureService, ValidationResult
-from database.connection import DatabaseConnection
+from src.database.connection import DatabaseConnection
 
 
 def extract_display_months_from_excel(excel_file_path: str, limit: int = None) -> Set[str]:

@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from database.connection import DatabaseConnection
+from src.database.connection import DatabaseConnection
 from src.services.base_service import BaseService
 
 class StandardGridPopulator(BaseService):
@@ -26,7 +26,7 @@ class StandardGridPopulator(BaseService):
         self._load_language_mappings()
     
     def _load_language_mappings(self):
-        """Load language ID mappings from database."""
+        """Load language ID mappings from src.database."""
         try:
             with self.db.connect() as conn:
                 cursor = conn.execute("SELECT language_id, language_code, language_name FROM languages")

@@ -16,10 +16,10 @@ from tqdm import tqdm
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from database.connection import DatabaseConnection
+from src.database.connection import DatabaseConnection
 from src.services.month_closure_service import MonthClosureService, MonthClosureError
 from src.services.broadcast_month_import_service import BroadcastMonthImportService
-from utils.broadcast_month_utils import extract_broadcast_months_from_excel
+from src.utils.broadcast_month_utils import extract_broadcast_months_from_excel
 from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class SmartFilteredImporter(BaseService):
             filtered_months = []
             for month in all_months:
                 try:
-                    from utils.broadcast_month_utils import BroadcastMonthParser
+                    from src.utils.broadcast_month_utils import BroadcastMonthParser
                     parser = BroadcastMonthParser()
                     month_year = parser.extract_year_from_broadcast_month(month)
                     if month_year == target_year:
@@ -111,7 +111,7 @@ class SmartFilteredImporter(BaseService):
         print(f"Phase 1: Analyzing Excel structure...")
         
         from openpyxl import load_workbook
-        from utils.broadcast_month_utils import BroadcastMonthParser
+        from src.utils.broadcast_month_utils import BroadcastMonthParser
         
         parser = BroadcastMonthParser()
         
@@ -202,7 +202,7 @@ class SmartFilteredImporter(BaseService):
         print(f"Phase 2: Creating filtered Excel...")
         
         from openpyxl import load_workbook, Workbook
-        from utils.broadcast_month_utils import BroadcastMonthParser
+        from src.utils.broadcast_month_utils import BroadcastMonthParser
         
         parser = BroadcastMonthParser()
         

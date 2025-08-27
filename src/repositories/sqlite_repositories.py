@@ -8,8 +8,8 @@ import logging
 from dataclasses import asdict
 
 from .interfaces import SpotRepository, CustomerRepository
-from models.entities import Spot, Customer, Agency, Market, Language, Sector
-from database.connection import DatabaseConnection
+from src.models.entities import Spot, Customer, Agency, Market, Language, Sector
+from src.database.connection import DatabaseConnection
 from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)

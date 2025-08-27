@@ -124,7 +124,7 @@ def pipeline_revenue_management():
         report_service = safe_get_service(container, 'report_data_service')
         
         print("🔍 Getting AE data from monthly report...")
-        from models.report_data import ReportFilters
+        from src.models.report_data import ReportFilters
         from datetime import date
         
         current_year = date.today().year
@@ -241,7 +241,7 @@ def get_customer_data(ae_id: str, month: str):
         month_num = int(month_num)
         
         # Get revenue data for this AE and month - FIXED filters
-        from models.report_data import ReportFilters
+        from src.models.report_data import ReportFilters
         
         try:
             # Create basic filters (without ae_name parameter)

@@ -15,7 +15,7 @@ from datetime import datetime
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from models.business_rules_models import (
+from src.models.business_rules_models import (
     BusinessRule, BusinessRuleType, CustomerIntent, SpotData, 
     BusinessRuleResult, BusinessRuleStats, DEFAULT_BUSINESS_RULES_CONFIG
 )
