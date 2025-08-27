@@ -662,12 +662,49 @@ class PipelineService:
     # EXISTING METHODS (keeping compatibility)
     # =============================================================================
     
-    def get_pipeline_data(self, ae_id: str, month: str = None) -> Dict[str, Any]:
-        """Get pipeline data (existing method enhanced with decay awareness)."""
-        if self.data_source in [DataSourceType.JSON_ONLY, DataSourceType.JSON_PRIMARY]:
-            return self._get_pipeline_data_from_json(ae_id, month)
-        else:
-            return self._get_pipeline_data_from_db(ae_id, month)
+    def get_pipeline_data(self, ae_id: str, month: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Decay-aware, resilient fetch.
+        - JSON modes → _get_pipeline_data_from_json(ae_id, month)
+        - DB modes   → prefer any available DB fetcher (public first, then legacy/private)
+        Falls back to repo if present.
+        """
+        # JSON branch
+        if getattr(self, "data_source", None) in (DataSourceType.JSON_ONLY, DataSourceType.JSON_PRIMARY):
+            if hasattr(self, "_get_pipeline_data_from_json"):
+                return self._get_pipeline_data_from_json(ae_id, month)
+            raise NotImplementedError("JSON data_source set but _get_pipeline_data_from_json() not implemented.")
+
+        # DB branch: try known method names in preferred order
+        candidates = (
+            "get_pipeline_data_db",     # preferred public
+            "fetch_pipeline_data",      # common alt
+            "fetch_pipeline",           # another alt
+            "_current_impl_fetch",      # internal current impl
+            "_get_pipeline_data_from_db" # legacy private (back-compat)
+        )
+        for name in candidates:
+            if hasattr(self, name):
+                return getattr(self, name)(ae_id, month)
+
+        # Repository fallback
+        if hasattr(self, "repo") and hasattr(self.repo, "get_pipeline_data"):
+            return self.repo.get_pipeline_data(ae_id=ae_id, month=month)
+
+        # Nothing worked
+        raise AttributeError(
+            "No DB fetch method found on PipelineService. "
+            "Implement one of: get_pipeline_data_db, fetch_pipeline_data, fetch_pipeline, "
+            "_current_impl_fetch, or _get_pipeline_data_from_db."
+        )
+
+    # --- Legacy alias for callers that still use the private method name ---
+    def _get_pipeline_data_from_db(self, ae_id: str, month: Optional[str] = None) -> Dict[str, Any]:
+        """Back-compat shim → delegates to the main implementation."""
+        # If a newer public DB method exists, use it; otherwise just call get_pipeline_data
+        if hasattr(self, "get_pipeline_data_db"):
+            return self.get_pipeline_data_db(ae_id, month)
+        return self.get_pipeline_data(ae_id, month)
     
     def _get_pipeline_data_from_json(self, ae_id: str, month: str = None) -> Dict[str, Any]:
         """Get pipeline data from JSON with thread safety."""
