@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any
 
 # Service container and utilities
-from services.container import get_container
-from web.utils.request_helpers import (
+from src.services.container import get_container
+from src.web.utils.request_helpers import (
     safe_get_service, create_success_response, create_error_response,
     handle_service_error, log_requests, handle_request_errors
 )

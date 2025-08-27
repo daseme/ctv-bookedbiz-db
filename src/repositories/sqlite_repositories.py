@@ -10,7 +10,7 @@ from dataclasses import asdict
 from .interfaces import SpotRepository, CustomerRepository
 from models.entities import Spot, Customer, Agency, Market, Language, Sector
 from database.connection import DatabaseConnection
-from services.base_service import BaseService
+from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 

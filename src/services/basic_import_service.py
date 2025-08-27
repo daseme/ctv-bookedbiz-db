@@ -24,12 +24,12 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
     
     from importers.excel_reader import ExcelReader, ExcelReadError
-    from services.bill_code_parser import BillCodeParser, BillCodeParseError
+    from src.services.bill_code_parser import BillCodeParser, BillCodeParseError
     from repositories.sqlite_repositories import SQLiteSpotRepository, SQLiteCustomerRepository, ReferenceDataRepository
     from database.connection import DatabaseConnection
     from models.entities import Spot, Customer
     from models.validators import SpotValidator, CustomerValidator
-    from services.base_service import BaseService
+    from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 

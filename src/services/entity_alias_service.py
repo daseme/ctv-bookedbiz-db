@@ -5,7 +5,7 @@ Entity Alias Service - Manages entity name variations and mappings.
 
 import logging
 from typing import Optional
-from services.base_service import BaseService
+from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 

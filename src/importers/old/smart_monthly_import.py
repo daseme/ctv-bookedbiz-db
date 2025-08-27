@@ -17,10 +17,10 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from database.connection import DatabaseConnection
-from services.month_closure_service import MonthClosureService, MonthClosureError
-from services.broadcast_month_import_service import BroadcastMonthImportService
+from src.services.month_closure_service import MonthClosureService, MonthClosureError
+from src.services.broadcast_month_import_service import BroadcastMonthImportService
 from utils.broadcast_month_utils import extract_broadcast_months_from_excel
-from services.base_service import BaseService
+from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 

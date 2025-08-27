@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database.connection import DatabaseConnection
 from utils.broadcast_month_utils import BroadcastMonthParser, BroadcastMonthParseError
-from services.base_service import BaseService
+from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 

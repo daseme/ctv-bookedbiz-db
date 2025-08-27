@@ -7,8 +7,8 @@ from flask import Blueprint, render_template, request, jsonify
 from datetime import date, datetime
 import json
 
-from services.container import get_container
-from web.utils.request_helpers import (
+from src.services.container import get_container
+from src.web.utils.request_helpers import (
     handle_request_errors, log_requests, safe_get_service,
     create_success_response, create_error_response
 )

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 import sqlite3
 
-from services.customer_matching.blocking_matcher import (
+from src.services.customer_matching.blocking_matcher import (
     analyze_customer_names,
     summarize,
     print_summary,

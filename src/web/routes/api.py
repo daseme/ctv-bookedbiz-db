@@ -7,8 +7,8 @@ import logging
 from flask import Blueprint, request
 from datetime import date, datetime, timedelta
 
-from services.container import get_container
-from web.utils.request_helpers import (
+from src.services.container import get_container
+from src.web.utils.request_helpers import (
     extract_report_filters, get_year_parameter, create_success_response,
     create_error_response, handle_service_error, safe_get_service,
     log_requests, handle_request_errors, get_export_format,

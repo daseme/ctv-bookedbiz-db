@@ -10,10 +10,10 @@ import logging
 from flask import Flask, jsonify
 from typing import Optional
 
-from services.container import ServiceCreationError
-from services.factory import initialize_services
-from config.settings import get_settings
-from web.blueprints import initialize_blueprints
+from src.services.container import ServiceCreationError
+from src.services.factory import initialize_services
+from src.config.settings import get_settings
+from src.web.blueprints import initialize_blueprints
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def create_app(environment: Optional[str] = None) -> Flask:
     
     # Register pipeline blueprint
     try:
-        from web.routes.pipeline_routes import pipeline_bp
+        from src.web.routes.pipeline_routes import pipeline_bp
         app.register_blueprint(pipeline_bp)
         logger.info("Pipeline blueprint registered successfully")
     except ImportError as e:
@@ -71,7 +71,7 @@ def create_app(environment: Optional[str] = None) -> Flask:
     """
     # Register decay API blueprint (if available)
     try:
-        from web.routes.pipeline_decay_api import decay_api_bp
+        from src.web.routes.pipeline_decay_api import decay_api_bp
         app.register_blueprint(decay_api_bp)
         logger.info("Pipeline decay API blueprint registered successfully")
     except ImportError as e:
@@ -84,7 +84,7 @@ def create_app(environment: Optional[str] = None) -> Flask:
     def check_decay_system():
         """Check decay system availability."""
         try:
-            from services.container import get_container
+            from src.services.container import get_container
             container = get_container()
             pipeline_service = container.get('pipeline_service')
             
@@ -122,7 +122,7 @@ def create_app(environment: Optional[str] = None) -> Flask:
     @app.route('/health')
     def health_check():
         """Application health check."""
-        from services.container import get_container
+        from src.services.container import get_container
         
         try:
             container = get_container()
@@ -147,7 +147,7 @@ def create_app(environment: Optional[str] = None) -> Flask:
     @app.route('/info')
     def app_info():
         """Application information endpoint."""
-        from web.blueprints import get_blueprint_info
+        from src.web.blueprints import get_blueprint_info
         
         return jsonify({
             'app_name': 'CTV Reporting System',

@@ -7,9 +7,9 @@ import logging
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 
-from services.container import get_container
-from services.factory import get_service_health_report, emergency_service_recovery
-from web.utils.request_helpers import (
+from src.services.container import get_container
+from src.services.factory import get_service_health_report, emergency_service_recovery
+from src.web.utils.request_helpers import (
     create_success_response, create_error_response, 
     handle_request_errors, log_requests, safe_get_service
 )

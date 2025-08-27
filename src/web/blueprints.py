@@ -16,13 +16,13 @@ from typing import Dict, Any
 
 from flask import Flask, request
 
-from web.routes.reports import reports_bp
-from web.routes.api import api_bp
-from web.routes.budget import budget_bp
-from web.routes.health import health_bp
-from web.routes.language_blocks import language_blocks_bp
-from web.routes.pipeline_decay_api import decay_api_bp
-from services.container import get_container
+from src.web.routes.reports import reports_bp
+from src.web.routes.api import api_bp
+from src.web.routes.budget import budget_bp
+from src.web.routes.health import health_bp
+from src.web.routes.language_blocks import language_blocks_bp
+from src.web.routes.pipeline_decay_api import decay_api_bp
+from src.services.container import get_container
 from utils.template_formatters import register_template_filters
 
 logger = logging.getLogger(__name__)

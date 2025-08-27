@@ -13,7 +13,7 @@ from datetime import datetime, date
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.broadcast_month_utils import extract_broadcast_months_from_excel, BroadcastMonthParser
-from services.month_closure_service import MonthClosureService, ValidationResult
+from src.services.month_closure_service import MonthClosureService, ValidationResult
 from database.connection import DatabaseConnection
 
 

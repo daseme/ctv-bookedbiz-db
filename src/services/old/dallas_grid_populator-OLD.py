@@ -14,7 +14,7 @@ from typing import Dict, List, Any, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from database.connection import DatabaseConnection
-from services.base_service import BaseService
+from src.services.base_service import BaseService
 
 class DallasGridPopulator(BaseService):
     """Populates Dallas Grid with language blocks matching Dallas visual programming schedule."""

@@ -6,8 +6,8 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from models.spot_category import SpotCategory
 from models.language_assignment import LanguageAssignment, LanguageStatus
-from services.language_assignment_service import LanguageAssignmentService
-from services.spot_categorization_service import SpotCategorizationService
+from src.services.language_assignment_service import LanguageAssignmentService
+from src.services.spot_categorization_service import SpotCategorizationService
 
 class LanguageProcessingOrchestrator:
     """Orchestrates language processing for different spot categories"""
