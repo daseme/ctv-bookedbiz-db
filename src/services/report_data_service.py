@@ -8,6 +8,7 @@ Changes:
 - AE filtering normalized (UPPER/TRIM) with explicit 'Unknown' handling.
 - COUNT(*) + COALESCE fixes.
 - Removed lru_cache on methods that take db_connection (avoid unhashable-arg cache errors).
+- Modified to use bill_code from spots table instead of normalized_name from customers table.
 """
 
 import logging
@@ -249,14 +250,14 @@ class ReportDataService:
         month_expr = _bm_case_month("s.broadcast_month")
         query = f"""
             SELECT
-                c.customer_id,
-                COALESCE(a.agency_name || ' : ', '') || c.normalized_name AS customer,
+                s.bill_code AS customer_id,
+                COALESCE(s.bill_code, 'Unknown') AS customer,
                 CASE 
                   WHEN s.sales_person IS NULL OR TRIM(s.sales_person) = '' THEN 'Unknown'
                   ELSE TRIM(s.sales_person)
                 END AS ae,
                 COALESCE(s.revenue_type, 'Regular') AS revenue_type,
-                sect.sector_name AS sector,
+                COALESCE(sect.sector_name, 'Unknown') AS sector,
                 {month_expr} AS month,
                 ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
                 ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue
@@ -271,7 +272,7 @@ class ReportDataService:
         params: List[Any] = [_bm_like(year)]
 
         if filters.customer_search:
-            query += " AND LOWER(c.normalized_name) LIKE LOWER(?)"
+            query += " AND LOWER(COALESCE(s.bill_code, '')) LIKE LOWER(?)"
             params.append(f"%{filters.customer_search}%")
 
         ae_sql, ae_params = _ae_where_clause(filters.ae_filter, "s.sales_person")
@@ -283,18 +284,18 @@ class ReportDataService:
             query += " AND s.revenue_type = ?"
             params.append(filters.revenue_type)
 
-        query += " GROUP BY c.customer_id, c.normalized_name, ae, revenue_type, sect.sector_name, month"
+        query += " GROUP BY s.bill_code, ae, revenue_type, sect.sector_name, month"
 
         conn = db_connection.connect()
         rows = conn.execute(query, params).fetchall()
         conn.close()
 
         buckets: Dict[Any, Dict[str, Any]] = {}
-        for customer_id, customer, ae, revenue_type, sector, month_txt, gross, net in rows:
-            key = (customer_id, customer, ae, revenue_type)
+        for bill_code, customer, ae, revenue_type, sector, month_txt, gross, net in rows:
+            key = (bill_code, customer, ae, revenue_type)
             if key not in buckets:
                 buckets[key] = {
-                    'customer_id': customer_id,
+                    'customer_id': bill_code,
                     'customer': customer,
                     'ae': ae,
                     'revenue_type': revenue_type,
@@ -528,12 +529,12 @@ class ReportDataService:
         query = """
             SELECT 
                 sctr.sector_name,
-                c.normalized_name AS customer_name,
+                COALESCE(sp.bill_code, 'Unknown') AS customer_name,
                 COUNT(*) AS spot_count,
                 ROUND(SUM(COALESCE(sp.gross_rate,0)), 2) AS total_revenue
             FROM spots sp
-            JOIN customers c   ON sp.customer_id = c.customer_id
-            JOIN sectors  sctr ON c.sector_id = sctr.sector_id
+            LEFT JOIN customers c   ON sp.customer_id = c.customer_id
+            LEFT JOIN sectors  sctr ON c.sector_id = sctr.sector_id
             WHERE sp.gross_rate IS NOT NULL
               AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
         """
@@ -548,7 +549,7 @@ class ReportDataService:
             params.extend(ae_params)
         if where:
             query += " AND " + " AND ".join(where)
-        query += " GROUP BY sctr.sector_id, c.customer_id ORDER BY sctr.sector_name, total_revenue DESC"
+        query += " GROUP BY sctr.sector_id, sp.bill_code ORDER BY sctr.sector_name, total_revenue DESC"
 
         conn = db_connection.connect()
         rows = conn.execute(query, params).fetchall()
@@ -557,7 +558,7 @@ class ReportDataService:
         out: List[CustomerSectorData] = []
         for r in rows:
             out.append(CustomerSectorData(
-                sector_name=r[0],
+                sector_name=r[0] or 'Unknown',
                 customer_name=r[1],
                 spot_count=r[2],
                 total_revenue=Decimal(str(r[3]))
