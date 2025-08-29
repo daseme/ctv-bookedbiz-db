@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Commercial Log Copy Script - Production Version
-Copies the "Commercials" sheet from K: drive to Crossings TV Dropbox
+Commercial Log Copy Script - Improved Version
+Maintains original functionality while fixing key style violations
 """
 
 import pandas as pd
@@ -10,116 +10,176 @@ from datetime import datetime
 import logging
 import sys
 from pathlib import Path
+from typing import Tuple, Optional
 
-# Create logs directory if it doesn't exist
-log_dir = Path.home() / 'logs'
-log_dir.mkdir(exist_ok=True)
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_dir / 'commercial_log_copy.log'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-
-def copy_commercial_log():
-    """Copy the Commercials sheet to a new dated file"""
+def setup_logging() -> logging.Logger:
+    """Configure logging with proper separation"""
+    # Create logs directory if it doesn't exist
+    log_dir = Path.home() / 'logs'
+    log_dir.mkdir(exist_ok=True)
     
-    # Production file paths
-    source_file = "/mnt/k/Traffic/Media Library/Commercial Log.xlsx"
-    destination_dir = "/mnt/c/Users/Kurt/Crossings TV Dropbox/kurt olmstead/Financial/Sales/WeeklyReports/ctv-bookedbiz-db/ctv-bookedbiz-db/data/raw/daily"
+    # Set up logging
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
     
-    # Generate filename with current date
+    # Avoid duplicate handlers
+    if not logger.handlers:
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        
+        # File handler
+        file_handler = logging.FileHandler(log_dir / 'commercial_log_copy.log')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        
+        # Console handler  
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    
+    return logger
+
+
+def generate_filename() -> str:
+    """Generate standardized filename with date suffix"""
     today = datetime.now()
     year_suffix = str(today.year)[-2:]  # Get last 2 digits of year
     month = f"{today.month:02d}"
     day = f"{today.day:02d}"
     
-    destination_filename = f"Commercial Log {year_suffix}{month}{day}.xlsx"
-    destination_path = os.path.join(destination_dir, destination_filename)
-    
+    return f"Commercial Log {year_suffix}{month}{day}.xlsx"
+
+
+def validate_source_file(source_path: str, logger: logging.Logger) -> bool:
+    """Validate source file exists and is accessible"""
+    if not os.path.exists(source_path):
+        logger.error(f"Source file not found: {source_path}")
+        return False
+    return True
+
+
+def ensure_destination_directory(dest_dir: str, logger: logging.Logger) -> bool:
+    """Ensure destination directory exists"""
+    if not os.path.exists(dest_dir):
+        logger.info(f"Creating destination directory: {dest_dir}")
+        try:
+            os.makedirs(dest_dir, exist_ok=True)
+            return True
+        except OSError as e:
+            logger.error(f"Failed to create directory: {e}")
+            return False
+    return True
+
+
+def read_commercials_sheet(source_path: str, logger: logging.Logger) -> Optional[pd.DataFrame]:
+    """Read the Commercials sheet from source Excel file"""
     try:
-        # Check if source file exists
-        if not os.path.exists(source_file):
-            logging.error(f"Source file not found: {source_file}")
-            return False
+        logger.info(f"Reading source file: {source_path}")
         
-        # Check if destination directory exists, create if not
-        if not os.path.exists(destination_dir):
-            logging.info(f"Creating destination directory: {destination_dir}")
-            os.makedirs(destination_dir, exist_ok=True)
+        # Use context manager for proper resource cleanup
+        with pd.ExcelFile(source_path) as xl_file:
+            available_sheets = xl_file.sheet_names
+            logger.info(f"Available sheets: {available_sheets}")
+            
+            if "Commercials" not in available_sheets:
+                logger.error("'Commercials' sheet not found in source file")
+                return None
+            
+            df = pd.read_excel(xl_file, sheet_name="Commercials")
+            logger.info(f"Successfully read Commercials sheet with {len(df)} rows and {len(df.columns)} columns")
+            
+            # Log sample data if available
+            if len(df) > 0:
+                sample_cols = ['Bill Code', 'Start Date', 'End Date'] if 'Bill Code' in df.columns else df.columns[:3]
+                logger.info("Sample data being processed:")
+                logger.info(f"\n{df[sample_cols].head(3)}")
+            
+            return df
+            
+    except Exception as e:
+        logger.error(f"Failed to read Excel file: {e}")
+        return None
+
+
+def write_excel_file(df: pd.DataFrame, destination_path: str, logger: logging.Logger) -> bool:
+    """Write DataFrame to Excel file"""
+    try:
+        logger.info(f"Writing to destination: {destination_path}")
         
-        # Check if destination file already exists
-        if os.path.exists(destination_path):
-            logging.warning(f"Destination file already exists: {destination_filename}")
-            logging.info("Proceeding with overwrite...")
-        
-        # Read the source Excel file
-        logging.info(f"Reading source file: {source_file}")
-        
-        # Read all sheets to check which ones exist
-        xl_file = pd.ExcelFile(source_file)
-        available_sheets = xl_file.sheet_names
-        logging.info(f"Available sheets: {available_sheets}")
-        
-        # Check if "Commercials" sheet exists
-        if "Commercials" not in available_sheets:
-            logging.error("'Commercials' sheet not found in source file")
-            return False
-        
-        # Read the Commercials sheet
-        df_commercials = pd.read_excel(source_file, sheet_name="Commercials")
-        logging.info(f"Successfully read Commercials sheet with {len(df_commercials)} rows and {len(df_commercials.columns)} columns")
-        
-        # Show sample of data being processed (first 3 rows, key columns only)
-        if len(df_commercials) > 0:
-            sample_cols = ['Bill Code', 'Start Date', 'End Date'] if 'Bill Code' in df_commercials.columns else df_commercials.columns[:3]
-            logging.info("Sample data being processed:")
-            logging.info(f"\n{df_commercials[sample_cols].head(3)}")
-        
-        # Write to destination file
-        logging.info(f"Writing to destination: {destination_path}")
         with pd.ExcelWriter(destination_path, engine='openpyxl') as writer:
-            df_commercials.to_excel(writer, sheet_name="Commercials", index=False)
+            df.to_excel(writer, sheet_name="Commercials", index=False)
         
-        # Verify the file was created successfully
+        # Verify file was created
         if os.path.exists(destination_path):
             file_size = os.path.getsize(destination_path)
-            logging.info(f"Successfully created: {destination_filename}")
-            logging.info(f"File size: {file_size:,} bytes")
-            logging.info(f"Data rows processed: {len(df_commercials):,}")
+            filename = Path(destination_path).name
+            logger.info(f"Successfully created: {filename}")
+            logger.info(f"File size: {file_size:,} bytes")
+            logger.info(f"Data rows processed: {len(df):,}")
             return True
         else:
-            logging.error("File creation failed - destination file not found")
+            logger.error("File creation failed - destination file not found")
             return False
-        
-    except FileNotFoundError as e:
-        logging.error(f"File not found: {e}")
-        return False
-    except PermissionError as e:
-        logging.error(f"Permission denied: {e}")
-        return False
+            
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logger.error(f"Failed to write Excel file: {e}")
         return False
 
-def main():
-    """Main function"""
-    logging.info("Starting Commercial Log copy process - PRODUCTION MODE")
-    logging.info("Source: K:/Traffic/Media Library/Commercial Log.xlsx")
-    logging.info("Destination: Crossings TV Dropbox/...data/raw/daily/")
+
+def copy_commercial_log() -> bool:
+    """
+    Copy the Commercials sheet from K: drive to local Pi project folder
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    logger = setup_logging()
+    
+    # Configuration - local to raspberry pi project
+    source_file = "/mnt/k-drive/Traffic/Media Library/Commercial Log.xlsx"
+    destination_dir = "/opt/apps/ctv-bookedbiz-db/data/raw/daily"
+    
+    # Generate destination path
+    filename = generate_filename()
+    destination_path = os.path.join(destination_dir, filename)
+    
+    # Log if file will be overwritten
+    if os.path.exists(destination_path):
+        logger.warning(f"Destination file already exists: {filename}")
+        logger.info("Proceeding with overwrite...")
+    
+    # Validate inputs
+    if not validate_source_file(source_file, logger):
+        return False
+    
+    if not ensure_destination_directory(destination_dir, logger):
+        return False
+    
+    # Read source data
+    df = read_commercials_sheet(source_file, logger)
+    if df is None:
+        return False
+    
+    # Write destination file
+    return write_excel_file(df, destination_path, logger)
+
+
+def main() -> None:
+    """Main function with proper error handling"""
+    logger = setup_logging()
+    logger.info("Starting Commercial Log copy process - PRODUCTION MODE")
+    logger.info("Source: K-Drive:/Traffic/Media Library/Commercial Log.xlsx")
+    logger.info("Destination: /opt/apps/ctv-bookedbiz-db/data/raw/daily/")
     
     success = copy_commercial_log()
     
     if success:
-        logging.info("Commercial Log copy completed successfully")
+        logger.info("Commercial Log copy completed successfully")
         sys.exit(0)
     else:
-        logging.error("Commercial Log copy failed")
+        logger.error("Commercial Log copy failed")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
