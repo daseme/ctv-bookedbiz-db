@@ -35,7 +35,7 @@ class LanguageAssignmentService:
         """Prefer code from table; fallback to EN."""
         if self._english_code_cache:
             return self._english_code_cache
-        cur = self.db.cursor()
+        cur = self.db_connection.cursor()
         cur.execute("""
             SELECT language_code
             FROM languages
@@ -159,7 +159,7 @@ class LanguageAssignmentService:
 
     def get_review_summary(self) -> Dict[str, int]:
         """Summary of spots requiring manual review, excluding COM/BB spot types."""
-        cur = self.db.cursor()
+        cur = self.db_connection.cursor()
         cur.execute("""
             SELECT
                 SUM(CASE WHEN s.language_code = 'L' THEN 1 ELSE 0 END),
@@ -185,14 +185,14 @@ class LanguageAssignmentService:
         }
 
     def _load_valid_language_codes(self) -> set:
-        cur = self.db.cursor()
+        cur = self.db_connection.cursor()
         cur.execute("SELECT UPPER(language_code) FROM languages WHERE language_code IS NOT NULL")
         return {r[0] for r in cur.fetchall()}
 
     # ---- category APIs (single, de-duped versions) ----
 
     def get_spots_by_category(self, category: SpotCategory, limit: Optional[int] = None) -> List[int]:
-        cur = self.db.cursor()
+        cur = self.db_connection.cursor()
         q = "SELECT spot_id FROM spots WHERE spot_category = ? ORDER BY spot_id"
         if limit:
             q += " LIMIT ?"
@@ -279,7 +279,7 @@ class LanguageAssignmentService:
         return {"processed": len(spot_ids), "assigned": saved, "errors": errors}
 
     def get_spots_by_category_and_batch(self, category, batch_id: str, limit: Optional[int] = None) -> List[int]:
-        cur = self.db.cursor()
+        cur = self.db_connection.cursor()
         q = """
             SELECT spot_id FROM spots
             WHERE spot_category = ? AND import_batch_id = ?

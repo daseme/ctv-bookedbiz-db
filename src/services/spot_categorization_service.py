@@ -37,7 +37,7 @@ class SpotCategorizationService:
 
     
     def categorize_spot_by_id(self, spot_id: int) -> Optional[SpotCategory]:
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         cursor.execute("""
             SELECT revenue_type, spot_type, language_code
             FROM spots
@@ -54,7 +54,7 @@ class SpotCategorizationService:
         if not spot_ids:
             return {}
         placeholders = ",".join(["?"] * len(spot_ids))
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         cursor.execute(f"""
             SELECT spot_id, revenue_type, spot_type, language_code
             FROM spots
@@ -69,7 +69,7 @@ class SpotCategorizationService:
     
     def get_uncategorized_spots(self, limit: Optional[int] = None) -> List[int]:
         """Get spots that haven't been categorized yet"""
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         query = """
             SELECT spot_id FROM spots 
             WHERE spot_category IS NULL
@@ -86,7 +86,7 @@ class SpotCategorizationService:
         if not categorizations:
             return 0
         
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         updates = [(category.value, spot_id) for spot_id, category in categorizations.items()]
         
         cursor.executemany("""
@@ -95,7 +95,7 @@ class SpotCategorizationService:
             WHERE spot_id = ?
         """, updates)
         
-        self.db.commit()
+        self.db_connection.commit()
         return cursor.rowcount
     
     def categorize_all_uncategorized(self, batch_size: int = 5000) -> Dict[str, int]:
@@ -140,7 +140,7 @@ class SpotCategorizationService:
     
     def get_category_summary(self) -> Dict[str, int]:
         """Get summary of spots by category"""
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         cursor.execute("""
             SELECT 
                 spot_category,

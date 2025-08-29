@@ -84,7 +84,7 @@ class BaseService(ABC):
         Args:
             db_connection: DatabaseConnection instance for database operations
         """
-        self.db = db_connection
+        self.db_connection = db_connection  # ✅ Changed from self.db to self.db_connection
         self._current_connection: Optional[sqlite3.Connection] = None
         self._in_transaction: bool = False
         self._transaction_depth: int = 0
@@ -114,7 +114,7 @@ class BaseService(ABC):
         if self._current_connection is not None:
             return self._current_connection
         
-        return self.db.connect()
+        return self.db_connection.connect()
     
     @contextmanager
     def safe_transaction(self):
@@ -154,7 +154,7 @@ class BaseService(ABC):
             return
         
         # Create new transaction
-        conn = self.db.connect()
+        conn = self.db_connection.connect()
         self._current_connection = conn
         self._transaction_depth += 1
         
@@ -204,7 +204,7 @@ class BaseService(ABC):
             return
         
         # Create new connection for read-only operations
-        conn = self.db.connect()
+        conn = self.db_connection.connect()
         try:
             yield conn
         finally:

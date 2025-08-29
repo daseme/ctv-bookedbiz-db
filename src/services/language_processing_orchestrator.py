@@ -93,7 +93,7 @@ class LanguageProcessingOrchestrator:
     
     def get_processing_status(self) -> Dict[str, int]:
         """Get status of language processing by category"""
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         
         # Count processed spots by category
         cursor.execute("""

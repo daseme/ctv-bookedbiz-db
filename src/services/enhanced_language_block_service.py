@@ -253,7 +253,7 @@ class EnhancedLanguageBlockService:
     
     def _get_applicable_schedule(self, market_id: int, air_date: str) -> Optional[int]:
         """Find applicable programming schedule for market and date"""
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         
         query = """
         SELECT ps.schedule_id
@@ -274,7 +274,7 @@ class EnhancedLanguageBlockService:
     
     def _get_overlapping_blocks(self, schedule_id: int, spot_data: SpotData) -> List[Dict[str, Any]]:
         """Find language blocks that overlap with spot time (simplified)"""
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         
         query = """
         SELECT block_id, block_name, language_id, time_start, time_end
@@ -305,7 +305,7 @@ class EnhancedLanguageBlockService:
     
     def _save_assignment(self, result: AssignmentResult):
         """Save assignment to database (compatible with existing CHECK constraint)"""
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         
         # Delete existing assignment if exists
         cursor.execute("DELETE FROM spot_language_blocks WHERE spot_id = ?", (result.spot_id,))
@@ -341,7 +341,7 @@ class EnhancedLanguageBlockService:
             result.assigned_date.isoformat() if result.business_rule_applied else None
         ))
         
-        self.db.commit()
+        self.db_connection.commit()
     
     def _map_assignment_method(self, method: AssignmentMethod) -> str:
         """Map AssignmentMethod enum to values compatible with CHECK constraint"""
@@ -359,7 +359,7 @@ class EnhancedLanguageBlockService:
     
     def _get_unassigned_spot_ids(self, limit: int = None) -> List[int]:
         """Get spot IDs that don't have language block assignments"""
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         
         query = """
         SELECT s.spot_id

@@ -28,7 +28,7 @@ class StandardGridPopulator(BaseService):
     def _load_language_mappings(self):
         """Load language ID mappings from src.database."""
         try:
-            with self.db.connect() as conn:
+            with self.db_connection.connect() as conn:
                 cursor = conn.execute("SELECT language_id, language_code, language_name FROM languages")
                 for row in cursor.fetchall():
                     language_id, language_code, language_name = row
@@ -68,7 +68,7 @@ class StandardGridPopulator(BaseService):
             
             days_of_week = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
             
-            with self.db.transaction() as conn:
+            with self.db_connection.transaction() as conn:
                 total_blocks = 0
                 
                 for day in days_of_week:
@@ -122,7 +122,7 @@ class StandardGridPopulator(BaseService):
     def _verify_standard_grid_exists(self) -> bool:
         """Verify Standard Grid exists in database."""
         try:
-            with self.db.connect() as conn:
+            with self.db_connection.connect() as conn:
                 cursor = conn.execute("""
                     SELECT COUNT(*) FROM programming_schedules 
                     WHERE schedule_id = ? AND schedule_name = 'Standard Grid' AND is_active = 1
@@ -135,7 +135,7 @@ class StandardGridPopulator(BaseService):
     def _clear_existing_blocks(self) -> int:
         """Clear existing language blocks for Standard Grid."""
         try:
-            with self.db.connect() as conn:
+            with self.db_connection.connect() as conn:
                 cursor = conn.execute("""
                     DELETE FROM language_blocks WHERE schedule_id = ?
                 """, (self.schedule_id,))
@@ -424,7 +424,7 @@ class StandardGridPopulator(BaseService):
         }
         
         try:
-            with self.db.connect() as conn:
+            with self.db_connection.connect() as conn:
                 # Check total blocks
                 cursor = conn.execute("""
                     SELECT COUNT(*) FROM language_blocks WHERE schedule_id = ?
@@ -598,7 +598,7 @@ class StandardGridPopulator(BaseService):
         }
         
         try:
-            with self.db.connect() as conn:
+            with self.db_connection.connect() as conn:
                 # Total blocks
                 cursor = conn.execute("""
                     SELECT COUNT(*) FROM language_blocks WHERE schedule_id = ?

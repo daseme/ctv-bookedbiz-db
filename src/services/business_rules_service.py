@@ -226,7 +226,7 @@ class BusinessRulesService:
             self.logger.error("Database connection not available")
             return None
         
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         
         query = """
         SELECT 
@@ -293,7 +293,7 @@ class BusinessRulesService:
             self.logger.error("Database connection not available")
             return {}
         
-        cursor = self.db.cursor()
+        cursor = self.db_connection.cursor()
         estimates = {}
         
         try:

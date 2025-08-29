@@ -3,17 +3,20 @@
 Daily update command with automatic market setup and language assignment processing.
 Clean Architecture implementation following established coding style guide.
 Replaces open month data while protecting closed historical months.
+Enhanced with unattended mode for automated daily processing.
 """
 
 from __future__ import annotations
 import sys
 import argparse
 import sqlite3
+import logging
 from pathlib import Path
 from datetime import datetime, date
 from typing import Dict, Set, List, Optional, Any, Protocol, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+import logging.handlers
 
 # Add tqdm for progress bars
 from tqdm import tqdm
@@ -21,9 +24,9 @@ from tqdm import tqdm
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from services.broadcast_month_import_service import BroadcastMonthImportService, BroadcastMonthImportError
-from services.import_integration_utilities import get_excel_import_summary, validate_excel_for_import
-from database.connection import DatabaseConnection
+from src.services.broadcast_month_import_service import BroadcastMonthImportService, BroadcastMonthImportError
+from src.services.import_integration_utilities import get_excel_import_summary, validate_excel_for_import
+from src.database.connection import DatabaseConnection
 
 # ============================================================================
 # Domain Models
@@ -33,9 +36,9 @@ class BatchType(Enum):
     ENHANCED_DAILY = ("enhanced_daily", "Enhanced Daily Update")
     HISTORICAL_IMPORT = ("historical_import", "Historical Import")
     MANUAL_UPDATE = ("manual_update", "Manual Update")
-    
-    def __init__(self, value: str, display_name: str):
-        self.value = value
+   
+    def __init__(self, code: str, display_name: str):
+        self.code = code
         self.display_name = display_name
 
 @dataclass
@@ -70,6 +73,8 @@ class DailyUpdateConfig:
     dry_run: bool = False
     force: bool = False
     verbose: bool = False
+    unattended: bool = False  # NEW: For automated operation
+    log_file: Optional[Path] = None  # NEW: Specific log file
     db_path: Path = Path("data/database/production.db")
     
     @classmethod
@@ -79,8 +84,10 @@ class DailyUpdateConfig:
             excel_file=Path(args.excel_file),
             auto_setup_markets=args.auto_setup,
             dry_run=args.dry_run,
-            force=args.force,
+            force=args.force or args.unattended,  # Unattended implies force
             verbose=args.verbose,
+            unattended=args.unattended,
+            log_file=Path(args.log_file) if args.log_file else None,
             db_path=Path(args.db_path)
         )
 
@@ -143,7 +150,7 @@ class DailyUpdateResult:
     @property
     def summary_line(self) -> str:
         """One-line summary for logging"""
-        status = "✅ Success" if self.success else "❌ Failed"
+        status = "SUCCESS" if self.success else "FAILED"
         duration = f"{self.duration_seconds:.1f}s"
         return f"{status} | Duration: {duration} | Batch: {self.batch_id}"
 
@@ -183,7 +190,7 @@ class BatchIdGenerator:
         """Generate standardized batch ID"""
         if timestamp is None:
             timestamp = datetime.now()
-        return f"{batch_type.value}_{int(timestamp.timestamp())}"
+        return f"{batch_type.code}_{int(timestamp.timestamp())}"
 
 # ============================================================================
 # Data Access Layer  
@@ -235,7 +242,132 @@ class SpotRepository:
             return [row[0] for row in cursor.fetchall()]
 
 # ============================================================================
-# Business Logic Layer
+# Progress Reporting Adapters
+# ============================================================================
+
+class ProgressReporter(Protocol):
+    """Interface for progress reporting - can be implemented for CLI, web, logging"""
+    
+    def create_progress(self, description: str, total: int) -> ProgressContext:
+        """Create a progress tracking context"""
+        ...
+    
+    def write(self, message: str) -> None:
+        """Write a message to output"""
+        ...
+
+class ProgressContext(Protocol):
+    """Context manager for progress tracking"""
+    
+    def update(self, increment: int) -> None:
+        """Update progress by increment"""
+        ...
+    
+    def set_description(self, description: str) -> None:
+        """Update progress description"""
+        ...
+
+class TqdmProgressReporter:
+    """Tqdm implementation of progress reporting for interactive use"""
+    
+    def create_progress(self, description: str, total: int):
+        """Create tqdm progress bar context"""
+        return tqdm(total=total, desc=description, unit=" items")
+    
+    def write(self, message: str) -> None:
+        """Write message using tqdm.write to avoid conflicts with progress bars"""
+        tqdm.write(message)
+
+class LoggingProgressReporter:
+    """Logging implementation of progress reporting for unattended operation"""
+    
+    def __init__(self, logger: logging.Logger):
+        self.logger = logger
+    
+    def create_progress(self, description: str, total: int):
+        """Create logging-based progress context"""
+        return LoggingProgressContext(self.logger, description, total)
+    
+    def write(self, message: str) -> None:
+        """Write message to logger"""
+        # Remove emoji and clean up message for logs
+        clean_message = self._clean_message_for_logs(message)
+        self.logger.info(clean_message)
+    
+    def _clean_message_for_logs(self, message: str) -> str:
+        """Remove emojis and format message for log files"""
+        # Remove common emojis used in the progress output
+        emoji_map = {
+            '🔄': '[UPDATE]',
+            '📁': '[FILE]',
+            '🔧': '[CONFIG]',
+            '🆔': '[BATCH]',
+            '🏗️': '[SETUP]',
+            '✅': '[SUCCESS]',
+            '❌': '[ERROR]',
+            '⚠️': '[WARNING]',
+            '📦': '[IMPORT]',
+            '🎯': '[LANGUAGE]',
+            '🔍': '[SCAN]',
+            '🗓️': '[SCHEDULE]',
+            '📊': '[STATS]',
+            '🎉': '[COMPLETE]',
+            '💡': '[INFO]',
+            '🚨': '[CONFIRM]',
+            '📋': '[PREVIEW]',
+            '🏷️': '[CATEGORIZE]',
+            '🔤': '[PROCESS]'
+        }
+        
+        clean_msg = message
+        for emoji, replacement in emoji_map.items():
+            clean_msg = clean_msg.replace(emoji, replacement)
+        
+        return clean_msg
+
+class LoggingProgressContext:
+    """Progress context that logs milestones instead of showing live progress"""
+    
+    def __init__(self, logger: logging.Logger, description: str, total: int):
+        self.logger = logger
+        self.description = description
+        self.total = total
+        self.current = 0
+        self.last_logged_percent = 0
+        
+        # Log start
+        clean_desc = self._clean_message(description)
+        self.logger.info(f"{clean_desc} - Starting (0/{total})")
+    
+    def update(self, increment: int) -> None:
+        """Update progress and log at milestones"""
+        self.current += increment
+        percent = int((self.current / self.total) * 100) if self.total > 0 else 100
+        
+        # Log at 25%, 50%, 75%, 100% milestones
+        if percent in [25, 50, 75, 100] and percent > self.last_logged_percent:
+            clean_desc = self._clean_message(self.description)
+            self.logger.info(f"{clean_desc} - Progress {percent}% ({self.current}/{self.total})")
+            self.last_logged_percent = percent
+    
+    def set_description(self, description: str) -> None:
+        """Update description"""
+        self.description = description
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            clean_desc = self._clean_message(self.description)
+            self.logger.info(f"{clean_desc} - Completed ({self.current}/{self.total})")
+    
+    def _clean_message(self, message: str) -> str:
+        """Remove emojis for clean logging"""
+        return message.encode('ascii', 'ignore').decode('ascii').strip()
+
+# ============================================================================
+# Business Logic Layer (unchanged from original)
 # ============================================================================
 
 class ExcelMarketScanner:
@@ -264,7 +396,7 @@ class ExcelMarketScanner:
             total_rows = worksheet.max_row - 1  # Exclude header
             
             # Process rows to find new markets with progress bar
-            with self.progress_reporter.create_progress("🔍 Scanning for new markets", total_rows) as pbar:
+            with self.progress_reporter.create_progress("Scanning for new markets", total_rows) as pbar:
                 for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
                     pbar.update(1)
                     
@@ -284,18 +416,18 @@ class ExcelMarketScanner:
                     
                     # Update progress description with found markets
                     if len(new_markets) > 0:
-                        pbar.set_description(f"🔍 Scanning ({len(new_markets)} new markets found)")
+                        pbar.set_description(f"Scanning ({len(new_markets)} new markets found)")
             
             workbook.close()
             
             if new_markets:
                 total_spots = sum(data.spot_count for data in new_markets.values())
-                self.progress_reporter.write(f"✅ Found {len(new_markets)} new markets with {total_spots:,} spots")
+                self.progress_reporter.write(f"Found {len(new_markets)} new markets with {total_spots:,} spots")
             
             return new_markets
             
         except Exception as e:
-            self.progress_reporter.write(f"⚠️  Warning: Could not scan for new markets: {str(e)}")
+            self.progress_reporter.write(f"Warning: Could not scan for new markets: {str(e)}")
             return {}
     
     def _find_columns(self, worksheet) -> Tuple[Optional[int], Optional[int]]:
@@ -381,16 +513,16 @@ class MarketSetupService:
         """Create new markets with progress tracking"""
         created_markets = {}
         
-        with self.progress_reporter.create_progress("🏗️  Creating markets", len(new_markets)) as pbar:
+        with self.progress_reporter.create_progress("Creating markets", len(new_markets)) as pbar:
             for market_code, market_data in sorted(new_markets.items()):
                 market_name = MarketNameGenerator.generate_name(market_code)
                 market_id = self.market_repository.create_market(market_code, market_name)
                 created_markets[market_code] = market_id
                 
                 pbar.update(1)
-                pbar.set_description(f"🏗️  Created {market_code}")
+                pbar.set_description(f"Created {market_code}")
         
-        self.progress_reporter.write(f"✅ Created {len(created_markets)} new markets")
+        self.progress_reporter.write(f"Created {len(created_markets)} new markets")
         return created_markets
     
     def _create_schedule_assignments(self, 
@@ -399,7 +531,7 @@ class MarketSetupService:
         """Setup schedule assignments for newly created markets"""
         assignments_created = 0
         
-        with self.progress_reporter.create_progress("🗓️  Setting up schedules", len(new_markets)) as pbar:
+        with self.progress_reporter.create_progress("Setting up schedules", len(new_markets)) as pbar:
             for market_code, market_data in new_markets.items():
                 market_id = market_mapping[market_code]
                 
@@ -410,9 +542,9 @@ class MarketSetupService:
                 assignments_created += 1
                 
                 pbar.update(1)
-                pbar.set_description(f"🗓️  Setup {market_code}")
+                pbar.set_description(f"Setup {market_code}")
         
-        self.progress_reporter.write(f"✅ Created {assignments_created} schedule assignments")
+        self.progress_reporter.write(f"Created {assignments_created} schedule assignments")
         return assignments_created
 
 class ImportService:
@@ -430,31 +562,30 @@ class ImportService:
         
         # Get summary first for progress setup
         summary = get_excel_import_summary(str(excel_file), self.broadcast_service.db_connection.db_path)
-        total_spots = summary['total_existing_spots_affected']
         
         # Create a progress bar for the overall import
-        with self.progress_reporter.create_progress("📦 Importing data", 100) as pbar:
-            pbar.set_description("📦 Preparing import")
+        with self.progress_reporter.create_progress("Importing data", 100) as pbar:
+            pbar.set_description("Preparing import")
             pbar.update(10)
             
-            pbar.set_description("📦 Deleting existing data")
+            pbar.set_description("Deleting existing data")
             pbar.update(20)
             
             # Execute actual import
             import_result = self.broadcast_service.execute_month_replacement(
                 str(excel_file),
-                'DAILY_UPDATE',
+                'WEEKLY_UPDATE',  # Use WEEKLY_UPDATE mode for daily operations
                 closed_by=None,
                 dry_run=False
             )
             
-            pbar.set_description("📦 Importing new data")
+            pbar.set_description("Importing new data")
             pbar.update(50)
             
-            pbar.set_description("📦 Finalizing import")
+            pbar.set_description("Finalizing import")
             pbar.update(20)
             
-            pbar.set_description("📦 Import complete")
+            pbar.set_description("Import complete")
             pbar.update(100)
         
         # Convert to our domain model
@@ -468,7 +599,7 @@ class ImportService:
         )
         
         if result.success:
-            self.progress_reporter.write(f"📊 Import: {result.records_imported:,} imported, {result.records_deleted:,} deleted (net: {result.net_change:+,})")
+            self.progress_reporter.write(f"Import: {result.records_imported:,} imported, {result.records_deleted:,} deleted (net: {result.net_change:+,})")
         
         return result
     
@@ -529,19 +660,19 @@ class LanguageAssignmentService:
             result.success = True
             
             # Display clean summary
-            self.progress_reporter.write(f"✅ Language assignment complete:")
-            self.progress_reporter.write(f"   🎯 Processed: {result.processed:,}")
-            self.progress_reporter.write(f"   🔤 Language assigned: {result.language_assigned:,}")
-            self.progress_reporter.write(f"   🇺🇸 Default English: {result.default_english_assigned:,}")
+            self.progress_reporter.write(f"Language assignment complete:")
+            self.progress_reporter.write(f"   Processed: {result.processed:,}")
+            self.progress_reporter.write(f"   Language assigned: {result.language_assigned:,}")
+            self.progress_reporter.write(f"   Default English: {result.default_english_assigned:,}")
             if result.flagged_for_review > 0:
-                self.progress_reporter.write(f"   📋 Review required: {result.flagged_for_review:,}")
+                self.progress_reporter.write(f"   Review required: {result.flagged_for_review:,}")
             
             conn.close()
             
         except Exception as e:
             error_msg = f"Language assignment processing failed: {str(e)}"
             result.error_messages.append(error_msg)
-            self.progress_reporter.write(f"⚠️  {error_msg}")
+            self.progress_reporter.write(f"ERROR: {error_msg}")
             
             # Try to provide partial success info
             try:
@@ -567,22 +698,22 @@ class LanguageAssignmentService:
         uncategorized_spots = [row[0] for row in cursor.fetchall()]
         
         if not uncategorized_spots:
-            self.progress_reporter.write(f"✅ No uncategorized spots found")
+            self.progress_reporter.write(f"No uncategorized spots found")
             return 0
         
         # Categorize in batches with progress tracking
         batch_size = 1000
         total_categorized = 0
         
-        with self.progress_reporter.create_progress("🏷️  Categorizing spots", len(uncategorized_spots)) as pbar:
+        with self.progress_reporter.create_progress("Categorizing spots", len(uncategorized_spots)) as pbar:
             for i in range(0, len(uncategorized_spots), batch_size):
                 batch = uncategorized_spots[i:i + batch_size]
                 categorization_service.categorize_spots_batch(batch)
                 total_categorized += len(batch)
                 pbar.update(len(batch))
-                pbar.set_description(f"🏷️  Categorized {total_categorized:,}/{len(uncategorized_spots):,}")
+                pbar.set_description(f"Categorized {total_categorized:,}/{len(uncategorized_spots):,}")
         
-        self.progress_reporter.write(f"✅ Categorized {len(uncategorized_spots):,} spots")
+        self.progress_reporter.write(f"Categorized {len(uncategorized_spots):,} spots")
         return len(uncategorized_spots)
     
     def _process_batch_categories(self, conn: sqlite3.Connection, batch_id: str) -> Dict[str, Any]:
@@ -617,24 +748,24 @@ class DailyUpdateOrchestrator:
         try:
             # Step 1: Market setup (if enabled)
             if config.auto_setup_markets and not config.dry_run:
-                self.progress_reporter.write(f"🏗️  STEP 1: Automatic Market Setup")
+                self.progress_reporter.write(f"STEP 1: Automatic Market Setup")
                 result.market_setup = self.market_setup_service.execute_daily_market_setup(config.excel_file)
-                self.progress_reporter.write(f"📊 Setup: {result.market_setup.summary}")
+                self.progress_reporter.write(f"Setup: {result.market_setup.summary}")
                 self.progress_reporter.write("")
             
             # Step 2: Daily data import
-            self.progress_reporter.write(f"📦 STEP 2: Daily Data Import")
+            self.progress_reporter.write(f"STEP 2: Daily Data Import")
             
             if config.dry_run:
-                self.progress_reporter.write(f"🔍 DRY RUN - No changes would be made")
+                self.progress_reporter.write(f"DRY RUN - No changes would be made")
                 result.import_result = self.import_service.simulate_import(config.excel_file)
-                self.progress_reporter.write(f"📊 Would import {result.import_result.records_imported:,} spots across {len(result.import_result.months_processed)} months")
+                self.progress_reporter.write(f"Would import {result.import_result.records_imported:,} spots across {len(result.import_result.months_processed)} months")
             else:
                 result.import_result = self.import_service.execute_import_with_progress(config.excel_file, batch_id)
             
             # Step 3: Language Assignment Processing (if import succeeded)
             if result.import_result and result.import_result.success and not config.dry_run:
-                self.progress_reporter.write(f"\n🎯 STEP 3: Language Assignment Processing")
+                self.progress_reporter.write(f"STEP 3: Language Assignment Processing")
                 result.language_assignment = self.language_service.process_language_assignments(batch_id)
             
             result.success = True
@@ -642,7 +773,7 @@ class DailyUpdateOrchestrator:
         except Exception as e:
             error_msg = f"Enhanced daily update failed: {str(e)}"
             result.error_messages.append(error_msg)
-            self.progress_reporter.write(f"❌ {error_msg}")
+            self.progress_reporter.write(f"ERROR: {error_msg}")
         
         # Calculate total duration
         result.duration_seconds = (datetime.now() - start_time).total_seconds()
@@ -650,48 +781,15 @@ class DailyUpdateOrchestrator:
     
     def _display_update_header(self, config: DailyUpdateConfig, batch_id: str) -> None:
         """Display clean header without excessive printing"""
-        self.progress_reporter.write(f"🔄 Enhanced Daily Update Starting")
-        self.progress_reporter.write(f"📁 File: {config.excel_file.name}")
-        self.progress_reporter.write(f"🔧 Auto-setup: {config.auto_setup_markets} | Dry run: {config.dry_run}")
-        self.progress_reporter.write(f"🆔 Batch ID: {batch_id}")
+        self.progress_reporter.write(f"Enhanced Daily Update Starting")
+        self.progress_reporter.write(f"File: {config.excel_file.name}")
+        self.progress_reporter.write(f"Auto-setup: {config.auto_setup_markets} | Dry run: {config.dry_run}")
+        self.progress_reporter.write(f"Batch ID: {batch_id}")
         self.progress_reporter.write("=" * 60)
 
 # ============================================================================
 # Presentation Layer
 # ============================================================================
-
-class ProgressReporter(Protocol):
-    """Interface for progress reporting - can be implemented for CLI, web, etc."""
-    
-    def create_progress(self, description: str, total: int) -> ProgressContext:
-        """Create a progress tracking context"""
-        ...
-    
-    def write(self, message: str) -> None:
-        """Write a message to output"""
-        ...
-
-class ProgressContext(Protocol):
-    """Context manager for progress tracking"""
-    
-    def update(self, increment: int) -> None:
-        """Update progress by increment"""
-        ...
-    
-    def set_description(self, description: str) -> None:
-        """Update progress description"""
-        ...
-
-class TqdmProgressReporter:
-    """Tqdm implementation of progress reporting"""
-    
-    def create_progress(self, description: str, total: int):
-        """Create tqdm progress bar context"""
-        return tqdm(total=total, desc=description, unit=" items")
-    
-    def write(self, message: str) -> None:
-        """Write message using tqdm.write to avoid conflicts with progress bars"""
-        tqdm.write(message)
 
 class DailyUpdatePreviewService:
     """Service for displaying preview of what daily update would do"""
@@ -702,11 +800,12 @@ class DailyUpdatePreviewService:
     
     def display_enhanced_daily_preview(self, config: DailyUpdateConfig) -> bool:
         """Display what the enhanced daily update would do"""
-        self.progress_reporter.write(f"📋 Enhanced Daily Update Preview")
-        self.progress_reporter.write(f"=" * 60)
-        self.progress_reporter.write(f"📁 File: {config.excel_file.name}")
-        self.progress_reporter.write(f"🔧 Auto-setup: {config.auto_setup_markets}")
-        self.progress_reporter.write("")
+        if not config.unattended:
+            self.progress_reporter.write(f"Enhanced Daily Update Preview")
+            self.progress_reporter.write(f"=" * 60)
+            self.progress_reporter.write(f"File: {config.excel_file.name}")
+            self.progress_reporter.write(f"Auto-setup: {config.auto_setup_markets}")
+            self.progress_reporter.write("")
         
         try:
             # Market setup preview
@@ -716,16 +815,16 @@ class DailyUpdatePreviewService:
             # Standard import preview
             can_proceed = self._display_import_preview(config.excel_file)
             
-            # Language assignment preview
-            if can_proceed:
-                self.progress_reporter.write(f"🎯 Language Assignment Preview:")
-                self.progress_reporter.write(f"   📋 All spots will be categorized and processed automatically")
-                self.progress_reporter.write(f"   🔤 Business rules applied, manual review flagged as needed")
+            # Language assignment preview (only for interactive mode)
+            if can_proceed and not config.unattended:
+                self.progress_reporter.write(f"Language Assignment Preview:")
+                self.progress_reporter.write(f"   All spots will be categorized and processed automatically")
+                self.progress_reporter.write(f"   Business rules applied, manual review flagged as needed")
             
             return can_proceed
             
         except Exception as e:
-            self.progress_reporter.write(f"❌ Error generating preview: {e}")
+            self.progress_reporter.write(f"Error generating preview: {e}")
             return False
     
     def _display_market_setup_preview(self, excel_file: Path) -> None:
@@ -738,28 +837,28 @@ class DailyUpdatePreviewService:
             new_markets = scanner.scan_for_new_markets(excel_file, existing_markets)
             
             if new_markets:
-                self.progress_reporter.write(f"🏗️  Market Setup Preview:")
-                self.progress_reporter.write(f"   🆕 New markets: {len(new_markets)} ({', '.join(sorted(new_markets.keys()))})")
+                self.progress_reporter.write(f"Market Setup Preview:")
+                self.progress_reporter.write(f"   New markets: {len(new_markets)} ({', '.join(sorted(new_markets.keys()))})")
                 self.progress_reporter.write("")
         except Exception as e:
-            self.progress_reporter.write(f"⚠️  Could not preview market setup: {e}")
+            self.progress_reporter.write(f"Could not preview market setup: {e}")
     
     def _display_import_preview(self, excel_file: Path) -> bool:
         """Display import preview"""
-        self.progress_reporter.write(f"📦 Daily Update Preview:")
+        self.progress_reporter.write(f"Daily Update Preview:")
         
         try:
             # Get Excel summary
             summary = get_excel_import_summary(str(excel_file), self.db.db_path)
             
             # Validation check
-            validation = validate_excel_for_import(str(excel_file), 'DAILY_UPDATE', self.db.db_path)
+            validation = validate_excel_for_import(str(excel_file), 'WEEKLY_UPDATE', self.db.db_path)
             
             if validation.is_valid:
-                self.progress_reporter.write(f"   ✅ Daily update allowed")
-                self.progress_reporter.write(f"   📊 {summary['total_existing_spots_affected']:,} spots across {len(summary['months_in_excel'])} months")
+                self.progress_reporter.write(f"   Daily update allowed")
+                self.progress_reporter.write(f"   {summary['total_existing_spots_affected']:,} spots across {len(summary['months_in_excel'])} months")
             else:
-                self.progress_reporter.write(f"   ❌ Daily update BLOCKED")
+                self.progress_reporter.write(f"   Daily update BLOCKED")
                 self.progress_reporter.write(f"      Reason: {validation.error_message}")
                 self.progress_reporter.write(f"      Solution: {validation.suggested_action}")
                 return False
@@ -768,27 +867,27 @@ class DailyUpdatePreviewService:
             open_months = summary['open_months']
             closed_months = summary['closed_months']
             
-            self.progress_reporter.write(f"   📂 Open months: {len(open_months)} ({', '.join(open_months) if len(open_months) <= 5 else f'{len(open_months)} months'})")
+            self.progress_reporter.write(f"   Open months: {len(open_months)} ({', '.join(open_months) if len(open_months) <= 5 else f'{len(open_months)} months'})")
             if closed_months:
-                self.progress_reporter.write(f"   🔒 Closed months: {len(closed_months)} (protected)")
+                self.progress_reporter.write(f"   Closed months: {len(closed_months)} (protected)")
             self.progress_reporter.write("")
             
             return True
             
         except Exception as e:
-            self.progress_reporter.write(f"❌ Error generating preview: {e}")
+            self.progress_reporter.write(f"Error generating preview: {e}")
             return False
 
 class UserConfirmationService:
     """Service for getting user confirmation"""
     
     @staticmethod
-    def get_user_confirmation(total_spots: int, open_months: int, new_markets: int = 0, force: bool = False) -> bool:
+    def get_user_confirmation(total_spots: int, open_months: int, new_markets: int = 0, force: bool = False, unattended: bool = False) -> bool:
         """Get user confirmation for the enhanced update"""
-        if force:
+        if force or unattended:
             return True
         
-        tqdm.write(f"🚨 CONFIRMATION REQUIRED")
+        tqdm.write(f"CONFIRMATION REQUIRED")
         actions = [
             f"REPLACE {total_spots:,} existing spots",
             f"Update {open_months} open months",
@@ -818,17 +917,21 @@ class DailyUpdateResultsPresenter:
     def __init__(self, progress_reporter: ProgressReporter):
         self.progress_reporter = progress_reporter
     
-    def display_final_results(self, result: DailyUpdateResult, dry_run: bool) -> None:
+    def display_final_results(self, result: DailyUpdateResult, dry_run: bool, unattended: bool = False) -> None:
         """Display clean final results"""
-        self.progress_reporter.write(f"\n{'='*60}")
+        if not unattended:
+            self.progress_reporter.write(f"\n{'='*60}")
+            
         if dry_run:
-            self.progress_reporter.write(f"🔍 ENHANCED DAILY UPDATE DRY RUN COMPLETED")
+            self.progress_reporter.write(f"ENHANCED DAILY UPDATE DRY RUN COMPLETED")
         else:
-            self.progress_reporter.write(f"🎉 ENHANCED DAILY UPDATE COMPLETED")
-        self.progress_reporter.write(f"{'='*60}")
+            self.progress_reporter.write(f"ENHANCED DAILY UPDATE COMPLETED")
+            
+        if not unattended:
+            self.progress_reporter.write(f"{'='*60}")
         
-        self.progress_reporter.write(f"📊 Results Summary:")
-        self.progress_reporter.write(f"  Status: {'✅ Success' if result.success else '❌ Failed'}")
+        self.progress_reporter.write(f"Results Summary:")
+        self.progress_reporter.write(f"  Status: {'SUCCESS' if result.success else 'FAILED'}")
         self.progress_reporter.write(f"  Duration: {result.duration_seconds:.1f} seconds")
         
         # Market setup results (concise)
@@ -850,14 +953,58 @@ class DailyUpdateResultsPresenter:
                 self.progress_reporter.write(f"  Review needed: {lang_res.flagged_for_review:,}")
         
         if result.error_messages:
-            self.progress_reporter.write(f"\n❌ Errors:")
+            self.progress_reporter.write(f"ERRORS:")
             for error in result.error_messages:
                 self.progress_reporter.write(f"  • {error}")
         
         if result.success and not dry_run:
-            self.progress_reporter.write(f"\n✅ Update completed successfully!")
+            self.progress_reporter.write(f"Update completed successfully!")
             if result.language_assignment and result.language_assignment.flagged_for_review > 0:
-                self.progress_reporter.write(f"💡 Next: Review flagged spots with 'uv run python cli/assign_languages.py --review-required'")
+                self.progress_reporter.write(f"Next: Review flagged spots with 'uv run python cli/assign_languages.py --review-required'")
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+
+class LoggingConfigService:
+    """Service for configuring logging for automated operations"""
+    
+    @staticmethod
+    def setup_unattended_logging(log_file: Optional[Path], verbose: bool) -> logging.Logger:
+        """Configure logging for unattended operation"""
+        logger = logging.getLogger('daily_update')
+        logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+        
+        # Remove existing handlers
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+        
+        # Configure file handler if log file specified
+        if log_file:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Rotating file handler (10MB max, keep 5 files)
+            file_handler = logging.handlers.RotatingFileHandler(
+                log_file,
+                maxBytes=10 * 1024 * 1024,  # 10MB
+                backupCount=5,
+                encoding='utf-8'
+            )
+            
+            file_formatter = logging.Formatter(
+                '%(asctime)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            file_handler.setFormatter(file_formatter)
+            logger.addHandler(file_handler)
+        
+        # Always add console handler for immediate feedback
+        console_handler = logging.StreamHandler()
+        console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+        console_handler.setFormatter(console_formatter)
+        logger.addHandler(console_handler)
+        
+        return logger
 
 # ============================================================================
 # Application Layer (CLI Interface)
@@ -868,44 +1015,53 @@ class DailyUpdateCLI:
     
     def __init__(self, db_connection: DatabaseConnection):
         self.db_connection = db_connection
-        self.progress_reporter = TqdmProgressReporter()
+        self.progress_reporter = None  # Will be set based on mode
+        self.logger = None  # Will be set if logging configured
     
     def execute_from_args(self, args) -> int:
         """Execute daily update from command line arguments"""
         try:
             config = DailyUpdateConfig.from_args(args)
             
+            # Configure logging and progress reporting
+            self._setup_logging_and_progress(config)
+            
             # Validate inputs
             if not config.excel_file.exists():
-                print(f"❌ Excel file not found: {config.excel_file}")
+                self._log_error(f"Excel file not found: {config.excel_file}")
                 return 1
             
             if not config.db_path.exists():
-                print(f"❌ Database not found: {config.db_path}")
-                print(f"Run: uv run python scripts/setup_database.py --db-path {config.db_path}")
+                self._log_error(f"Database not found: {config.db_path}")
+                self._log_error(f"Run: uv run python scripts/setup_database.py --db-path {config.db_path}")
                 return 1
             
-            # Display header
-            print(f"🔄 Enhanced Daily Update Tool")
-            print(f"📁 File: {config.excel_file.name}")
-            print(f"🗃️  Database: {config.db_path.name}")
-            if config.dry_run:
-                print(f"🔍 Mode: DRY RUN (no changes will be made)")
-            print()
+            # Display header (reduced for unattended mode)
+            if config.unattended:
+                self.progress_reporter.write(f"Enhanced Daily Update Tool - UNATTENDED MODE")
+                self.progress_reporter.write(f"File: {config.excel_file.name}")
+                self.progress_reporter.write(f"Database: {config.db_path.name}")
+            else:
+                print(f"Enhanced Daily Update Tool")
+                print(f"File: {config.excel_file.name}")
+                print(f"Database: {config.db_path.name}")
+                if config.dry_run:
+                    print(f"Mode: DRY RUN (no changes will be made)")
+                print()
             
             # Display enhanced preview and validate
             preview_service = DailyUpdatePreviewService(self.db_connection, self.progress_reporter)
             can_proceed = preview_service.display_enhanced_daily_preview(config)
             
             if not can_proceed:
-                self._display_validation_error_help()
+                self._display_validation_error_help(config.unattended)
                 return 1
             
-            # Get confirmation unless forced or dry run
-            if not config.dry_run and not config.force:
+            # Get confirmation unless forced, dry run, or unattended
+            if not config.dry_run and not config.force and not config.unattended:
                 confirmed = self._get_confirmation(config)
                 if not confirmed:
-                    print(f"❌ Daily update cancelled by user")
+                    self.progress_reporter.write(f"Daily update cancelled by user")
                     return 0
             
             # Create services with dependency injection
@@ -916,22 +1072,50 @@ class DailyUpdateCLI:
             
             # Display results
             presenter = DailyUpdateResultsPresenter(self.progress_reporter)
-            presenter.display_final_results(result, config.dry_run)
+            presenter.display_final_results(result, config.dry_run, config.unattended)
+            
+            # Log final status for automated monitoring
+            if config.unattended and self.logger:
+                self.logger.info(f"Daily update completed: {result.summary_line}")
+                if not result.success:
+                    self.logger.error(f"Daily update failed: {'; '.join(result.error_messages)}")
             
             return 0 if result.success else 1
             
         except BroadcastMonthImportError as e:
-            print(f"❌ Import error: {e}")
+            error_msg = f"Import error: {e}"
+            self._log_error(error_msg)
             return 1
         except KeyboardInterrupt:
-            print(f"\n❌ Daily update cancelled by user")
+            self._log_error(f"Daily update cancelled by user")
             return 1
         except Exception as e:
-            print(f"❌ Unexpected error: {e}")
+            error_msg = f"Unexpected error: {e}"
+            self._log_error(error_msg)
             if hasattr(args, 'verbose') and args.verbose:
                 import traceback
-                traceback.print_exc()
+                if self.logger:
+                    self.logger.error(f"Stack trace: {traceback.format_exc()}")
+                else:
+                    traceback.print_exc()
             return 1
+    
+    def _setup_logging_and_progress(self, config: DailyUpdateConfig) -> None:
+        """Configure logging and progress reporting based on mode"""
+        if config.unattended:
+            # Setup file logging
+            self.logger = LoggingConfigService.setup_unattended_logging(config.log_file, config.verbose)
+            self.progress_reporter = LoggingProgressReporter(self.logger)
+        else:
+            # Use interactive tqdm progress
+            self.progress_reporter = TqdmProgressReporter()
+    
+    def _log_error(self, message: str) -> None:
+        """Log error message to appropriate output"""
+        if self.logger:
+            self.logger.error(message)
+        else:
+            print(f"ERROR: {message}")
     
     def _create_orchestrator(self) -> DailyUpdateOrchestrator:
         """Create orchestrator with all dependencies injected"""
@@ -971,19 +1155,24 @@ class DailyUpdateCLI:
             summary['total_existing_spots_affected'],
             len(summary['open_months']),
             new_market_count,
-            config.force
+            config.force,
+            config.unattended
         )
     
-    def _display_validation_error_help(self) -> None:
+    def _display_validation_error_help(self, unattended: bool) -> None:
         """Display validation error help"""
-        print(f"\n❌ Daily update cannot proceed due to validation errors")
-        print(f"💡 Common solutions:")
-        print(f"  • Remove closed month data from Excel file")
-        print(f"  • Use historical import mode for closed months")
-        print(f"  • Check if months need to be manually closed first")
+        if unattended:
+            self.progress_reporter.write(f"Daily update cannot proceed due to validation errors")
+            self.progress_reporter.write(f"Solutions: Remove closed month data from Excel file OR use historical import mode")
+        else:
+            print(f"\nDaily update cannot proceed due to validation errors")
+            print(f"Common solutions:")
+            print(f"  • Remove closed month data from Excel file")
+            print(f"  • Use historical import mode for closed months")
+            print(f"  • Check if months need to be manually closed first")
 
 # ============================================================================
-# Custom Exceptions
+# Custom Exceptions (unchanged)
 # ============================================================================
 
 class DailyUpdateError(Exception):
@@ -1015,8 +1204,11 @@ Examples:
   # Standard daily update with language assignment
   python daily_update.py data/booked_business_current.xlsx
 
-  # Enhanced daily update with automatic market setup and language assignment
+  # Enhanced daily update with automatic market setup
   python daily_update.py data/booked_business_current.xlsx --auto-setup
+
+  # Unattended mode for automated processing
+  python daily_update.py data/daily_data.xlsx --auto-setup --unattended --log-file /var/log/ctv-daily-update/update.log
 
   # Preview what would happen
   python daily_update.py data/daily_data.xlsx --auto-setup --dry-run
@@ -1026,8 +1218,8 @@ Enhanced Features:
   • Missing market creation with proper naming
   • Schedule assignment setup for new markets
   • Integrated language assignment processing with business rules
-  • Comprehensive progress tracking with tqdm progress bars
-  • Clean, professional output with minimal screen flooding
+  • Unattended mode for automated daily processing
+  • Comprehensive logging with rotation for production use
   • Clean Architecture implementation with proper separation of concerns
         """
     )
@@ -1043,13 +1235,18 @@ Enhanced Features:
                        help="Skip confirmation prompts")
     parser.add_argument("--verbose", action="store_true",
                        help="Enable verbose logging")
+    parser.add_argument("--unattended", action="store_true",
+                       help="Run in unattended mode (no prompts, suitable for automation)")
+    parser.add_argument("--log-file", type=str,
+                       help="Log file path for unattended mode (enables file logging with rotation)")
     
     args = parser.parse_args()
     
-    # Setup logging
-    import logging
-    level = logging.DEBUG if args.verbose else logging.WARNING
-    logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
+    # Setup logging for non-unattended mode
+    if not args.unattended:
+        import logging
+        level = logging.DEBUG if args.verbose else logging.WARNING
+        logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
     
     # Create database connection
     try:
@@ -1063,7 +1260,15 @@ Enhanced Features:
         sys.exit(exit_code)
         
     except Exception as e:
-        print(f"❌ Failed to initialize daily update: {e}")
+        if args.unattended and args.log_file:
+            # Emergency logging if main logger setup failed
+            try:
+                with open(args.log_file, 'a', encoding='utf-8') as f:
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    f.write(f"{timestamp} - ERROR - Failed to initialize daily update: {e}\n")
+            except:
+                pass
+        print(f"Failed to initialize daily update: {e}")
         sys.exit(1)
 
 
