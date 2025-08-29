@@ -16,7 +16,7 @@ Automated daily import of Commercial Log data from the K: drive network share to
 
 ### systemd Services
 - **Import Service**: `ctv-commercial-import.service` (one-shot import process)
-- **Import Timer**: `ctv-commercial-import.timer` (scheduled daily at 1:00 AM)
+- **Import Timer**: `ctv-commercial-import.timer` (scheduled daily at 3:30 AM to account for the working day in Malaysia)
 - **Rotation Service**: `ctv-commercial-rotation.service` (file archival and cleanup)
 - **Rotation Timer**: `ctv-commercial-rotation.timer` (scheduled weekly on Sundays at 2:30 AM)
 
