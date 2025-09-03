@@ -256,6 +256,31 @@
 .radio-label span {
     white-space: nowrap;
 }
+.ae-summary {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  background: #f9fafb;
+}
+.ae-summary-header {
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 600; color:#2d3748; margin-bottom: 8px;
+}
+.ae-actions { display:flex; gap:12px; align-items:center; }
+.ae-chips {
+  display:flex; gap:8px; row-gap:8px; flex-wrap:wrap; max-height:72px; overflow:auto;
+}
+.ae-chip {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 10px; border:1px solid #e2e8f0; border-radius:16px;
+  background:white; font-size:12px;
+}
+.ae-chip .ae-name { font-weight:600; color:#4a5568; }
+.ae-chip .ae-total { font-feature-settings:"tnum"; }
+.ae-table th:nth-child(2), .ae-table td:nth-child(2),
+.ae-table th:nth-child(3), .ae-table td:nth-child(3) { text-align:right; }
+
 </style>
 {% endblock %}
 
@@ -360,6 +385,42 @@
     </div>
 </div>
 
+<div class="ae-summary">
+  <div class="ae-summary-header">
+    <span>AE Revenue Summary</span>
+    <div class="ae-actions">
+      <label class="radio-label">
+        <input type="radio" name="aeSort" value="total_desc" checked>
+        <span>Sort: Total ↓</span>
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="aeSort" value="alpha">
+        <span>Sort: A→Z</span>
+      </label>
+      <button id="exportAECsv" class="export-btn">Export AE CSV</button>
+    </div>
+  </div>
+
+  <div id="aeChips" class="ae-chips"></div>
+
+  <div class="table-container" style="margin-top:8px;">
+    <table class="revenue-table ae-table">
+      <thead>
+        <tr>
+          <th style="text-align:left;">AE</th>
+          <th>Total</th>
+          <th>Avg / Mo</th>
+          <th>Customers</th>
+        </tr>
+      </thead>
+      <tbody id="aeSummaryBody">
+        <tr><td colspan="4" class="no-data">Loading AE summary…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
 <div class="story-section">
     <div class="section-title">Customer Monthly Revenue Analysis</div>
     
@@ -412,194 +473,289 @@
 {% block scripts %}
 <script>
 class RevenueReportManager {
-    constructor() {
-        const dataScript = document.getElementById('revenue-data');
-        this.allData = JSON.parse(dataScript.textContent).map(this._coerceRow);
-        this.filteredData = [...this.allData];
-        this.currentRevenueField = (document.querySelector('input[name="revenueField"]:checked')?.value) || 'gross';
-        this._applyRevenueField();   // initialize view fields from gross/net
-        this.init();
+  constructor() {
+    const dataScript = document.getElementById('revenue-data');
+    try {
+      const raw = (dataScript?.textContent || '[]').trim() || '[]';
+      const parsed = JSON.parse(raw);
+      this.allData = Array.isArray(parsed) ? parsed.map(this._coerceRow) : [];
+    } catch (e) {
+      console.error('Failed to parse revenue-data JSON:', e);
+      this.allData = [];
+    }
+    this.filteredData = [...this.allData];
+    this.currentRevenueField = (document.querySelector('input[name="revenueField"]:checked')?.value) || 'gross';
+    this._applyRevenueField();
+    this.init();
+  }
+
+  // --- data normalization ---
+  _coerceRow(row) {
+    const numKeys = ['total','total_gross','total_net'];
+    for (let m=1;m<=12;m++){
+      numKeys.push(`month_${m}`, `month_${m}_gross`, `month_${m}_net`);
+    }
+    numKeys.forEach(k => { if (k in row) row[k] = Number(row[k]) || 0; });
+    row.ae = (row.ae ?? 'Unknown').trim();
+    row.revenue_type = (row.revenue_type ?? 'Regular').trim();
+    row.customer = (row.customer ?? '').trim();
+    return row;
+  }
+
+  _applyRevenueField() {
+    const useNet = this.currentRevenueField === 'net';
+    const setView = (r) => {
+      r.total = useNet ? (r.total_net || 0) : (r.total_gross || r.total || 0);
+      for (let m=1;m<=12;m++){
+        r[`month_${m}`] = useNet ? (r[`month_${m}_net`] || 0) : (r[`month_${m}_gross`] || r[`month_${m}`] || 0);
+      }
+    };
+    this.allData.forEach(setView);
+    this.filteredData.forEach(setView);
+  }
+
+  init() {
+    this.setupEventListeners();
+    this.sortData();
+    this.renderTable();
+    this.updateStats();
+    this.updateHeaderRevenue();
+    this.updateAeSummary();
+  }
+
+  // SINGLE definition with AE handlers included
+  setupEventListeners() {
+    const yearSel = document.getElementById('yearSelect');
+    yearSel?.addEventListener('change', (e) => {
+      const selectedYear = e.target.value;
+      const url = new URL(window.location);
+      url.searchParams.set('year', selectedYear);
+      window.location.href = url.toString();
+    });
+
+    document.querySelectorAll('input[name="revenueField"]').forEach(radio => {
+      radio.addEventListener('change', () => this.switchRevenueType());
+    });
+
+    document.getElementById('customerSearch')?.addEventListener('input', () => this.filterData());
+    document.getElementById('aeFilter')?.addEventListener('change', () => this.filterData());
+    document.getElementById('revenueType')?.addEventListener('change', () => this.filterData());
+    document.getElementById('sortBy')?.addEventListener('change', () => this.sortData());
+    document.getElementById('exportCSV')?.addEventListener('click', () => this.exportToCSV());
+
+    // AE summary sort & export
+    document.querySelectorAll('input[name="aeSort"]').forEach(r => {
+      r.addEventListener('change', () => this.updateAeSummary());
+    });
+    document.getElementById('exportAECsv')?.addEventListener('click', () => this.exportAECsv());
+  }
+
+  // --- interactions ---
+  switchRevenueType() {
+    this.currentRevenueField = document.querySelector('input[name="revenueField"]:checked').value;
+    this._applyRevenueField();
+    this.sortData();
+    this.updateStats();
+    this.updateHeaderRevenue();
+    this.updateAeSummary();
+    const statLabel = document.querySelector('#displayRevenue')?.nextElementSibling;
+    if (statLabel) statLabel.textContent = this.currentRevenueField === 'net' ? 'Total Net Revenue' : 'Total Gross Revenue';
+  }
+
+  filterData() {
+    const search = (document.getElementById('customerSearch')?.value || '').toLowerCase().trim();
+    const aeSel = document.getElementById('aeFilter')?.value || 'all';
+    const typeSel = document.getElementById('revenueType')?.value || 'all';
+
+    this.filteredData = this.allData.filter(row => {
+      const matchSearch = !search || row.customer.toLowerCase().includes(search);
+      const matchAE = (aeSel === 'all') || (row.ae && row.ae.trim().toLowerCase() === aeSel.trim().toLowerCase());
+      const matchType = (typeSel === 'all') || (row.revenue_type && row.revenue_type.trim().toLowerCase() === typeSel.trim().toLowerCase());
+      return matchSearch && matchAE && matchType;
+    });
+
+    this.sortData();
+    this.updateAeSummary();
+  }
+
+  sortData() {
+    const sortBy = document.getElementById('sortBy')?.value || 'ae_customer';
+    this.filteredData.sort((a, b) => {
+      if (sortBy === 'ae_customer') {
+        const aeCompare = a.ae.localeCompare(b.ae);
+        if (aeCompare !== 0) return aeCompare;
+        return a.customer.localeCompare(b.customer);
+      }
+      if (sortBy === 'customer') return a.customer.localeCompare(b.customer);
+      if (sortBy === 'total_asc') return (Number(a.total)||0) - (Number(b.total)||0);
+      return (Number(b.total)||0) - (Number(a.total)||0); // total_desc
+    });
+    this.renderTable();
+    this.updateStats();
+    this.updateAeSummary();
+  }
+
+  // --- rendering & stats ---
+  formatCurrency(val) {
+    const num = Number(val) || 0;
+    return (num < 0 ? '-$' : '$') + Math.abs(num).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  }
+
+  renderTable() {
+    const tbody = document.getElementById('revenueTableBody');
+    if (!tbody) return;
+    if (!this.filteredData.length) {
+        tbody.innerHTML = '<tr><td colspan="15" class="no-data">No data matches current filters</td></tr>';
+        return;
     }
 
-    // --- data normalization ---
-    _coerceRow(row) {
-        // Strings → numbers
-        const numKeys = ['total','total_gross','total_net'];
-        for (let m=1;m<=12;m++){
-            numKeys.push(`month_${m}`, `month_${m}_gross`, `month_${m}_net`);
+    let html = '';
+    this.filteredData.forEach(row => {
+        html += `<tr>`;
+        html += `<td>${row.customer}</td>`;
+        html += `<td><span class="ae-badge">${row.ae}</span></td>`;
+        for (let m = 1; m <= 12; m++) {
+        const val = Number(row[`month_${m}`]) || 0;
+        const cls = val === 0 ? 'revenue-zero' : 'revenue-positive';
+        html += `<td class="${cls}">${this.formatCurrency(val)}</td>`;
         }
-        numKeys.forEach(k => { if (k in row) row[k] = Number(row[k]) || 0; });
+        html += `<td class="revenue-positive">${this.formatCurrency(Number(row.total) || 0)}</td>`;
+        html += `</tr>`;
+    });
 
-        // Canonical strings
-        row.ae = (row.ae ?? 'Unknown').trim();
-        row.revenue_type = (row.revenue_type ?? 'Regular').trim();
-        row.customer = (row.customer ?? '').trim();
+    html += '<tr class="totals-row"><td><strong>Monthly Totals</strong></td><td></td>';
+    for (let m = 1; m <= 12; m++) {
+        const sum = this.filteredData.reduce((t, r) => t + (Number(r[`month_${m}`]) || 0), 0);
+        html += `<td>${this.formatCurrency(sum)}</td>`;
+    }
+    const grandTotal = this.filteredData.reduce((t, r) => t + (Number(r.total) || 0), 0);
+    html += `<td>${this.formatCurrency(grandTotal)}</td></tr>`;
 
-        return row;
+    tbody.innerHTML = html;
     }
 
-    _applyRevenueField() {
-        const useNet = this.currentRevenueField === 'net';
-        const setView = (r) => {
-            r.total = useNet ? (r.total_net || 0) : (r.total_gross || r.total || 0);
-            for (let m=1;m<=12;m++){
-                r[`month_${m}`] = useNet ? (r[`month_${m}_net`] || 0) : (r[`month_${m}_gross`] || r[`month_${m}`] || 0);
-            }
-        };
-        this.allData.forEach(setView);
-        this.filteredData.forEach(setView);
+
+  updateStats() {
+    const totalRevenue = this.filteredData.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
+    const activeCustomers = this.filteredData.filter(r => (Number(r.total) || 0) > 0).length;
+    const avgMonthly = totalRevenue / 12;
+
+    const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setText('displayCustomers', this.filteredData.length);
+    setText('displayActive', activeCustomers);
+    setText('displayRevenue', this.formatCurrency(totalRevenue).replace(/^\$/, ''));
+    setText('displayAvg', this.formatCurrency(avgMonthly).replace(/^\$/, ''));
+  }
+
+  updateHeaderRevenue() {
+    const totalRevenue = this.filteredData.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
+    const insightText = document.querySelector('.insight-text');
+    if (!insightText) return;
+    const label = this.currentRevenueField === 'net' ? 'net revenue' : 'gross revenue';
+    const current = insightText.innerHTML;
+    insightText.innerHTML = current.replace(
+      /Total (?:gross |net )?revenue: \$[\d,]+(?:\.\d+)?/,
+      `Total ${label}: $${this.formatCurrency(totalRevenue).replace('$','')}`
+    );
+  }
+
+  // --- AE summary ---
+  computeAeTotals(data) {
+    const byAe = new Map();
+    for (const r of data) {
+      const ae = (r.ae || 'Unknown').trim() || 'Unknown';
+      const total = Number(r.total) || 0;
+      if (!byAe.has(ae)) byAe.set(ae, { total: 0, months: 12, customers: new Set() });
+      const acc = byAe.get(ae);
+      acc.total += total;
+      if ((Number(r.total) || 0) > 0) acc.customers.add(r.customer);
     }
+    return Array.from(byAe.entries()).map(([ae, v]) => ({
+      ae,
+      total: v.total,
+      avgMonthly: v.total / (v.months || 12),
+      customers: v.customers.size
+    }));
+  }
 
-    init() {
-        this.setupEventListeners();
-        this.sortData();
-        this.renderTable();
-        this.updateStats();
-        this.updateHeaderRevenue();
+  renderAeSummaryRows(rows) {
+    const tbody = document.getElementById('aeSummaryBody');
+    if (!tbody) return;
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="no-data">No AE data for current filters</td></tr>';
+      return;
     }
+    const tr = r => `
+      <tr>
+        <td style="text-align:left;">${r.ae}</td>
+        <td>${this.formatCurrency(r.total)}</td>
+        <td>${this.formatCurrency(r.avgMonthly)}</td>
+        <td style="text-align:right;">${r.customers}</td>
+      </tr>`;
+    tbody.innerHTML = rows.map(tr).join('');
+  }
 
-    setupEventListeners() {
-        document.getElementById('yearSelect').addEventListener('change', (e) => {
-            const selectedYear = e.target.value;
-            const url = new URL(window.location);
-            url.searchParams.set('year', selectedYear);
-            window.location.href = url.toString();
-        });
+  renderAeChips(rows) {
+    const host = document.getElementById('aeChips');
+    if (!host) return;
+    const chip = r => `
+      <div class="ae-chip">
+        <span class="ae-name">${r.ae}</span>
+        <span class="ae-total">${this.formatCurrency(r.total)}</span>
+      </div>`;
+    host.innerHTML = rows.map(chip).join('');
+  }
 
-        document.querySelectorAll('input[name="revenueField"]').forEach(radio => {
-            radio.addEventListener('change', () => this.switchRevenueType());
-        });
+  updateAeSummary() {
+    const rows = this.computeAeTotals(this.filteredData);
+    const sortVal = (document.querySelector('input[name="aeSort"]:checked')?.value) || 'total_desc';
+    if (sortVal === 'alpha') rows.sort((a,b)=>a.ae.localeCompare(b.ae));
+    else rows.sort((a,b)=>(b.total||0)-(a.total||0));
+    this.renderAeChips(rows);
+    this.renderAeSummaryRows(rows);
+  }
 
-        document.getElementById('customerSearch').addEventListener('input', () => this.filterData());
-        document.getElementById('aeFilter').addEventListener('change', () => this.filterData());
-        document.getElementById('revenueType').addEventListener('change', () => this.filterData());
-        document.getElementById('sortBy').addEventListener('change', () => this.sortData());
-        document.getElementById('exportCSV').addEventListener('click', () => this.exportToCSV());
-    }
+  // --- AE CSV export ---
+  exportAECsv() {
+    const rows = this.computeAeTotals(this.filteredData);
+    const sortVal = (document.querySelector('input[name="aeSort"]:checked')?.value) || 'total_desc';
+    if (sortVal === 'alpha') rows.sort((a,b)=>a.ae.localeCompare(b.ae));
+    else rows.sort((a,b)=>(b.total||0)-(a.total||0));
 
-    // --- interactions ---
-    switchRevenueType() {
-        this.currentRevenueField = document.querySelector('input[name="revenueField"]:checked').value;
-        this._applyRevenueField();
-        this.sortData();
-        this.updateStats();
-        this.updateHeaderRevenue();
-        const statLabel = document.querySelector('#displayRevenue').nextElementSibling;
-        if (statLabel) statLabel.textContent = this.currentRevenueField === 'net' ? 'Total Net Revenue' : 'Total Gross Revenue';
-    }
+    const headers = ['AE','Total','AvgMonthly','Customers'];
+    const body = rows.map(r => [
+      `"${r.ae}"`,
+      Math.round(r.total),
+      Math.round(r.avgMonthly),
+      r.customers
+    ].join(','));
+    const csv = [headers.join(','), ...body].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const selectedYear = document.getElementById('yearSelect')?.value || '';
+    a.download = `ae_summary_${selectedYear}_${this.currentRevenueField}.csv`;
+    a.click();
+  }
 
-    filterData() {
-        const search = (document.getElementById('customerSearch').value || '').toLowerCase().trim();
-        const aeSel = document.getElementById('aeFilter').value;
-        const typeSel = document.getElementById('revenueType').value;
-
-        this.filteredData = this.allData.filter(row => {
-            const matchSearch = !search || row.customer.toLowerCase().includes(search);
-            const matchAE = (aeSel === 'all') || (row.ae && row.ae.trim().toLowerCase() === aeSel.trim().toLowerCase());
-            const matchType = (typeSel === 'all') || (row.revenue_type && row.revenue_type.trim().toLowerCase() === typeSel.trim().toLowerCase());
-            return matchSearch && matchAE && matchType;
-        });
-
-        this.sortData();
-    }
-
-    sortData() {
-        const sortBy = document.getElementById('sortBy').value;
-        this.filteredData.sort((a, b) => {
-            if (sortBy === 'ae_customer') {
-                // Sort by AE first, then customer
-                const aeCompare = a.ae.localeCompare(b.ae);
-                if (aeCompare !== 0) return aeCompare;
-                return a.customer.localeCompare(b.customer);
-            }
-            if (sortBy === 'customer') return a.customer.localeCompare(b.customer);
-            if (sortBy === 'total_asc') return (Number(a.total)||0) - (Number(b.total)||0);
-            return (Number(b.total)||0) - (Number(a.total)||0); // total_desc
-        });
-        this.renderTable();
-        this.updateStats();
-    }
-
-    // --- rendering & stats ---
-    formatCurrency(val) {
-        const num = Number(val) || 0;
-        return (num < 0 ? '-$' : '$') + Math.abs(num).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
-    }
-
-    renderTable() {
-        const tbody = document.getElementById('revenueTableBody');
-        if (!this.filteredData.length) {
-            tbody.innerHTML = '<tr><td colspan="15" class="no-data">No data matches current filters</td></tr>';
-            return;
-        }
-
-        let html = '';
-        this.filteredData.forEach(row => {
-            html += `<tr>`;
-            html += `<td>${row.customer}</td>`;
-            html += `<td><span class="ae-badge">${row.ae}</span></td>`;
-            for (let m=1;m<=12;m++){
-                const val = Number(row[`month_${m}`]) || 0;
-                const cls = val === 0 ? 'revenue-zero' : 'revenue-positive';
-                html += `<td class="${cls}">${this.formatCurrency(val)}</td>`;
-            }
-            html += `<td class="revenue-positive">${this.formatCurrency(Number(row.total)||0)}</td>`;
-            html += `</tr>`;
-        });
-
-        // Totals row
-        html += '<tr class="totals-row"><td><strong>Monthly Totals</strong></td><td></td>';
-        for (let m=1;m<=12;m++){
-            const sum = this.filteredData.reduce((t, r) => t + (Number(r[`month_${m}`]) || 0), 0);
-            html += `<td>${this.formatCurrency(sum)}</td>`;
-        }
-        const grandTotal = this.filteredData.reduce((t, r) => t + (Number(r.total) || 0), 0);
-        html += `<td>${this.formatCurrency(grandTotal)}</td></tr>`;
-
-        tbody.innerHTML = html;
-    }
-
-    updateStats() {
-        const totalRevenue = this.filteredData.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
-        const activeCustomers = this.filteredData.filter(r => (Number(r.total) || 0) > 0).length;
-        const avgMonthly = totalRevenue / 12;
-
-        document.getElementById('displayCustomers').textContent = this.filteredData.length;
-        document.getElementById('displayActive').textContent = activeCustomers;
-        document.getElementById('displayRevenue').textContent = this.formatCurrency(totalRevenue).replace(/^\$/, '');
-        document.getElementById('displayAvg').textContent = this.formatCurrency(avgMonthly).replace(/^\$/, '');
-    }
-
-    updateHeaderRevenue() {
-        const totalRevenue = this.filteredData.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
-        const insightText = document.querySelector('.insight-text');
-        if (!insightText) return;
-        const label = this.currentRevenueField === 'net' ? 'net revenue' : 'gross revenue';
-        const current = insightText.innerHTML;
-        insightText.innerHTML = current.replace(
-            /Total (?:gross |net )?revenue: \$[\d,]+(?:\.\d+)?/,
-            `Total ${label}: $${this.formatCurrency(totalRevenue).replace('$','')}`
-        );
-    }
-
-    // --- export ---
-    exportToCSV() {
-        const headers = ['Customer','AE','Revenue Type','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Total'];
-        const rows = this.filteredData.map(r => [
-            `"${r.customer}"`,
-            `"${r.ae}"`,
-            `"${r.revenue_type}"`,
-            ...Array.from({length:12},(_,i)=>Number(r[`month_${i+1}`])||0),
-            Number(r.total)||0
-        ]);
-        const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        const selectedYear = document.getElementById('yearSelect').value;
-        a.download = `revenue_dashboard_${selectedYear}_${this.currentRevenueField}.csv`;
-        a.click();
-    }
+  // --- export (detail table) ---
+  exportToCSV() {
+    const headers = ['Customer','AE','Revenue Type','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Total'];
+    const rows = this.filteredData.map(r => [
+      `"${r.customer}"`,
+      `"${r.ae}"`,
+      `"${r.revenue_type}"`,
+      ...Array.from({length:12},(_,i)=>Number(r[`month_${i+1}`])||0),
+      Number(r.total)||0
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const selectedYear = document.getElementById('yearSelect')?.value || '';
+    a.download = `revenue_dashboard_${selectedYear}_${this.currentRevenueField}.csv`;
+    a.click();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => new RevenueReportManager());

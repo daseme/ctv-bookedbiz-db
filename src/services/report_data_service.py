@@ -236,7 +236,7 @@ class SQLiteRevenueRepository:
         query, params = self._apply_filters(query, params, filters)
         query += " GROUP BY s.bill_code, ae, revenue_type, sect.sector_name, month"
         
-        conn = self.db_connection.connect()
+        conn = self.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
@@ -278,7 +278,7 @@ class SQLiteRevenueRepository:
         query, params = self._apply_ae_and_year_filters(query, params, filters)
         query += " GROUP BY ae_key ORDER BY ae_name"  # Alpha ordering by AE
         
-        conn = self.db_connection.connect()
+        conn = self.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
@@ -300,7 +300,7 @@ class SQLiteRevenueRepository:
             ORDER BY year DESC
         """
         
-        conn = self.db_connection.connect()
+        conn = self.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query)
@@ -325,7 +325,7 @@ class SQLiteRevenueRepository:
         
         query += " GROUP BY UPPER(TRIM(sales_person)) ORDER BY ae_display"
         
-        conn = self.db_connection.connect()
+        conn = self.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)

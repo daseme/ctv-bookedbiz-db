@@ -1,6 +1,6 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-08-19 07:51:09
+-- Generated on: 2025-09-03 07:32:27
 -- 
 -- SQLite Version: 3.40.1
 -- 
@@ -13,7 +13,7 @@
 
 PRAGMA foreign_keys = ON;
 
--- Tables (22)
+-- Tables (23)
 -- ============================================================
 
 -- Table: agencies
@@ -390,6 +390,32 @@ ON schedule_market_assignments(market_id, assignment_priority, effective_start_d
 CREATE INDEX idx_schedule_markets_schedule 
 ON schedule_market_assignments(schedule_id, effective_start_date);
 
+-- Table: sector_assignment_audit
+-- ----------------------------------------
+CREATE TABLE sector_assignment_audit (
+    audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    old_sector_id INTEGER,
+    new_sector_id INTEGER,
+    assignment_method TEXT NOT NULL CHECK (assignment_method IN (
+        'auto_high_confidence', 'auto_pattern_match', 'manual_direct', 
+        'manual_override', 'batch_import'
+    )),
+    confidence_score REAL CHECK (confidence_score >= 0 AND confidence_score <= 1),
+    assigned_by TEXT NOT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE,
+    FOREIGN KEY (old_sector_id) REFERENCES sectors(sector_id) ON DELETE SET NULL,
+    FOREIGN KEY (new_sector_id) REFERENCES sectors(sector_id) ON DELETE SET NULL
+);
+
+-- Indexes for table: sector_assignment_audit
+CREATE INDEX idx_sector_audit_customer ON sector_assignment_audit(customer_id);
+CREATE INDEX idx_sector_audit_date ON sector_assignment_audit(assigned_at);
+CREATE INDEX idx_sector_audit_method ON sector_assignment_audit(assignment_method);
+
 -- Table: sectors
 -- ----------------------------------------
 CREATE TABLE sectors (
@@ -564,10 +590,13 @@ CREATE TABLE spots (
 -- Indexes for table: spots
 CREATE INDEX idx_spots_ae_broadcast_covering ON spots(sales_person, broadcast_month, customer_id, revenue_type, gross_rate, station_net) WHERE gross_rate > 0 AND (revenue_type != 'Trade' OR revenue_type IS NULL);
 CREATE INDEX idx_spots_ae_broadcast_month_revenue ON spots(sales_person, broadcast_month, gross_rate, station_net) WHERE gross_rate > 0 AND (revenue_type != 'Trade' OR revenue_type IS NULL);
+CREATE INDEX idx_spots_ae_norm ON spots(UPPER(TRIM(sales_person)));
 CREATE INDEX idx_spots_agency_performance ON spots(agency_id, air_date, gross_rate)
     WHERE agency_id IS NOT NULL
     ;
 CREATE INDEX idx_spots_air_date ON spots(air_date);
+CREATE INDEX idx_spots_bm ON spots(broadcast_month);
+CREATE INDEX idx_spots_bm_ae ON spots(broadcast_month, sales_person);
 CREATE INDEX idx_spots_broadcast_month_historical ON spots(broadcast_month, is_historical);
 CREATE INDEX idx_spots_category ON spots(spot_category) WHERE spot_category IS NOT NULL;
 CREATE INDEX idx_spots_customer_broadcast ON spots(customer_id, broadcast_month, gross_rate, station_net) WHERE gross_rate > 0;
@@ -586,7 +615,7 @@ CREATE INDEX idx_spots_time_market_day
 ON spots(market_id, day_of_week, time_in, time_out) 
 WHERE day_of_week IS NOT NULL AND time_in IS NOT NULL;
 
--- Views (10)
+-- Views (11)
 -- ============================================================
 
 CREATE VIEW business_rule_analytics AS
@@ -812,6 +841,26 @@ LEFT JOIN programming_schedules ps1 ON scl.schedule_id_1 = ps1.schedule_id
 LEFT JOIN programming_schedules ps2 ON scl.schedule_id_2 = ps2.schedule_id
 ORDER BY scl.detected_date DESC;
 
+CREATE VIEW sector_assignment_history AS
+SELECT 
+    saa.audit_id,
+    saa.customer_id,
+    c.normalized_name as customer_name,
+    old_s.sector_code as old_sector_code,
+    old_s.sector_name as old_sector_name,
+    new_s.sector_code as new_sector_code,
+    new_s.sector_name as new_sector_name,
+    saa.assignment_method,
+    saa.confidence_score,
+    saa.assigned_by,
+    saa.assigned_at,
+    saa.notes
+FROM sector_assignment_audit saa
+JOIN customers c ON saa.customer_id = c.customer_id
+LEFT JOIN sectors old_s ON saa.old_sector_id = old_s.sector_id
+LEFT JOIN sectors new_s ON saa.new_sector_id = new_s.sector_id
+ORDER BY saa.assigned_at DESC;
+
 CREATE VIEW spots_reporting AS
     SELECT 
         s.spot_id,
@@ -1022,6 +1071,6 @@ BEGIN
 END;
 
 -- End of schema export
--- Total tables: 22
--- Total views: 10
+-- Total tables: 23
+-- Total views: 11
 -- Total triggers: 3

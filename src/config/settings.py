@@ -97,3 +97,13 @@ def get_settings(environment: Optional[str] = None) -> Settings:
         web=web,
         services=services
     )
+# Database configuration for sector assignment system  
+import os
+DATABASE_PATH = os.getenv(
+    'DATABASE_PATH',
+    '/opt/apps/ctv-bookedbiz-db/data/database/production.db'
+)
+
+# Sector assignment defaults
+DEFAULT_CONFIDENCE_THRESHOLD = 0.90
+DEFAULT_BATCH_SIZE = 20
