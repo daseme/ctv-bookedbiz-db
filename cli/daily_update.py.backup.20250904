@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Enhanced Daily Update Command with Multi-Sheet Support
-Clean Architecture implementation optimized for automated multi-sheet processing.
-Enhanced with unattended mode for automated daily processing of combined Commercial + WorldLink data.
+Daily update command with automatic market setup and language assignment processing.
+Clean Architecture implementation following established coding style guide.
+Replaces open month data while protecting closed historical months.
+Enhanced with unattended mode for automated daily processing.
 """
 
 from __future__ import annotations
@@ -28,38 +29,17 @@ from src.services.import_integration_utilities import get_excel_import_summary, 
 from src.database.connection import DatabaseConnection
 
 # ============================================================================
-# Domain Models (Enhanced for Multi-Sheet)
+# Domain Models
 # ============================================================================
 
 class BatchType(Enum):
-    ENHANCED_DAILY = ("enhanced_daily", "Enhanced Daily Update (Multi-Sheet)")
+    ENHANCED_DAILY = ("enhanced_daily", "Enhanced Daily Update")
     HISTORICAL_IMPORT = ("historical_import", "Historical Import")
     MANUAL_UPDATE = ("manual_update", "Manual Update")
    
     def __init__(self, code: str, display_name: str):
         self.code = code
         self.display_name = display_name
-
-@dataclass
-class MultiSheetPreview:
-    """Preview information for multi-sheet imports"""
-    total_spots: int
-    sheet_breakdown: Dict[str, int]
-    months_affected: List[str]
-    new_markets_detected: int
-    
-    @property
-    def has_worldlink_data(self) -> bool:
-        """Check if WorldLink data is present"""
-        return any('worldlink' in sheet.lower() for sheet in self.sheet_breakdown.keys())
-    
-    @property
-    def summary_line(self) -> str:
-        """One-line summary of the preview"""
-        sources = []
-        for sheet, count in self.sheet_breakdown.items():
-            sources.append(f"{sheet}: {count:,}")
-        return f"{self.total_spots:,} spots ({', '.join(sources)})"
 
 @dataclass
 class MarketData:
@@ -93,8 +73,8 @@ class DailyUpdateConfig:
     dry_run: bool = False
     force: bool = False
     verbose: bool = False
-    unattended: bool = False
-    log_file: Optional[Path] = None
+    unattended: bool = False  # NEW: For automated operation
+    log_file: Optional[Path] = None  # NEW: Specific log file
     db_path: Path = Path("data/database/production.db")
     
     @classmethod
@@ -135,17 +115,11 @@ class ImportResult:
     duration_seconds: float
     months_processed: List[str] = field(default_factory=list)
     error_message: Optional[str] = None
-    sheet_breakdown: Dict[str, int] = field(default_factory=dict)  # NEW: Sheet source tracking
     
     @property
     def net_change(self) -> int:
         """Calculate net change in records"""
         return self.records_imported - self.records_deleted
-    
-    @property
-    def has_multisheet_data(self) -> bool:
-        """Check if import included multiple sheet sources"""
-        return len(self.sheet_breakdown) > 1
 
 @dataclass
 class LanguageAssignmentResult:
@@ -178,13 +152,10 @@ class DailyUpdateResult:
         """One-line summary for logging"""
         status = "SUCCESS" if self.success else "FAILED"
         duration = f"{self.duration_seconds:.1f}s"
-        multisheet = ""
-        if self.import_result and self.import_result.has_multisheet_data:
-            multisheet = " (Multi-sheet)"
-        return f"{status}{multisheet} | Duration: {duration} | Batch: {self.batch_id}"
+        return f"{status} | Duration: {duration} | Batch: {self.batch_id}"
 
 # ============================================================================
-# Value Objects and Business Rules (Enhanced)
+# Value Objects and Business Rules
 # ============================================================================
 
 class MarketNameGenerator:
@@ -221,48 +192,8 @@ class BatchIdGenerator:
             timestamp = datetime.now()
         return f"{batch_type.code}_{int(timestamp.timestamp())}"
 
-class MultiSheetPreviewGenerator:
-    """Service for generating enhanced previews of multi-sheet data"""
-    
-    @staticmethod
-    def generate_preview(excel_file: Path, db_connection: DatabaseConnection) -> MultiSheetPreview:
-        """Generate preview information for multi-sheet Excel file"""
-        try:
-            import pandas as pd
-            
-            # Read the combined file to get sheet breakdown
-            df = pd.read_excel(excel_file, sheet_name="Commercials")
-            
-            sheet_breakdown = {}
-            if 'sheet_source' in df.columns:
-                breakdown_series = df['sheet_source'].value_counts()
-                sheet_breakdown = dict(breakdown_series)
-            else:
-                # Fallback for files without sheet_source column
-                sheet_breakdown = {"Unknown": len(df)}
-            
-            # Get months from the import utility
-            from src.services.import_integration_utilities import get_excel_import_summary
-            summary = get_excel_import_summary(str(excel_file), db_connection.db_path)
-            
-            return MultiSheetPreview(
-                total_spots=len(df),
-                sheet_breakdown=sheet_breakdown,
-                months_affected=summary.get('months_in_excel', []),
-                new_markets_detected=0  # Could enhance this later
-            )
-            
-        except Exception as e:
-            # Return empty preview on error
-            return MultiSheetPreview(
-                total_spots=0,
-                sheet_breakdown={},
-                months_affected=[],
-                new_markets_detected=0
-            )
-
 # ============================================================================
-# Data Access Layer (Unchanged but Enhanced Comments)
+# Data Access Layer  
 # ============================================================================
 
 class MarketRepository:
@@ -309,27 +240,9 @@ class SpotRepository:
                 WHERE import_batch_id = ? AND spot_category IS NULL
             """, (batch_id,))
             return [row[0] for row in cursor.fetchall()]
-    
-    def get_sheet_source_breakdown(self, batch_id: str) -> Dict[str, int]:
-        """Get breakdown of spots by sheet source for a batch"""
-        with self.db.transaction() as conn:
-            cursor = conn.execute("""
-                SELECT 
-                    CASE 
-                        WHEN source_file LIKE '%:Worldlink Lines' THEN 'Worldlink Lines'
-                        WHEN source_file LIKE '%:Commercials' THEN 'Commercials'  
-                        ELSE 'Other'
-                    END as sheet_source,
-                    COUNT(*) as count
-                FROM spots 
-                WHERE import_batch_id = ?
-                GROUP BY 1
-                ORDER BY count DESC
-            """, (batch_id,))
-            return {row[0]: row[1] for row in cursor.fetchall()}
 
 # ============================================================================
-# Progress Reporting Adapters (Enhanced)
+# Progress Reporting Adapters
 # ============================================================================
 
 class ProgressReporter(Protocol):
@@ -366,7 +279,7 @@ class TqdmProgressReporter:
         tqdm.write(message)
 
 class LoggingProgressReporter:
-    """Enhanced logging implementation for unattended operation"""
+    """Logging implementation of progress reporting for unattended operation"""
     
     def __init__(self, logger: logging.Logger):
         self.logger = logger
@@ -376,24 +289,18 @@ class LoggingProgressReporter:
         return LoggingProgressContext(self.logger, description, total)
     
     def write(self, message: str) -> None:
-        """Write message to logger with enhanced formatting"""
+        """Write message to logger"""
+        # Remove emoji and clean up message for logs
         clean_message = self._clean_message_for_logs(message)
-        
-        # Determine log level based on message content
-        if "ERROR" in message or "FAILED" in message:
-            self.logger.error(clean_message)
-        elif "WARNING" in message or "WARN" in message:
-            self.logger.warning(clean_message)
-        else:
-            self.logger.info(clean_message)
+        self.logger.info(clean_message)
     
     def _clean_message_for_logs(self, message: str) -> str:
-        """Enhanced message cleaning for multi-sheet logs"""
-        # Remove common emojis and replace with meaningful tags
+        """Remove emojis and format message for log files"""
+        # Remove common emojis used in the progress output
         emoji_map = {
             '🔄': '[UPDATE]',
             '📁': '[FILE]',
-            '🔧': '[CONFIG]', 
+            '🔧': '[CONFIG]',
             '🆔': '[BATCH]',
             '🏗️': '[SETUP]',
             '✅': '[SUCCESS]',
@@ -409,25 +316,17 @@ class LoggingProgressReporter:
             '🚨': '[CONFIRM]',
             '📋': '[PREVIEW]',
             '🏷️': '[CATEGORIZE]',
-            '🔤': '[PROCESS]',
-            # NEW: Multi-sheet specific
-            '📄': '[SHEET]',
-            '🔗': '[COMBINE]',
-            '📈': '[BREAKDOWN]'
+            '🔤': '[PROCESS]'
         }
         
         clean_msg = message
         for emoji, replacement in emoji_map.items():
             clean_msg = clean_msg.replace(emoji, replacement)
         
-        # Enhance multi-sheet specific messages
-        if "Commercials:" in clean_msg and "Worldlink Lines:" in clean_msg:
-            clean_msg = "[MULTI-SHEET] " + clean_msg
-        
         return clean_msg
 
 class LoggingProgressContext:
-    """Enhanced progress context with multi-sheet awareness"""
+    """Progress context that logs milestones instead of showing live progress"""
     
     def __init__(self, logger: logging.Logger, description: str, total: int):
         self.logger = logger
@@ -436,24 +335,20 @@ class LoggingProgressContext:
         self.current = 0
         self.last_logged_percent = 0
         
-        # Enhanced start logging
+        # Log start
         clean_desc = self._clean_message(description)
-        self.logger.info(f"{clean_desc} - Starting (0/{total:,})")
+        self.logger.info(f"{clean_desc} - Starting (0/{total})")
     
     def update(self, increment: int) -> None:
         """Update progress and log at milestones"""
         self.current += increment
         percent = int((self.current / self.total) * 100) if self.total > 0 else 100
         
-        # Log at 25%, 50%, 75%, 100% milestones + every 1000 for large imports
-        milestone_hit = percent in [25, 50, 75, 100] and percent > self.last_logged_percent
-        large_batch_milestone = self.total > 5000 and self.current % 1000 == 0
-        
-        if milestone_hit or large_batch_milestone:
+        # Log at 25%, 50%, 75%, 100% milestones
+        if percent in [25, 50, 75, 100] and percent > self.last_logged_percent:
             clean_desc = self._clean_message(self.description)
-            self.logger.info(f"{clean_desc} - Progress {percent}% ({self.current:,}/{self.total:,})")
-            if milestone_hit:
-                self.last_logged_percent = percent
+            self.logger.info(f"{clean_desc} - Progress {percent}% ({self.current}/{self.total})")
+            self.last_logged_percent = percent
     
     def set_description(self, description: str) -> None:
         """Update description"""
@@ -465,18 +360,18 @@ class LoggingProgressContext:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
             clean_desc = self._clean_message(self.description)
-            self.logger.info(f"{clean_desc} - Completed ({self.current:,}/{self.total:,})")
+            self.logger.info(f"{clean_desc} - Completed ({self.current}/{self.total})")
     
     def _clean_message(self, message: str) -> str:
         """Remove emojis for clean logging"""
         return message.encode('ascii', 'ignore').decode('ascii').strip()
 
 # ============================================================================
-# Business Logic Layer (Enhanced for Multi-Sheet)
+# Business Logic Layer (unchanged from original)
 # ============================================================================
 
 class ExcelMarketScanner:
-    """Enhanced service for scanning Excel files for new markets"""
+    """Service for scanning Excel files for new markets"""
     
     def __init__(self, progress_reporter: ProgressReporter):
         self.progress_reporter = progress_reporter
@@ -484,7 +379,7 @@ class ExcelMarketScanner:
     def scan_for_new_markets(self, excel_file: Path, existing_markets: Set[str]) -> Dict[str, MarketData]:
         """
         Scan Excel file to detect any new market codes not in existing set.
-        Enhanced to work with multi-sheet combined files.
+        Optimized for daily import files.
         """
         try:
             from openpyxl import load_workbook
@@ -546,7 +441,7 @@ class ExcelMarketScanner:
                 header_str = str(header).strip().lower()
                 if header_str in ['market_name', 'market', 'market_code']:
                     market_col_index = i
-                elif header_str in ['air_date', 'date', 'airdate', 'start date']:
+                elif header_str in ['air_date', 'date', 'airdate']:
                     air_date_col_index = i
         
         return market_col_index, air_date_col_index
@@ -653,26 +548,24 @@ class MarketSetupService:
         return assignments_created
 
 class ImportService:
-    """Enhanced service for handling multi-sheet data imports"""
+    """Service for handling data imports with progress tracking"""
     
     def __init__(self, 
                  broadcast_import_service: BroadcastMonthImportService,
-                 spot_repository: SpotRepository,
                  progress_reporter: ProgressReporter):
         self.broadcast_service = broadcast_import_service
-        self.spot_repository = spot_repository
         self.progress_reporter = progress_reporter
     
     def execute_import_with_progress(self, excel_file: Path, batch_id: str) -> ImportResult:
-        """Execute import with enhanced multi-sheet progress tracking"""
+        """Execute import with progress tracking"""
         start_time = datetime.now()
         
         # Get summary first for progress setup
         summary = get_excel_import_summary(str(excel_file), self.broadcast_service.db_connection.db_path)
         
         # Create a progress bar for the overall import
-        with self.progress_reporter.create_progress("Importing multi-sheet data", 100) as pbar:
-            pbar.set_description("Preparing multi-sheet import")
+        with self.progress_reporter.create_progress("Importing data", 100) as pbar:
+            pbar.set_description("Preparing import")
             pbar.update(10)
             
             pbar.set_description("Deleting existing data")
@@ -686,7 +579,7 @@ class ImportService:
                 dry_run=False
             )
             
-            pbar.set_description("Importing combined data")
+            pbar.set_description("Importing new data")
             pbar.update(50)
             
             pbar.set_description("Finalizing import")
@@ -695,9 +588,6 @@ class ImportService:
             pbar.set_description("Import complete")
             pbar.update(100)
         
-        # Enhanced: Get sheet source breakdown from database
-        sheet_breakdown = self.spot_repository.get_sheet_source_breakdown(batch_id)
-        
         # Convert to our domain model
         result = ImportResult(
             success=import_result.success,
@@ -705,35 +595,17 @@ class ImportService:
             records_deleted=import_result.records_deleted,
             batch_id=batch_id,
             duration_seconds=(datetime.now() - start_time).total_seconds(),
-            months_processed=summary.get('months_in_excel', []),
-            sheet_breakdown=sheet_breakdown
+            months_processed=summary.get('months_in_excel', [])
         )
         
         if result.success:
             self.progress_reporter.write(f"Import: {result.records_imported:,} imported, {result.records_deleted:,} deleted (net: {result.net_change:+,})")
-            
-            # Enhanced: Show multi-sheet breakdown
-            if result.has_multisheet_data:
-                self.progress_reporter.write(f"Multi-sheet breakdown:")
-                for sheet_source, count in result.sheet_breakdown.items():
-                    self.progress_reporter.write(f"   {sheet_source}: {count:,} spots")
         
         return result
     
     def simulate_import(self, excel_file: Path) -> ImportResult:
-        """Simulate import for dry run with multi-sheet preview"""
+        """Simulate import for dry run"""
         summary = get_excel_import_summary(str(excel_file), self.broadcast_service.db_connection.db_path)
-        
-        # Try to get sheet breakdown for dry run
-        try:
-            import pandas as pd
-            df = pd.read_excel(excel_file, sheet_name="Commercials")
-            sheet_breakdown = {}
-            if 'sheet_source' in df.columns:
-                breakdown_series = df['sheet_source'].value_counts()
-                sheet_breakdown = dict(breakdown_series)
-        except:
-            sheet_breakdown = {}
         
         return ImportResult(
             success=True,
@@ -741,330 +613,8 @@ class ImportService:
             records_deleted=summary['total_existing_spots_affected'],
             batch_id="dry_run",
             duration_seconds=0.0,
-            months_processed=summary['months_in_excel'],
-            sheet_breakdown=sheet_breakdown
+            months_processed=summary['months_in_excel']
         )
-
-# ============================================================================
-# Presentation Layer (Enhanced for Multi-Sheet)
-# ============================================================================
-
-class DailyUpdatePreviewService:
-    """Enhanced service for displaying multi-sheet preview"""
-    
-    def __init__(self, db_connection: DatabaseConnection, progress_reporter: ProgressReporter):
-        self.db = db_connection
-        self.progress_reporter = progress_reporter
-    
-    def display_enhanced_daily_preview(self, config: DailyUpdateConfig) -> bool:
-        """Display what the enhanced multi-sheet daily update would do"""
-        if not config.unattended:
-            self.progress_reporter.write(f"Enhanced Multi-Sheet Daily Update Preview")
-            self.progress_reporter.write(f"=" * 60)
-            self.progress_reporter.write(f"File: {config.excel_file.name}")
-            self.progress_reporter.write(f"Auto-setup: {config.auto_setup_markets}")
-            self.progress_reporter.write("")
-        
-        try:
-            # Enhanced multi-sheet preview
-            preview = MultiSheetPreviewGenerator.generate_preview(config.excel_file, self.db)
-            
-            if preview.has_worldlink_data:
-                self.progress_reporter.write(f"Multi-Sheet Data Detected:")
-                self.progress_reporter.write(f"   {preview.summary_line}")
-                self.progress_reporter.write("")
-            
-            # Market setup preview
-            if config.auto_setup_markets:
-                self._display_market_setup_preview(config.excel_file)
-            
-            # Standard import preview with multi-sheet awareness
-            can_proceed = self._display_import_preview(config.excel_file, preview)
-            
-            # Language assignment preview (only for interactive mode)
-            if can_proceed and not config.unattended:
-                self.progress_reporter.write(f"Language Assignment Preview:")
-                self.progress_reporter.write(f"   All spots will be categorized and processed automatically")
-                self.progress_reporter.write(f"   Business rules applied, manual review flagged as needed")
-                if preview.has_worldlink_data:
-                    self.progress_reporter.write(f"   WorldLink and Commercial data processed identically")
-            
-            return can_proceed
-            
-        except Exception as e:
-            self.progress_reporter.write(f"Error generating preview: {e}")
-            return False
-    
-    def _display_market_setup_preview(self, excel_file: Path) -> None:
-        """Display market setup preview"""
-        try:
-            market_repo = MarketRepository(self.db)
-            existing_markets = set(market_repo.get_existing_markets().keys())
-            
-            scanner = ExcelMarketScanner(self.progress_reporter)
-            new_markets = scanner.scan_for_new_markets(excel_file, existing_markets)
-            
-            if new_markets:
-                self.progress_reporter.write(f"Market Setup Preview:")
-                self.progress_reporter.write(f"   New markets: {len(new_markets)} ({', '.join(sorted(new_markets.keys()))})")
-                self.progress_reporter.write("")
-        except Exception as e:
-            self.progress_reporter.write(f"Could not preview market setup: {e}")
-    
-    def _display_import_preview(self, excel_file: Path, preview: MultiSheetPreview) -> bool:
-        """Display enhanced import preview with multi-sheet information"""
-        self.progress_reporter.write(f"Daily Update Preview:")
-        
-        try:
-            # Get Excel summary
-            summary = get_excel_import_summary(str(excel_file), self.db.db_path)
-            
-            # Validation check
-            validation = validate_excel_for_import(str(excel_file), 'WEEKLY_UPDATE', self.db.db_path)
-            
-            if validation.is_valid:
-                self.progress_reporter.write(f"   Daily update allowed")
-                self.progress_reporter.write(f"   {summary['total_existing_spots_affected']:,} spots across {len(summary['months_in_excel'])} months")
-                
-                # Enhanced: Show multi-sheet breakdown in preview
-                if preview.sheet_breakdown:
-                    self.progress_reporter.write(f"   Sheet breakdown: {preview.summary_line}")
-            else:
-                self.progress_reporter.write(f"   Daily update BLOCKED")
-                self.progress_reporter.write(f"      Reason: {validation.error_message}")
-                self.progress_reporter.write(f"      Solution: {validation.suggested_action}")
-                return False
-            
-            # Show month details concisely
-            open_months = summary['open_months']
-            closed_months = summary['closed_months']
-            
-            self.progress_reporter.write(f"   Open months: {len(open_months)} ({', '.join(open_months) if len(open_months) <= 5 else f'{len(open_months)} months'})")
-            if closed_months:
-                self.progress_reporter.write(f"   Closed months: {len(closed_months)} (protected)")
-            self.progress_reporter.write("")
-            
-            return True
-            
-        except Exception as e:
-            self.progress_reporter.write(f"Error generating preview: {e}")
-            return False
-
-# ============================================================================
-# Application Layer (Enhanced CLI Interface)
-# ============================================================================
-
-class DailyUpdateCLI:
-    """Enhanced CLI interface optimized for multi-sheet automated processing"""
-    
-    def __init__(self, db_connection: DatabaseConnection):
-        self.db_connection = db_connection
-        self.progress_reporter = None  # Will be set based on mode
-        self.logger = None  # Will be set if logging configured
-    
-    def execute_from_args(self, args) -> int:
-        """Execute enhanced daily update from command line arguments"""
-        try:
-            config = DailyUpdateConfig.from_args(args)
-            
-            # Configure logging and progress reporting
-            self._setup_logging_and_progress(config)
-            
-            # Validate inputs
-            if not config.excel_file.exists():
-                self._log_error(f"Excel file not found: {config.excel_file}")
-                return 1
-            
-            if not config.db_path.exists():
-                self._log_error(f"Database not found: {config.db_path}")
-                self._log_error(f"Run: uv run python scripts/setup_database.py --db-path {config.db_path}")
-                return 1
-            
-            # Enhanced header for multi-sheet processing
-            if config.unattended:
-                self.progress_reporter.write(f"Enhanced Multi-Sheet Daily Update Tool - UNATTENDED MODE")
-                self.progress_reporter.write(f"File: {config.excel_file.name}")
-                self.progress_reporter.write(f"Database: {config.db_path.name}")
-                self.progress_reporter.write(f"Sheets: Commercials + Worldlink Lines")
-            else:
-                print(f"Enhanced Multi-Sheet Daily Update Tool")
-                print(f"File: {config.excel_file.name}")
-                print(f"Database: {config.db_path.name}")
-                print(f"Processing: Commercials + Worldlink Lines sheets")
-                if config.dry_run:
-                    print(f"Mode: DRY RUN (no changes will be made)")
-                print()
-            
-            # Display enhanced preview and validate
-            preview_service = DailyUpdatePreviewService(self.db_connection, self.progress_reporter)
-            can_proceed = preview_service.display_enhanced_daily_preview(config)
-            
-            if not can_proceed:
-                self._display_validation_error_help(config.unattended)
-                return 1
-            
-            # Get confirmation unless forced, dry run, or unattended
-            if not config.dry_run and not config.force and not config.unattended:
-                confirmed = self._get_confirmation(config)
-                if not confirmed:
-                    self.progress_reporter.write(f"Daily update cancelled by user")
-                    return 0
-            
-            # Create enhanced services with dependency injection
-            orchestrator = self._create_enhanced_orchestrator()
-            
-            # Execute the enhanced update
-            result = orchestrator.execute_daily_update(config)
-            
-            # Display enhanced results
-            presenter = DailyUpdateResultsPresenter(self.progress_reporter)
-            presenter.display_final_results(result, config.dry_run, config.unattended)
-            
-            # Enhanced logging for automated monitoring
-            if config.unattended and self.logger:
-                self.logger.info(f"Enhanced daily update completed: {result.summary_line}")
-                if result.import_result and result.import_result.has_multisheet_data:
-                    breakdown_str = ", ".join([f"{k}: {v}" for k, v in result.import_result.sheet_breakdown.items()])
-                    self.logger.info(f"Multi-sheet processing: {breakdown_str}")
-                if not result.success:
-                    self.logger.error(f"Enhanced daily update failed: {'; '.join(result.error_messages)}")
-            
-            return 0 if result.success else 1
-            
-        except BroadcastMonthImportError as e:
-            error_msg = f"Import error: {e}"
-            self._log_error(error_msg)
-            return 1
-        except KeyboardInterrupt:
-            self._log_error(f"Daily update cancelled by user")
-            return 1
-        except Exception as e:
-            error_msg = f"Unexpected error: {e}"
-            self._log_error(error_msg)
-            if hasattr(args, 'verbose') and args.verbose:
-                import traceback
-                if self.logger:
-                    self.logger.error(f"Stack trace: {traceback.format_exc()}")
-                else:
-                    traceback.print_exc()
-            return 1
-    
-    def _setup_logging_and_progress(self, config: DailyUpdateConfig) -> None:
-        """Configure logging and progress reporting based on mode"""
-        if config.unattended:
-            # Setup enhanced file logging for multi-sheet operations
-            self.logger = LoggingConfigService.setup_unattended_logging(config.log_file, config.verbose)
-            self.progress_reporter = LoggingProgressReporter(self.logger)
-        else:
-            # Use interactive tqdm progress
-            self.progress_reporter = TqdmProgressReporter()
-    
-    def _log_error(self, message: str) -> None:
-        """Log error message to appropriate output"""
-        if self.logger:
-            self.logger.error(message)
-        else:
-            print(f"ERROR: {message}")
-    
-    def _create_enhanced_orchestrator(self) -> DailyUpdateOrchestrator:
-        """Create orchestrator with enhanced multi-sheet dependencies"""
-        # Create repositories
-        market_repo = MarketRepository(self.db_connection)
-        spot_repo = SpotRepository(self.db_connection)
-        
-        # Create enhanced services
-        market_setup_service = MarketSetupService(market_repo, self.progress_reporter)
-        import_service = ImportService(
-            BroadcastMonthImportService(self.db_connection),
-            spot_repo,
-            self.progress_reporter
-        )
-        language_service = LanguageAssignmentService(self.db_connection, self.progress_reporter)
-        
-        # Create orchestrator
-        return DailyUpdateOrchestrator(
-            market_setup_service,
-            import_service,
-            language_service,
-            self.progress_reporter
-        )
-    
-    def _get_confirmation(self, config: DailyUpdateConfig) -> bool:
-        """Get user confirmation with multi-sheet information"""
-        summary = get_excel_import_summary(str(config.excel_file), config.db_path)
-        
-        # Enhanced: Get multi-sheet preview for confirmation
-        preview = MultiSheetPreviewGenerator.generate_preview(config.excel_file, self.db_connection)
-        
-        new_market_count = 0
-        if config.auto_setup_markets:
-            # Estimate new markets
-            market_repo = MarketRepository(self.db_connection)
-            existing_markets = set(market_repo.get_existing_markets().keys())
-            scanner = ExcelMarketScanner(self.progress_reporter)
-            new_markets = scanner.scan_for_new_markets(config.excel_file, existing_markets)
-            new_market_count = len(new_markets)
-        
-        # Enhanced confirmation with multi-sheet info
-        return self._get_enhanced_user_confirmation(
-            summary['total_existing_spots_affected'],
-            len(summary['open_months']),
-            new_market_count,
-            preview,
-            config.force,
-            config.unattended
-        )
-    
-    def _get_enhanced_user_confirmation(self, total_spots: int, open_months: int, new_markets: int, preview: MultiSheetPreview, force: bool, unattended: bool) -> bool:
-        """Enhanced user confirmation with multi-sheet information"""
-        if force or unattended:
-            return True
-        
-        tqdm.write(f"CONFIRMATION REQUIRED")
-        actions = [
-            f"REPLACE {total_spots:,} existing spots",
-            f"Update {open_months} open months", 
-            "Process language assignments automatically",
-            "Preserve all closed/historical months"
-        ]
-        
-        # Add multi-sheet specific information
-        if preview.has_worldlink_data:
-            actions.insert(0, f"Process combined data: {preview.summary_line}")
-        
-        if new_markets > 0:
-            actions.insert(-1, f"Create {new_markets} new markets")
-        
-        tqdm.write(f"This will:")
-        for action in actions:
-            tqdm.write(f"  • {action}")
-        
-        while True:
-            response = input(f"\nProceed with enhanced multi-sheet daily update? (yes/no): ").strip().lower()
-            if response in ['yes', 'y']:
-                return True
-            elif response in ['no', 'n', '']:
-                return False
-            else:
-                tqdm.write("Please enter 'yes' or 'no'")
-    
-    def _display_validation_error_help(self, unattended: bool) -> None:
-        """Display validation error help"""
-        if unattended:
-            self.progress_reporter.write(f"Enhanced daily update cannot proceed due to validation errors")
-            self.progress_reporter.write(f"Solutions: Remove closed month data from Excel file OR use historical import mode")
-        else:
-            print(f"\nEnhanced daily update cannot proceed due to validation errors")
-            print(f"Common solutions:")
-            print(f"  • Remove closed month data from Excel file")
-            print(f"  • Use historical import mode for closed months")
-            print(f"  • Check if months need to be manually closed first")
-
-# Import other classes unchanged but with enhanced logging
-# (LanguageAssignmentService, DailyUpdateOrchestrator, etc.)
-# ============================================================================
-# Import Other Services (Unchanged Core Logic)
-# ============================================================================
 
 class LanguageAssignmentService:
     """Service for processing language assignments after import"""
@@ -1109,7 +659,7 @@ class LanguageAssignmentService:
             result.flagged_for_review = summary['flagged_for_review']
             result.success = True
             
-            # Enhanced display with multi-sheet awareness
+            # Display clean summary
             self.progress_reporter.write(f"Language assignment complete:")
             self.progress_reporter.write(f"   Processed: {result.processed:,}")
             self.progress_reporter.write(f"   Language assigned: {result.language_assigned:,}")
@@ -1174,7 +724,7 @@ class LanguageAssignmentService:
         return orchestrator.process_batch_categories(batch_id)
 
 class DailyUpdateOrchestrator:
-    """Enhanced orchestrator for multi-sheet daily update process"""
+    """Main orchestrator for daily update process following Clean Architecture"""
     
     def __init__(self,
                  market_setup_service: MarketSetupService,
@@ -1187,7 +737,7 @@ class DailyUpdateOrchestrator:
         self.progress_reporter = progress_reporter
     
     def execute_daily_update(self, config: DailyUpdateConfig) -> DailyUpdateResult:
-        """Execute the complete enhanced multi-sheet daily update process"""
+        """Execute the complete daily update process"""
         start_time = datetime.now()
         batch_id = BatchIdGenerator.generate(BatchType.ENHANCED_DAILY, start_time)
         
@@ -1203,14 +753,13 @@ class DailyUpdateOrchestrator:
                 self.progress_reporter.write(f"Setup: {result.market_setup.summary}")
                 self.progress_reporter.write("")
             
-            # Step 2: Enhanced multi-sheet data import
-            self.progress_reporter.write(f"STEP 2: Enhanced Multi-Sheet Data Import")
+            # Step 2: Daily data import
+            self.progress_reporter.write(f"STEP 2: Daily Data Import")
             
             if config.dry_run:
                 self.progress_reporter.write(f"DRY RUN - No changes would be made")
                 result.import_result = self.import_service.simulate_import(config.excel_file)
-                if result.import_result.has_multisheet_data:
-                    self.progress_reporter.write(f"Would process: {result.import_result.sheet_breakdown}")
+                self.progress_reporter.write(f"Would import {result.import_result.records_imported:,} spots across {len(result.import_result.months_processed)} months")
             else:
                 result.import_result = self.import_service.execute_import_with_progress(config.excel_file, batch_id)
             
@@ -1222,7 +771,7 @@ class DailyUpdateOrchestrator:
             result.success = True
             
         except Exception as e:
-            error_msg = f"Enhanced multi-sheet daily update failed: {str(e)}"
+            error_msg = f"Enhanced daily update failed: {str(e)}"
             result.error_messages.append(error_msg)
             self.progress_reporter.write(f"ERROR: {error_msg}")
         
@@ -1231,29 +780,152 @@ class DailyUpdateOrchestrator:
         return result
     
     def _display_update_header(self, config: DailyUpdateConfig, batch_id: str) -> None:
-        """Display enhanced header for multi-sheet processing"""
-        self.progress_reporter.write(f"Enhanced Multi-Sheet Daily Update Starting")
+        """Display clean header without excessive printing"""
+        self.progress_reporter.write(f"Enhanced Daily Update Starting")
         self.progress_reporter.write(f"File: {config.excel_file.name}")
-        self.progress_reporter.write(f"Processing: Commercials + Worldlink Lines data")
         self.progress_reporter.write(f"Auto-setup: {config.auto_setup_markets} | Dry run: {config.dry_run}")
         self.progress_reporter.write(f"Batch ID: {batch_id}")
         self.progress_reporter.write("=" * 60)
 
+# ============================================================================
+# Presentation Layer
+# ============================================================================
+
+class DailyUpdatePreviewService:
+    """Service for displaying preview of what daily update would do"""
+    
+    def __init__(self, db_connection: DatabaseConnection, progress_reporter: ProgressReporter):
+        self.db = db_connection
+        self.progress_reporter = progress_reporter
+    
+    def display_enhanced_daily_preview(self, config: DailyUpdateConfig) -> bool:
+        """Display what the enhanced daily update would do"""
+        if not config.unattended:
+            self.progress_reporter.write(f"Enhanced Daily Update Preview")
+            self.progress_reporter.write(f"=" * 60)
+            self.progress_reporter.write(f"File: {config.excel_file.name}")
+            self.progress_reporter.write(f"Auto-setup: {config.auto_setup_markets}")
+            self.progress_reporter.write("")
+        
+        try:
+            # Market setup preview
+            if config.auto_setup_markets:
+                self._display_market_setup_preview(config.excel_file)
+            
+            # Standard import preview
+            can_proceed = self._display_import_preview(config.excel_file)
+            
+            # Language assignment preview (only for interactive mode)
+            if can_proceed and not config.unattended:
+                self.progress_reporter.write(f"Language Assignment Preview:")
+                self.progress_reporter.write(f"   All spots will be categorized and processed automatically")
+                self.progress_reporter.write(f"   Business rules applied, manual review flagged as needed")
+            
+            return can_proceed
+            
+        except Exception as e:
+            self.progress_reporter.write(f"Error generating preview: {e}")
+            return False
+    
+    def _display_market_setup_preview(self, excel_file: Path) -> None:
+        """Display market setup preview"""
+        try:
+            market_repo = MarketRepository(self.db)
+            existing_markets = set(market_repo.get_existing_markets().keys())
+            
+            scanner = ExcelMarketScanner(self.progress_reporter)
+            new_markets = scanner.scan_for_new_markets(excel_file, existing_markets)
+            
+            if new_markets:
+                self.progress_reporter.write(f"Market Setup Preview:")
+                self.progress_reporter.write(f"   New markets: {len(new_markets)} ({', '.join(sorted(new_markets.keys()))})")
+                self.progress_reporter.write("")
+        except Exception as e:
+            self.progress_reporter.write(f"Could not preview market setup: {e}")
+    
+    def _display_import_preview(self, excel_file: Path) -> bool:
+        """Display import preview"""
+        self.progress_reporter.write(f"Daily Update Preview:")
+        
+        try:
+            # Get Excel summary
+            summary = get_excel_import_summary(str(excel_file), self.db.db_path)
+            
+            # Validation check
+            validation = validate_excel_for_import(str(excel_file), 'WEEKLY_UPDATE', self.db.db_path)
+            
+            if validation.is_valid:
+                self.progress_reporter.write(f"   Daily update allowed")
+                self.progress_reporter.write(f"   {summary['total_existing_spots_affected']:,} spots across {len(summary['months_in_excel'])} months")
+            else:
+                self.progress_reporter.write(f"   Daily update BLOCKED")
+                self.progress_reporter.write(f"      Reason: {validation.error_message}")
+                self.progress_reporter.write(f"      Solution: {validation.suggested_action}")
+                return False
+            
+            # Show month details concisely
+            open_months = summary['open_months']
+            closed_months = summary['closed_months']
+            
+            self.progress_reporter.write(f"   Open months: {len(open_months)} ({', '.join(open_months) if len(open_months) <= 5 else f'{len(open_months)} months'})")
+            if closed_months:
+                self.progress_reporter.write(f"   Closed months: {len(closed_months)} (protected)")
+            self.progress_reporter.write("")
+            
+            return True
+            
+        except Exception as e:
+            self.progress_reporter.write(f"Error generating preview: {e}")
+            return False
+
+class UserConfirmationService:
+    """Service for getting user confirmation"""
+    
+    @staticmethod
+    def get_user_confirmation(total_spots: int, open_months: int, new_markets: int = 0, force: bool = False, unattended: bool = False) -> bool:
+        """Get user confirmation for the enhanced update"""
+        if force or unattended:
+            return True
+        
+        tqdm.write(f"CONFIRMATION REQUIRED")
+        actions = [
+            f"REPLACE {total_spots:,} existing spots",
+            f"Update {open_months} open months",
+            "Process language assignments automatically",
+            "Preserve all closed/historical months"
+        ]
+        
+        if new_markets > 0:
+            actions.insert(0, f"Create {new_markets} new markets")
+        
+        tqdm.write(f"This will:")
+        for action in actions:
+            tqdm.write(f"  • {action}")
+        
+        while True:
+            response = input(f"\nProceed with enhanced daily update? (yes/no): ").strip().lower()
+            if response in ['yes', 'y']:
+                return True
+            elif response in ['no', 'n', '']:
+                return False
+            else:
+                tqdm.write("Please enter 'yes' or 'no'")
+
 class DailyUpdateResultsPresenter:
-    """Enhanced service for presenting multi-sheet daily update results"""
+    """Service for presenting daily update results"""
     
     def __init__(self, progress_reporter: ProgressReporter):
         self.progress_reporter = progress_reporter
     
     def display_final_results(self, result: DailyUpdateResult, dry_run: bool, unattended: bool = False) -> None:
-        """Display enhanced final results with multi-sheet information"""
+        """Display clean final results"""
         if not unattended:
             self.progress_reporter.write(f"\n{'='*60}")
             
         if dry_run:
-            self.progress_reporter.write(f"ENHANCED MULTI-SHEET DAILY UPDATE DRY RUN COMPLETED")
+            self.progress_reporter.write(f"ENHANCED DAILY UPDATE DRY RUN COMPLETED")
         else:
-            self.progress_reporter.write(f"ENHANCED MULTI-SHEET DAILY UPDATE COMPLETED")
+            self.progress_reporter.write(f"ENHANCED DAILY UPDATE COMPLETED")
             
         if not unattended:
             self.progress_reporter.write(f"{'='*60}")
@@ -1266,18 +938,12 @@ class DailyUpdateResultsPresenter:
         if result.market_setup and result.market_setup.markets_created > 0:
             self.progress_reporter.write(f"  Markets created: {result.market_setup.markets_created}")
         
-        # Enhanced import results with multi-sheet breakdown
+        # Import results (concise)
         if result.import_result and not dry_run:
             import_res = result.import_result
             if import_res.success:
                 self.progress_reporter.write(f"  Spots imported: {import_res.records_imported:,}")
                 self.progress_reporter.write(f"  Net change: {import_res.net_change:+,}")
-                
-                # Show multi-sheet breakdown if available
-                if import_res.has_multisheet_data:
-                    self.progress_reporter.write(f"  Sheet sources:")
-                    for sheet_source, count in import_res.sheet_breakdown.items():
-                        self.progress_reporter.write(f"    {sheet_source}: {count:,} spots")
         
         # Language assignment results (concise)
         if result.language_assignment and result.language_assignment.success:
@@ -1292,21 +958,21 @@ class DailyUpdateResultsPresenter:
                 self.progress_reporter.write(f"  • {error}")
         
         if result.success and not dry_run:
-            self.progress_reporter.write(f"Enhanced multi-sheet update completed successfully!")
+            self.progress_reporter.write(f"Update completed successfully!")
             if result.language_assignment and result.language_assignment.flagged_for_review > 0:
                 self.progress_reporter.write(f"Next: Review flagged spots with 'uv run python cli/assign_languages.py --review-required'")
 
 # ============================================================================
-# Logging Configuration (Enhanced)
+# Logging Configuration
 # ============================================================================
 
 class LoggingConfigService:
-    """Enhanced service for configuring logging for multi-sheet automated operations"""
+    """Service for configuring logging for automated operations"""
     
     @staticmethod
     def setup_unattended_logging(log_file: Optional[Path], verbose: bool) -> logging.Logger:
-        """Configure enhanced logging for unattended multi-sheet operation"""
-        logger = logging.getLogger('enhanced_daily_update')
+        """Configure logging for unattended operation"""
+        logger = logging.getLogger('daily_update')
         logger.setLevel(logging.DEBUG if verbose else logging.INFO)
         
         # Remove existing handlers
@@ -1317,17 +983,16 @@ class LoggingConfigService:
         if log_file:
             log_file.parent.mkdir(parents=True, exist_ok=True)
             
-            # Rotating file handler (20MB max, keep 10 files for multi-sheet operations)
+            # Rotating file handler (10MB max, keep 5 files)
             file_handler = logging.handlers.RotatingFileHandler(
                 log_file,
-                maxBytes=20 * 1024 * 1024,  # 20MB (increased for multi-sheet logs)
-                backupCount=10,  # Keep more logs for better debugging
+                maxBytes=10 * 1024 * 1024,  # 10MB
+                backupCount=5,
                 encoding='utf-8'
             )
             
-            # Enhanced formatter for multi-sheet operations
             file_formatter = logging.Formatter(
-                '%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
+                '%(asctime)s - %(levelname)s - %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
             file_handler.setFormatter(file_formatter)
@@ -1342,38 +1007,224 @@ class LoggingConfigService:
         return logger
 
 # ============================================================================
-# Main Entry Point (Enhanced)
+# Application Layer (CLI Interface)
+# ============================================================================
+
+class DailyUpdateCLI:
+    """CLI interface for daily update - separated from business logic"""
+    
+    def __init__(self, db_connection: DatabaseConnection):
+        self.db_connection = db_connection
+        self.progress_reporter = None  # Will be set based on mode
+        self.logger = None  # Will be set if logging configured
+    
+    def execute_from_args(self, args) -> int:
+        """Execute daily update from command line arguments"""
+        try:
+            config = DailyUpdateConfig.from_args(args)
+            
+            # Configure logging and progress reporting
+            self._setup_logging_and_progress(config)
+            
+            # Validate inputs
+            if not config.excel_file.exists():
+                self._log_error(f"Excel file not found: {config.excel_file}")
+                return 1
+            
+            if not config.db_path.exists():
+                self._log_error(f"Database not found: {config.db_path}")
+                self._log_error(f"Run: uv run python scripts/setup_database.py --db-path {config.db_path}")
+                return 1
+            
+            # Display header (reduced for unattended mode)
+            if config.unattended:
+                self.progress_reporter.write(f"Enhanced Daily Update Tool - UNATTENDED MODE")
+                self.progress_reporter.write(f"File: {config.excel_file.name}")
+                self.progress_reporter.write(f"Database: {config.db_path.name}")
+            else:
+                print(f"Enhanced Daily Update Tool")
+                print(f"File: {config.excel_file.name}")
+                print(f"Database: {config.db_path.name}")
+                if config.dry_run:
+                    print(f"Mode: DRY RUN (no changes will be made)")
+                print()
+            
+            # Display enhanced preview and validate
+            preview_service = DailyUpdatePreviewService(self.db_connection, self.progress_reporter)
+            can_proceed = preview_service.display_enhanced_daily_preview(config)
+            
+            if not can_proceed:
+                self._display_validation_error_help(config.unattended)
+                return 1
+            
+            # Get confirmation unless forced, dry run, or unattended
+            if not config.dry_run and not config.force and not config.unattended:
+                confirmed = self._get_confirmation(config)
+                if not confirmed:
+                    self.progress_reporter.write(f"Daily update cancelled by user")
+                    return 0
+            
+            # Create services with dependency injection
+            orchestrator = self._create_orchestrator()
+            
+            # Execute the enhanced update
+            result = orchestrator.execute_daily_update(config)
+            
+            # Display results
+            presenter = DailyUpdateResultsPresenter(self.progress_reporter)
+            presenter.display_final_results(result, config.dry_run, config.unattended)
+            
+            # Log final status for automated monitoring
+            if config.unattended and self.logger:
+                self.logger.info(f"Daily update completed: {result.summary_line}")
+                if not result.success:
+                    self.logger.error(f"Daily update failed: {'; '.join(result.error_messages)}")
+            
+            return 0 if result.success else 1
+            
+        except BroadcastMonthImportError as e:
+            error_msg = f"Import error: {e}"
+            self._log_error(error_msg)
+            return 1
+        except KeyboardInterrupt:
+            self._log_error(f"Daily update cancelled by user")
+            return 1
+        except Exception as e:
+            error_msg = f"Unexpected error: {e}"
+            self._log_error(error_msg)
+            if hasattr(args, 'verbose') and args.verbose:
+                import traceback
+                if self.logger:
+                    self.logger.error(f"Stack trace: {traceback.format_exc()}")
+                else:
+                    traceback.print_exc()
+            return 1
+    
+    def _setup_logging_and_progress(self, config: DailyUpdateConfig) -> None:
+        """Configure logging and progress reporting based on mode"""
+        if config.unattended:
+            # Setup file logging
+            self.logger = LoggingConfigService.setup_unattended_logging(config.log_file, config.verbose)
+            self.progress_reporter = LoggingProgressReporter(self.logger)
+        else:
+            # Use interactive tqdm progress
+            self.progress_reporter = TqdmProgressReporter()
+    
+    def _log_error(self, message: str) -> None:
+        """Log error message to appropriate output"""
+        if self.logger:
+            self.logger.error(message)
+        else:
+            print(f"ERROR: {message}")
+    
+    def _create_orchestrator(self) -> DailyUpdateOrchestrator:
+        """Create orchestrator with all dependencies injected"""
+        # Create repositories
+        market_repo = MarketRepository(self.db_connection)
+        
+        # Create services
+        market_setup_service = MarketSetupService(market_repo, self.progress_reporter)
+        import_service = ImportService(
+            BroadcastMonthImportService(self.db_connection),
+            self.progress_reporter
+        )
+        language_service = LanguageAssignmentService(self.db_connection, self.progress_reporter)
+        
+        # Create orchestrator
+        return DailyUpdateOrchestrator(
+            market_setup_service,
+            import_service,
+            language_service,
+            self.progress_reporter
+        )
+    
+    def _get_confirmation(self, config: DailyUpdateConfig) -> bool:
+        """Get user confirmation for the update"""
+        summary = get_excel_import_summary(str(config.excel_file), config.db_path)
+        new_market_count = 0
+        
+        if config.auto_setup_markets:
+            # Estimate new markets
+            market_repo = MarketRepository(self.db_connection)
+            existing_markets = set(market_repo.get_existing_markets().keys())
+            scanner = ExcelMarketScanner(self.progress_reporter)
+            new_markets = scanner.scan_for_new_markets(config.excel_file, existing_markets)
+            new_market_count = len(new_markets)
+        
+        return UserConfirmationService.get_user_confirmation(
+            summary['total_existing_spots_affected'],
+            len(summary['open_months']),
+            new_market_count,
+            config.force,
+            config.unattended
+        )
+    
+    def _display_validation_error_help(self, unattended: bool) -> None:
+        """Display validation error help"""
+        if unattended:
+            self.progress_reporter.write(f"Daily update cannot proceed due to validation errors")
+            self.progress_reporter.write(f"Solutions: Remove closed month data from Excel file OR use historical import mode")
+        else:
+            print(f"\nDaily update cannot proceed due to validation errors")
+            print(f"Common solutions:")
+            print(f"  • Remove closed month data from Excel file")
+            print(f"  • Use historical import mode for closed months")
+            print(f"  • Check if months need to be manually closed first")
+
+# ============================================================================
+# Custom Exceptions (unchanged)
+# ============================================================================
+
+class DailyUpdateError(Exception):
+    """Base exception for daily update operations"""
+    pass
+
+class MarketScanError(DailyUpdateError):
+    """Error scanning Excel file for markets"""
+    pass
+
+class MarketSetupError(DailyUpdateError):
+    """Error setting up new markets"""
+    pass
+
+class ImportValidationError(DailyUpdateError):
+    """Error validating import data"""
+    pass
+
+# ============================================================================
+# Main Entry Point
 # ============================================================================
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Enhanced multi-sheet daily update with automatic market setup and language assignment",
+        description="Enhanced daily update with automatic market setup and language assignment",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Enhanced multi-sheet daily update with language assignment
-  python daily_update.py data/raw/daily/Commercial\ Log\ 250904.xlsx
+  # Standard daily update with language assignment
+  python daily_update.py data/booked_business_current.xlsx
 
-  # Enhanced daily update with automatic market setup (recommended for automation)
-  python daily_update.py data/raw/daily/Commercial\ Log\ 250904.xlsx --auto-setup
+  # Enhanced daily update with automatic market setup
+  python daily_update.py data/booked_business_current.xlsx --auto-setup
 
-  # Unattended mode for automated multi-sheet processing
-  python daily_update.py data/raw/daily/Commercial\ Log\ 250904.xlsx --auto-setup --unattended --log-file /var/log/ctv-daily-update/update.log
+  # Unattended mode for automated processing
+  python daily_update.py data/daily_data.xlsx --auto-setup --unattended --log-file /var/log/ctv-daily-update/update.log
 
-  # Preview what would happen with multi-sheet data
-  python daily_update.py data/raw/daily/Commercial\ Log\ 250904.xlsx --auto-setup --dry-run
+  # Preview what would happen
+  python daily_update.py data/daily_data.xlsx --auto-setup --dry-run
 
-Enhanced Multi-Sheet Features:
-  • Automatic processing of Commercials + Worldlink Lines data
-  • Enhanced source tracking with filename:sheet_name format
-  • Sheet-specific breakdown in logging and reporting
-  • Optimized for automated daily processing with detailed audit trail
+Enhanced Features:
+  • Automatic detection of new markets in daily data
+  • Missing market creation with proper naming
+  • Schedule assignment setup for new markets
+  • Integrated language assignment processing with business rules
+  • Unattended mode for automated daily processing
+  • Comprehensive logging with rotation for production use
   • Clean Architecture implementation with proper separation of concerns
-  • Backward compatibility with single-sheet files
         """
     )
     
-    parser.add_argument("excel_file", help="Path to multi-sheet Excel file to import")
+    parser.add_argument("excel_file", help="Path to Excel file to import")
     parser.add_argument("--auto-setup", action="store_true",
                        help="Automatically create missing markets and schedule assignments")
     parser.add_argument("--db-path", default="data/database/production.db",
@@ -1401,7 +1252,7 @@ Enhanced Multi-Sheet Features:
     try:
         db_connection = DatabaseConnection(args.db_path)
         
-        # Create and execute enhanced CLI
+        # Create and execute CLI
         cli = DailyUpdateCLI(db_connection)
         exit_code = cli.execute_from_args(args)
         
@@ -1414,10 +1265,10 @@ Enhanced Multi-Sheet Features:
             try:
                 with open(args.log_file, 'a', encoding='utf-8') as f:
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    f.write(f"{timestamp} - ERROR - Failed to initialize enhanced daily update: {e}\n")
+                    f.write(f"{timestamp} - ERROR - Failed to initialize daily update: {e}\n")
             except:
                 pass
-        print(f"Failed to initialize enhanced daily update: {e}")
+        print(f"Failed to initialize daily update: {e}")
         sys.exit(1)
 
 

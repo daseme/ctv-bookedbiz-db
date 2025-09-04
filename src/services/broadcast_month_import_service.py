@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Broadcast month import service for managing month-based data imports.
+Enhanced to support multi-sheet source tracking using source_file field.
 Orchestrates the complete import workflow with validation, deletion, and import.
 Enhanced with progress bars and clean output.
 """
@@ -62,6 +63,7 @@ EXCEL_COLUMN_POSITIONS = {
     26: 'affidavit_flag',      # Affidavit?
     27: 'contract',            # Notarize?
     28: 'market_name',         # Market
+    29: 'sheet_source',        # NEW: Sheet source tracking (added by commercial log importer)
 }
 
 
@@ -136,6 +138,40 @@ class ImportResult:
         if self.closed_months is None:
             self.closed_months = []
 
+
+# ============================================================================
+# Value Objects for Source Tracking
+# ============================================================================
+
+class SourceFileFormatter:
+    """Value object for creating standardized source file tracking strings"""
+    
+    @staticmethod
+    def format_source_file(filename: str, sheet_name: Optional[str]) -> str:
+        """
+        Create source_file string in format 'filename:sheet_name' or just 'filename'
+        
+        Args:
+            filename: The Excel file name (e.g., 'Commercial Log 250902.xlsx')
+            sheet_name: The sheet name (e.g., 'Commercials', 'WorldLink Lines')
+            
+        Returns:
+            Formatted source file string for database storage
+        """
+        if sheet_name and sheet_name.strip():
+            return f"{filename}:{sheet_name.strip()}"
+        else:
+            return filename
+    
+    @staticmethod
+    def extract_filename_from_path(file_path: str) -> str:
+        """Extract just the filename from a full path"""
+        return Path(file_path).name
+
+
+# ============================================================================
+# Business Logic Enhancements
+# ============================================================================
 
 def build_revenue_type_normalizer() -> Callable[[Optional[str]], Optional[str]]:
     """Pure normalizer: A&O variants → 'Internal Ad Sales'; else passthrough."""
@@ -322,30 +358,30 @@ class BroadcastMonthImportService(BaseService):
         try:
             # Step 1: Extract months from Excel (with progress)
             with suppress_verbose_logging():
-                tqdm.write(f"🔍 Analyzing Excel file: {Path(excel_file).name}")
+                tqdm.write(f"Analyzing Excel file: {Path(excel_file).name}")
                 display_months = list(extract_display_months_from_excel(excel_file))
             
             if not display_months:
                 raise BroadcastMonthImportError("No broadcast months found in Excel file")
             
-            tqdm.write(f"📅 Found {len(display_months)} months: {', '.join(sorted(display_months))}")
+            tqdm.write(f"Found {len(display_months)} months: {', '.join(sorted(display_months))}")
             
             # Step 2: Check which months are closed
             closed_months = self.closure_service.get_closed_months(display_months)
             open_months = [month for month in display_months if month not in closed_months]
             
             if closed_months:
-                tqdm.write(f"🔒 Closed months: {len(closed_months)} ({', '.join(sorted(closed_months))})")
+                tqdm.write(f"Closed months: {len(closed_months)} ({', '.join(sorted(closed_months))})")
             if open_months:
-                tqdm.write(f"📂 Open months: {len(open_months)} ({', '.join(sorted(open_months))})")
+                tqdm.write(f"Open months: {len(open_months)} ({', '.join(sorted(open_months))})")
             
             # Step 3: Handle different import modes
             if import_mode == 'WEEKLY_UPDATE':
                 if closed_months:
-                    tqdm.write(f"✅ WEEKLY_UPDATE: Auto-skipping {len(closed_months)} closed months")
+                    tqdm.write(f"WEEKLY_UPDATE: Auto-skipping {len(closed_months)} closed months")
                 
                 if not open_months:
-                    tqdm.write("✅ No open months to import - all months are closed")
+                    tqdm.write("No open months to import - all months are closed")
                     result.success = True
                     return result
                 
@@ -363,14 +399,14 @@ class BroadcastMonthImportService(BaseService):
                 if closed_months:
                     validation_error = f"Manual import contains closed months: {closed_months}. Use --force to override or filter the Excel file."
                     result.error_messages.append(validation_error)
-                    tqdm.write(f"❌ {validation_error}")
+                    tqdm.write(f"{validation_error}")
                     return result
                 result.broadcast_months_affected = display_months
             
-            tqdm.write(f"🎯 Processing {len(result.broadcast_months_affected)} months: {', '.join(result.broadcast_months_affected)}")
+            tqdm.write(f"Processing {len(result.broadcast_months_affected)} months: {', '.join(result.broadcast_months_affected)}")
             
             if dry_run:
-                tqdm.write("🔍 DRY RUN - No changes will be made")
+                tqdm.write("DRY RUN - No changes will be made")
                 result.success = True
                 return result
             
@@ -393,22 +429,22 @@ class BroadcastMonthImportService(BaseService):
                     # Clean summary instead of verbose logging
                     if import_mode == 'WEEKLY_UPDATE' and closed_months:
                         net_change = imported_count - deleted_count
-                        tqdm.write(f"📊 Import complete: {imported_count:,} imported, {deleted_count:,} deleted (net: {net_change:+,})")
+                        tqdm.write(f"Import complete: {imported_count:,} imported, {deleted_count:,} deleted (net: {net_change:+,})")
                     
                     # Step 6: Handle HISTORICAL mode - close all months (atomic, same transaction)
                     if import_mode == 'HISTORICAL':
-                        with tqdm(total=len(result.broadcast_months_affected), desc="🔒 Closing months", unit=" months") as pbar:
+                        with tqdm(total=len(result.broadcast_months_affected), desc="Closing months", unit=" months") as pbar:
                             for month in result.broadcast_months_affected:
                                 try:
                                     # NOTE: use the "with_connection" variant to reuse this txn/conn
                                     self.closure_service.close_broadcast_month_with_connection(month, closed_by, conn)
                                     result.closed_months.append(month)
                                     pbar.update(1)
-                                    pbar.set_description(f"🔒 Closed {month}")
+                                    pbar.set_description(f"Closed {month}")
                                 except MonthClosureError as e:
-                                    tqdm.write(f"⚠️ Failed to close month {month}: {e}")
+                                    tqdm.write(f"Failed to close month {month}: {e}")
                                     pbar.update(1)
-                        tqdm.write(f"✅ Closed {len(result.closed_months)} months")
+                        tqdm.write(f"Closed {len(result.closed_months)} months")
 
                     # Step 7: Complete the batch record
                     self._complete_import_batch(batch_id, result, conn)
@@ -416,18 +452,18 @@ class BroadcastMonthImportService(BaseService):
                     # If we get here, the transaction was successful
                     result.success = True
                     duration = (datetime.now() - start_time).total_seconds()
-                    tqdm.write(f"✅ Import completed successfully in {duration:.1f} seconds")
+                    tqdm.write(f"Import completed successfully in {duration:.1f} seconds")
                     
             except Exception as transaction_error:
                 error_msg = f"Transaction failed: {str(transaction_error)}"
-                tqdm.write(f"❌ {error_msg}")
+                tqdm.write(f"{error_msg}")
                 result.error_messages.append(error_msg)
                 self._fail_import_batch(batch_id, error_msg)
                 raise BroadcastMonthImportError(error_msg)
                 
         except Exception as e:
             error_msg = f"Import failed: {str(e)}"
-            tqdm.write(f"❌ {error_msg}")
+            tqdm.write(f"{error_msg}")
             result.error_messages.append(error_msg)
             if 'batch_id' in locals():
                 self._fail_import_batch(batch_id, error_msg)
@@ -452,7 +488,7 @@ class BroadcastMonthImportService(BaseService):
                 
         except Exception as e:
             error_msg = f"Failed to create import batch: {str(e)}"
-            tqdm.write(f"❌ {error_msg}")
+            tqdm.write(f"{error_msg}")
             raise BroadcastMonthImportError(error_msg)
     
     def _delete_broadcast_month_data_with_progress(self, months: List[str], conn) -> int:
@@ -471,12 +507,12 @@ class BroadcastMonthImportService(BaseService):
             total_deleted += count
         
         if total_deleted == 0:
-            tqdm.write("📭 No existing records to delete")
+            tqdm.write("No existing records to delete")
             return 0
         
         # Delete with progress tracking
         deleted_so_far = 0
-        with tqdm(total=total_deleted, desc="🗑️  Deleting existing records", unit=" records") as pbar:
+        with tqdm(total=total_deleted, desc="Deleting existing records", unit=" records") as pbar:
             for month in months:
                 count = month_counts[month]
                 if count > 0:
@@ -484,14 +520,15 @@ class BroadcastMonthImportService(BaseService):
                     actual_deleted = cursor.rowcount
                     deleted_so_far += actual_deleted
                     pbar.update(actual_deleted)
-                    pbar.set_description(f"🗑️  Deleted {deleted_so_far:,}/{total_deleted:,}")
+                    pbar.set_description(f"Deleted {deleted_so_far:,}/{total_deleted:,}")
         
-        tqdm.write(f"✅ Deleted {total_deleted:,} existing records")
+        tqdm.write(f"Deleted {total_deleted:,} existing records")
         return total_deleted
     
     def _import_excel_data_with_progress(self, excel_file: str, batch_id: str, conn, allowed_months: List[str]) -> int:
         """
         Import Excel data using fixed column positions with comprehensive progress tracking.
+        ENHANCED: Now supports sheet source tracking using source_file field.
         """
         from openpyxl import load_workbook
         from datetime import datetime
@@ -501,6 +538,9 @@ class BroadcastMonthImportService(BaseService):
         cursor = conn.execute("SELECT COUNT(*) FROM import_batches WHERE batch_id = ?", (batch_id,))
         if cursor.fetchone()[0] == 0:
             raise BroadcastMonthImportError(f"batch_id {batch_id} not found in import_batches table")
+
+        # Extract filename for source tracking
+        filename = SourceFileFormatter.extract_filename_from_path(excel_file)
 
         try:
             with suppress_verbose_logging(), suppress_stdout_stderr():
@@ -513,8 +553,9 @@ class BroadcastMonthImportService(BaseService):
             filtered_count = 0
             unmatched_customers = set()
             unmatched_agencies = set()
+            sheet_source_stats = {}  # Track sheet source statistics
 
-            with tqdm(total=total_records, desc="📦 Processing Excel rows", unit=" rows") as pbar:
+            with tqdm(total=total_records, desc="Processing Excel rows", unit=" rows") as pbar:
                 for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
                     pbar.update(1)
 
@@ -562,11 +603,22 @@ class BroadcastMonthImportService(BaseService):
                             'broadcast_month': broadcast_month_display,
                         }
                         
+                        # NEW: Handle sheet source tracking
+                        sheet_source = None
+                        
                         for col_idx, field_name in EXCEL_COLUMN_POSITIONS.items():
                             if field_name and col_idx < len(row):
                                 val = row[col_idx]
                                 if val is None or val == '':
                                     continue
+
+                                # NEW: Capture sheet_source but don't store in database
+                                if field_name == 'sheet_source':
+                                    sheet_source = str(val).strip() if val else None
+                                    # Track statistics for logging
+                                    if sheet_source:
+                                        sheet_source_stats[sheet_source] = sheet_source_stats.get(sheet_source, 0) + 1
+                                    continue  # Don't store this column in database
 
                                 if field_name == 'bill_code':
                                     spot_data[field_name] = str(val).strip()
@@ -598,6 +650,8 @@ class BroadcastMonthImportService(BaseService):
                                 elif field_name != 'broadcast_month':  # already handled above
                                     spot_data[field_name] = str(val).strip()
 
+                        # NEW: Set source_file with sheet tracking
+                        spot_data['source_file'] = SourceFileFormatter.format_source_file(filename, sheet_source)
 
                         if 'market_name' in spot_data:
                             market_id = self._lookup_market_id(spot_data['market_name'], conn)
@@ -635,24 +689,31 @@ class BroadcastMonthImportService(BaseService):
                             imported_count += 1
 
                         if imported_count % 1000 == 0:
-                            pbar.set_description(f"📦 Imported {imported_count:,} records")
+                            pbar.set_description(f"Imported {imported_count:,} records")
 
                     except Exception as row_error:
                         skipped_count += 1
                         if skipped_count <= 5:
-                            tqdm.write(f"⚠️ Row {row_num} error: {str(row_error)[:100]}...")
+                            tqdm.write(f"Row {row_num} error: {str(row_error)[:100]}...")
                         continue
 
             workbook.close()
-            tqdm.write(f"✅ Import complete: {imported_count:,} records imported")
+            
+            # Enhanced completion logging with sheet source breakdown
+            tqdm.write(f"Import complete: {imported_count:,} records imported")
+            if sheet_source_stats:
+                tqdm.write(f"Sheet breakdown:")
+                for sheet, count in sorted(sheet_source_stats.items()):
+                    tqdm.write(f"   {sheet}: {count:,} records")
+            
             if skipped_count:
-                tqdm.write(f"⏭️ Skipped: {skipped_count:,} records (errors)")
+                tqdm.write(f"Skipped: {skipped_count:,} records (errors)")
             if filtered_count:
-                tqdm.write(f"🚫 Filtered: {filtered_count:,} records (closed months)")
+                tqdm.write(f"Filtered: {filtered_count:,} records (closed months)")
             if unmatched_customers:
-                tqdm.write(f"⚠️ Unmatched customers: {len(unmatched_customers)}")
+                tqdm.write(f"Unmatched customers: {len(unmatched_customers)}")
             if unmatched_agencies:
-                tqdm.write(f"⚠️ Unmatched agencies: {len(unmatched_agencies)}")
+                tqdm.write(f"Unmatched agencies: {len(unmatched_agencies)}")
 
             return imported_count
 
@@ -739,7 +800,7 @@ class BroadcastMonthImportService(BaseService):
             """, (result.records_imported, result.records_deleted, batch_id))
             
         except Exception as e:
-            tqdm.write(f"⚠️ Failed to update batch completion: {e}")
+            tqdm.write(f"Failed to update batch completion: {e}")
     
     def _fail_import_batch(self, batch_id: str, error_message: str):
         """Mark import batch as failed."""
@@ -813,7 +874,7 @@ class BroadcastMonthImportService(BaseService):
                 cleaned_count = cursor.rowcount
                 
                 if cleaned_count > 0:
-                    tqdm.write(f"🧹 Cleaned up {cleaned_count} failed import batches")
+                    tqdm.write(f"Cleaned up {cleaned_count} failed import batches")
                 
                 return cleaned_count
                 
@@ -861,7 +922,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
     
     if not Path(args.db_path).exists():
-        print(f"❌ Database not found: {args.db_path}")
+        print(f"Database not found: {args.db_path}")
         sys.exit(1)
     
     # Create service
@@ -885,11 +946,11 @@ if __name__ == "__main__":
         elif args.validate_only:
             validation = service.validate_import(args.excel_file, args.mode)
             if validation.is_valid:
-                print(f"✅ Validation passed for {args.mode} mode")
+                print(f"Validation passed for {args.mode} mode")
                 if validation.closed_months_found:
-                    print(f"⚠️  Includes closed months: {validation.closed_months_found}")
+                    print(f"Includes closed months: {validation.closed_months_found}")
             else:
-                print(f"❌ Validation failed: {validation.error_message}")
+                print(f"Validation failed: {validation.error_message}")
                 print(f"Solution: {validation.suggested_action}")
         
         else:
@@ -901,8 +962,8 @@ if __name__ == "__main__":
                 args.dry_run
             )
             
-            print(f"\n📊 Import Results:")
-            print(f"  Status: {'✅ Success' if result.success else '❌ Failed'}")
+            print(f"\nImport Results:")
+            print(f"  Status: {'Success' if result.success else 'Failed'}")
             print(f"  Batch ID: {result.batch_id}")
             print(f"  Mode: {result.import_mode}")
             print(f"  Duration: {result.duration_seconds:.1f} seconds")
