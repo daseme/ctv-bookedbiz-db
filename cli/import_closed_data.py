@@ -2,55 +2,56 @@
 """
 Production Sales Data Import Tool
 
-The primary import solution for closed sales data, handling both historical setup and 
-ongoing monthly operations with automatic market configuration, progress tracking, 
-and language assignment processing.
+Imports sales data from Excel files into SQLite database with automatic market setup 
+and month closure protection. Supports both historical imports (replaces all data) 
+and weekly updates (skips closed months).
 
 CORE FUNCTIONALITY:
-• Imports closed sales data from Excel files (1K-400K+ records)
-• Auto-creates missing markets and schedule assignments as needed
-• Processes language assignments using business rules
-• Closes imported months permanently (closed month protection)
-• Provides real-time progress bars for all operations
+- Imports Excel data using fixed column positions (29 columns expected)
+- Two import modes: HISTORICAL (processes all months) or WEEKLY_UPDATE (skips closed months)  
+- Auto-creates missing markets and schedule assignments from Excel data
+- Uses language data directly from Excel Language column
+- Closes imported months permanently to prevent future modifications
+- Progress tracking with tqdm progress bars
 
-TYPICAL USE CASES:
-• Monthly closed month imports (primary ongoing workflow)
-• Initial database setup with historical annual data
-• Quarterly or periodic bulk data imports
-• Any closed data requiring permanent month protection
+COMMAND LINE OPTIONS:
+- excel_file         - Path to Excel file (required)
+- --year            - Expected year for validation (required)
+- --closed-by       - Name/ID of person performing import (required)
+- --skip-closed     - Skip closed months (WEEKLY_UPDATE mode), default processes all (HISTORICAL mode)
+- --auto-setup      - Auto-create missing markets and schedule assignments
+- --dry-run         - Preview changes without executing import
+- --force           - Skip confirmation prompts
+- --verbose         - Enable detailed logging
+- --db-path         - Database path (default: data/database/production.db)
 
-KEY FEATURES:
-• Memory-efficient streaming import handles 400K+ records
-• Intelligent market detection and automatic database setup
-• Integrated language assignment workflow (categorization → processing)
-• Transaction safety with automatic rollback on failure
-• Comprehensive audit trail with batch tracking
-
-WORKFLOW:
-1. Analyzes Excel file structure and market requirements
-2. Creates missing markets and schedule assignments (if needed)
-3. Imports closed sales data with automatic month closure protection
-4. Categorizes spots for language assignment processing
-5. Applies business rules and flags spots requiring manual review
+IMPORT MODES:
+- HISTORICAL: Processes all months, replaces existing data, closes open months
+- WEEKLY_UPDATE: Only processes open months, skips closed months, leaves months open
 
 USAGE EXAMPLES:
-    # Monthly closed month import (typical workflow)
-    python bulk_import_closed_data.py data/monthly/May-2025.xlsx --year 2025 --closed-by "Kurt"
-    
-    # Historical annual import (initial setup)
-    python bulk_import_closed_data.py data/historical/2024-complete.xlsx --year 2024 --closed-by "Kurt" --auto-setup
-    
-    # Preview before importing
-    python bulk_import_closed_data.py data/March-2025.xlsx --year 2025 --closed-by "Kurt" --dry-run
+# Historical import (processes all months, closes them)
+python import_closed_data.py data/2025-complete.xlsx --year 2025 --closed-by "Kurt"
 
-CAUTION:
-This tool permanently closes imported months and cannot be undone. Always use --dry-run
-first to preview changes. Once months are closed, they become read-only and protected 
-from modification. Use for closed months only - never for open/current month data.
+# Weekly update (skips closed months)  
+python import_closed_data.py data/current.xlsx --year 2025 --closed-by "Kurt" --skip-closed
 
-Dependencies: openpyxl, tqdm, psutil, database services
+# Initial setup with market creation
+python import_closed_data.py data/2024-annual.xlsx --year 2024 --closed-by "Kurt" --auto-setup
 
-Dependencies: openpyxl, tqdm, psutil, database services
+# Preview without changes
+python import_closed_data.py data/march.xlsx --year 2025 --closed-by "Kurt" --dry-run
+
+# Unattended execution
+python import_closed_data.py data/data.xlsx --year 2025 --closed-by "System" --force
+
+EXCEL FILE REQUIREMENTS:
+- 29 columns in fixed positions (see EXCEL_COLUMN_POSITIONS in broadcast_month_import_service.py)
+- Header row required
+- Market, air date, and broadcast month columns required
+- Language column used directly (column 9)
+
+DEPENDENCIES: openpyxl, tqdm, psutil, sqlite3
 """
 
 import sys
@@ -71,10 +72,10 @@ sys.path.insert(0, str(Path(__file__).parent))  # Add cli dir
 sys.path.insert(0, str(Path(__file__).parent.parent))  # Add root dir  
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))  # Add src dir
 
-from services.broadcast_month_import_service import BroadcastMonthImportService
-from services.import_integration_utilities import get_excel_import_summary
-from utils.broadcast_month_utils import BroadcastMonthParser
-from database.connection import DatabaseConnection
+from src.services.broadcast_month_import_service import BroadcastMonthImportService
+from src.services.import_integration_utilities import get_excel_import_summary
+from src.utils.broadcast_month_utils import BroadcastMonthParser
+from src.database.connection import DatabaseConnection
 
 
 class EnhancedMarketSetupManager:
@@ -117,12 +118,12 @@ class EnhancedMarketSetupManager:
             print(f"📍 Found Market column at index {market_col_index}")
             print(f"📍 Found Air Date column at index {air_date_col_index}")
             
-            # ENHANCED: Get total row count for tqdm
+            # Get total row count for tqdm
             total_rows = worksheet.max_row - 1  # Subtract header row
             
             markets_data = {}
             
-            # ENHANCED: Use tqdm for progress tracking
+            # Use tqdm for progress tracking
             with tqdm(total=total_rows, desc="📊 Scanning Excel rows", unit=" rows") as pbar:
                 for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
                     pbar.update(1)
@@ -171,7 +172,7 @@ class EnhancedMarketSetupManager:
             print(f"   📊 {total_rows:,} total spots analyzed")
             print(f"   🎯 {len(markets_data)} unique markets found")
             
-            # Display market summary with tqdm
+            # Display market summary
             print(f"\n📋 Market Summary:")
             for market_code, data in tqdm(sorted(markets_data.items()), desc="📋 Displaying markets", leave=False):
                 print(f"   📋 {market_code}: {data['spot_count']:,} spots ({data['earliest_date']} to {data['latest_date']})")
@@ -193,7 +194,7 @@ class EnhancedMarketSetupManager:
         print(f"🏗️  Creating {len(missing_markets)} missing markets...")
         
         with self.db.transaction() as conn:
-            # ENHANCED: Use tqdm for market creation
+            # Use tqdm for market creation
             for market_code in tqdm(sorted(missing_markets), desc="🏗️  Creating markets", unit=" markets"):
                 market_name = self._generate_market_name(market_code)
                 
@@ -228,7 +229,7 @@ class EnhancedMarketSetupManager:
             return 0
         
         with self.db.transaction() as conn:
-            # ENHANCED: Use tqdm for schedule assignments
+            # Use tqdm for schedule assignments
             for market_code, market_data in tqdm(markets_needing_assignments, desc="🗓️  Creating assignments", unit=" assignments"):
                 market_id = market_mapping[market_code]
                 earliest_date = market_data['earliest_date']
@@ -245,7 +246,37 @@ class EnhancedMarketSetupManager:
         print(f"✅ Schedule assignment setup complete: {assignments_created} assignments created")
         return assignments_created
     
-    # Keep existing helper methods...
+    def execute_market_setup(self, excel_file: str) -> Dict:
+        """Execute complete market setup process with enhanced progress tracking."""
+        print(f"🚀 Starting automatic market setup...")
+        start_time = datetime.now()
+        
+        # Step 1: Scan Excel for markets
+        excel_markets = self.scan_excel_for_markets(excel_file)
+        
+        # Step 2: Create missing markets
+        market_mapping = self.create_missing_markets(excel_markets)
+        
+        # Step 3: Setup schedule assignments
+        assignments_created = self.setup_schedule_assignments(excel_markets, market_mapping)
+        
+        # Step 4: Update existing schedule dates if needed (placeholder)
+        dates_updated = 0  # Not implemented yet
+        
+        duration = (datetime.now() - start_time).total_seconds()
+        
+        summary = {
+            'markets_found': len(excel_markets),
+            'markets_created': len([m for m in excel_markets.keys() if m not in self.get_existing_markets()]),
+            'assignments_created': assignments_created,
+            'dates_updated': dates_updated,
+            'duration_seconds': duration,
+            'excel_markets': excel_markets
+        }
+        
+        print(f"✅ Market setup complete in {duration:.2f} seconds!")
+        return summary
+    
     def get_existing_markets(self) -> Dict[str, int]:
         """Get existing markets from database."""
         with self.db.transaction() as conn:
@@ -271,8 +302,8 @@ class EnhancedMarketSetupManager:
         return name_mappings.get(market_code, market_code.upper().replace('_', ' '))
 
 
-class EnhancedHistoricalImporter:
-    """Enhanced historical importer with tqdm progress bars and language assignment integration."""
+class SimpleHistoricalImporter:
+    """Simple historical importer - no complex language processing needed."""
     
     def __init__(self, db_connection: DatabaseConnection):
         self.db = db_connection
@@ -280,17 +311,18 @@ class EnhancedHistoricalImporter:
         self.import_service = BroadcastMonthImportService(db_connection)
         self.process = psutil.Process(os.getpid())
     
-    def execute_enhanced_import(self, 
-                              excel_file: str,
-                              expected_year: int,
-                              closed_by: str,
-                              auto_setup_markets: bool = True,
-                              dry_run: bool = False) -> Dict:
+    def execute_simple_import(self, 
+                            excel_file: str,
+                            expected_year: int,
+                            closed_by: str,
+                            auto_setup_markets: bool = True,
+                            dry_run: bool = False,
+                            skip_closed_months: bool = False) -> Dict:
         """
-        Execute enhanced historical import with tqdm progress bars and language assignment.
+        Execute simple historical import - language comes directly from Excel.
         """
         start_time = datetime.now()
-        batch_id = f"enhanced_historical_{int(start_time.timestamp())}"
+        batch_id = f"simple_historical_{int(start_time.timestamp())}"
         
         print(f"Production Sales Data Import Starting...")
         print(f"Excel file: {excel_file}")
@@ -306,7 +338,6 @@ class EnhancedHistoricalImporter:
             'batch_id': batch_id,
             'market_setup': None,
             'import_result': None,
-            'language_assignment': None,  # NEW
             'duration_seconds': 0,
             'error_messages': []
         }
@@ -325,8 +356,9 @@ class EnhancedHistoricalImporter:
                 print(f"   📅 Schedule dates updated: {market_setup_result['dates_updated']}")
                 print()
             
-            # Step 2: Historical data import
+            # Step 2: Historical data import (includes language from Excel)
             print(f"📦 STEP 2: Historical Data Import")
+            print(f"   🔤 Language data will be read directly from Excel Language column")
             
             if dry_run:
                 print(f"🔍 DRY RUN - No changes would be made")
@@ -338,19 +370,15 @@ class EnhancedHistoricalImporter:
                 }
             else:
                 # Execute actual import with progress tracking
+                # The BroadcastMonthImportService already handles language_code from Excel
+                import_mode = 'WEEKLY_UPDATE' if skip_closed_months else 'HISTORICAL'
                 import_result = self.import_service.execute_month_replacement(
                     excel_file,
-                    'HISTORICAL',
+                    import_mode,  # Use the variable
                     closed_by,
                     dry_run=False
                 )
                 results['import_result'] = import_result
-                
-                # NEW: Step 3: Language Assignment Processing
-                if import_result.success:
-                    print(f"\n🎯 STEP 3: Language Assignment Processing")
-                    language_result = self._process_language_assignments(batch_id)
-                    results['language_assignment'] = language_result
             
             results['success'] = True
             
@@ -363,104 +391,10 @@ class EnhancedHistoricalImporter:
         results['duration_seconds'] = (datetime.now() - start_time).total_seconds()
         
         return results
-    
-    def _process_language_assignments(self, batch_id: str) -> Dict:
-        """
-        NEW: Process language assignments after import with tqdm progress bars.
-        """
-        language_result = {
-            'success': False,
-            'categorized': 0,
-            'processed': 0,
-            'flagged_for_review': 0,
-            'error_messages': []
-        }
-        
-        try:
-            # Import language assignment services
-            from src.services.spot_categorization_service import SpotCategorizationService
-            from src.services.language_processing_orchestrator import LanguageProcessingOrchestrator
-            
-            conn = sqlite3.connect(self.db.db_path)
-            
-            # Step 3a: Categorization with progress
-            print("🏷️  Categorizing spots for language assignment...")
-            categorization_service = SpotCategorizationService(conn)
-            
-            # Get uncategorized spots for progress tracking
-            uncategorized_spots = categorization_service.get_uncategorized_spots()
-            
-            if uncategorized_spots:
-                with tqdm(total=len(uncategorized_spots), desc="🏷️  Categorizing spots", unit=" spots") as pbar:
-                    # Categorize in batches for better progress reporting
-                    batch_size = 1000
-                    for i in range(0, len(uncategorized_spots), batch_size):
-                        batch = uncategorized_spots[i:i + batch_size]
-                        categorization_service.categorize_spots_batch(batch)
-                        pbar.update(len(batch))
-                        pbar.set_description(f"🏷️  Categorized {min(i + batch_size, len(uncategorized_spots)):,}/{len(uncategorized_spots):,}")
-                
-                language_result['categorized'] = len(uncategorized_spots)
-            
-            # Step 3b: Process all categories with progress
-            print("🎯 Processing language assignments...")
-            orchestrator = LanguageProcessingOrchestrator(conn)
-            
-            # Get processing status for progress tracking
-            processing_results = orchestrator.process_all_categories()
-            
-            language_result['processed'] = processing_results['summary']['total_processed']
-            language_result['flagged_for_review'] = processing_results['summary']['flagged_for_review']
-            language_result['success'] = True
-            
-            print(f"✅ Language assignment complete:")
-            print(f"   📊 Spots categorized: {language_result['categorized']:,}")
-            print(f"   🔤 Spots processed: {language_result['processed']:,}")
-            print(f"   📋 Flagged for review: {language_result['flagged_for_review']:,}")
-            
-            conn.close()
-            
-        except Exception as e:
-            error_msg = f"Language assignment processing failed: {str(e)}"
-            language_result['error_messages'].append(error_msg)
-            print(f"⚠️  {error_msg}")
-        
-        return language_result
-    
-    def execute_market_setup(self, excel_file: str) -> Dict:
-        """Execute complete market setup process with enhanced progress tracking."""
-        print(f"🚀 Starting automatic market setup...")
-        start_time = datetime.now()
-        
-        # Step 1: Scan Excel for markets (now with tqdm)
-        excel_markets = self.market_manager.scan_excel_for_markets(excel_file)
-        
-        # Step 2: Create missing markets (now with tqdm)
-        market_mapping = self.market_manager.create_missing_markets(excel_markets)
-        
-        # Step 3: Setup schedule assignments (now with tqdm)
-        assignments_created = self.market_manager.setup_schedule_assignments(excel_markets, market_mapping)
-        
-        # Step 4: Update existing schedule dates if needed
-        dates_updated = self.market_manager.update_existing_schedule_dates(excel_markets, market_mapping)
-        
-        duration = (datetime.now() - start_time).total_seconds()
-        
-        summary = {
-            'markets_found': len(excel_markets),
-            'markets_created': len([m for m in excel_markets.keys() if m not in self.market_manager.get_existing_markets()]),
-            'assignments_created': assignments_created,
-            'dates_updated': dates_updated,
-            'duration_seconds': duration,
-            'excel_markets': excel_markets
-        }
-        
-        print(f"✅ Market setup complete in {duration:.2f} seconds!")
-        return summary
 
 
-def display_production_preview(excel_file: str, expected_year: int, db_path: str, auto_setup: bool):
-    """Display comprehensive preview with progress estimation."""
+def display_production_preview(excel_file: str, expected_year: int, db_path: str, auto_setup: bool, skip_closed: bool = False):
+    """Display comprehensive preview."""
     print(f"Production Import Preview")
     print(f"=" * 70)
     print(f"Excel file: {excel_file}")
@@ -475,10 +409,10 @@ def display_production_preview(excel_file: str, expected_year: int, db_path: str
         print("🔍 Analyzing Excel file for preview...")
         
         if auto_setup:
-            # Market setup preview with progress
+            # Market setup preview
             market_manager = EnhancedMarketSetupManager(db_connection)
             
-            # Quick scan for preview (without full tqdm)
+            # Quick scan for preview
             from openpyxl import load_workbook
             workbook = load_workbook(excel_file, read_only=True, data_only=True)
             
@@ -510,13 +444,17 @@ def display_production_preview(excel_file: str, expected_year: int, db_path: str
         print(f"   📊 Total spots to process: {summary['total_existing_spots_affected']:,}")
         print(f"   🔒 Closed months: {len(summary['closed_months'])}")
         print(f"   📂 Open months: {len(summary['open_months'])}")
+
+        if skip_closed:
+            print(f"   🎯 Mode: WEEKLY_UPDATE (will skip {len(summary['closed_months'])} closed months)")
+        else:
+            print(f"   🎯 Mode: HISTORICAL (will process all months, replace existing data)")
         
-        # NEW: Language assignment preview
         print(f"")
-        print(f"🎯 Language Assignment Preview:")
-        print(f"   📋 All imported spots will be categorized for language assignment")
-        print(f"   🔤 Business rules will be applied automatically")
-        print(f"   📋 Spots requiring manual review will be flagged")
+        print(f"🔤 Language Handling:")
+        print(f"   📋 Language data will be read directly from Excel Language column")
+        print(f"   🎯 No complex processing needed - simple and reliable")
+        print(f"   ✅ Language assignments handled automatically during import")
         
         db_connection.close()
         
@@ -525,20 +463,20 @@ def display_production_preview(excel_file: str, expected_year: int, db_path: str
 
 
 def main():
-    """Enhanced main function with language assignment integration."""
+    """Simple main function - language comes from Excel directly."""
     parser = argparse.ArgumentParser(
-        description="Production Sales Data Import Tool",
+        description="Production Sales Data Import Tool - SIMPLE VERSION",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python bulk_import_closed_data.py data/monthly/May-2025.xlsx --year 2025 --closed-by "Kurt"
-  python bulk_import_closed_data.py data/historical/2024-complete.xlsx --year 2024 --closed-by "Kurt" --auto-setup
-  python bulk_import_closed_data.py data/March-2025.xlsx --year 2025 --closed-by "Kurt" --dry-run
+  python import_closed_data.py data/monthly/May-2025.xlsx --year 2025 --closed-by "Kurt"
+  python import_closed_data.py data/historical/2024-complete.xlsx --year 2024 --closed-by "Kurt" --auto-setup
+  python import_closed_data.py data/March-2025.xlsx --year 2025 --closed-by "Kurt" --dry-run
 
 Features:
   - Real-time progress tracking
   - Automatic market detection and creation  
-  - Integrated language assignment processing
+  - Uses language column directly from Excel (simple and reliable)
   - Permanent month closure protection
   - Comprehensive audit trail
         """
@@ -547,6 +485,7 @@ Features:
     parser.add_argument("excel_file", help="Path to Excel file to import")
     parser.add_argument("--year", type=int, required=True, help="Expected year for validation")
     parser.add_argument("--closed-by", required=True, help="Name/ID of person performing the import")
+    parser.add_argument("--skip-closed", action="store_true", help="Skip already closed months (use WEEKLY_UPDATE mode instead of HISTORICAL)")
     parser.add_argument("--auto-setup", action="store_true", help="Automatically create missing markets and schedule assignments")
     parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
     parser.add_argument("--dry-run", action="store_true", help="Preview import without making changes")
@@ -555,19 +494,28 @@ Features:
     
     args = parser.parse_args()
     
-    # Validation and execution logic (same as before but with enhanced progress reporting)...
+    # Validation
+    excel_path = Path(args.excel_file)
+    if not excel_path.exists():
+        print(f"❌ Excel file not found: {args.excel_file}")
+        sys.exit(1)
+    
+    db_path = Path(args.db_path)
+    if not db_path.exists():
+        print(f"❌ Database not found: {args.db_path}")
+        sys.exit(1)
     
     try:
         print(f"Production Sales Data Import Tool")
         print(f"=" * 60)
         
         # Display production preview
-        display_production_preview(args.excel_file, args.year, args.db_path, args.auto_setup)
+        display_production_preview(args.excel_file, args.year, args.db_path, args.auto_setup, args.skip_closed)
         
         # Get confirmation unless forced or dry run
         if not args.dry_run and not args.force:
             print(f"\n🚨 CONFIRMATION REQUIRED")
-            action_list = ["Import historical data and close months", "Process language assignments automatically"]
+            action_list = ["Import historical data and close months", "Use language data directly from Excel"]
             if args.auto_setup:
                 action_list.insert(0, "Create missing markets and schedule assignments")
             
@@ -580,20 +528,21 @@ Features:
                 print(f"❌ Import cancelled by user")
                 sys.exit(0)
         
-        # Execute enhanced import
+        # Execute simple import
         db_connection = DatabaseConnection(args.db_path)
-        importer = EnhancedHistoricalImporter(db_connection)
+        importer = SimpleHistoricalImporter(db_connection)
         
         try:
-            results = importer.execute_enhanced_import(
+            results = importer.execute_simple_import(
                 args.excel_file,
                 args.year,
                 args.closed_by,
                 args.auto_setup,
-                args.dry_run
+                args.dry_run,
+                args.skip_closed  # Add this line
             )
             
-            # Display enhanced results
+            # Display results
             print(f"\n" + "=" * 70)
             print(f"PRODUCTION IMPORT {'PREVIEW' if args.dry_run else 'COMPLETED'}")
             print(f"=" * 70)
@@ -626,18 +575,6 @@ Features:
                     print(f"  Would import: {import_res.get('total_spots', 0):,} spots")
                     print(f"  Months found: {import_res.get('months_found', 0)}")
             
-            # NEW: Language assignment results
-            if results['language_assignment']:
-                lang_res = results['language_assignment']
-                print(f"\n🎯 Language Assignment Results:")
-                print(f"  Spots categorized: {lang_res['categorized']:,}")
-                print(f"  Spots processed: {lang_res['processed']:,}")
-                print(f"  Flagged for review: {lang_res['flagged_for_review']:,}")
-                print(f"  Success: {'✅' if lang_res['success'] else '❌'}")
-                
-                if lang_res['error_messages']:
-                    print(f"  Errors: {len(lang_res['error_messages'])}")
-            
             if results['error_messages']:
                 print(f"\n❌ Errors:")
                 for error in results['error_messages']:
@@ -649,9 +586,7 @@ Features:
                 print(f"Next steps:")
                 print(f"  - All closed data is imported and protected")
                 print(f"  - Markets and schedules are configured")
-                print(f"  - Language assignments have been processed")
-                print(f"  - Check for spots requiring manual review:")
-                print(f"    uv run python cli_01_language_assignment.py --review-required")
+                print(f"  - Language data imported directly from Excel")
                 print(f"  - Database is ready for reporting and analysis")
         
         finally:
