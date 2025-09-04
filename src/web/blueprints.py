@@ -24,6 +24,13 @@ from src.web.routes.language_blocks import language_blocks_bp
 from src.web.routes.pipeline_decay_api import decay_api_bp
 from src.services.container import get_container
 from src.utils.template_formatters import register_template_filters
+try:
+    from src.web.routes.customer_sector_api import customer_sector_bp
+    CUSTOMER_SECTOR_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Customer-sector routes not available: {e}")
+    CUSTOMER_SECTOR_AVAILABLE = False
+    customer_sector_bp = None
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +87,12 @@ def register_blueprints(app: Flask) -> None:
     try:
         app.register_blueprint(language_blocks_bp)
         logger.info("Registered language blocks blueprint")
+
+        if CUSTOMER_SECTOR_AVAILABLE and customer_sector_bp:
+            app.register_blueprint(customer_sector_bp)
+            logger.info("Registered customer-sector API blueprint")
+        else:
+            logger.info("Skipped customer-sector API blueprint (not available)")
 
         app.register_blueprint(reports_bp)
         logger.info("Registered reports blueprint")

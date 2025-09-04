@@ -7,22 +7,29 @@ logger = logging.getLogger(__name__)
 
 @customer_sector_bp.route('/customers', methods=['GET'])
 def get_customers():
-    """Get all customers with sector assignments"""
+    """Get customers with Internal Ad Sales revenue, excluding WorldLink agency"""
     try:
         container = get_container()
         db = container.get('database_connection')
         
         query = """
-        SELECT 
+        SELECT DISTINCT
             c.customer_id,
             c.normalized_name as name,
-            '' as email,
-            '' as phone,
             s.sector_name as sector,
-            c.updated_date as lastUpdated
+            c.updated_date as lastUpdated,
+            SUM(sp.gross_rate) as total_revenue,
+            COUNT(sp.spot_id) as spot_count
         FROM customers c
         LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        LEFT JOIN agencies a ON c.agency_id = a.agency_id
+        INNER JOIN spots sp ON c.customer_id = sp.customer_id
         WHERE c.is_active = 1
+          AND sp.revenue_type = 'Internal Ad Sales'
+          AND (a.agency_name != 'WorldLink' OR a.agency_name IS NULL)
+          AND sp.gross_rate > 0
+        GROUP BY c.customer_id, c.normalized_name, s.sector_name, c.updated_date
+        HAVING COUNT(sp.spot_id) > 0
         ORDER BY c.normalized_name
         """
         
@@ -36,13 +43,14 @@ def get_customers():
             customers.append({
                 'id': row[0],
                 'name': row[1],
-                'email': row[2] or f"contact@{row[1].lower().replace(' ', '').replace('.', '').replace(',', '')}.com",
-                'phone': row[3] or "555-0000",
-                'sector': row[4],
-                'lastUpdated': str(row[5])[:10] if row[5] else '2025-01-01'
+                'sector': row[2],
+                'lastUpdated': str(row[3])[:10] if row[3] else '2025-01-01',
+                'totalRevenue': float(row[4]) if row[4] else 0.0,
+                'spotCount': row[5] if row[5] else 0
             })
         
         conn.close()
+        logger.info(f"Fetched {len(customers)} Internal Ad Sales customers (excluding WorldLink)")
         return jsonify({'success': True, 'data': customers})
         
     except Exception as e:
@@ -270,6 +278,60 @@ def update_sector(sector_id):
         logger.error(f"Error updating sector: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@customer_sector_bp.route('/sectors/<int:sector_id>', methods=['PUT'])
+def update_sector_name(sector_id):
+    """Update sector name and group"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        group = data.get('group', '').strip()
+        
+        if not name:
+            return jsonify({'success': False, 'error': 'Sector name is required'}), 400
+        
+        container = get_container()
+        db = container.get('database_connection')
+        conn = db.connect()
+        cursor = conn.cursor()
+        
+        # Check if another sector already has this name
+        cursor.execute(
+            "SELECT sector_id FROM sectors WHERE sector_name = ? AND sector_id != ? AND is_active = 1", 
+            (name, sector_id)
+        )
+        if cursor.fetchone():
+            return jsonify({'success': False, 'error': 'A sector with this name already exists'}), 400
+        
+        # Update sector
+        cursor.execute("""
+            UPDATE sectors 
+            SET sector_name = ?, 
+                sector_group = ?, 
+                sector_code = UPPER(REPLACE(?, ' ', '_')),
+                updated_date = CURRENT_TIMESTAMP
+            WHERE sector_id = ? AND is_active = 1
+        """, (name, group, name, sector_id))
+        
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'error': 'Sector not found or inactive'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Sector updated to "{name}"',
+            'data': {
+                'id': sector_id,
+                'name': name,
+                'group': group
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating sector: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @customer_sector_bp.route('/sectors/<int:sector_id>', methods=['DELETE'])
 def delete_sector(sector_id):
     """Delete a sector (unassigns customers first)"""
@@ -301,3 +363,4 @@ def delete_sector(sector_id):
     except Exception as e:
         logger.error(f"Error deleting sector: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+

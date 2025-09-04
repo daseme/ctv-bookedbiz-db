@@ -81,6 +81,15 @@ def revenue_dashboard_customer():
         return render_template('error_500.html', 
                              message=f"Error generating customer revenue dashboard: {str(e)}"), 500
 
+@reports_bp.route('/customer-sector-manager')
+def customer_sector_manager():
+    """Customer and Sector Management Tool"""
+    try:
+        return render_template('customer_sector_manager.html')
+    except Exception as e:
+        logger.error(f"Error rendering customer sector manager: {e}")
+        return render_template('error_500.html'), 500
+
 
 @reports_bp.route('/report1')
 @log_requests  

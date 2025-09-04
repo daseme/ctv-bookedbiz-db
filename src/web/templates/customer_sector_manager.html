@@ -7,112 +7,1307 @@
     <div class="content-wrapper">
         <div class="header">
             <h1>Customer & Sector Management</h1>
-            <div class="subtitle">Interactive database management interface</div>
+            <div class="subtitle">Enhanced professional sector assignment interface</div>
         </div>
         
-        <!-- Stats Grid -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0;">
-            <div style="background: white; border: 2px solid #e5e9f0; border-radius: 12px; padding: 20px; text-align: center;">
-                <div style="font-size: 32px; font-weight: 700; color: #2e3440;" id="total-customers">0</div>
-                <div style="font-size: 14px; color: #4c566a; text-transform: uppercase;">Total Customers</div>
+        <!-- Enhanced Stats Grid -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-value" id="total-customers">-</div>
+                <div class="stat-label">Total Customers</div>
             </div>
-            <div style="background: white; border: 2px solid #e5e9f0; border-radius: 12px; padding: 20px; text-align: center;">
-                <div style="font-size: 32px; font-weight: 700; color: #2e3440;" id="assigned-customers">0</div>
-                <div style="font-size: 14px; color: #4c566a; text-transform: uppercase;">Assigned</div>
+            <div class="stat-item assigned">
+                <div class="stat-value" id="assigned-customers">-</div>
+                <div class="stat-label">Assigned</div>
             </div>
-            <div style="background: white; border: 2px solid #e5e9f0; border-radius: 12px; padding: 20px; text-align: center;">
-                <div style="font-size: 32px; font-weight: 700; color: #2e3440;" id="unassigned-customers">0</div>
-                <div style="font-size: 14px; color: #4c566a; text-transform: uppercase;">Unassigned</div>
+            <div class="stat-item unassigned">
+                <div class="stat-value" id="unassigned-customers">-</div>
+                <div class="stat-label">Unassigned</div>
             </div>
-            <div style="background: white; border: 2px solid #e5e9f0; border-radius: 12px; padding: 20px; text-align: center;">
-                <div style="font-size: 32px; font-weight: 700; color: #2e3440;" id="total-sectors">0</div>
-                <div style="font-size: 14px; color: #4c566a; text-transform: uppercase;">Active Sectors</div>
+            <div class="stat-item">
+                <div class="stat-value" id="total-sectors">-</div>
+                <div class="stat-label">Active Sectors</div>
+            </div>
+        </div>
+
+        <!-- Enhanced Controls -->
+        <div class="enhanced-controls">
+            
+            <!-- Search Section -->
+            <div class="controls-section">
+                <div class="section-header">
+                    <span class="section-icon">🔍</span>
+                    <h3 class="section-title">Search & Quick Filters</h3>
+                </div>
+                <div class="section-content">
+                    <input type="text" id="customer-search" class="search-input" placeholder="Search customers by name...">
+                    <select id="sector-filter" class="enhanced-select">
+                        <option value="all">All Customers</option>
+                        <option value="unassigned">Unassigned Only</option>
+                        <option value="assigned">Assigned Only</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Filter & Sort Section -->
+            <div class="controls-section">
+                <div class="section-header">
+                    <span class="section-icon">⚙️</span>
+                    <h3 class="section-title">Advanced Filters & Sorting</h3>
+                </div>
+                <div class="section-content">
+                    <div class="filter-controls">
+                        <div class="filter-group">
+                            <label class="filter-label">
+                                <span class="filter-label-icon">🏷️</span>
+                                Filter by Specific Sector
+                            </label>
+                            <select id="sector-specific-filter" class="enhanced-select">
+                                <option value="">All Sectors</option>
+                            </select>
+                        </div>
+                        
+                        <div class="filter-group">
+                            <label class="filter-label">
+                                <span class="filter-label-icon">📊</span>
+                                Sort Order
+                            </label>
+                            <select id="sort-option" class="enhanced-select">
+                                <option value="name">Customer Name A-Z</option>
+                                <option value="name_desc">Customer Name Z-A</option>
+                                <option value="status">Assignment Status</option>
+                                <option value="revenue_desc">Revenue (High to Low)</option>
+                                <option value="revenue_asc">Revenue (Low to High)</option>
+                                <option value="updated_desc">Recently Updated</option>
+                                <option value="sector">Sector Name A-Z</option>
+                            </select>
+                        </div>
+                        
+                        <div class="filter-group">
+                            <label class="filter-label">
+                                <span class="filter-label-icon">💰</span>
+                                Revenue Range
+                            </label>
+                            <select class="enhanced-select" id="revenue-filter">
+                                <option value="">All Revenue Levels</option>
+                                <option value="high">$100K+ (High Value)</option>
+                                <option value="medium">$25K - $100K (Medium)</option>
+                                <option value="low">Under $25K (Low Value)</option>
+                                <option value="zero">$0 (No Revenue)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Section -->
+            <div class="controls-section">
+                <div class="section-header">
+                    <span class="section-icon">⚡</span>
+                    <h3 class="section-title">Bulk Actions & Management</h3>
+                </div>
+                <div class="section-content">
+                    <div class="bulk-operations" style="display: none;" id="bulk-operations">
+                        <span class="bulk-info" id="bulk-info">
+                            📋 0 customers selected
+                        </span>
+                        <select id="bulk-sector-select" class="bulk-select">
+                            <option value="">Assign selected to...</option>
+                        </select>
+                        <button id="apply-bulk" class="action-btn success">Apply</button>
+                        <button id="cancel-bulk" class="action-btn secondary">Cancel</button>
+                    </div>
+                    
+                    <div class="action-buttons">
+                        <button class="action-btn secondary" onclick="clearFilters()">
+                            <span>🔄</span>
+                            Clear Filters
+                        </button>
+                        <button class="action-btn secondary" onclick="exportData()">
+                            <span>📤</span>
+                            Export Data
+                        </button>
+                        <button id="add-sector-btn" class="action-btn primary">
+                            <span>➕</span>
+                            Add New Sector
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Customer Table -->
-        <div style="background: white; border: 2px solid #e5e9f0; border-radius: 12px; overflow: hidden;" id="table-container">
-            <div style="text-align: center; padding: 40px; color: #4c566a;">
-                Loading customer data...
+        <div class="table-container" id="table-container">
+            <div class="loading-state">
+                <div class="loading-spinner"></div>
+                <div>Loading customer data...</div>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination-container" id="pagination-container" style="display: none;">
+            <div class="pagination-info" id="pagination-info"></div>
+            <div class="pagination-controls">
+                <button id="prev-page" class="page-btn">← Previous</button>
+                <span id="page-numbers"></span>
+                <button id="next-page" class="page-btn">Next →</button>
+            </div>
+        </div>
+
+        <!-- Add Sector Modal -->
+        <div class="modal-overlay" id="add-sector-modal" style="display: none;">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>Add New Sector</h3>
+                    <button class="modal-close" onclick="closeAddSectorModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="new-sector-name">Sector Name</label>
+                        <input type="text" id="new-sector-name" class="form-input" placeholder="e.g., Healthcare Technology">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-sector-group">Sector Group (Optional)</label>
+                        <input type="text" id="new-sector-group" class="form-input" placeholder="e.g., Technology">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="action-btn secondary" onclick="closeAddSectorModal()">Cancel</button>
+                    <button class="action-btn primary" onclick="addNewSector()">Add Sector</button>
+                </div>
             </div>
         </div>
 
         <!-- Notification Area -->
-        <div id="notification" style="display: none; position: fixed; top: 20px; right: 20px; padding: 15px 20px; border-radius: 8px; font-weight: 600; z-index: 1000;"></div>
+        <div id="notification" class="notification"></div>
     </div>
 </div>
 
+<style>
+/* Nord Color Palette */
+:root {
+    --nord0: #2e3440;
+    --nord1: #3b4252;
+    --nord2: #434c5e;
+    --nord3: #4c566a;
+    --nord4: #d8dee9;
+    --nord5: #e5e9f0;
+    --nord6: #eceff4;
+    --nord7: #8fbcbb;
+    --nord8: #88c0d0;
+    --nord9: #81a1c1;
+    --nord10: #5e81ac;
+    --nord11: #bf616a;
+    --nord12: #d08770;
+    --nord13: #ebcb8b;
+    --nord14: #a3be8c;
+    --nord15: #b48ead;
+}
+
+/* Enhanced Stats Bar */
+.stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    margin: 30px 0;
+    padding: 0 32px;
+}
+
+.stat-item {
+    background: white;
+    border: 2px solid var(--nord5);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.stat-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(46, 52, 64, 0.1);
+}
+
+.stat-item.assigned {
+    border-color: var(--nord14);
+}
+
+.stat-item.assigned .stat-value {
+    color: var(--nord14);
+}
+
+.stat-item.unassigned {
+    border-color: var(--nord13);
+}
+
+.stat-item.unassigned .stat-value {
+    color: var(--nord13);
+}
+
+.stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--nord0);
+    margin-bottom: 8px;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: var(--nord3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Enhanced Controls Layout */
+.enhanced-controls {
+    padding: 32px;
+    background: var(--nord6);
+    margin: 0 -32px;
+}
+
+.controls-section {
+    background: white;
+    border: 2px solid var(--nord5);
+    border-radius: 16px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    animation: slideDown 0.3s ease-out;
+}
+
+.controls-section:last-child {
+    margin-bottom: 0;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.section-header {
+    background: var(--nord5);
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--nord4);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.section-icon {
+    font-size: 18px;
+    color: var(--nord8);
+}
+
+.section-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--nord0);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+.section-content {
+    padding: 24px;
+}
+
+/* Search Section */
+.section-content {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 300px;
+    padding: 14px 18px;
+    border: 2px solid var(--nord5);
+    border-radius: 12px;
+    font-size: 15px;
+    background: var(--nord6);
+    transition: all 0.2s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--nord8);
+    background: white;
+    box-shadow: 0 0 0 3px rgba(136, 192, 208, 0.1);
+}
+
+.search-input::placeholder {
+    color: var(--nord3);
+}
+
+/* Filter Controls Grid */
+.filter-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.filter-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--nord2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-label-icon {
+    font-size: 14px;
+    color: var(--nord8);
+}
+
+.enhanced-select {
+    padding: 14px 18px;
+    border: 2px solid var(--nord5);
+    border-radius: 12px;
+    font-size: 15px;
+    background: white;
+    color: var(--nord0);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    min-height: 48px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%234c566a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 12px center;
+    background-repeat: no-repeat;
+    background-size: 16px;
+    padding-right: 40px;
+}
+
+.enhanced-select:hover {
+    border-color: var(--nord8);
+    box-shadow: 0 2px 8px rgba(136, 192, 208, 0.1);
+}
+
+.enhanced-select:focus {
+    outline: none;
+    border-color: var(--nord8);
+    box-shadow: 0 0 0 3px rgba(136, 192, 208, 0.1);
+}
+
+/* Action Section */
+.bulk-operations {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #fff3cd, #fef5e7);
+    border: 2px solid var(--nord13);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.bulk-info {
+    font-weight: 600;
+    color: var(--nord2);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.bulk-select {
+    flex: 1;
+    min-width: 200px;
+    padding: 10px 14px;
+    border: 2px solid var(--nord5);
+    border-radius: 8px;
+    background: white;
+    font-size: 14px;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.action-btn {
+    border: none;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.action-btn.primary {
+    background: linear-gradient(135deg, var(--nord8), var(--nord9));
+    color: white;
+}
+
+.action-btn.primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(136, 192, 208, 0.3);
+}
+
+.action-btn.secondary {
+    background: var(--nord6);
+    color: var(--nord2);
+    border: 2px solid var(--nord5);
+}
+
+.action-btn.secondary:hover {
+    background: var(--nord5);
+    border-color: var(--nord8);
+    color: var(--nord0);
+}
+
+.action-btn.success {
+    background: var(--nord14);
+    color: white;
+}
+
+.action-btn.success:hover {
+    background: #8db383;
+    transform: translateY(-1px);
+}
+
+/* Table Enhancements */
+.table-container {
+    background: white;
+    border: 2px solid var(--nord5);
+    border-radius: 16px;
+    overflow: hidden;
+    margin: 32px 0;
+    box-shadow: 0 4px 12px rgba(46, 52, 64, 0.08);
+}
+
+.customer-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.customer-table thead {
+    background: var(--nord5);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.customer-table th {
+    padding: 18px 16px;
+    text-align: left;
+    font-weight: 700;
+    color: var(--nord0);
+    border-bottom: 2px solid var(--nord4);
+    white-space: nowrap;
+    font-size: 14px;
+}
+
+.customer-table td {
+    padding: 16px;
+    border-bottom: 1px solid #f8fafc;
+    vertical-align: middle;
+}
+
+.customer-row {
+    transition: all 0.15s ease;
+    cursor: pointer;
+}
+
+.customer-row:hover {
+    background: var(--nord6);
+}
+
+.customer-row.selected {
+    background: #e8f4f8;
+    border-left: 4px solid var(--nord8);
+}
+
+.customer-row.recently-changed {
+    background: #f0f9ff;
+    animation: highlight-change 2s ease-out;
+}
+
+@keyframes highlight-change {
+    0% { background: #dbeafe; }
+    100% { background: #f0f9ff; }
+}
+
+.customer-name {
+    font-weight: 600;
+    color: var(--nord0);
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px;
+}
+
+.sector-badge {
+    display: inline-block;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sector-badge.assigned {
+    background: var(--nord14);
+    color: white;
+}
+
+.sector-badge.unassigned {
+    background: var(--nord13);
+    color: var(--nord0);
+}
+
+.sector-select {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid var(--nord5);
+    border-radius: 8px;
+    background: white;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    min-width: 180px;
+}
+
+.sector-select:focus {
+    outline: none;
+    border-color: var(--nord8);
+    box-shadow: 0 0 0 3px rgba(136, 192, 208, 0.1);
+}
+
+.sector-select.loading {
+    opacity: 0.6;
+    pointer-events: none;
+    position: relative;
+}
+
+.sector-select.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--nord5);
+    border-top: 2px solid var(--nord8);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.status-dot.assigned {
+    background: var(--nord14);
+}
+
+.status-dot.unassigned {
+    background: var(--nord13);
+}
+
+.checkbox-column {
+    width: 50px;
+    text-align: center;
+}
+
+.customer-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--nord8);
+}
+
+/* Pagination Enhancements */
+.pagination-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 32px;
+    background: white;
+    border: 2px solid var(--nord5);
+    border-radius: 16px;
+    margin-top: 20px;
+}
+
+.pagination-info {
+    color: var(--nord3);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.pagination-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.page-btn {
+    padding: 10px 16px;
+    border: 2px solid var(--nord5);
+    background: white;
+    color: var(--nord0);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+    background: var(--nord6);
+    border-color: var(--nord8);
+}
+
+.page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.page-number {
+    padding: 10px 14px;
+    margin: 0 2px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    min-width: 40px;
+    text-align: center;
+}
+
+.page-number.active {
+    background: var(--nord8);
+    color: white;
+}
+
+.page-number:hover:not(.active) {
+    background: var(--nord6);
+}
+
+/* Modal Enhancements */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(46, 52, 64, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+.modal {
+    background: white;
+    border-radius: 16px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(46, 52, 64, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 28px;
+    border-bottom: 2px solid var(--nord5);
+    background: var(--nord6);
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: var(--nord0);
+    font-weight: 700;
+    font-size: 18px;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--nord3);
+    padding: 4px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+    background: var(--nord5);
+    color: var(--nord0);
+}
+
+.modal-body {
+    padding: 28px;
+}
+
+.modal-footer {
+    padding: 24px 28px;
+    border-top: 2px solid var(--nord5);
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    background: var(--nord6);
+}
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--nord0);
+    font-size: 14px;
+}
+
+.form-input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid var(--nord5);
+    border-radius: 10px;
+    font-size: 15px;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--nord8);
+    box-shadow: 0 0 0 3px rgba(136, 192, 208, 0.1);
+}
+
+/* Notification Enhancements */
+.notification {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    padding: 16px 24px;
+    border-radius: 12px;
+    font-weight: 600;
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    max-width: 400px;
+    box-shadow: 0 8px 32px rgba(46, 52, 64, 0.2);
+    backdrop-filter: blur(8px);
+}
+
+.notification.show {
+    transform: translateX(0);
+}
+
+.notification.success {
+    background: rgba(163, 190, 140, 0.95);
+    color: white;
+    border: 2px solid var(--nord14);
+}
+
+.notification.error {
+    background: rgba(191, 97, 106, 0.95);
+    color: white;
+    border: 2px solid var(--nord11);
+}
+
+/* Loading States */
+.loading-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--nord3);
+}
+
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--nord5);
+    border-top: 4px solid var(--nord8);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Loading state for selects */
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--nord5);
+    border-top: 2px solid var(--nord8);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    transform: translateY(-50%);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .enhanced-controls {
+        padding: 20px;
+        margin: 0 -20px;
+    }
+    
+    .section-content {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+    
+    .search-input {
+        min-width: auto;
+        width: 100%;
+    }
+    
+    .filter-controls {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .bulk-operations {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    
+    .action-buttons {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .stats-bar {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        padding: 0 20px;
+    }
+    
+    .customer-table {
+        font-size: 13px;
+    }
+    
+    .customer-table th,
+    .customer-table td {
+        padding: 12px 10px;
+    }
+    
+    .pagination-container {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-bar {
+        grid-template-columns: 1fr;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .action-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+
 <script>
-// Customer data (we'll load this dynamically)
-let customers = [
-    { id: 1, name: "Acme Corporation", sector: "Technology", lastUpdated: "2025-01-15" },
-    { id: 2, name: "Blue Industries Ltd", sector: "Manufacturing", lastUpdated: "2025-01-14" },
-    { id: 3, name: "Green Solutions Inc", sector: "Environmental", lastUpdated: "2025-01-13" },
-    { id: 4, name: "TechFlow Systems", sector: "Technology", lastUpdated: "2025-01-12" },
-    { id: 5, name: "HealthTech Partners", sector: null, lastUpdated: "2025-01-11" },
-    { id: 6, name: "Metro Construction Co", sector: "Construction", lastUpdated: "2025-01-10" },
-    { id: 7, name: "Sunrise Media Group", sector: null, lastUpdated: "2025-01-09" },
-    { id: 8, name: "Atlantic Financial", sector: "Financial Services", lastUpdated: "2025-01-08" }
-];
+// Global state management - Enhanced version maintains all existing functionality
+let state = {
+    customers: [],
+    sectors: [],
+    filteredCustomers: [],
+    selectedCustomers: new Set(),
+    currentPage: 1,
+    customersPerPage: 50,
+    searchQuery: '',
+    sectorFilter: 'all',
+    sectorSpecificFilter: '',
+    sortOption: 'name',
+    revenueFilter: '',
+    isLoading: false
+};
 
-const sectors = [
-    { id: 1, name: "Technology", color: "#88c0d0" },
-    { id: 2, name: "Manufacturing", color: "#d08770" },
-    { id: 3, name: "Environmental", color: "#a3be8c" },
-    { id: 4, name: "Construction", color: "#b48ead" },
-    { id: 5, name: "Financial Services", color: "#5e81ac" }
-];
+// API functions (unchanged)
+async function fetchCustomers() {
+    try {
+        const response = await fetch('/api/customer-sector/customers');
+        const result = await response.json();
+        
+        if (result.success) {
+            state.customers = result.data;
+            state.filteredCustomers = [...state.customers];
+            console.log('Loaded', state.customers.length, 'Internal Ad Sales customers (excluding WorldLink)');
+            return true;
+        } else {
+            throw new Error(result.error || 'Failed to fetch customers');
+        }
+    } catch (error) {
+        console.error('Error fetching customers:', error);
+        showNotification('Failed to load customer data: ' + error.message, 'error');
+        return false;
+    }
+}
 
-function updateStats() {
-    document.getElementById('total-customers').textContent = customers.length;
-    document.getElementById('assigned-customers').textContent = customers.filter(c => c.sector).length;
-    document.getElementById('unassigned-customers').textContent = customers.filter(c => !c.sector).length;
-    document.getElementById('total-sectors').textContent = sectors.length;
+async function fetchSectors() {
+    try {
+        const response = await fetch('/api/customer-sector/sectors');
+        const result = await response.json();
+        
+        if (result.success) {
+            state.sectors = result.data;
+            populateBulkSectorSelect();
+            populateSectorSpecificFilter();
+            console.log('Loaded', state.sectors.length, 'sectors');
+            return true;
+        } else {
+            throw new Error(result.error || 'Failed to fetch sectors');
+        }
+    } catch (error) {
+        console.error('Error fetching sectors:', error);
+        showNotification('Failed to load sector data: ' + error.message, 'error');
+        return false;
+    }
+}
+
+async function updateCustomerSector(customerId, newSector) {
+    const selectElement = document.querySelector(`#sector-select-${customerId}`);
+    if (selectElement) {
+        selectElement.classList.add('loading');
+        selectElement.disabled = true;
+    }
+    
+    try {
+        const response = await fetch(`/api/customer-sector/customers/${customerId}/sector`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ sector: newSector })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Update local state
+            const customer = state.customers.find(c => c.id === customerId);
+            if (customer) {
+                customer.sector = newSector;
+                customer.lastUpdated = new Date().toISOString().split('T')[0];
+            }
+            
+            // Refresh display
+            applyFilters();
+            updateStats();
+            populateSectorSpecificFilter();
+            
+            const sectorName = newSector || 'Unassigned';
+            showNotification(`Customer sector updated to ${sectorName}`, 'success');
+            
+            // Highlight the changed row briefly
+            const row = document.querySelector(`#customer-row-${customerId}`);
+            if (row) {
+                row.classList.add('recently-changed');
+                setTimeout(() => row.classList.remove('recently-changed'), 2000);
+            }
+            
+        } else {
+            throw new Error(result.error || 'Update failed');
+        }
+    } catch (error) {
+        console.error('Error updating customer sector:', error);
+        showNotification('Failed to update sector: ' + error.message, 'error');
+        
+        // Revert the select element to previous value
+        if (selectElement) {
+            const customer = state.customers.find(c => c.id === customerId);
+            if (customer && selectElement) {
+                selectElement.value = customer.sector || '';
+            }
+        }
+    } finally {
+        if (selectElement) {
+            selectElement.classList.remove('loading');
+            selectElement.disabled = false;
+        }
+    }
+}
+
+async function addNewSector() {
+    const name = document.getElementById('new-sector-name').value.trim();
+    const group = document.getElementById('new-sector-group').value.trim();
+    
+    if (!name) {
+        showNotification('Sector name is required', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/customer-sector/sectors', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                name: name,
+                description: group
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Add to local state
+            state.sectors.push({
+                id: result.data.id,
+                name: result.data.name,
+                description: result.data.description,
+                color: getRandomSectorColor()
+            });
+            
+            populateBulkSectorSelect();
+            populateSectorSpecificFilter();
+            updateStats();
+            closeAddSectorModal();
+            
+            showNotification(`Sector "${name}" added successfully`, 'success');
+        } else {
+            throw new Error(result.error || 'Failed to add sector');
+        }
+    } catch (error) {
+        console.error('Error adding sector:', error);
+        showNotification('Failed to add sector: ' + error.message, 'error');
+    }
+}
+
+// UI Functions (enhanced)
+function populateSectorSpecificFilter() {
+    const select = document.getElementById('sector-specific-filter');
+    if (!select) return;
+    
+    let options = '<option value="">All Sectors</option>';
+    const uniqueSectors = [...new Set(state.customers.map(c => c.sector).filter(Boolean))].sort();
+    
+    uniqueSectors.forEach(sectorName => {
+        options += `<option value="${sectorName}">${sectorName}</option>`;
+    });
+    
+    select.innerHTML = options;
+}
+
+function applySorting(customers) {
+    const sorted = [...customers];
+    
+    switch (state.sortOption) {
+        case 'name':
+            return sorted.sort((a, b) => a.name.localeCompare(b.name));
+        case 'name_desc':
+            return sorted.sort((a, b) => b.name.localeCompare(a.name));
+        case 'status':
+            return sorted.sort((a, b) => {
+                if (!a.sector && b.sector) return -1;
+                if (a.sector && !b.sector) return 1;
+                return a.name.localeCompare(b.name);
+            });
+        case 'revenue_desc':
+            return sorted.sort((a, b) => (b.totalRevenue || 0) - (a.totalRevenue || 0));
+        case 'revenue_asc':
+            return sorted.sort((a, b) => (a.totalRevenue || 0) - (b.totalRevenue || 0));
+        case 'updated_desc':
+            return sorted.sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated));
+        case 'sector':
+            return sorted.sort((a, b) => {
+                const aSector = a.sector || 'ZZ_Unassigned';
+                const bSector = b.sector || 'ZZ_Unassigned';
+                return aSector.localeCompare(bSector);
+            });
+        default:
+            return sorted;
+    }
+}
+
+function generateSectorOptions(currentSector) {
+    let options = '<option value="">Unassigned</option>';
+    
+    state.sectors.forEach(sector => {
+        const selected = sector.name === currentSector ? 'selected' : '';
+        options += `<option value="${sector.name}" ${selected}>${sector.name}</option>`;
+    });
+    
+    return options;
+}
+
+function applyFilters() {
+    let filtered = [...state.customers];
+    
+    // Apply search filter
+    if (state.searchQuery) {
+        filtered = filtered.filter(customer => 
+            customer.name.toLowerCase().includes(state.searchQuery.toLowerCase())
+        );
+    }
+    
+    // Apply assignment status filter
+    if (state.sectorFilter === 'assigned') {
+        filtered = filtered.filter(customer => customer.sector);
+    } else if (state.sectorFilter === 'unassigned') {
+        filtered = filtered.filter(customer => !customer.sector);
+    }
+    
+    // Apply sector-specific filter
+    if (state.sectorSpecificFilter) {
+        filtered = filtered.filter(customer => customer.sector === state.sectorSpecificFilter);
+    }
+    
+    // Apply revenue filter (new feature)
+    if (state.revenueFilter) {
+        filtered = filtered.filter(customer => {
+            const revenue = customer.totalRevenue || 0;
+            switch (state.revenueFilter) {
+                case 'high': return revenue >= 100000;
+                case 'medium': return revenue >= 25000 && revenue < 100000;
+                case 'low': return revenue > 0 && revenue < 25000;
+                case 'zero': return revenue === 0;
+                default: return true;
+            }
+        });
+    }
+    
+    // Apply sorting
+    filtered = applySorting(filtered);
+    
+    state.filteredCustomers = filtered;
+    state.currentPage = 1; // Reset to first page
+    state.selectedCustomers.clear(); // Clear selections
+    
+    renderTable();
+    renderPagination();
+    updateBulkActionsVisibility();
 }
 
 function renderTable() {
+    const startIndex = (state.currentPage - 1) * state.customersPerPage;
+    const endIndex = startIndex + state.customersPerPage;
+    const currentCustomers = state.filteredCustomers.slice(startIndex, endIndex);
+    
+    if (currentCustomers.length === 0) {
+        document.getElementById('table-container').innerHTML = `
+            <div class="loading-state">
+                <div>No customers found matching current filters.</div>
+                <button onclick="clearFilters()" class="action-btn secondary" style="margin-top: 15px;">Clear Filters</button>
+            </div>
+        `;
+        return;
+    }
+    
     let tableHtml = `
-        <table style="width: 100%; border-collapse: collapse;">
+        <table class="customer-table">
             <thead>
-                <tr style="background: #eceff4;">
-                    <th style="padding: 15px; text-align: left; font-weight: 600; color: #2e3440; border-bottom: 1px solid #e5e9f0;">Customer Name</th>
-                    <th style="padding: 15px; text-align: left; font-weight: 600; color: #2e3440; border-bottom: 1px solid #e5e9f0;">Current Sector</th>
-                    <th style="padding: 15px; text-align: left; font-weight: 600; color: #2e3440; border-bottom: 1px solid #e5e9f0;">Quick Assign</th>
-                    <th style="padding: 15px; text-align: left; font-weight: 600; color: #2e3440; border-bottom: 1px solid #e5e9f0;">Status</th>
+                <tr>
+                    <th class="checkbox-column">
+                        <input type="checkbox" id="select-all" onchange="toggleSelectAll()" class="customer-checkbox">
+                    </th>
+                    <th>Customer Name</th>
+                    <th>Current Sector</th>
+                    <th>Assign Sector</th>
+                    <th>Status</th>
+                    <th>Revenue</th>
+                    <th>Last Updated</th>
                 </tr>
             </thead>
             <tbody>
     `;
     
-    customers.forEach(customer => {
-        const sector = sectors.find(s => s.name === customer.sector);
-        const sectorColor = sector ? sector.color : '#ebcb8b';
-        const sectorText = customer.sector || 'Unassigned';
-        
-        let sectorOptions = '<option value="">Unassigned</option>';
-        sectors.forEach(s => {
-            const selected = customer.sector === s.name ? 'selected' : '';
-            sectorOptions += `<option value="${s.name}" ${selected}>${s.name}</option>`;
-        });
+    currentCustomers.forEach(customer => {
+        const isSelected = state.selectedCustomers.has(customer.id);
+        const sectorOptions = generateSectorOptions(customer.sector);
+        const revenueFormatted = customer.totalRevenue ? `$${customer.totalRevenue.toLocaleString('en-US', {maximumFractionDigits: 0})}` : '$0';
         
         tableHtml += `
-            <tr style="border-bottom: 1px solid #e5e9f0;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor=''">
-                <td style="padding: 15px; font-weight: 600; color: #2e3440;">${customer.name}</td>
-                <td style="padding: 15px;">
-                    <span style="padding: 6px 12px; background: ${sectorColor}; color: ${customer.sector ? 'white' : '#2e3440'}; border-radius: 6px; font-size: 12px; font-weight: 600;">
-                        ${sectorText}
+            <tr class="customer-row ${isSelected ? 'selected' : ''}" id="customer-row-${customer.id}">
+                <td class="checkbox-column">
+                    <input type="checkbox" 
+                           class="customer-checkbox" 
+                           ${isSelected ? 'checked' : ''}
+                           onchange="toggleCustomerSelection(${customer.id})">
+                </td>
+                <td>
+                    <div class="customer-name" title="${customer.name}">${customer.name}</div>
+                </td>
+                <td>
+                    <span class="sector-badge ${customer.sector ? 'assigned' : 'unassigned'}">
+                        ${customer.sector || 'Unassigned'}
                     </span>
                 </td>
-                <td style="padding: 15px;">
-                    <select onchange="updateCustomerSector(${customer.id}, this.value)" style="padding: 8px 12px; border: 2px solid #e5e9f0; border-radius: 6px; background: white; font-size: 14px;">
+                <td>
+                    <select id="sector-select-${customer.id}" 
+                            class="sector-select" 
+                            onchange="updateCustomerSector(${customer.id}, this.value)">
                         ${sectorOptions}
                     </select>
                 </td>
-                <td style="padding: 15px; font-size: 14px;">
-                    ${customer.sector ? 
-                        '<span style="color: #a3be8c;">✓ Assigned</span>' : 
-                        '<span style="color: #ebcb8b;">⚠ Needs Assignment</span>'
-                    }
+                <td>
+                    <div class="status-indicator">
+                        <div class="status-dot ${customer.sector ? 'assigned' : 'unassigned'}"></div>
+                        ${customer.sector ? 'Assigned' : 'Needs Assignment'}
+                    </div>
+                </td>
+                <td style="color: var(--nord3); font-size: 14px; font-weight: 600;">
+                    ${revenueFormatted}
+                </td>
+                <td style="color: var(--nord3); font-size: 13px;">
+                    ${customer.lastUpdated}
                 </td>
             </tr>
         `;
@@ -122,39 +1317,317 @@ function renderTable() {
     document.getElementById('table-container').innerHTML = tableHtml;
 }
 
-function updateCustomerSector(customerId, newSector) {
-    // Update the customer data
-    customers = customers.map(customer => 
-        customer.id === customerId 
-            ? { ...customer, sector: newSector || null, lastUpdated: new Date().toISOString().split('T')[0] }
-            : customer
-    );
+function renderPagination() {
+    const totalCustomers = state.filteredCustomers.length;
+    const totalPages = Math.ceil(totalCustomers / state.customersPerPage);
     
-    // Update display
-    updateStats();
-    renderTable();
-    showNotification(`Customer sector updated to ${newSector || 'Unassigned'}!`);
+    if (totalPages <= 1) {
+        document.getElementById('pagination-container').style.display = 'none';
+        return;
+    }
+    
+    document.getElementById('pagination-container').style.display = 'flex';
+    
+    const startIndex = (state.currentPage - 1) * state.customersPerPage + 1;
+    const endIndex = Math.min(state.currentPage * state.customersPerPage, totalCustomers);
+    
+    document.getElementById('pagination-info').textContent = 
+        `Showing ${startIndex}-${endIndex} of ${totalCustomers} customers`;
+    
+    // Generate page numbers (show max 7 pages around current)
+    const pageNumbers = generatePageNumbers(state.currentPage, totalPages);
+    const pageNumbersHtml = pageNumbers.map(page => 
+        page === '...' 
+            ? '<span style="padding: 8px;">...</span>'
+            : `<span class="page-number ${page === state.currentPage ? 'active' : ''}" 
+                     onclick="goToPage(${page})">${page}</span>`
+    ).join('');
+    
+    document.getElementById('page-numbers').innerHTML = pageNumbersHtml;
+    
+    // Update navigation buttons
+    document.getElementById('prev-page').disabled = state.currentPage === 1;
+    document.getElementById('next-page').disabled = state.currentPage === totalPages;
 }
 
-function showNotification(message) {
+function generatePageNumbers(current, total) {
+    if (total <= 7) {
+        return Array.from({length: total}, (_, i) => i + 1);
+    }
+    
+    if (current <= 4) {
+        return [1, 2, 3, 4, 5, '...', total];
+    }
+    
+    if (current >= total - 3) {
+        return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+    }
+    
+    return [1, '...', current - 1, current, current + 1, '...', total];
+}
+
+function updateStats() {
+    const assignedCount = state.customers.filter(c => c.sector).length;
+    const unassignedCount = state.customers.length - assignedCount;
+    
+    document.getElementById('total-customers').textContent = state.customers.length;
+    document.getElementById('assigned-customers').textContent = assignedCount;
+    document.getElementById('unassigned-customers').textContent = unassignedCount;
+    document.getElementById('total-sectors').textContent = state.sectors.length;
+}
+
+function populateBulkSectorSelect() {
+    const select = document.getElementById('bulk-sector-select');
+    let options = '<option value="">Assign selected to...</option>';
+    
+    state.sectors.forEach(sector => {
+        options += `<option value="${sector.name}">${sector.name}</option>`;
+    });
+    
+    select.innerHTML = options;
+}
+
+// Event Handlers (enhanced)
+function toggleCustomerSelection(customerId) {
+    if (state.selectedCustomers.has(customerId)) {
+        state.selectedCustomers.delete(customerId);
+    } else {
+        state.selectedCustomers.add(customerId);
+    }
+    updateBulkActionsVisibility();
+    updateSelectAllCheckbox();
+}
+
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('select-all');
+    const startIndex = (state.currentPage - 1) * state.customersPerPage;
+    const endIndex = startIndex + state.customersPerPage;
+    const currentCustomers = state.filteredCustomers.slice(startIndex, endIndex);
+    
+    if (selectAllCheckbox.checked) {
+        currentCustomers.forEach(customer => state.selectedCustomers.add(customer.id));
+    } else {
+        currentCustomers.forEach(customer => state.selectedCustomers.delete(customer.id));
+    }
+    
+    renderTable();
+    updateBulkActionsVisibility();
+}
+
+function updateSelectAllCheckbox() {
+    const selectAllCheckbox = document.getElementById('select-all');
+    const startIndex = (state.currentPage - 1) * state.customersPerPage;
+    const endIndex = startIndex + state.customersPerPage;
+    const currentCustomers = state.filteredCustomers.slice(startIndex, endIndex);
+    const selectedOnPage = currentCustomers.filter(c => state.selectedCustomers.has(c.id)).length;
+    
+    selectAllCheckbox.checked = selectedOnPage === currentCustomers.length && currentCustomers.length > 0;
+    selectAllCheckbox.indeterminate = selectedOnPage > 0 && selectedOnPage < currentCustomers.length;
+}
+
+function updateBulkActionsVisibility() {
+    const bulkOperations = document.getElementById('bulk-operations');
+    const bulkInfo = document.getElementById('bulk-info');
+    const hasSelection = state.selectedCustomers.size > 0;
+    
+    bulkOperations.style.display = hasSelection ? 'flex' : 'none';
+    
+    if (hasSelection) {
+        const count = state.selectedCustomers.size;
+        bulkInfo.textContent = `📋 ${count} customer${count > 1 ? 's' : ''} selected`;
+    }
+}
+
+function goToPage(page) {
+    state.currentPage = page;
+    renderTable();
+    renderPagination();
+    updateSelectAllCheckbox();
+}
+
+function clearFilters() {
+    document.getElementById('customer-search').value = '';
+    document.getElementById('sector-filter').value = 'all';
+    document.getElementById('sector-specific-filter').value = '';
+    document.getElementById('sort-option').value = 'name';
+    document.getElementById('revenue-filter').value = '';
+    
+    state.searchQuery = '';
+    state.sectorFilter = 'all';
+    state.sectorSpecificFilter = '';
+    state.sortOption = 'name';
+    state.revenueFilter = '';
+    
+    applyFilters();
+    showNotification('Filters cleared', 'success');
+}
+
+function exportData() {
+    showNotification('Export functionality coming soon!', 'success');
+}
+
+// Modal functions (unchanged)
+function openAddSectorModal() {
+    document.getElementById('add-sector-modal').style.display = 'flex';
+    document.getElementById('new-sector-name').focus();
+}
+
+function closeAddSectorModal() {
+    document.getElementById('add-sector-modal').style.display = 'none';
+    document.getElementById('new-sector-name').value = '';
+    document.getElementById('new-sector-group').value = '';
+}
+
+function getRandomSectorColor() {
+    const colors = ['#88c0d0', '#81a1c1', '#5e81ac', '#bf616a', '#d08770', '#ebcb8b', '#a3be8c', '#b48ead'];
+    return colors[Math.floor(Math.random() * colors.length)];
+}
+
+function showNotification(message, type = 'success') {
     const notification = document.getElementById('notification');
     notification.textContent = message;
-    notification.style.display = 'block';
-    notification.style.background = '#d4edda';
-    notification.style.color = '#155724';
-    notification.style.border = '1px solid #c3e6cb';
+    notification.className = `notification ${type}`;
+    notification.classList.add('show');
     
     setTimeout(() => {
-        notification.style.display = 'none';
-    }, 3000);
+        notification.classList.remove('show');
+    }, 4000);
 }
 
-// Initialize when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Customer Sector Manager initializing...');
+// Event Listeners (enhanced with new filters)
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('Enhanced Customer Sector Manager initializing...');
+    
+    // Initialize data
+    await Promise.all([fetchCustomers(), fetchSectors()]);
+    
+    // Render initial view
     updateStats();
-    renderTable();
-    console.log('Interface ready!');
+    applyFilters();
+    
+    // Set up search
+    document.getElementById('customer-search').addEventListener('input', function(e) {
+        state.searchQuery = e.target.value;
+        applyFilters();
+    });
+    
+    // Set up assignment status filter
+    document.getElementById('sector-filter').addEventListener('change', function(e) {
+        state.sectorFilter = e.target.value;
+        applyFilters();
+    });
+    
+    // Set up sector-specific filter
+    document.getElementById('sector-specific-filter').addEventListener('change', function(e) {
+        state.sectorSpecificFilter = e.target.value;
+        applyFilters();
+    });
+    
+    // Set up sorting
+    document.getElementById('sort-option').addEventListener('change', function(e) {
+        state.sortOption = e.target.value;
+        applyFilters();
+    });
+    
+    // Set up revenue filter (new)
+    document.getElementById('revenue-filter').addEventListener('change', function(e) {
+        state.revenueFilter = e.target.value;
+        applyFilters();
+    });
+    
+    // Set up pagination
+    document.getElementById('prev-page').addEventListener('click', function() {
+        if (state.currentPage > 1) {
+            goToPage(state.currentPage - 1);
+        }
+    });
+    
+    document.getElementById('next-page').addEventListener('click', function() {
+        const totalPages = Math.ceil(state.filteredCustomers.length / state.customersPerPage);
+        if (state.currentPage < totalPages) {
+            goToPage(state.currentPage + 1);
+        }
+    });
+    
+    // Set up add sector button
+    document.getElementById('add-sector-btn').addEventListener('click', openAddSectorModal);
+    
+    // Set up bulk operations
+    document.getElementById('apply-bulk').addEventListener('click', async function() {
+        const selectedSector = document.getElementById('bulk-sector-select').value;
+        if (!selectedSector) {
+            showNotification('Please select a sector to assign', 'error');
+            return;
+        }
+        
+        const selectedIds = Array.from(state.selectedCustomers);
+        
+        try {
+            const response = await fetch('/api/customer-sector/customers/bulk-sector', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    customer_ids: selectedIds,
+                    sector: selectedSector
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Update local state
+                selectedIds.forEach(id => {
+                    const customer = state.customers.find(c => c.id === id);
+                    if (customer) {
+                        customer.sector = selectedSector;
+                        customer.lastUpdated = new Date().toISOString().split('T')[0];
+                    }
+                });
+                
+                state.selectedCustomers.clear();
+                applyFilters();
+                updateStats();
+                populateSectorSpecificFilter();
+                updateBulkActionsVisibility();
+                
+                showNotification(result.message, 'success');
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (error) {
+            showNotification('Bulk update failed: ' + error.message, 'error');
+        }
+    });
+    
+    document.getElementById('cancel-bulk').addEventListener('click', function() {
+        state.selectedCustomers.clear();
+        renderTable();
+        updateBulkActionsVisibility();
+    });
+    
+    // Modal close on escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeAddSectorModal();
+        }
+    });
+    
+    console.log('Enhanced Customer Sector Manager ready!');
 });
+
+// Force populate sector filter after page loads
+function ensureSectorFilterPopulated() {
+    if (state.customers.length > 0) {
+        populateSectorSpecificFilter();
+        console.log('Sector filter populated with', [...new Set(state.customers.map(c => c.sector).filter(Boolean))].length, 'sectors');
+    } else {
+        setTimeout(ensureSectorFilterPopulated, 500);
+    }
+}
+
+// Call this at the very end of your DOMContentLoaded function
+setTimeout(ensureSectorFilterPopulated, 200);
 </script>
 {% endblock %}
