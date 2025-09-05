@@ -14,454 +14,238 @@
 
 {% block extra_styles %}
 <style>
-/* Report 5 specific styles that work with base styling */
+/* Controls */
 .dashboard-controls {
-    background: #f7fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 4px;
-    padding: 16px;
-    margin: 24px 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    align-items: end;
+  background:#f7fafc; border:1px solid #e2e8f0; border-radius:4px;
+  padding:16px; margin:24px 0; display:flex; flex-wrap:wrap; gap:16px; align-items:end;
 }
-
-.control-group {
-    display: flex;
-    flex-direction: column;
-    min-width: 150px;
+.control-group { display:flex; flex-direction:column; min-width:150px; }
+.control-group label { font-size:12px; font-weight:600; margin-bottom:4px; color:#4a5568; }
+.control-group input, .control-group select {
+  padding:6px 8px; font-size:12px; border:1px solid #e2e8f0; border-radius:3px; background:white;
 }
+.radio-group { display:flex; gap:12px; flex-wrap:wrap; }
+.radio-label { display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; margin:0; }
+.radio-label input[type="radio"]{ margin:0; }
+.radio-label span{ white-space:nowrap; }
 
-.control-group label {
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 4px;
-    color: #4a5568;
-}
+/* Stats */
+.dashboard-stats { display:flex; gap:16px; margin:24px 0; flex-wrap:wrap; }
+.stat-card { background:#fafafa; border-left:3px solid #e2e8f0; padding:12px 16px; flex:1; min-width:150px; text-align:center; }
+.stat-number { font-size:18px; font-weight:600; color:#2d3748; margin-bottom:4px; }
+.stat-label { font-size:11px; color:#718096; text-transform:uppercase; letter-spacing:.5px; }
 
-.control-group input,
-.control-group select {
-    padding: 6px 8px;
-    font-size: 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 3px;
-    background: white;
-}
-
-.dashboard-stats {
-    display: flex;
-    gap: 16px;
-    margin: 24px 0;
-    flex-wrap: wrap;
-}
-
-.stat-card {
-    background: #fafafa;
-    border-left: 3px solid #e2e8f0;
-    padding: 12px 16px;
-    flex: 1;
-    min-width: 150px;
-    text-align: center;
-}
-
-.stat-number {
-    font-size: 18px;
-    font-weight: 600;
-    color: #2d3748;
-    margin-bottom: 4px;
-}
-
-.stat-label {
-    font-size: 11px;
-    color: #718096;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.revenue-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 11px;
-    margin: 24px 0;
-}
-
+/* Table */
+.table-container { max-height:400px; overflow:auto; border:1px solid #e2e8f0; border-radius:4px; position:relative; overscroll-behavior:contain; }
+.revenue-table { width:100%; border-collapse:collapse; font-size:11px; margin:24px 0; position:relative; height:100%; }
 .revenue-table th {
-    text-align: right;
-    padding: 8px 4px;
-    border-bottom: 2px solid #2d3748;
-    font-weight: normal;
-    color: #2d3748;
-    font-size: 10px;
-    position: sticky;
-    top: 0;
-    background: white;
-    z-index: 10;
+  text-align:right; padding:8px 4px; border-bottom:2px solid #2d3748; font-weight:normal; color:#2d3748; font-size:10px;
+  position:sticky; top:0; background:white; z-index:10;
 }
-
-.revenue-table th:first-child {
-    text-align: left;
+.revenue-table th:first-child, .revenue-table td:first-child {
+  text-align:left; position:sticky; left:0; background:white; z-index:11; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+.revenue-table td { padding:4px; border-bottom:1px solid #e2e8f0; text-align:right; font-size:11px; }
+.revenue-table tfoot { position:sticky; bottom:0; background:white; z-index:10; border-top:2px solid #2d3748; }
+.revenue-table tfoot td { border-bottom:none; background:#f7fafc !important; font-weight:600; }
+.no-data { text-align:center; padding:32px; font-style:italic; color:#4a5568; }
 
-.revenue-table td {
-    padding: 4px;
-    border-bottom: 1px solid #e2e8f0;
-    text-align: right;
-    font-size: 11px;
-}
+/* Values */
+.revenue-zero { color:#718096; } /* darker for contrast */
+.revenue-positive { color:#2f855a; font-weight:500; }
 
-.revenue-table td:first-child {
-    text-align: left;
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+/* Month status in header */
+.month-closed { background-color:#f0fff4 !important; color:#2f855a !important; font-weight:600; position:sticky; top:0; z-index:11; }
+.month-open   { background-color:#fef5e7 !important; color:#d69e2e !important; font-weight:600; position:sticky; top:0; z-index:11; }
+.month-unknown{ background-color:#f7fafc !important; color:#4a5568 !important; font-weight:600; position:sticky; top:0; z-index:11; }
 
-.revenue-zero { 
-    color: #a0aec0; 
-}
-
-.revenue-positive { 
-    color: #2f855a;
-    font-weight: 500;
-}
-
-.ae-badge {
-    background: #edf2f7;
-    padding: 1px 4px;
-    border-radius: 8px;
-    font-size: 9px;
-    color: #4a5568;
-    display: inline-block;
-}
-
-.totals-row {
-    background: #f7fafc !important;
-    font-weight: 600;
-    border-top: 2px solid #2d3748;
-}
-
-.export-btn {
-    padding: 6px 12px;
-    background: #4299e1;
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 12px;
-    transition: background 0.2s;
-}
-
-.export-btn:hover {
-    background: #3182ce;
-}
-
-.table-container {
-    max-height: 400px;
-    overflow: auto;
-    border: 1px solid #e2e8f0;
-    border-radius: 4px;
-}
-
-.no-data {
-    text-align: center;
-    padding: 32px;
-    font-style: italic;
-    color: #718096;
-}
-
-/* Month status styling */
-.month-closed {
-    background-color: #f0fff4 !important;
-    color: #2f855a !important;
-    font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 11;
-}
-
-.month-open {
-    background-color: #fef5e7 !important;
-    color: #d69e2e !important;
-    font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 11;
-}
-
-.month-unknown {
-    background-color: #f7fafc !important;
-    color: #4a5568 !important;
-    font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 11;
-}
-
-/* Status legend styling */
+/* Legend */
 .status-legend {
-    display: flex;
-    justify-content: center;
-    gap: 24px;
-    margin: 16px 0;
-    padding: 12px;
-    background: #f7fafc;
-    border-radius: 4px;
-    border: 1px solid #e2e8f0;
+  display:flex; justify-content:center; gap:24px; margin:16px 0; padding:12px; background:#f7fafc; border-radius:4px; border:1px solid #e2e8f0;
 }
+.legend-item{ display:flex; align-items:center; gap:8px; font-size:12px; }
+.legend-badge{ padding:2px 8px; border-radius:3px; font-weight:600; font-size:10px; }
+.legend-closed{ background-color:#f0fff4; color:#2f855a; }
+.legend-open{ background-color:#fef5e7; color:#d69e2e; }
 
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
+/* AE summary */
+.ae-badge{ background:#edf2f7; padding:1px 4px; border-radius:8px; font-size:9px; color:#4a5568; display:inline-block; }
+.ae-summary{ margin-top:8px; padding:12px; border:1px solid #e2e8f0; border-radius:4px; background:#f9fafb; }
+.ae-summary-header{ display:flex; justify-content:space-between; align-items:center; font-weight:600; color:#2d3748; margin-bottom:8px; }
+.ae-actions{ display:flex; gap:12px; align-items:center; }
+.ae-chips{ display:flex; gap:8px; row-gap:8px; flex-wrap:wrap; max-height:72px; overflow:auto; }
+.ae-chip{
+  display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid #e2e8f0; border-radius:16px;
+  background:white; font-size:12px; cursor:pointer;
 }
+.ae-chip:focus{ outline:2px solid #4299e1; }
+.ae-chip .ae-name{ font-weight:600; color:#4a5568; }
+.ae-chip .ae-total{ font-feature-settings:"tnum"; }
 
-.legend-badge {
-    padding: 2px 8px;
-    border-radius: 3px;
-    font-weight: 600;
-    font-size: 10px;
+/* Buttons */
+.export-btn {
+  padding:6px 12px; background:#4299e1; color:white; border:none; border-radius:3px; cursor:pointer; font-size:12px; transition:background .2s;
 }
-
-.legend-closed {
-    background-color: #f0fff4;
-    color: #2f855a;
-}
-
-.legend-open {
-    background-color: #fef5e7;
-    color: #d69e2e;
-}
-.radio-group {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.radio-label {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    cursor: pointer;
-    margin: 0;
-}
-
-.radio-label input[type="radio"] {
-    margin: 0;
-}
-
-.radio-label span {
-    white-space: nowrap;
-}
-.ae-summary {
-  margin-top: 8px;
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  background: #f9fafb;
-}
-.ae-summary-header {
-  display: flex; justify-content: space-between; align-items: center;
-  font-weight: 600; color:#2d3748; margin-bottom: 8px;
-}
-.ae-actions { display:flex; gap:12px; align-items:center; }
-.ae-chips {
-  display:flex; gap:8px; row-gap:8px; flex-wrap:wrap; max-height:72px; overflow:auto;
-}
-.ae-chip {
-  display:inline-flex; align-items:center; gap:6px;
-  padding:6px 10px; border:1px solid #e2e8f0; border-radius:16px;
-  background:white; font-size:12px;
-}
-.ae-chip .ae-name { font-weight:600; color:#4a5568; }
-.ae-chip .ae-total { font-feature-settings:"tnum"; }
-.ae-table th:nth-child(2), .ae-table td:nth-child(2),
-.ae-table th:nth-child(3), .ae-table td:nth-child(3) { text-align:right; }
-
+.export-btn:hover{ background:#3182ce; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="insight-box">
-    <div class="insight-title">Customer Revenue Dashboard - {{ data.selected_year }}</div>
-    <div class="insight-text">
-        Interactive customer-level revenue analysis with year selection, filtering, and export capabilities.
-        Total customers: {{ data.total_customers }} | Active customers: {{ data.active_customers }} | 
-        Total revenue: ${{ "{:,}".format(data.total_revenue) }}
-        <br>
-        <small style="color: #718096; font-size: 11px;">
-            Data last updated: {{ data.metadata.data_last_updated | date_display('display') }} 
-            (Report generated in {{ data.metadata.processing_time_ms | round(1) }}ms)
-        </small>
-    </div>
+<div class="insight-box" aria-live="polite">
+  <div class="insight-title">Customer Revenue Dashboard - {{ data.selected_year }}</div>
+  <div class="insight-text" id="insightText">
+    Interactive customer-level revenue analysis with year selection, filtering, and export capabilities.
+    Total customers: <span id="headerCustomers">{{ data.total_customers }}</span> | 
+    Active customers: <span id="headerActive">{{ data.active_customers }}</span> | 
+    Total <span id="headerTotalLabel">gross revenue</span>: <span id="headerTotalValue">${{ "{:,}".format(data.total_revenue) }}</span>
+    <br>
+    <small style="color:#718096; font-size:11px;">
+      Data last updated: {{ data.metadata.data_last_updated | date_display('display') }}
+      (Report generated in {{ data.metadata.processing_time_ms | round(1) }}ms)
+    </small>
+  </div>
 </div>
 
-<div class="dashboard-controls">
-    <div class="control-group">
-        <label for="yearSelect">Year</label>
-        <select id="yearSelect">
-            {% for year in data.available_years %}
-            <option value="{{ year }}" {% if year == data.selected_year %}selected{% endif %}>{{ year }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    
-    <div class="control-group">
-        <label>Revenue Field</label>
-        <div class="radio-group">
-            <label class="radio-label">
-                <input type="radio" id="grossRevenue" name="revenueField" value="gross" checked>
-                <span>Gross Revenue</span>
-            </label>
-            <label class="radio-label">
-                <input type="radio" id="netRevenue" name="revenueField" value="net">
-                <span>Net Revenue</span>
-            </label>
-        </div>
-    </div>
-    
-    <div class="control-group">
-        <label for="customerSearch">Customer Search</label>
-        <input type="text" id="customerSearch" placeholder="Filter customers...">
-    </div>
-    
-    <div class="control-group">
-        <label for="aeFilter">Account Executive</label>
-        <select id="aeFilter">
-        <option value="all">All AEs</option>
-        <option value="Unknown">Unknown</option><!-- add this -->
-        {% for ae in data.ae_list %}
-        <option value="{{ ae }}">{{ ae }}</option>
-        {% endfor %}
-        </select>
+<div class="dashboard-controls" role="group" aria-label="Dashboard controls">
+  <div class="control-group">
+    <label for="yearSelect">Year</label>
+    <select id="yearSelect">
+      {% for year in data.available_years %}
+      <option value="{{ year }}" {% if year == data.selected_year %}selected{% endif %}>{{ year }}</option>
+      {% endfor %}
+    </select>
+  </div>
 
+  <div class="control-group">
+    <label>Revenue Field</label>
+    <div class="radio-group">
+      <label class="radio-label"><input type="radio" id="grossRevenue" name="revenueField" value="gross" checked><span>Gross</span></label>
+      <label class="radio-label"><input type="radio" id="netRevenue" name="revenueField" value="net"><span>Net</span></label>
     </div>
-    
-    <div class="control-group">
-        <label for="revenueType">Revenue Type</label>
-        <select id="revenueType">
-            <option value="all">All Types</option>
-            {% for rt in data.revenue_types %}
-            <option value="{{ rt }}">{{ rt }}</option>
-            {% endfor %}
-        </select>
+  </div>
+
+  <div class="control-group">
+    <label>Range</label>
+    <div class="radio-group">
+      <label class="radio-label"><input type="radio" name="range" value="ytd" checked><span>YTD</span></label>
+      <label class="radio-label"><input type="radio" name="range" value="full"><span>Full Year</span></label>
     </div>
-    
-    <div class="control-group">
-        <label for="sortBy">Sort By</label>
-        <select id="sortBy">
-            <option value="ae_customer">AE then Customer</option>
-            <option value="total_desc">Total (High to Low)</option>
-            <option value="customer">Customer Name</option>
-            <option value="total_asc">Total (Low to High)</option>
-        </select>
-    </div>
-    
-    <div class="control-group">
-        <label>&nbsp;</label>
-        <button id="exportCSV" class="export-btn">Export CSV</button>
-    </div>
+  </div>
+
+  <div class="control-group">
+    <label for="customerSearch">Customer Search</label>
+    <input type="text" id="customerSearch" placeholder="Filter customers...">
+  </div>
+
+  <div class="control-group">
+    <label for="aeFilter">Account Executive</label>
+    <select id="aeFilter">
+      <option value="all">All AEs</option>
+      <option value="Unknown">Unknown</option>
+      {% for ae in data.ae_list %}
+      <option value="{{ ae }}">{{ ae }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="revenueType">Revenue Type</label>
+    <select id="revenueType">
+      <option value="all">All Types</option>
+      {% for rt in data.revenue_types %}
+      <option value="{{ rt }}">{{ rt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="sortBy">Sort By</label>
+    <select id="sortBy">
+      <option value="ae_customer">AE then Customer</option>
+      <option value="total_desc">Total (High to Low)</option>
+      <option value="customer">Customer Name</option>
+      <option value="total_asc">Total (Low to High)</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label>&nbsp;</label>
+    <button id="exportCSV" class="export-btn">Export CSV</button>
+  </div>
 </div>
 
-<div class="dashboard-stats">
-    <div class="stat-card">
-        <div class="stat-number" id="displayCustomers">{{ data.total_customers }}</div>
-        <div class="stat-label">Customers</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-number" id="displayActive">{{ data.active_customers }}</div>
-        <div class="stat-label">Active</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-number" id="displayRevenue">${{ "{:,}".format(data.total_revenue) }}</div>
-        <div class="stat-label">Total Revenue</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-number" id="displayAvg">${{ "{:,}".format(data.avg_monthly_revenue) }}</div>
-        <div class="stat-label">Avg Monthly</div>
-    </div>
+<div class="dashboard-stats" aria-live="polite">
+  <div class="stat-card"><div class="stat-number" id="displayCustomers">{{ data.total_customers }}</div><div class="stat-label">Customers</div></div>
+  <div class="stat-card"><div class="stat-number" id="displayActive">{{ data.active_customers }}</div><div class="stat-label">Active</div></div>
+  <div class="stat-card"><div class="stat-number" id="displayRevenue">${{ "{:,}".format(data.total_revenue) }}</div><div class="stat-label">Total Revenue</div></div>
+  <div class="stat-card"><div class="stat-number" id="displayAvg">${{ "{:,}".format(data.avg_monthly_revenue) }}</div><div class="stat-label">Avg Monthly</div></div>
 </div>
 
 <div class="ae-summary">
   <div class="ae-summary-header">
     <span>AE Revenue Summary</span>
     <div class="ae-actions">
-      <label class="radio-label">
-        <input type="radio" name="aeSort" value="total_desc" checked>
-        <span>Sort: Total ↓</span>
-      </label>
-      <label class="radio-label">
-        <input type="radio" name="aeSort" value="alpha">
-        <span>Sort: A→Z</span>
-      </label>
+      <label class="radio-label"><input type="radio" name="aeSort" value="total_desc" checked><span>Sort: Total ↓</span></label>
+      <label class="radio-label"><input type="radio" name="aeSort" value="alpha"><span>Sort: A→Z</span></label>
       <button id="exportAECsv" class="export-btn">Export AE CSV</button>
     </div>
   </div>
-
   <div id="aeChips" class="ae-chips"></div>
-
   <div class="table-container" style="margin-top:8px;">
-    <table class="revenue-table ae-table">
+    <table class="revenue-table ae-table" role="table" aria-describedby="aeTableHelp">
       <thead>
         <tr>
-          <th style="text-align:left;">AE</th>
-          <th>Total</th>
-          <th>Avg / Mo</th>
-          <th>Customers</th>
+          <th style="text-align:left;" scope="col">AE</th>
+          <th scope="col" aria-sort="descending">Total</th>
+          <th scope="col">Avg / Mo</th>
+          <th scope="col">Customers</th>
         </tr>
       </thead>
       <tbody id="aeSummaryBody">
         <tr><td colspan="4" class="no-data">Loading AE summary…</td></tr>
       </tbody>
     </table>
+    <span id="aeTableHelp" class="sr-only" aria-hidden="true">AE totals, average per month, and customer counts.</span>
   </div>
 </div>
 
-
 <div class="story-section">
-    <div class="section-title">Customer Monthly Revenue Analysis</div>
-    
-    <div class="table-container">
-        <table class="revenue-table">
-            <thead>
-                <tr>
-                    <th>Customer</th>
-                    <th>AE</th>
-                    {% for month in data.month_status %}
-                    <th class="
-                        {% if month.status == 'CLOSED' %}month-closed
-                        {% elif month.status == 'OPEN' %}month-open
-                        {% else %}month-unknown
-                        {% endif %}
-                    ">{{ month.month_name }}</th>
-                    {% endfor %}
-                    <th>Total</th>
-                </tr>
-            </thead>
-            <tbody id="revenueTableBody">
-                <tr><td colspan="15" class="no-data">Loading...</td></tr>
-            </tbody>
-        </table>
-    </div>
-    
-    <div class="annotation">
-        Revenue excludes trade transactions. Use controls above to filter data by year, customer, AE, or revenue type.
-    </div>
-    
-    <!-- Month Status Legend -->
-    <div class="status-legend">
-        <div class="legend-item">
-            <span class="legend-badge legend-closed">CLOSED</span>
-            <span>Month is officially closed and protected from changes</span>
-        </div>
-        <div class="legend-item">
-            <span class="legend-badge legend-open">OPEN</span>
-            <span>Month is open for updates and modifications</span>
-        </div>
-    </div>
+  <div class="section-title">Customer Monthly Revenue Analysis</div>
+  <div class="table-container">
+    <table class="revenue-table" role="table" aria-describedby="tableHelp">
+      <thead>
+        <tr role="row">
+          <th role="columnheader" scope="col">Customer</th>
+          <th role="columnheader" scope="col">AE</th>
+          {% for month in data.month_status %}
+          <th role="columnheader" scope="col"
+              class="month-col {% if month.status == 'CLOSED' %}month-closed{% elif month.status == 'OPEN' %}month-open{% else %}month-unknown{% endif %}"
+              data-month-index="{{ loop.index }}">{{ month.month_name }}</th>
+          {% endfor %}
+          <th role="columnheader" scope="col" aria-sort="none">Total</th>
+        </tr>
+      </thead>
+      <tbody id="revenueTableBody">
+        <tr><td colspan="{{ 2 + data.month_status|length + 1 }}" class="no-data">Loading...</td></tr>
+      </tbody>
+      <tfoot id="revenueTableFooter">
+        <tr class="totals-row">
+          <td><strong>Monthly Totals</strong></td>
+          <td></td>
+          {% for _ in data.month_status %}<td>$0</td>{% endfor %}
+          <td>$0</td>
+        </tr>
+      </tfoot>
+    </table>
+    <span id="tableHelp" class="sr-only" aria-hidden="true">Customer rows by month with totals; header color shows month status.</span>
+  </div>
+
+  <div class="annotation">Revenue excludes trade transactions. Use controls above to filter data by year, customer, AE, or revenue type.</div>
+
+  <div class="status-legend">
+    <div class="legend-item"><span class="legend-badge legend-closed">CLOSED</span><span>Month is officially closed and protected from changes</span></div>
+    <div class="legend-item"><span class="legend-badge legend-open">OPEN</span><span>Month is open for updates and modifications</span></div>
+  </div>
 </div>
 
 <!-- Hidden data for JavaScript -->
@@ -472,41 +256,64 @@
 
 {% block scripts %}
 <script>
+/* ---------- small pure helpers ---------- */
+const escapeHtml = s => String(s ?? '')
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+const sanitizeCsvCell = s => {
+  const v = String(s ?? '');
+  return /^[=+\-@]/.test(v) ? `'${v}` : v;
+};
+
+const debounce = (fn, ms=150) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+const numericSort = (a,b) => (a||0)-(b||0);
+
+/* ---------- main class ---------- */
 class RevenueReportManager {
   constructor() {
+    // parse data
     const dataScript = document.getElementById('revenue-data');
     try {
       const raw = (dataScript?.textContent || '[]').trim() || '[]';
       const parsed = JSON.parse(raw);
       this.allData = Array.isArray(parsed) ? parsed.map(this._coerceRow) : [];
-    } catch (e) {
+    } catch(e) {
       console.error('Failed to parse revenue-data JSON:', e);
       this.allData = [];
     }
+
+    // month count based on header
+    this.monthCount = Array.from(document.querySelectorAll('th.month-col')).length || 12;
+
+    // currency formatters
+    this.nf0 = new Intl.NumberFormat(undefined, { style:'currency', currency:'USD', maximumFractionDigits:0 });
+    this.nf2 = new Intl.NumberFormat(undefined, { style:'currency', currency:'USD', maximumFractionDigits:2 });
+
     this.filteredData = [...this.allData];
     this.currentRevenueField = (document.querySelector('input[name="revenueField"]:checked')?.value) || 'gross';
+    this.range = (document.querySelector('input[name="range"]:checked')?.value) || 'ytd';
     this._applyRevenueField();
     this.init();
   }
 
-  // --- data normalization ---
-  _coerceRow(row) {
+  /* ----- data normalization ----- */
+  _coerceRow = (row) => {
     const numKeys = ['total','total_gross','total_net'];
-    for (let m=1;m<=12;m++){
-      numKeys.push(`month_${m}`, `month_${m}_gross`, `month_${m}_net`);
-    }
+    for (let m=1; m<=12; m++) numKeys.push(`month_${m}`, `month_${m}_gross`, `month_${m}_net`);
     numKeys.forEach(k => { if (k in row) row[k] = Number(row[k]) || 0; });
     row.ae = (row.ae ?? 'Unknown').trim();
     row.revenue_type = (row.revenue_type ?? 'Regular').trim();
     row.customer = (row.customer ?? '').trim();
     return row;
-  }
+  };
 
   _applyRevenueField() {
     const useNet = this.currentRevenueField === 'net';
     const setView = (r) => {
       r.total = useNet ? (r.total_net || 0) : (r.total_gross || r.total || 0);
-      for (let m=1;m<=12;m++){
+      for (let m=1; m<=12; m++) {
         r[`month_${m}`] = useNet ? (r[`month_${m}_net`] || 0) : (r[`month_${m}_gross`] || r[`month_${m}`] || 0);
       }
     };
@@ -514,6 +321,7 @@ class RevenueReportManager {
     this.filteredData.forEach(setView);
   }
 
+  /* ----- init & events ----- */
   init() {
     this.setupEventListeners();
     this.sortData();
@@ -523,7 +331,6 @@ class RevenueReportManager {
     this.updateAeSummary();
   }
 
-  // SINGLE definition with AE handlers included
   setupEventListeners() {
     const yearSel = document.getElementById('yearSelect');
     yearSel?.addEventListener('change', (e) => {
@@ -537,20 +344,25 @@ class RevenueReportManager {
       radio.addEventListener('change', () => this.switchRevenueType());
     });
 
-    document.getElementById('customerSearch')?.addEventListener('input', () => this.filterData());
+    document.querySelectorAll('input[name="range"]').forEach(radio => {
+      radio.addEventListener('change', (e) => { this.range = e.target.value; this.renderTable(); this.updateTableTotals(this.filteredData); this.updateAeSummary(); });
+    });
+
+    const searchEl = document.getElementById('customerSearch');
+    if (searchEl) searchEl.addEventListener('input', debounce(() => this.filterData(), 150));
+
     document.getElementById('aeFilter')?.addEventListener('change', () => this.filterData());
     document.getElementById('revenueType')?.addEventListener('change', () => this.filterData());
     document.getElementById('sortBy')?.addEventListener('change', () => this.sortData());
     document.getElementById('exportCSV')?.addEventListener('click', () => this.exportToCSV());
 
-    // AE summary sort & export
     document.querySelectorAll('input[name="aeSort"]').forEach(r => {
       r.addEventListener('change', () => this.updateAeSummary());
     });
     document.getElementById('exportAECsv')?.addEventListener('click', () => this.exportAECsv());
   }
 
-  // --- interactions ---
+  /* ----- interactions ----- */
   switchRevenueType() {
     this.currentRevenueField = document.querySelector('input[name="revenueField"]:checked').value;
     this._applyRevenueField();
@@ -558,19 +370,21 @@ class RevenueReportManager {
     this.updateStats();
     this.updateHeaderRevenue();
     this.updateAeSummary();
+
     const statLabel = document.querySelector('#displayRevenue')?.nextElementSibling;
     if (statLabel) statLabel.textContent = this.currentRevenueField === 'net' ? 'Total Net Revenue' : 'Total Gross Revenue';
   }
 
   filterData() {
+    const norm = s => (s||'').trim().toLocaleLowerCase();
     const search = (document.getElementById('customerSearch')?.value || '').toLowerCase().trim();
     const aeSel = document.getElementById('aeFilter')?.value || 'all';
     const typeSel = document.getElementById('revenueType')?.value || 'all';
 
     this.filteredData = this.allData.filter(row => {
       const matchSearch = !search || row.customer.toLowerCase().includes(search);
-      const matchAE = (aeSel === 'all') || (row.ae && row.ae.trim().toLowerCase() === aeSel.trim().toLowerCase());
-      const matchType = (typeSel === 'all') || (row.revenue_type && row.revenue_type.trim().toLowerCase() === typeSel.trim().toLowerCase());
+      const matchAE = (aeSel === 'all') || (norm(row.ae) === norm(aeSel));
+      const matchType = (typeSel === 'all') || (norm(row.revenue_type) === norm(typeSel));
       return matchSearch && matchAE && matchType;
     });
 
@@ -580,100 +394,140 @@ class RevenueReportManager {
 
   sortData() {
     const sortBy = document.getElementById('sortBy')?.value || 'ae_customer';
+    const cmpAlpha = (x,y) => x.localeCompare(y, undefined, { sensitivity:'base', numeric:true });
     this.filteredData.sort((a, b) => {
       if (sortBy === 'ae_customer') {
-        const aeCompare = a.ae.localeCompare(b.ae);
+        const aeCompare = cmpAlpha(a.ae, b.ae);
         if (aeCompare !== 0) return aeCompare;
-        return a.customer.localeCompare(b.customer);
+        return cmpAlpha(a.customer, b.customer);
       }
-      if (sortBy === 'customer') return a.customer.localeCompare(b.customer);
-      if (sortBy === 'total_asc') return (Number(a.total)||0) - (Number(b.total)||0);
-      return (Number(b.total)||0) - (Number(a.total)||0); // total_desc
+      if (sortBy === 'customer') return cmpAlpha(a.customer, b.customer);
+      if (sortBy === 'total_asc') return (Number(a.total)||0) - (Number(b.total)||0) || cmpAlpha(a.customer, b.customer);
+      return (Number(b.total)||0) - (Number(a.total)||0) || cmpAlpha(a.customer, b.customer); // total_desc
     });
-    this.renderTable();
-    this.updateStats();
-    this.updateAeSummary();
+
+    // batch to next frame
+    requestAnimationFrame(() => {
+      this.renderTable();
+      this.updateStats();
+      this.updateAeSummary();
+    });
   }
 
-  // --- rendering & stats ---
-  formatCurrency(val) {
-    const num = Number(val) || 0;
-    return (num < 0 ? '-$' : '$') + Math.abs(num).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  /* ----- rendering & stats ----- */
+  formatCurrency(val, prec=0) { return (prec===2 ? this.nf2 : this.nf0).format(Number(val)||0); }
+
+  _monthLimitForRange() {
+    if (this.range === 'full') return this.monthCount;
+    // YTD: up to last month with any non-zero value (fallback: current month)
+    let last = 0;
+    for (const r of this.filteredData) {
+      for (let m=1; m<=this.monthCount; m++) {
+        if ((Number(r[`month_${m}`]) || 0) !== 0) last = Math.max(last, m);
+      }
+    }
+    if (!last) {
+      const today = new Date();
+      last = Math.min(this.monthCount, today.getMonth()+1); // 1-12
+    }
+    return last;
   }
 
   renderTable() {
     const tbody = document.getElementById('revenueTableBody');
     if (!tbody) return;
+
     if (!this.filteredData.length) {
-        tbody.innerHTML = '<tr><td colspan="15" class="no-data">No data matches current filters</td></tr>';
-        return;
+      tbody.innerHTML = `<tr><td colspan="${2 + this.monthCount + 1}" class="no-data">No data matches current filters</td></tr>`;
+      this.updateTableTotals([]);
+      return;
     }
+
+    const monthLimit = this._monthLimitForRange();
 
     let html = '';
     this.filteredData.forEach(row => {
-        html += `<tr>`;
-        html += `<td>${row.customer}</td>`;
-        html += `<td><span class="ae-badge">${row.ae}</span></td>`;
-        for (let m = 1; m <= 12; m++) {
+      const cust = escapeHtml(row.customer);
+      const ae = escapeHtml(row.ae);
+      html += `<tr>`;
+      html += `<td>${cust}</td>`;
+      html += `<td><span class="ae-badge">${ae}</span></td>`;
+      for (let m=1; m<=this.monthCount; m++) {
+        if (m > monthLimit) { html += `<td class="revenue-zero">—</td>`; continue; }
         const val = Number(row[`month_${m}`]) || 0;
         const cls = val === 0 ? 'revenue-zero' : 'revenue-positive';
         html += `<td class="${cls}">${this.formatCurrency(val)}</td>`;
-        }
-        html += `<td class="revenue-positive">${this.formatCurrency(Number(row.total) || 0)}</td>`;
-        html += `</tr>`;
+      }
+      html += `<td class="revenue-positive">${this.formatCurrency(Number(row.total) || 0)}</td>`;
+      html += `</tr>`;
     });
 
-    html += '<tr class="totals-row"><td><strong>Monthly Totals</strong></td><td></td>';
-    for (let m = 1; m <= 12; m++) {
-        const sum = this.filteredData.reduce((t, r) => t + (Number(r[`month_${m}`]) || 0), 0);
-        html += `<td>${this.formatCurrency(sum)}</td>`;
-    }
-    const grandTotal = this.filteredData.reduce((t, r) => t + (Number(r.total) || 0), 0);
-    html += `<td>${this.formatCurrency(grandTotal)}</td></tr>`;
-
     tbody.innerHTML = html;
-    }
+    this.updateTableTotals(this.filteredData);
+  }
 
+  updateTableTotals(data) {
+    const tfoot = document.getElementById('revenueTableFooter');
+    if (!tfoot) return;
+
+    const monthLimit = this._monthLimitForRange();
+    const monthlyTotals = [];
+    for (let m=1; m<=this.monthCount; m++) {
+      const sum = m<=monthLimit ? data.reduce((t, r) => t + (Number(r[`month_${m}`]) || 0), 0) : 0;
+      monthlyTotals.push(sum);
+    }
+    const grandTotal = data.reduce((t, r) => t + (Number(r.total) || 0), 0);
+
+    let html = '<tr class="totals-row">';
+    html += '<td><strong>Monthly Totals</strong></td>';
+    html += '<td></td>';
+    monthlyTotals.forEach(total => { html += `<td>${this.formatCurrency(total)}</td>`; });
+    html += `<td>${this.formatCurrency(grandTotal)}</td>`;
+    html += '</tr>';
+
+    tfoot.innerHTML = html;
+  }
 
   updateStats() {
     const totalRevenue = this.filteredData.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
     const activeCustomers = this.filteredData.filter(r => (Number(r.total) || 0) > 0).length;
-    const avgMonthly = totalRevenue / 12;
+    const avgMonthly = totalRevenue / (this.range === 'full' ? this.monthCount : this._monthLimitForRange());
 
     const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     setText('displayCustomers', this.filteredData.length);
     setText('displayActive', activeCustomers);
     setText('displayRevenue', this.formatCurrency(totalRevenue).replace(/^\$/, ''));
     setText('displayAvg', this.formatCurrency(avgMonthly).replace(/^\$/, ''));
+
+    // mirror headline stats
+    setText('headerCustomers', this.filteredData.length);
+    setText('headerActive', activeCustomers);
   }
 
   updateHeaderRevenue() {
     const totalRevenue = this.filteredData.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
-    const insightText = document.querySelector('.insight-text');
-    if (!insightText) return;
-    const label = this.currentRevenueField === 'net' ? 'net revenue' : 'gross revenue';
-    const current = insightText.innerHTML;
-    insightText.innerHTML = current.replace(
-      /Total (?:gross |net )?revenue: \$[\d,]+(?:\.\d+)?/,
-      `Total ${label}: $${this.formatCurrency(totalRevenue).replace('$','')}`
-    );
+    const labelEl = document.getElementById('headerTotalLabel');
+    const valEl = document.getElementById('headerTotalValue');
+    if (labelEl) labelEl.textContent = this.currentRevenueField === 'net' ? 'net revenue' : 'gross revenue';
+    if (valEl) valEl.textContent = this.formatCurrency(totalRevenue);
   }
 
-  // --- AE summary ---
+  /* ----- AE summary ----- */
   computeAeTotals(data) {
     const byAe = new Map();
     for (const r of data) {
       const ae = (r.ae || 'Unknown').trim() || 'Unknown';
       const total = Number(r.total) || 0;
-      if (!byAe.has(ae)) byAe.set(ae, { total: 0, months: 12, customers: new Set() });
+      if (!byAe.has(ae)) byAe.set(ae, { total:0, customers:new Set() });
       const acc = byAe.get(ae);
       acc.total += total;
-      if ((Number(r.total) || 0) > 0) acc.customers.add(r.customer);
+      if (total > 0) acc.customers.add(r.customer);
     }
+    const months = (this.range === 'full' ? this.monthCount : this._monthLimitForRange()) || 12;
     return Array.from(byAe.entries()).map(([ae, v]) => ({
       ae,
       total: v.total,
-      avgMonthly: v.total / (v.months || 12),
+      avgMonthly: v.total / months,
       customers: v.customers.size
     }));
   }
@@ -687,7 +541,7 @@ class RevenueReportManager {
     }
     const tr = r => `
       <tr>
-        <td style="text-align:left;">${r.ae}</td>
+        <td style="text-align:left;">${escapeHtml(r.ae)}</td>
         <td>${this.formatCurrency(r.total)}</td>
         <td>${this.formatCurrency(r.avgMonthly)}</td>
         <td style="text-align:right;">${r.customers}</td>
@@ -698,62 +552,92 @@ class RevenueReportManager {
   renderAeChips(rows) {
     const host = document.getElementById('aeChips');
     if (!host) return;
-    const chip = r => `
-      <div class="ae-chip">
-        <span class="ae-name">${r.ae}</span>
+    host.innerHTML = rows.map(r => `
+      <button class="ae-chip" data-ae="${escapeHtml(r.ae)}" title="Filter by ${escapeHtml(r.ae)}">
+        <span class="ae-name">${escapeHtml(r.ae)}</span>
         <span class="ae-total">${this.formatCurrency(r.total)}</span>
-      </div>`;
-    host.innerHTML = rows.map(chip).join('');
+      </button>
+    `).join('');
+    host.querySelectorAll('.ae-chip').forEach(btn => btn.addEventListener('click', () => {
+      const sel = document.getElementById('aeFilter');
+      if (sel) { sel.value = btn.dataset.ae; this.filterData(); }
+    }));
   }
 
   updateAeSummary() {
     const rows = this.computeAeTotals(this.filteredData);
     const sortVal = (document.querySelector('input[name="aeSort"]:checked')?.value) || 'total_desc';
-    if (sortVal === 'alpha') rows.sort((a,b)=>a.ae.localeCompare(b.ae));
-    else rows.sort((a,b)=>(b.total||0)-(a.total||0));
+    if (sortVal === 'alpha') rows.sort((a,b)=> a.ae.localeCompare(b.ae, undefined, { sensitivity:'base' }));
+    else rows.sort((a,b)=> (b.total||0)-(a.total||0) || a.ae.localeCompare(b.ae));
     this.renderAeChips(rows);
     this.renderAeSummaryRows(rows);
   }
 
-  // --- AE CSV export ---
+  /* ----- exports ----- */
   exportAECsv() {
     const rows = this.computeAeTotals(this.filteredData);
     const sortVal = (document.querySelector('input[name="aeSort"]:checked')?.value) || 'total_desc';
-    if (sortVal === 'alpha') rows.sort((a,b)=>a.ae.localeCompare(b.ae));
-    else rows.sort((a,b)=>(b.total||0)-(a.total||0));
+    if (sortVal === 'alpha') rows.sort((a,b)=> a.ae.localeCompare(b.ae));
+    else rows.sort((a,b)=> (b.total||0)-(a.total||0));
 
     const headers = ['AE','Total','AvgMonthly','Customers'];
     const body = rows.map(r => [
-      `"${r.ae}"`,
+      `"${sanitizeCsvCell(r.ae)}"`,
       Math.round(r.total),
       Math.round(r.avgMonthly),
       r.customers
     ].join(','));
-    const csv = [headers.join(','), ...body].join('\n');
+
+    const selectedYear = document.getElementById('yearSelect')?.value || '';
+    const meta = [
+      `# Year=${selectedYear}`,
+      `# Revenue=${this.currentRevenueField}`,
+      `# Range=${this.range}`
+    ].join('\n');
+
+    const csv = [meta, headers.join(','), ...body].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    const selectedYear = document.getElementById('yearSelect')?.value || '';
-    a.download = `ae_summary_${selectedYear}_${this.currentRevenueField}.csv`;
+    a.download = `ae_summary_${selectedYear}_${this.currentRevenueField}_${this.range}.csv`;
     a.click();
   }
 
-  // --- export (detail table) ---
   exportToCSV() {
-    const headers = ['Customer','AE','Revenue Type','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Total'];
-    const rows = this.filteredData.map(r => [
-      `"${r.customer}"`,
-      `"${r.ae}"`,
-      `"${r.revenue_type}"`,
-      ...Array.from({length:12},(_,i)=>Number(r[`month_${i+1}`])||0),
-      Number(r.total)||0
-    ]);
-    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const monthLimit = this._monthLimitForRange();
+    const headers = ['Customer','AE','Revenue Type'];
+    for (let m=1; m<=this.monthCount; m++) headers.push(m <= monthLimit ? `M${m}` : `M${m}-NA`);
+    headers.push('Total');
+
+    const rows = this.filteredData.map(r => {
+      const cells = [
+        `"${sanitizeCsvCell(r.customer)}"`,
+        `"${sanitizeCsvCell(r.ae)}"`,
+        `"${sanitizeCsvCell(r.revenue_type)}"`
+      ];
+      for (let m=1; m<=this.monthCount; m++) {
+        cells.push(m<=monthLimit ? (Number(r[`month_${m}`])||0) : 0);
+      }
+      cells.push(Number(r.total)||0);
+      return cells.join(',');
+    });
+
+    const selectedYear = document.getElementById('yearSelect')?.value || '';
+    const aeSel = document.getElementById('aeFilter')?.value || 'all';
+    const typeSel = document.getElementById('revenueType')?.value || 'all';
+    const meta = [
+      `# Year=${selectedYear}`,
+      `# Revenue=${this.currentRevenueField}`,
+      `# Range=${this.range}`,
+      `# AE=${sanitizeCsvCell(aeSel)}`,
+      `# Type=${sanitizeCsvCell(typeSel)}`
+    ].join('\n');
+
+    const csv = [meta, headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    const selectedYear = document.getElementById('yearSelect')?.value || '';
-    a.download = `revenue_dashboard_${selectedYear}_${this.currentRevenueField}.csv`;
+    a.download = `revenue_dashboard_${selectedYear}_${this.currentRevenueField}_${this.range}.csv`;
     a.click();
   }
 }

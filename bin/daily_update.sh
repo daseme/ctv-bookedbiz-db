@@ -17,7 +17,7 @@ if [[ -f "/etc/ctv-daily-update.env" ]]; then
 fi
 
 # Default data file path
-DATA_FILE="${DAILY_UPDATE_DATA_FILE:-/mnt/k-drive/Traffic/Media Library/Commercial Log.xlsx}"
+DATA_FILE="${DAILY_UPDATE_DATA_FILE:-${PROJECT_ROOT}/data/raw/daily/Commercial Log $(date +%y%m%d).xlsx}"
 
 # Create log directory
 mkdir -p "${LOG_DIR}"
