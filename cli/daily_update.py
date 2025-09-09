@@ -7,6 +7,7 @@ Enhanced with unattended mode for automated daily processing of combined Commerc
 
 from __future__ import annotations
 import sys
+import os
 import argparse
 import sqlite3
 import logging
@@ -17,15 +18,65 @@ from dataclasses import dataclass, field
 from enum import Enum
 import logging.handlers
 
+# FIXED PATH SETUP - More robust approach
+script_dir = Path(__file__).parent.absolute()
+project_root = script_dir.parent
+src_dir = project_root / "src"
+
+# Add multiple possible paths
+sys.path.insert(0, str(src_dir))
+sys.path.insert(0, str(project_root))
+
+# Debug path setup (remove this after confirming it works)
+print(f"Script dir: {script_dir}")
+print(f"Project root: {project_root}")
+print(f"Src dir: {src_dir}")
+print(f"Src dir exists: {src_dir.exists()}")
+
 # Add tqdm for progress bars
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:
+    print("Warning: tqdm not available, progress bars will be limited")
+    # Create a dummy tqdm class
+    class tqdm:
+        def __init__(self, *args, **kwargs):
+            self.total = kwargs.get('total', 100)
+            self.current = 0
+        def update(self, n):
+            self.current += n
+        def set_description(self, desc):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        @staticmethod
+        def write(msg):
+            print(msg)
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Try imports with better error messages
+try:
+    from src.services.broadcast_month_import_service import BroadcastMonthImportService, BroadcastMonthImportError
+    print("✅ Successfully imported BroadcastMonthImportService")
+except ImportError as e:
+    print(f"❌ Failed to import BroadcastMonthImportService: {e}")
+    print(f"   Make sure the src directory exists at: {src_dir}")
+    sys.exit(1)
 
-from src.services.broadcast_month_import_service import BroadcastMonthImportService, BroadcastMonthImportError
-from src.services.import_integration_utilities import get_excel_import_summary, validate_excel_for_import
-from src.database.connection import DatabaseConnection
+try:
+    from src.services.import_integration_utilities import get_excel_import_summary, validate_excel_for_import
+    print("✅ Successfully imported import utilities")
+except ImportError as e:
+    print(f"❌ Failed to import import utilities: {e}")
+    sys.exit(1)
+
+try:
+    from src.database.connection import DatabaseConnection
+    print("✅ Successfully imported DatabaseConnection")
+except ImportError as e:
+    print(f"❌ Failed to import DatabaseConnection: {e}")
+    sys.exit(1)
 
 # ============================================================================
 # Domain Models (Enhanced for Multi-Sheet)
@@ -230,23 +281,25 @@ class MultiSheetPreviewGenerator:
         try:
             import pandas as pd
             
-            # Read the combined file to get sheet breakdown
-            df = pd.read_excel(excel_file, sheet_name="Commercials")
-            
+            # FIXED: Read all required sheets instead of just "Commercials"
+            total_spots = 0
             sheet_breakdown = {}
-            if 'sheet_source' in df.columns:
-                breakdown_series = df['sheet_source'].value_counts()
-                sheet_breakdown = dict(breakdown_series)
-            else:
-                # Fallback for files without sheet_source column
-                sheet_breakdown = {"Unknown": len(df)}
+            
+            for sheet_name in CommercialLogConfig.REQUIRED_SHEETS:
+                try:
+                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    sheet_breakdown[sheet_name] = len(df)
+                    total_spots += len(df)
+                except Exception:
+                    # Sheet doesn't exist, skip it
+                    continue
             
             # Get months from the import utility
             from src.services.import_integration_utilities import get_excel_import_summary
             summary = get_excel_import_summary(str(excel_file), db_connection.db_path)
             
             return MultiSheetPreview(
-                total_spots=len(df),
+                total_spots=total_spots,
                 sheet_breakdown=sheet_breakdown,
                 months_affected=summary.get('months_in_excel', []),
                 new_markets_detected=0  # Could enhance this later

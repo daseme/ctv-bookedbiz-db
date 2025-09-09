@@ -1,21 +1,34 @@
 # src/web/blueprints.py
 """
-Blueprint registration & service validation hardened for Railway:
-- No import-time crash if critical services fail to instantiate.
-- Lazy validation by default on Railway to avoid constructing heavy services.
-- Optional SKIP_SERVICE_VALIDATION=1 to bypass hard-fail in production.
-- Optional EAGER_SERVICE_VALIDATION=1 to force deep checks anywhere.
+Blueprint registration & service validation hardened for Railway.
 
-Environment knobs:
-  SKIP_SERVICE_VALIDATION: "1"/"true" -> never raise on validation failures
-  EAGER_SERVICE_VALIDATION: "1"/"true" -> instantiate and check services now
+Key behavior
+------------
+- Never hard-crash on Railway unless explicitly forced.
+- Eager vs. lazy service validation controlled via env flags.
+- Safe optional import of customer-sector routes (no early logger use).
+- Consistent JSON error payloads for API/health/decay routes.
+- Security headers + simple CORS for API/health paths.
+- Optional verbose request/response logging in DEBUG.
+
+Env Flags
+---------
+SKIP_SERVICE_VALIDATION : "1"/"true" -> bypass hard-fail even in production (default on Railway)
+EAGER_SERVICE_VALIDATION: "1"/"true" -> instantiate/check services on startup (default off on Railway)
 """
+
+from __future__ import annotations
+
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-from flask import Flask, request
+from flask import Flask, request, Blueprint, render_template, jsonify
 
+# --- module logger first (fixes early-use bug in optional imports) ---
+logger = logging.getLogger(__name__)
+
+# --- app blueprints & utilities ---
 from src.web.routes.reports import reports_bp
 from src.web.routes.api import api_bp
 from src.web.routes.budget import budget_bp
@@ -24,72 +37,61 @@ from src.web.routes.language_blocks import language_blocks_bp
 from src.web.routes.pipeline_decay_api import decay_api_bp
 from src.services.container import get_container
 from src.utils.template_formatters import register_template_filters
+
+# Optional feature: customer sector API (do not break import if missing)
 try:
-    from src.web.routes.customer_sector_api import customer_sector_bp
+    from src.web.routes.customer_sector_api import customer_sector_bp  # type: ignore
     CUSTOMER_SECTOR_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"Customer-sector routes not available: {e}")
+except Exception as e:  # broad: any import-time failure should not sink app
+    logger.warning("Customer-sector routes not available: %s", e)
     CUSTOMER_SECTOR_AVAILABLE = False
-    customer_sector_bp = None
-
-logger = logging.getLogger(__name__)
+    customer_sector_bp = None  # type: ignore
 
 
-# ---------- helpers ----------
+# =============================================================================
+# High-level entrypoints (call-graph roots)
+# =============================================================================
 
-def _truthy_env(name: str, default: bool = False) -> bool:
-    val = os.getenv(name)
-    if val is None:
-        return default
-    return str(val).strip().lower() in {"1", "true", "yes", "y", "on"}
-
-def _is_railway() -> bool:
-    # Robust Railway detection: any RAILWAY_* var counts
-    if any(k.startswith("RAILWAY_") for k in os.environ.keys()):
-        return True
-    # Back-compat with ad-hoc flags people sometimes set
-    return _truthy_env("RAILWAY", False) or _truthy_env("RAILWAY_ENVIRONMENT", False)
-
-def _resolve_environment() -> str:
-    # Prefer container config when available; fall back to envs
+def initialize_blueprints(app: Flask) -> None:
+    """
+    Initialize all blueprint-related configuration. Never abort full startup
+    just because of service validation if skipping is enabled or if we're on Railway.
+    """
     try:
-        c = get_container()
-        env = c.get_config("ENVIRONMENT", None)
-        if env:
-            return str(env)
-    except Exception:
-        pass
-    return (
-        os.getenv("ENVIRONMENT")
-        or os.getenv("APP_ENV")
-        or os.getenv("FLASK_ENV")
-        or "production"
-    ).lower()
+        try:
+            configure_blueprint_services(app)
+        except Exception as e:
+            if _should_skip_hard_fail():
+                logger.warning("[Degraded Start] Service configuration failed: %s", e)
+                app.config.setdefault("SERVICE_STATUS", {})
+            else:
+                raise
 
-def _should_skip_hard_fail() -> bool:
-    # Skip hard-fail if explicitly asked, or if we are on Railway.
-    if _truthy_env("SKIP_SERVICE_VALIDATION", False):
-        return True
-    if _is_railway():
-        return True
-    return False
+        register_blueprints(app)
+        register_common_error_handlers(app)
+        create_blueprint_context_processors(app)
 
-def _eager_validation_default() -> bool:
-    # On Railway default to lazy; elsewhere default to eager.
-    if _truthy_env("EAGER_SERVICE_VALIDATION", None) is not None:
-        return _truthy_env("EAGER_SERVICE_VALIDATION", False)
-    return not _is_railway()
+        if app.config.get("DEBUG", False):
+            setup_request_logging(app)
 
+        configure_security_headers(app)
 
-# ---------- blueprints ----------
+        logger.info("Blueprint initialization complete")
+    except Exception as e:
+        logger.error("Error initializing blueprints: %s", e, exc_info=True)
+        raise
+
 
 def register_blueprints(app: Flask) -> None:
+    """
+    Register all Flask blueprints. Keep order stable for predictable URL rules.
+    """
     try:
         app.register_blueprint(language_blocks_bp)
         logger.info("Registered language blocks blueprint")
 
         if CUSTOMER_SECTOR_AVAILABLE and customer_sector_bp:
-            app.register_blueprint(customer_sector_bp)
+            app.register_blueprint(customer_sector_bp)  # type: ignore[arg-type]
             logger.info("Registered customer-sector API blueprint")
         else:
             logger.info("Skipped customer-sector API blueprint (not available)")
@@ -114,7 +116,7 @@ def register_blueprints(app: Flask) -> None:
 
         logger.info("All blueprints registered successfully")
     except Exception as e:
-        logger.error(f"Error registering blueprints: {e}")
+        logger.error("Error registering blueprints: %s", e, exc_info=True)
         raise
 
 
@@ -148,7 +150,7 @@ def configure_blueprint_services(app: Flask) -> None:
             try:
                 if not container.has_service(name):
                     service_status[name] = "not_registered"
-                    logger.warning(f"Required service '{name}' not registered")
+                    logger.warning("Required service '%s' not registered", name)
                     continue
 
                 if eager_validation:
@@ -156,10 +158,10 @@ def configure_blueprint_services(app: Flask) -> None:
                     svc = container.get(name)
                     if svc is None:
                         service_status[name] = "available_but_null"
-                        logger.warning(f"Service '{name}' returned None")
+                        logger.warning("Service '%s' returned None", name)
                     else:
                         service_status[name] = "healthy"
-                        logger.debug(f"Verified service '{name}' is healthy")
+                        logger.debug("Verified service '%s' is healthy", name)
 
                         # Extra note for pipeline decay feature visibility
                         if name == "pipeline_service":
@@ -179,15 +181,12 @@ def configure_blueprint_services(app: Flask) -> None:
 
             except Exception as e:
                 service_status[name] = f"error: {e}"
-                logger.error(f"Service '{name}' failed validation: {e}")
+                logger.error("Service '%s' failed validation: %s", name, e, exc_info=True)
 
         app.config["SERVICE_STATUS"] = service_status
 
         # Identify hard failures
-        critical_failures = [
-            n for n, s in service_status.items()
-            if s.startswith("error:") or s == "not_registered"
-        ]
+        critical_failures = [n for n, s in service_status.items() if s.startswith("error:") or s == "not_registered"]
 
         if critical_failures:
             msg = f"Critical service failures in {environment}: {critical_failures}"
@@ -197,27 +196,34 @@ def configure_blueprint_services(app: Flask) -> None:
                 raise RuntimeError(f"Critical services failed in production: {critical_failures}")
             else:
                 # Degraded but continue
-                logger.warning(f"[Degraded Start] {msg} (skip_hard_fail={skip_hard_fail}, eager={eager_validation})")
+                logger.warning("[Degraded Start] %s (skip_hard_fail=%s, eager=%s)", msg, skip_hard_fail, eager_validation)
 
         logger.info(
-            "Blueprint services configured "
-            f"(env={environment}, eager={eager_validation}, skip_hard_fail={skip_hard_fail})"
+            "Blueprint services configured (env=%s, eager=%s, skip_hard_fail=%s)",
+            environment, eager_validation, skip_hard_fail
         )
 
     except Exception as e:
-        logger.error(f"Error configuring blueprint services: {e}")
+        logger.error("Error configuring blueprint services: %s", e, exc_info=True)
         raise
 
 
+# =============================================================================
+# Error handlers, context processors, logging, security
+# =============================================================================
+
 def register_common_error_handlers(app: Flask) -> None:
-    from flask import render_template, jsonify
+    def _is_api_path(p: str) -> bool:
+        return (
+            p.startswith("/api/") or
+            p.startswith("/health/") or
+            p.startswith("/api/pipeline/decay/")
+        )
 
     @app.errorhandler(404)
     def not_found_error(error):
-        logger.warning(f"404: {request.method} {request.path} from {request.remote_addr}")
-        if (request.path.startswith("/api/") or
-            request.path.startswith("/health/") or
-            request.path.startswith("/api/pipeline/decay/")):
+        logger.warning("404: %s %s from %s", request.method, request.path, request.remote_addr)
+        if _is_api_path(request.path):
             return jsonify({
                 "success": False,
                 "error": "Not found",
@@ -229,21 +235,19 @@ def register_common_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(500)
     def internal_error(error):
-        logger.error(f"500: {error}", exc_info=True)
+        logger.error("500: %s", error, exc_info=True)
         is_decay = request.path.startswith("/api/pipeline/decay/")
         try:
             service_status = app.config.get("SERVICE_STATUS", {})
             unhealthy = [n for n, s in service_status.items() if s not in {"healthy", "registered"}]
             if unhealthy:
-                logger.error(f"Error occurred with unhealthy services: {unhealthy}")
+                logger.error("Error occurred with unhealthy services: %s", unhealthy)
                 if is_decay and "pipeline_service_decay" in service_status:
-                    logger.error(f"Decay system status: {service_status.get('pipeline_service_decay')}")
+                    logger.error("Decay system status: %s", service_status.get("pipeline_service_decay"))
         except Exception as e:
-            logger.error(f"Health introspection failed during 500 handler: {e}")
+            logger.error("Health introspection failed during 500 handler: %s", e)
 
-        if (request.path.startswith("/api/") or
-            request.path.startswith("/health/") or
-            request.path.startswith("/api/pipeline/decay/")):
+        if _is_api_path(request.path):
             payload = {
                 "success": False,
                 "error": "Internal server error",
@@ -259,10 +263,8 @@ def register_common_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(400)
     def bad_request_error(error):
-        logger.warning(f"400: {request.method} {request.path} - {error}")
-        if (request.path.startswith("/api/") or
-            request.path.startswith("/health/") or
-            request.path.startswith("/api/pipeline/decay/")):
+        logger.warning("400: %s %s - %s", request.method, request.path, error)
+        if request.path.startswith("/api/") or request.path.startswith("/health/") or request.path.startswith("/api/pipeline/decay/"):
             return jsonify({
                 "success": False,
                 "error": "Bad request",
@@ -273,10 +275,8 @@ def register_common_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(403)
     def forbidden_error(error):
-        logger.warning(f"403: {request.method} {request.path} from {request.remote_addr}")
-        if (request.path.startswith("/api/") or
-            request.path.startswith("/health/") or
-            request.path.startswith("/api/pipeline/decay/")):
+        logger.warning("403: %s %s from %s", request.method, request.path, request.remote_addr)
+        if request.path.startswith("/api/") or request.path.startswith("/health/") or request.path.startswith("/api/pipeline/decay/"):
             return jsonify({
                 "success": False,
                 "error": "Forbidden",
@@ -287,10 +287,8 @@ def register_common_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(503)
     def service_unavailable_error(error):
-        logger.error(f"503: {request.method} {request.path}")
-        if (request.path.startswith("/api/") or
-            request.path.startswith("/health/") or
-            request.path.startswith("/api/pipeline/decay/")):
+        logger.error("503: %s %s", request.method, request.path)
+        if request.path.startswith("/api/") or request.path.startswith("/health/") or request.path.startswith("/api/pipeline/decay/"):
             return jsonify({
                 "success": False,
                 "error": "Service temporarily unavailable",
@@ -310,7 +308,7 @@ def create_blueprint_context_processors(app: Flask) -> None:
         return {
             "current_year": date.today().year,
             "app_name": "CTV Reports",
-            "version": "2.2.1",  # bumped
+            "version": "2.2.1",  # bump as needed
         }
 
     @app.context_processor
@@ -323,12 +321,10 @@ def create_blueprint_context_processors(app: Flask) -> None:
                 pass
 
             service_status = app.config.get("SERVICE_STATUS", {})
-            # Treat both "healthy" and "registered" as operational for UI purposes
             ok = {"healthy", "registered"}
             healthy_services = sum(1 for s in service_status.values() if s in ok)
             total_services = len({k for k in service_status.keys() if not k.endswith("_decay")})
 
-            # Overall system health
             if total_services == 0:
                 system_status = "unknown"
             elif healthy_services == total_services:
@@ -354,7 +350,7 @@ def create_blueprint_context_processors(app: Flask) -> None:
                 },
             }
         except Exception as e:
-            logger.warning(f"Template service status error: {e}")
+            logger.warning("Template service status error: %s", e)
             return {
                 "services_available": 0,
                 "healthy_services": 0,
@@ -411,36 +407,36 @@ def create_blueprint_context_processors(app: Flask) -> None:
 def setup_request_logging(app: Flask) -> None:
     @app.before_request
     def log_request_info():
-        logger.debug(f"Request: {request.method} {request.path}")
+        logger.debug("Request: %s %s", request.method, request.path)
         if request.args:
-            logger.debug(f"Query parameters: {dict(request.args)}")
+            logger.debug("Query parameters: %s", dict(request.args))
 
         if request.path.startswith("/health/"):
-            logger.info(f"Health check requested: {request.path}")
+            logger.info("Health check requested: %s", request.path)
 
         if request.path.startswith("/api/pipeline/decay/"):
-            logger.info(f"Decay API request: {request.method} {request.path}")
+            logger.info("Decay API request: %s %s", request.method, request.path)
             if request.is_json:
                 payload = request.get_json(silent=True) or {}
                 safe = {k: v for k, v in payload.items() if k not in {"webhook_signature", "auth_token"}}
-                logger.debug(f"Decay API data: {safe}")
+                logger.debug("Decay API data: %s", safe)
 
     @app.after_request
     def log_response_info(response):
-        logger.debug(f"Response: {response.status_code} for {request.path}")
+        logger.debug("Response: %s for %s", response.status_code, request.path)
 
         if response.status_code >= 400:
-            logger.warning(f"Error response: {response.status_code} for {request.method} {request.path}")
+            logger.warning("Error response: %s for %s %s", response.status_code, request.method, request.path)
 
             if request.path.startswith("/api/pipeline/decay/"):
-                logger.error(f"Decay API error: {response.status_code} for {request.path}")
+                logger.error("Decay API error: %s for %s", response.status_code, request.path)
 
             if response.status_code >= 500:
                 try:
                     status = app.config.get("SERVICE_STATUS", {})
                     unhealthy = [n for n, s in status.items() if s not in {"healthy", "registered"}]
                     if unhealthy:
-                        logger.error(f"500 with unhealthy services: {unhealthy}")
+                        logger.error("500 with unhealthy services: %s", unhealthy)
                 except Exception:
                     pass
         return response
@@ -451,27 +447,34 @@ def setup_request_logging(app: Flask) -> None:
 def configure_security_headers(app: Flask) -> None:
     @app.after_request
     def add_security_headers(response):
-        if response.content_type and "text/html" in response.content_type:
+        ct = (response.content_type or "")
+        path = request.path or ""
+
+        if "text/html" in ct:
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["X-XSS-Protection"] = "1; mode=block"
             response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-            csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
-            response.headers["Content-Security-Policy"] = csp
+            # Allow inline for Jinja output; tighten if you move to hashed CSP.
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'"
+            )
 
-        if (request.path.startswith("/api/") or
-            request.path.startswith("/health/") or
-            request.path.startswith("/api/pipeline/decay/")):
+        if path.startswith("/api/") or path.startswith("/health/") or path.startswith("/api/pipeline/decay/"):
             response.headers["Access-Control-Allow-Origin"] = "*"
             response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Emergency-Token, X-Webhook-Signature"
+            response.headers["Access-Control-Allow-Headers"] = (
+                "Content-Type, Authorization, X-Emergency-Token, X-Webhook-Signature"
+            )
 
-        if request.path.startswith("/health/"):
+        if path.startswith("/health/"):
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
 
-        if request.path.startswith("/api/pipeline/decay/"):
+        if path.startswith("/api/pipeline/decay/"):
             response.headers["X-Decay-System"] = "enabled"
             response.headers["Cache-Control"] = "no-cache"
 
@@ -480,59 +483,16 @@ def configure_security_headers(app: Flask) -> None:
     logger.info("Configured security headers")
 
 
-def initialize_blueprints(app: Flask) -> None:
-    """
-    Initialize all blueprint-related configuration. Never abort the entire
-    startup just because of service validation if skipping is enabled or
-    if we're on Railway.
-    """
-    try:
-        try:
-            configure_blueprint_services(app)
-        except Exception as e:
-            # Final safeguard: if configured to skip hard-fail, continue.
-            if _should_skip_hard_fail():
-                logger.warning(f"[Degraded Start] Service configuration failed: {e}")
-                app.config.setdefault("SERVICE_STATUS", {})
-            else:
-                raise
-
-        register_blueprints(app)
-        register_common_error_handlers(app)
-        create_blueprint_context_processors(app)
-
-        if app.config.get("DEBUG", False):
-            setup_request_logging(app)
-
-        configure_security_headers(app)
-
-        logger.info("Blueprint initialization complete")
-    except Exception as e:
-        logger.error(f"Error initializing blueprints: {e}")
-        raise
-
+# =============================================================================
+# Introspection
+# =============================================================================
 
 def get_blueprint_info() -> Dict[str, Any]:
     return {
         "blueprints": [
-            {
-                "name": "reports",
-                "url_prefix": "/reports",
-                "description": "Report generation and display",
-                "status": "active",
-            },
-            {
-                "name": "api",
-                "url_prefix": "/api",
-                "description": "REST API endpoints",
-                "status": "active",
-            },
-            {
-                "name": "budget",
-                "url_prefix": "/budget",
-                "description": "Budget management interface",
-                "status": "active",
-            },
+            {"name": "reports", "url_prefix": "/reports", "description": "Report generation and display", "status": "active"},
+            {"name": "api", "url_prefix": "/api", "description": "REST API endpoints", "status": "active"},
+            {"name": "budget", "url_prefix": "/budget", "description": "Budget management interface", "status": "active"},
             {
                 "name": "health",
                 "url_prefix": "/health",
@@ -584,3 +544,80 @@ def get_blueprint_info() -> Dict[str, Any]:
             "webhook_integration": True,
         },
     }
+
+
+# =============================================================================
+# Internals (env & platform helpers)
+# =============================================================================
+
+def _env_bool(name: str, default: Optional[bool] = None) -> Optional[bool]:
+    """
+    Ternary env bool: returns True/False if present, else `default`.
+    Recognizes: 1, true, yes, y, on / 0, false, no, n, off
+    """
+    val = os.getenv(name)
+    if val is None:
+        return default
+    s = val.strip().lower()
+    if s in {"1", "true", "yes", "y", "on"}:
+        return True
+    if s in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _truthy_env(name: str, default: bool = False) -> bool:
+    return bool(_env_bool(name, default))
+
+
+def _is_railway() -> bool:
+    # Robust Railway detection: any RAILWAY_* var counts or explicit flags
+    if any(k.startswith("RAILWAY_") for k in os.environ.keys()):
+        return True
+    return _truthy_env("RAILWAY", False) or _truthy_env("RAILWAY_ENVIRONMENT", False)
+
+
+def _resolve_environment() -> str:
+    # Prefer container config when available; fall back to envs
+    try:
+        c = get_container()
+        env = c.get_config("ENVIRONMENT", None)
+        if env:
+            return str(env).lower()
+    except Exception:
+        pass
+    return (
+        os.getenv("ENVIRONMENT")
+        or os.getenv("APP_ENV")
+        or os.getenv("FLASK_ENV")
+        or "production"
+    ).lower()
+
+
+def _should_skip_hard_fail() -> bool:
+    # Skip hard-fail if explicitly asked, or if we are on Railway.
+    if _truthy_env("SKIP_SERVICE_VALIDATION", False):
+        return True
+    if _is_railway():
+        return True
+    return False
+
+
+def _eager_validation_default() -> bool:
+    # If the flag is set, respect it; otherwise default lazy on Railway, eager elsewhere.
+    v = _env_bool("EAGER_SERVICE_VALIDATION", None)
+    if v is not None:
+        return v
+    return not _is_railway()
+
+
+__all__ = [
+    "initialize_blueprints",
+    "register_blueprints",
+    "configure_blueprint_services",
+    "register_common_error_handlers",
+    "create_blueprint_context_processors",
+    "setup_request_logging",
+    "configure_security_headers",
+    "get_blueprint_info",
+]

@@ -60,7 +60,7 @@ class CommercialLogConfig:
     """Configuration for commercial log processing"""
     
     # Required sheets to process (in order)
-    REQUIRED_SHEETS = ["Commercials", "Worldlink Lines"]
+    REQUIRED_SHEETS = ["Commercials", "Worldlink Lines", "Add to booked business"]
     
     # Source and destination paths
     SOURCE_FILE = "/mnt/k-drive/Traffic/Media Library/Commercial Log.xlsx"

@@ -1,0 +1,910 @@
+{% extends "base.html" %}
+{% set SCHEMA_VERSION = 2 %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+{% block header_subtitle %}Interactive customer-level monthly revenue breakdown with persistence, URL sharing, and advanced filtering{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-link">Operational</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Monthly Revenue Dashboard</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+/* === Theme tokens (easy theming / Nord-ready) === */
+:root{
+  --bg:#ffffff; --fg:#2d3748; --muted:#718096; --panel:#f7fafc; --panel-2:#fafafa; --border:#e2e8f0; --accent:#4299e1; --accent-2:#3182ce; --pos:#2f855a; --zero:#718096;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0b1220; --fg:#e5e7eb; --muted:#9aa4b2; --panel:#0f172a; --panel-2:#111827; --border:#1f2937; --accent:#60a5fa; --accent-2:#3b82f6; --pos:#34d399; --zero:#9aa4b2; }
+}
+
+/* Base */
+body{ background:var(--bg); color:var(--fg); }
+.insight-box small{ color:var(--muted); }
+
+/* Controls */
+.dashboard-controls { background:var(--panel); border:1px solid var(--border); border-radius:4px; padding:16px; margin:24px 0; display:flex; flex-wrap:wrap; gap:16px; align-items:end; }
+.control-group { display:flex; flex-direction:column; min-width:150px; }
+.control-group label { font-size:12px; font-weight:600; margin-bottom:4px; color:var(--fg); opacity:.8; }
+.control-group input, .control-group select { padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:3px; background:var(--bg); color:var(--fg); }
+.radio-group { display:flex; gap:12px; flex-wrap:wrap; }
+.radio-label { display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; margin:0; }
+.radio-label input[type="radio"]{ margin:0; }
+.radio-label span{ white-space:nowrap; }
+
+/* Stats */
+.dashboard-stats { display:flex; gap:16px; margin:24px 0; flex-wrap:wrap; }
+.stat-card { background:var(--panel-2); border-left:3px solid var(--border); padding:12px 16px; flex:1; min-width:150px; text-align:center; }
+.stat-number { font-size:18px; font-weight:600; color:var(--fg); margin-bottom:4px; }
+.stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+
+/* Table */
+.table-container { max-height:460px; overflow:auto; border:1px solid var(--border); border-radius:4px; position:relative; overscroll-behavior:contain; }
+.revenue-table { width:100%; border-collapse:collapse; font-size:11px; margin:24px 0; position:relative; height:100%; }
+.revenue-table th { text-align:right; padding:8px 4px; border-bottom:2px solid var(--fg); font-weight:normal; color:var(--fg); font-size:10px; position:sticky; top:0; background:var(--bg); z-index:10; }
+.revenue-table th:first-child, .revenue-table td:first-child { text-align:left; position:sticky; left:0; background:var(--bg); z-index:11; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.revenue-table td { padding:4px; border-bottom:1px solid var(--border); text-align:right; font-size:11px; }
+.revenue-table tfoot { position:sticky; bottom:0; background:var(--bg); z-index:10; border-top:2px solid var(--fg); }
+.revenue-table tfoot td { border-bottom:none; background:var(--panel) !important; font-weight:600; }
+.no-data { text-align:center; padding:32px; font-style:italic; color:var(--muted); }
+
+/* Values */
+.revenue-zero { color:var(--zero); }
+.revenue-positive { color:var(--pos); font-weight:500; }
+
+/* Month status in header */
+.month-closed { background-color:#072e10 !important; color:var(--pos) !important; font-weight:600; position:sticky; top:0; z-index:11; }
+.month-open   { background-color:#322712 !important; color:#d69e2e !important; font-weight:600; position:sticky; top:0; z-index:11; }
+.month-unknown{ background-color:var(--panel) !important; color:var(--muted) !important; font-weight:600; position:sticky; top:0; z-index:11; }
+
+/* Legend */
+.status-legend { display:flex; justify-content:center; gap:24px; margin:16px 0; padding:12px; background:var(--panel); border-radius:4px; border:1px solid var(--border); }
+.legend-item{ display:flex; align-items:center; gap:8px; font-size:12px; }
+.legend-badge{ padding:2px 8px; border-radius:3px; font-weight:600; font-size:10px; }
+.legend-closed{ background-color:#0f3; color:#041; }
+.legend-open{ background-color:#fd7; color:#742; }
+
+/* AE summary */
+.ae-badge{ background:var(--panel); padding:1px 4px; border-radius:8px; font-size:9px; color:var(--muted); display:inline-block; }
+.ae-summary{ margin-top:8px; padding:12px; border:1px solid var(--border); border-radius:4px; background:var(--panel); }
+.ae-summary-header{ display:flex; justify-content:space-between; align-items:center; font-weight:600; color:var(--fg); margin-bottom:8px; }
+.ae-actions{ display:flex; gap:12px; align-items:center; }
+.ae-chips{ display:flex; gap:8px; row-gap:8px; flex-wrap:wrap; max-height:72px; overflow:auto; }
+.ae-chip{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); border-radius:16px; background:var(--bg); color:var(--fg); font-size:12px; cursor:pointer; }
+.ae-chip:focus{ outline:2px solid var(--accent); }
+.ae-chip.active{ background:var(--accent); color:#fff; }
+.ae-chip .ae-name{ font-weight:600; }
+.ae-chip .ae-total{ font-feature-settings:"tnum"; }
+
+/* Buttons */
+.export-btn { padding:6px 12px; background:var(--accent); color:white; border:none; border-radius:3px; cursor:pointer; font-size:12px; transition:background .2s; }
+.export-btn:hover{ background:var(--accent-2); }
+
+/* Column chooser */
+.column-chooser { display:flex; flex-direction:column; gap:8px; padding:8px; border:1px dashed var(--border); border-radius:4px; background:var(--panel); }
+.column-chooser .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.column-chooser .row label { font-weight:500; }
+
+/* Skip link + sr-only utility */
+.skip-link { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
+.skip-link:focus { position:static; width:auto; height:auto; background:var(--accent); color:#fff; padding:4px 8px; border-radius:4px; }
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+/* Print */
+@media print{
+  .dashboard-controls, .ae-chips .export-btn, #exportCSV, #exportXLSX { display:none !important; }
+  .table-container{ max-height:none; overflow:visible; }
+  .revenue-table th, .revenue-table td{ font-size:10px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="#dataTable" class="skip-link">Skip to table</a>
+
+<div class="insight-box" aria-live="polite">
+  <div class="insight-title">Customer Revenue Dashboard - {{ data.selected_year }}</div>
+  <div class="insight-text" id="insightText">
+    Total customers: <span id="headerCustomers">{{ data.total_customers }}</span> |
+    Active customers: <span id="headerActive">{{ data.active_customers }}</span> |
+    Total <span id="headerTotalLabel">gross revenue</span>: <span id="headerTotalValue">${{ "{:,}".format(data.total_revenue) }}</span>
+    <br>
+    <small>
+      Data last updated: {{ data.metadata.data_last_updated | date_display('display') }} · Schema v<span id="schemaVersion">{{ SCHEMA_VERSION }}</span>
+    </small>
+  </div>
+</div>
+
+<div class="dashboard-controls" role="group" aria-label="Dashboard controls">
+  <div class="control-group">
+    <label for="yearSelect">Year</label>
+    <select id="yearSelect">
+      {% for year in data.available_years %}
+      <option value="{{ year }}" {% if year == data.selected_year %}selected{% endif %}>{{ year }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label>Revenue Field</label>
+    <div class="radio-group">
+      <label class="radio-label"><input type="radio" id="grossRevenue" name="revenueField" value="gross" checked><span>Gross</span></label>
+      <label class="radio-label"><input type="radio" id="netRevenue" name="revenueField" value="net"><span>Net</span></label>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label>Range</label>
+    <div class="radio-group">
+      <label class="radio-label"><input type="radio" name="range" value="ytd" checked><span>YTD</span></label>
+      <label class="radio-label"><input type="radio" name="range" value="full"><span>Full Year</span></label>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label for="customerSearch">Customer Search</label>
+    <input type="text" id="customerSearch" placeholder="Filter customers..." autocomplete="off">
+  </div>
+
+  <div class="control-group">
+    <label for="aeFilter">Account Executive</label>
+    <select id="aeFilter">
+      <option value="all">All AEs</option>
+      <option value="Unknown">Unknown</option>
+      {% for ae in data.ae_list %}
+      <option value="{{ ae }}">{{ ae }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="revenueType">Revenue Type</label>
+    <select id="revenueType">
+      <option value="all">All Types</option>
+      {% for rt in data.revenue_types %}
+      <option value="{{ rt }}">{{ rt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="sortBy">Sort By</label>
+    <select id="sortBy">
+      <option value="ae_customer">AE then Customer</option>
+      <option value="total_desc">Total (High to Low)</option>
+      <option value="customer">Customer Name</option>
+      <option value="total_asc">Total (Low to High)</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label>&nbsp;</label>
+    <button id="exportCSV" class="export-btn">Export CSV</button>
+  </div>
+  <div class="control-group">
+    <label>&nbsp;</label>
+    <button id="exportXLSX" class="export-btn">Export XLSX</button>
+  </div>
+</div>
+
+<!-- Column chooser -->
+<div class="column-chooser" id="colChooser" role="group" aria-label="Column chooser">
+  <div class="row">
+    <label>Presets:</label>
+    <button class="export-btn" data-preset="q1" type="button">Q1</button>
+    <button class="export-btn" data-preset="q2" type="button">Q2</button>
+    <button class="export-btn" data-preset="q3" type="button">Q3</button>
+    <button class="export-btn" data-preset="q4" type="button">Q4</button>
+    <button class="export-btn" data-preset="all" type="button">All</button>
+    <label class="radio-label" style="margin-left:8px;"><input type="checkbox" id="onlyWithData"> <span>Only months with data</span></label>
+  </div>
+  <div class="row" id="monthToggles">
+    {% for month in data.month_status %}
+      <label class="radio-label"><input type="checkbox" class="monthToggle" data-month="{{ loop.index }}" checked> <span>{{ month.month_name }}</span></label>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="dashboard-stats" aria-live="polite">
+  <div class="stat-card"><div class="stat-number" id="displayCustomers">{{ data.total_customers }}</div><div class="stat-label">Customers</div></div>
+  <div class="stat-card"><div class="stat-number" id="displayActive">{{ data.active_customers }}</div><div class="stat-label">Active</div></div>
+  <div class="stat-card"><div class="stat-number" id="displayRevenue">${{ "{:,}".format(data.total_revenue) }}</div><div class="stat-label">Total Revenue</div></div>
+  <div class="stat-card"><div class="stat-number" id="displayAvg">${{ "{:,}".format(data.avg_monthly_revenue) }}</div><div class="stat-label">Avg Monthly</div></div>
+</div>
+
+<div class="ae-summary">
+  <div class="ae-summary-header">
+    <span>AE Revenue Summary</span>
+    <div class="ae-actions">
+      <label class="radio-label"><input type="radio" name="aeSort" value="total_desc" checked><span>Sort: Total ↓</span></label>
+      <label class="radio-label"><input type="radio" name="aeSort" value="alpha"><span>Sort: A→Z</span></label>
+      <button id="exportAECsv" class="export-btn">Export AE CSV</button>
+    </div>
+  </div>
+  <div id="aeChips" class="ae-chips"></div>
+  <div class="table-container" style="margin-top:8px;">
+    <table class="revenue-table ae-table" role="table" aria-describedby="aeTableHelp">
+      <thead>
+        <tr>
+          <th style="text-align:left;" scope="col">AE</th>
+          <th scope="col" aria-sort="descending">Total</th>
+          <th scope="col">Avg / Mo</th>
+          <th scope="col">Customers</th>
+        </tr>
+      </thead>
+      <tbody id="aeSummaryBody">
+        <tr><td colspan="4" class="no-data">Loading AE summary…</td></tr>
+      </tbody>
+    </table>
+    <span id="aeTableHelp" class="sr-only" aria-hidden="true">AE totals, average per month, and customer counts.</span>
+  </div>
+</div>
+
+<div class="story-section">
+  <div class="section-title">Customer Monthly Revenue Analysis</div>
+  <div class="table-container">
+    <table class="revenue-table" id="dataTable" role="table" aria-describedby="tableHelp">
+      <thead>
+        <tr>
+          <th scope="col">Customer</th>
+          <th scope="col">AE</th>
+          {% for month in data.month_status %}
+          <th scope="col" class="month-col {% if month.status == 'CLOSED' %}month-closed{% elif month.status == 'OPEN' %}month-open{% else %}month-unknown{% endif %}" data-month-index="{{ loop.index }}">{{ month.month_name }}</th>
+          {% endfor %}
+          <th scope="col" aria-sort="none">Total</th>
+        </tr>
+      </thead>
+      <tbody id="revenueTableBody">
+        <tr><td colspan="{{ 2 + data.month_status|length + 1 }}" class="no-data">Loading...</td></tr>
+      </tbody>
+      <tfoot id="revenueTableFooter">
+        <tr class="totals-row">
+          <td><strong>Monthly Totals</strong></td>
+          <td></td>
+          {% for _ in data.month_status %}<td>$0</td>{% endfor %}
+          <td>$0</td>
+        </tr>
+      </tfoot>
+    </table>
+    <span id="tableHelp" class="sr-only" aria-hidden="true">Customer rows by month with totals; header color shows month status.</span>
+  </div>
+
+  <div class="annotation">Revenue excludes trade transactions. Use controls above to filter data by year, customer, AE, or revenue type.</div>
+
+  <div class="status-legend">
+    <div class="legend-item"><span class="legend-badge legend-closed">CLOSED</span><span>Month is officially closed and protected from changes</span></div>
+    <div class="legend-item"><span class="legend-badge legend-open">OPEN</span><span>Month is open for updates and modifications</span></div>
+  </div>
+</div>
+
+<script id="revenue-data" type="application/json">{{ data.revenue_data | tojson | safe }}</script>
+
+<!-- FIXED: Jinja-safe meta payload -->
+<script id="report-meta" type="application/json">
+{{ {
+  "schema_version": SCHEMA_VERSION|int,
+  "selected_year": data.selected_year|int,
+  "month_names": (data.month_status | map(attribute="month_name") | list),
+  "username": None
+} | tojson | safe }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Drop-in replacement JS for Revenue Dashboard (no sparklines) */
+
+/* ==== utilities ==== */
+const escapeHtml = s => String(s ?? "")
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+const sanitizeCsvCell = s => { const v = String(s ?? ""); return /^[=+\-@]/.test(v) ? `'${v}` : v; };
+const debounce = (fn, ms=150) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
+const cmpAlpha = (x,y) => x.localeCompare(y, undefined, { sensitivity:"base", numeric:true });
+const norm = s => (s||"").trim().toLowerCase();
+
+/* URL state */
+const urlState = {
+  read(){
+    const p = new URLSearchParams(location.search);
+    const parseMonths = () => p.get("months")
+      ? p.get("months").split(",").map(n=>parseInt(n,10)).filter(n=>Number.isFinite(n)&&n>=1&&n<=12)
+      : null;
+    return {
+      year: p.get("year")||null,
+      ae: p.get("ae")||null,
+      type: p.get("type")||null,
+      sort: p.get("sort")||null,
+      mode: p.get("mode")||null,
+      range: p.get("range")||null,
+      months: parseMonths()
+    };
+  },
+  write(state){
+    const p = new URLSearchParams(location.search);
+    for (const [k,v] of Object.entries(state)){
+      const empty = v==null || v==="all" || (Array.isArray(v)&&v.length===0);
+      if (empty) p.delete(k);
+      else p.set(k, Array.isArray(v) ? v.join(",") : v);
+    }
+    history.replaceState(null,"",`${location.pathname}?${p.toString()}`);
+  }
+};
+
+/* localStorage state */
+const LS_KEY = "revDashState";
+const saveLS = s => localStorage.setItem(LS_KEY, JSON.stringify(s));
+const loadLS = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"{}"); } catch { return {}; } };
+
+/* memo */
+class Memo {
+  constructor(){ this.map=new Map(); }
+  key(obj){ return JSON.stringify(obj); }
+  get(obj){ return this.map.get(this.key(obj)); }
+  set(obj,val){ this.map.set(this.key(obj), val); }
+}
+
+class RevenueReportManager {
+  constructor(){
+    /* meta + schema */
+    this.meta = this._parseJSON("#report-meta", {});
+    this.schemaExpected = Number({{ SCHEMA_VERSION|int }});
+    if (Number(this.meta?.schema_version||this.schemaExpected) !== this.schemaExpected) {
+      try { localStorage.removeItem(LS_KEY); } catch {}
+      console.warn("Schema mismatch; cleared local state");
+    }
+
+    /* data */
+    const parsed = this._parseJSON("#revenue-data", []);
+    this.allData = Array.isArray(parsed) ? parsed.map(this._coerceRow) : [];
+    this.filteredData = this.allData.slice();                  // seed to avoid empty first paint
+    this.monthCount = document.querySelectorAll("th.month-col").length || 12;
+
+    /* currency */
+    try {
+      this.nf0 = new Intl.NumberFormat(undefined, { style:"currency", currency:"USD", maximumFractionDigits:0 });
+    } catch {
+      this.nf0 = { format: n => "$" + Math.round(Number(n)||0).toLocaleString() };
+    }
+
+    /* state */
+    const initial = Object.assign(
+      {
+        year: String({{ data.selected_year|int }}),
+        ae: "all",
+        type: "all",
+        sort: "ae_customer",
+        mode: "gross",
+        range: "ytd",
+        months: Array.from({length:this.monthCount},(_,i)=>i+1)
+      },
+      loadLS(),
+      urlState.read()
+    );
+    this.state = initial;
+    this.currentRevenueField = initial.mode;
+    this.memoAe = new Memo();
+    this.onlyWithData = !!document.getElementById("onlyWithData")?.checked;
+
+    /* init */
+    this._initControlsFromState();
+    this._applyRevenueField();
+    this.filterData();
+    this.sortData();
+    this.renderTable(true);
+    this.updateStats();
+    this.updateHeaderRevenue();
+    this.updateAeSummary();
+
+    /* expose for quick console checks (optional) */
+    window.app = this;
+  }
+
+  /* ==== parsing / normalization ==== */
+  _parseJSON(selector, fallback){
+    try { const t=document.querySelector(selector)?.textContent||""; return JSON.parse(t||"null") ?? fallback; }
+    catch { return fallback; }
+  }
+
+  _coerceRow = (row) => {
+    const r = {...row};
+
+    /* aliases */
+    r.ae = (r.ae ?? r.account_executive ?? r.ae_name ?? "Unknown");
+    r.revenue_type = (r.revenue_type ?? r.type ?? r.revenueType ?? "Regular");
+    r.customer = (r.customer ?? r.client ?? r.account ?? "").trim();
+
+    /* months: accept month_# and jan..dec */
+    const monthNames = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+    for (let i=0;i<12;i++){
+      const idx=i+1, mKey=`month_${idx}`, gKey=`month_${idx}_gross`, nKey=`month_${idx}_net`;
+      const alt=monthNames[i], altG=`${alt}_gross`, altN=`${alt}_net`;
+
+      let g=r[gKey]; if (g==null) g=r[altG];
+      let n=r[nKey]; if (n==null) n=r[altN];
+      let v=r[mKey]; if (v==null) v=r[alt];
+
+      r[gKey] = Number(g ?? v ?? 0) || 0;
+      r[nKey] = Number(n ?? 0) || 0;
+      r[mKey] = Number(v ?? g ?? n ?? 0) || 0;
+    }
+
+    /* totals (flexible names) */
+    const tg = (r.total_gross ?? r.gross_total ?? r.gross ?? r.total);
+    const tn = (r.total_net   ?? r.net_total   ?? r.net);
+    r.total_gross = Number(tg ?? 0) || 0;
+    r.total_net   = Number(tn ?? 0) || 0;
+
+    r.ae = String(r.ae ?? "Unknown").trim();
+    r.revenue_type = String(r.revenue_type ?? "Regular").trim();
+
+    return r;
+  };
+
+  /* ==== controls & events ==== */
+  _rowTotalForVisibleMonths(r){
+  const months = this._visibleMonths();
+  let sum = 0;
+  for (const m of months) sum += Number(r[`month_${m}`]) || 0;
+  return sum;
+}
+
+  _initControlsFromState(){
+    const s=this.state;
+    const setSel=(id,val)=>{ const el=document.getElementById(id); if(!el) return; if([...el.options].some(o=>o.value==val)) el.value=val; };
+    setSel("yearSelect", s.year);
+    setSel("aeFilter", s.ae||"all");
+    setSel("revenueType", s.type||"all");
+    setSel("sortBy", s.sort||"ae_customer");
+    (document.querySelector(`input[name="revenueField"][value="${s.mode}"]`)||{}).checked = true;
+    (document.querySelector(`input[name="range"][value="${s.range}"]`)||{}).checked = true;
+
+    /* month toggles reflect state */
+    document.querySelectorAll(".monthToggle").forEach(cb=>{
+      const idx=+cb.dataset.month;
+      cb.checked = (s.months||[]).includes(idx);
+    });
+
+    this._wireEvents();
+  }
+
+  _wireEvents(){
+    const commit = ()=>{ saveLS(this.state); urlState.write(this.state); };
+
+    document.getElementById("yearSelect")?.addEventListener("change", e=>{
+      this.state.year = e.target.value;
+      commit();
+      const url=new URL(location);
+      url.searchParams.set("year", this.state.year);
+      location.href = url.toString();
+    });
+
+    document.querySelectorAll('input[name="revenueField"]').forEach(r=>
+      r.addEventListener("change", ()=>{
+        this.state.mode = (document.querySelector('input[name="revenueField"]:checked')||{value:"gross"}).value;
+        this.switchRevenueType();
+        commit();
+      })
+    );
+
+    document.querySelectorAll('input[name="range"]').forEach(r=>
+      r.addEventListener("change", e=>{
+        this.state.range = e.target.value;
+        this.renderTable(true);
+        this.updateTableTotals(this.filteredData);
+        this.updateAeSummary();
+        commit();
+      })
+    );
+
+    const debouncedFilter = debounce(()=>{ this.filterData(); this.sortData(); commit(); }, 150);
+    document.getElementById("customerSearch")?.addEventListener("input", debouncedFilter);
+    document.getElementById("aeFilter")?.addEventListener("change", e=>{ this.state.ae=e.target.value; this.filterData(); this.sortData(); commit(); });
+    document.getElementById("revenueType")?.addEventListener("change", e=>{ this.state.type=e.target.value; this.filterData(); this.sortData(); commit(); });
+    document.getElementById("sortBy")?.addEventListener("change", e=>{ this.state.sort=e.target.value; this.sortData(); commit(); });
+
+    document.getElementById("exportCSV")?.addEventListener("click", ()=> this.exportToCSV());
+    document.getElementById("exportXLSX")?.addEventListener("click", ()=> this.exportXLSX());
+    document.getElementById("exportAECsv")?.addEventListener("click", ()=> this.exportAECsv());
+
+    /* Column chooser */
+    document.querySelectorAll(".monthToggle").forEach(cb=>
+      cb.addEventListener("change", ()=>{
+        this.state.months = [...document.querySelectorAll(".monthToggle:checked")].map(x=>+x.dataset.month);
+        this.renderTable(true);
+        this.updateTableTotals(this.filteredData);
+        saveLS(this.state); urlState.write(this.state);
+      })
+    );
+    document.getElementById("onlyWithData")?.addEventListener("change", e=>{
+      this.onlyWithData = !!e.target.checked;
+      this.renderTable(true);
+      this.updateTableTotals(this.filteredData);
+    });
+    document.querySelectorAll("[data-preset]").forEach(btn=>
+      btn.addEventListener("click", ()=>{
+        const p=btn.dataset.preset;
+        const presets = {
+          q1:[1,2,3], q2:[4,5,6], q3:[7,8,9], q4:[10,11,12],
+          all:Array.from({length:this.monthCount},(_,i)=>i+1)
+        };
+        this.state.months = presets[p] || presets.all;
+        document.querySelectorAll(".monthToggle").forEach(cb=> cb.checked = this.state.months.includes(+cb.dataset.month));
+        saveLS(this.state); urlState.write(this.state);
+        this.renderTable(true);
+        this.updateTableTotals(this.filteredData);
+      })
+    );
+  }
+
+  /* ==== revenue mode projection ==== */
+  _applyRevenueField(){
+    const useNet = this.state.mode === "net";
+    const setView = r => {
+      r.total = useNet ? (r.total_net||0) : (r.total_gross||r.total||0);
+      for (let m=1;m<=12;m++){
+        r[`month_${m}`] = useNet ? (r[`month_${m}_net`]||0) : (r[`month_${m}_gross`]||r[`month_${m}`]||0);
+      }
+    };
+    this.allData.forEach(setView);
+    this.filteredData.forEach(setView);
+  }
+
+  switchRevenueType(){
+    this._applyRevenueField();
+    this.sortData();
+    this.updateStats();
+    this.updateHeaderRevenue();
+    this.updateAeSummary();
+    const statLabel = document.querySelector("#displayRevenue")?.nextElementSibling;
+    if (statLabel) statLabel.textContent = this.state.mode==="net" ? "Total Net Revenue" : "Total Revenue";
+  }
+
+  /* ==== filtering/sorting ==== */
+  filterData(){
+    const searchRaw = (document.getElementById("customerSearch")?.value ?? "").toString();
+    const search = searchRaw.trim().toLowerCase();
+
+    const aeSel = (this.state?.ae ?? "all").toString();
+    const typeSel = (this.state?.type ?? "all").toString();
+
+    const wantAllAE   = aeSel === "all";
+    const wantAllType = typeSel === "all";
+    const hasSearch   = search.length > 0;
+
+    if (!hasSearch && wantAllAE && wantAllType) {
+      this.filteredData = this.allData.slice();
+      return;
+    }
+
+    const eq = (a,b)=> a.trim().toLowerCase() === b.trim().toLowerCase();
+
+    this.filteredData = this.allData.filter(row => {
+      const matchSearch = !hasSearch || (row.customer && row.customer.toLowerCase().includes(search));
+      const matchAE     = wantAllAE   || (row.ae && eq(row.ae, aeSel));
+      const matchType   = wantAllType || (row.revenue_type && eq(row.revenue_type, typeSel));
+      return matchSearch && matchAE && matchType;
+    });
+  }
+
+  sortData(){
+    const s=this.state.sort||"ae_customer";
+    this.filteredData.sort((a,b)=>{
+      if (s==="ae_customer"){ const c=cmpAlpha(a.ae,b.ae); return c!==0?c:cmpAlpha(a.customer,b.customer); }
+      if (s==="customer") return cmpAlpha(a.customer,b.customer);
+      if (s==="total_asc") return (Number(a.total)||0)-(Number(b.total)||0) || cmpAlpha(a.customer,b.customer);
+      return (Number(b.total)||0)-(Number(a.total)||0) || cmpAlpha(a.customer,b.customer);
+    });
+    requestAnimationFrame(()=>{ this.renderTable(true); this.updateStats(); this.updateAeSummary(); });
+  }
+
+  /* ==== visible months logic ==== */
+  _monthLimitYTD(){
+    let last=0;
+    const pool = this.state.months || Array.from({length:this.monthCount},(_,i)=>i+1);
+    for (const r of this.filteredData){
+      for (const m of pool){
+        if ((Number(r[`month_${m}`])||0) !== 0) last = Math.max(last, m);
+      }
+    }
+    if (!last) {
+      const today = new Date();
+      last = Math.min(this.monthCount, today.getMonth()+1);
+    }
+    return last;
+  }
+
+  _monthsWithData(candidates){
+    const set = new Set();
+    const pool = candidates ?? Array.from({length:this.monthCount},(_,i)=>i+1);
+    for (const r of this.filteredData){
+      for (const m of pool){
+        if ((Number(r[`month_${m}`])||0) !== 0) set.add(m);
+      }
+    }
+    return set;
+  }
+
+  _visibleMonths(){
+    let selected = this.state.months?.slice() ?? Array.from({length:this.monthCount},(_,i)=>i+1);
+    if (this.state.range !== "full") {
+      const lim = this._monthLimitYTD();
+      selected = selected.filter(m => m <= lim);
+    }
+    if (this.onlyWithData) {
+      const has = this._monthsWithData(selected);
+      selected = selected.filter(m => has.has(m));
+    }
+    selected.sort((a,b)=>a-b);
+    return selected;
+  }
+
+  _applyHeaderVisibility(months){
+    const visible = new Set(months);
+    document.querySelectorAll("th.month-col").forEach(th=>{
+      const idx = parseInt(th.dataset.monthIndex,10);
+      th.style.display = visible.has(idx) ? "" : "none";
+    });
+  }
+
+  /* ==== rendering ==== */
+  formatCurrency(v){ return this.nf0.format(Number(v)||0); }
+
+  renderTable(force=false){
+    const tbody = document.getElementById("revenueTableBody"); if (!tbody) return;
+
+    const table = document.getElementById("dataTable");
+    const viewport = table ? table.parentElement : null;
+    if (!viewport) { requestAnimationFrame(()=>this.renderTable(true)); return; }
+
+    const months = this._visibleMonths();
+    this._applyHeaderVisibility(months);
+
+    if (!this.filteredData.length){
+      tbody.innerHTML = `<tr><td colspan="${2 + this.monthCount + 1}" class="no-data">No data matches current filters</td></tr>`;
+      this.updateTableTotals([]);
+      return;
+    }
+
+    const rowH = 26;
+    const total = this.filteredData.length;
+    const scrollTop = viewport.scrollTop, viewH = viewport.clientHeight;
+    const start = Math.max(0, Math.floor(scrollTop/rowH) - 20);
+    const end   = Math.min(total, start + Math.ceil(viewH/rowH) + 40);
+
+    let html = "";
+    for (let i=start;i<end;i++){
+      const r=this.filteredData[i]; const cust=escapeHtml(r.customer); const ae=escapeHtml(r.ae);
+      html += "<tr>";
+      html += `<td>${cust}</td>`;
+      html += `<td><span class="ae-badge">${ae}</span></td>`;
+      for (const m of months){
+        const v = Number(r[`month_${m}`])||0;
+        const cls = v===0 ? "revenue-zero" : "revenue-positive";
+        html += `<td class="${cls}">${this.formatCurrency(v)}</td>`;
+      }
+      const pad = (this.state.months?.length||this.monthCount) - months.length;
+      if (pad>0) for (let k=0;k<pad;k++) html += `<td class="revenue-zero">—</td>`;
+      // <-- use visible-month total
+      html += `<td class="revenue-positive">${this.formatCurrency(this._rowTotalForVisibleMonths(r))}</td>`;
+      html += "</tr>";
+    }
+
+    const topPad = start*rowH, bottomPad=(total-end)*rowH;
+    tbody.innerHTML =
+      `<tr style="height:${topPad}px"><td colspan="${2 + this.monthCount + 1}"></td></tr>` +
+      html +
+      `<tr style="height:${bottomPad}px"><td colspan="${2 + this.monthCount + 1}"></td></tr>`;
+
+    if (force) this._attachViewportScroll();
+    this.updateTableTotals(this.filteredData);
+  }
+
+
+  _attachViewportScroll(){
+    const table = document.getElementById("dataTable");
+    const viewport = table ? table.parentElement : null;
+    if (!viewport) return;
+    viewport.removeEventListener("scroll", this._onScroll);
+    this._onScroll = ()=> this.renderTable(false);
+    viewport.addEventListener("scroll", this._onScroll, { passive:true });
+  }
+
+  // REPLACE updateTableTotals()
+  updateTableTotals(data){
+    const tfoot = document.getElementById("revenueTableFooter"); if (!tfoot) return;
+    const months = this._visibleMonths();
+
+    const allChosen = this.state.months || Array.from({length:this.monthCount},(_,i)=>i+1);
+    const monthlyTotals = allChosen.map(m => months.includes(m)
+      ? data.reduce((t,r)=> t + (Number(r[`month_${m}`])||0), 0)
+      : 0
+    );
+    // <-- sum visible-month totals, not r.total
+    const grandTotal = data.reduce((t,r)=> t + this._rowTotalForVisibleMonths(r), 0);
+
+    let html = '<tr class="totals-row">';
+    html += "<td><strong>Monthly Totals</strong></td>";
+    html += "<td></td>";
+    monthlyTotals.forEach(t=>{ html += `<td>${this.formatCurrency(t)}</td>`; });
+    html += `<td>${this.formatCurrency(grandTotal)}</td>`;
+    html += "</tr>";
+    tfoot.innerHTML = html;
+  }
+
+
+  // REPLACE updateStats()
+  updateStats(){
+    const totalVisible = this.filteredData.reduce((s,r)=> s + this._rowTotalForVisibleMonths(r), 0);
+    const activeCustomers = this.filteredData.filter(r=> this._rowTotalForVisibleMonths(r) > 0 ).length;
+    const denom = (this._visibleMonths().length || 1);
+    const avgMonthly = totalVisible / denom;
+
+    const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+    set("displayCustomers", this.filteredData.length);
+    set("displayActive", activeCustomers);
+    set("displayRevenue", this.formatCurrency(totalVisible).replace(/^\$/,""));
+    set("displayAvg", this.formatCurrency(avgMonthly).replace(/^\$/,""));
+    set("headerCustomers", this.filteredData.length);
+    set("headerActive", activeCustomers);
+  }
+
+
+  // REPLACE updateHeaderRevenue()
+  updateHeaderRevenue(){
+    const totalVisible = this.filteredData.reduce((s,r)=> s + this._rowTotalForVisibleMonths(r), 0);
+    const label = document.getElementById("headerTotalLabel");
+    const val   = document.getElementById("headerTotalValue");
+    if (label) label.textContent = this.state.mode==="net" ? "net revenue" : "gross revenue";
+    if (val)   val.textContent   = this.formatCurrency(totalVisible);
+  }
+
+
+  /* ==== AE summary (memoized) ==== */
+  // REPLACE computeAeTotals()
+  computeAeTotals(data){
+    const key = { ids:data.length, mode:this.state.mode, range:this.state.range, months:this._visibleMonths().join(",") };
+    const cached = this.memoAe.get(key); if (cached) return cached;
+
+    const byAe = new Map();
+    for (const r of data){
+      const ae = (r.ae || "Unknown").trim() || "Unknown";
+      const vis = this._rowTotalForVisibleMonths(r);
+      if (!byAe.has(ae)) byAe.set(ae, { total:0, customers:new Set() });
+      const acc = byAe.get(ae);
+      acc.total += vis;
+      if (vis>0) acc.customers.add(r.customer);
+    }
+    const months = this._visibleMonths().length || 12;
+    const rows = Array.from(byAe.entries()).map(([ae,v])=>({
+      ae, total:v.total, avgMonthly:v.total/months, customers:v.customers.size
+    }));
+    this.memoAe.set(key, rows);
+    return rows;
+  }
+
+
+  renderAeSummaryRows(rows){
+    const tbody = document.getElementById("aeSummaryBody"); if (!tbody) return;
+    if (!rows.length){
+      tbody.innerHTML = '<tr><td colspan="4" class="no-data">No AE data for current filters</td></tr>';
+      return;
+    }
+    const tr = r => `<tr>
+      <td style="text-align:left;">${escapeHtml(r.ae)}</td>
+      <td>${this.formatCurrency(r.total)}</td>
+      <td>${this.formatCurrency(r.avgMonthly)}</td>
+      <td style="text-align:right;">${r.customers}</td>
+    </tr>`;
+    tbody.innerHTML = rows.map(tr).join("");
+  }
+
+  renderAeChips(rows){
+    const host = document.getElementById("aeChips"); if (!host) return;
+    const isActive = ae => norm(this.state.ae)!=="all" && norm(this.state.ae)===norm(ae);
+    host.innerHTML = rows.map(r=>`
+      <button class="ae-chip ${isActive(r.ae)?"active":""}" data-ae="${escapeHtml(r.ae)}"
+              title="Filter by ${escapeHtml(r.ae)}">
+        <span class="ae-name">${escapeHtml(r.ae)}</span>
+        <span class="ae-total">${this.formatCurrency(r.total)}</span>
+      </button>`).join("");
+    host.querySelectorAll(".ae-chip").forEach(btn=>
+      btn.addEventListener("click", ()=>{
+        const v = btn.dataset.ae;
+        this.state.ae = (norm(this.state.ae)===norm(v)) ? "all" : v;
+        const sel=document.getElementById("aeFilter"); if (sel) sel.value=this.state.ae;
+        this.filterData(); this.sortData(); saveLS(this.state); urlState.write(this.state);
+      })
+    );
+  }
+
+  updateAeSummary(){
+    const rows = this.computeAeTotals(this.filteredData);
+    const sortVal = (document.querySelector('input[name="aeSort"]:checked')?.value)||"total_desc";
+    if (sortVal==="alpha") rows.sort((a,b)=> a.ae.localeCompare(b.ae, undefined, { sensitivity:"base" }));
+    else rows.sort((a,b)=> (b.total||0)-(a.total||0) || a.ae.localeCompare(b.ae));
+    this.renderAeChips(rows);
+    this.renderAeSummaryRows(rows);
+  }
+
+  /* ==== exports ==== */
+  _exportMetaLines(){
+    const ts = new Date().toISOString();
+    return [
+      `# Generated=${ts}`,
+      `# Year=${this.state.year}`,
+      `# Revenue=${this.state.mode}`,
+      `# Range=${this.state.range}`,
+      `# AE=${sanitizeCsvCell(this.state.ae)}`,
+      `# Type=${sanitizeCsvCell(this.state.type)}`,
+      `# Months=${(this._visibleMonths()).join(",")}`
+    ];
+  }
+
+  exportAECsv(){
+    const rows = this.computeAeTotals(this.filteredData).slice();
+    const sortVal = (document.querySelector('input[name="aeSort"]:checked')?.value)||"total_desc";
+    if (sortVal==="alpha") rows.sort((a,b)=> a.ae.localeCompare(b.ae));
+    else rows.sort((a,b)=> (b.total||0)-(a.total||0));
+
+    const headers = ["AE","Total","AvgMonthly","Customers"];
+    const body = rows.map(r => [
+      `"${sanitizeCsvCell(r.ae)}"`,
+      Math.round(r.total),
+      Math.round(r.avgMonthly),
+      r.customers
+    ].join(","));
+    const csv = [...this._exportMetaLines(), headers.join(","), ...body].join("\n");
+    const blob = new Blob([csv], { type:"text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ae_summary_${this.state.year}_${this.state.mode}_${this.state.range}.csv`;
+    a.click();
+  }
+
+  exportToCSV(){
+    const months = this._visibleMonths();
+    const headers = ["Customer","AE","Revenue Type", ...months.map(m=>`M${m}`), "Total"];
+    const rows = this.filteredData.map(r=>{
+      const cells = [
+        `"${sanitizeCsvCell(r.customer)}"`,
+        `"${sanitizeCsvCell(r.ae)}"`,
+        `"${sanitizeCsvCell(r.revenue_type)}"`
+      ];
+      months.forEach(m=> cells.push(Number(r[`month_${m}`])||0));
+      cells.push(this._rowTotalForVisibleMonths(r));   // <-- visible total
+      return cells.join(",");
+    });
+    const csv = [...this._exportMetaLines(), headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type:"text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `revenue_dashboard_${this.state.year}_${this.state.mode}_${this.state.range}.csv`;
+    a.click();
+  }
+
+  exportXLSX(){
+    /* server route expected at /reports/revenue-dashboard.xlsx */
+    const p = new URLSearchParams({
+      year:this.state.year, mode:this.state.mode, range:this.state.range,
+      ae:this.state.ae, type:this.state.type, months:this._visibleMonths().join(",")
+    });
+    window.open(`/reports/revenue-dashboard.xlsx?${p.toString()}`, "_blank");
+  }
+}
+
+/* boot */
+window.addEventListener("DOMContentLoaded", ()=> {
+  /* quick JSON integrity checks (silent on success) */
+  try { JSON.parse(document.querySelector("#revenue-data")?.textContent||"[]"); } catch(e){ console.error("revenue-data JSON parse failed", e); }
+  try { JSON.parse(document.querySelector("#report-meta")?.textContent||"{}"); } catch(e){ console.error("report-meta JSON parse failed", e); }
+  new RevenueReportManager();
+});
+</script>
+
+{% endblock %}
