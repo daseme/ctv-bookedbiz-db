@@ -6,7 +6,7 @@ Provides structured data transfer objects for all report types.
 from typing import List, Dict, Any, Optional, Union
 from datetime import date, datetime
 from decimal import Decimal
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import calendar
 
 
@@ -66,84 +66,96 @@ class MonthStatus:
         return result
 
 
+@dataclass
 class CustomerMonthlyRow:
-    """Customer monthly revenue row with flexible month access."""
+    """Represents a customer's monthly revenue data"""
+    customer_id: str
+    customer: str
+    ae: str
+    revenue_type: str
+    sector: str
+    is_new_customer: bool = False  # New field to track new customers
     
-    def __init__(self, customer_id: int, customer: str, ae: str, 
-                 revenue_type: str, sector: Optional[str] = None):
-        self.customer_id = customer_id
-        self.customer = customer
-        self.ae = ae
-        self.revenue_type = revenue_type
-        self.sector = sector
-        
-        # Initialize all months to 0 for both gross and net
-        self._months_gross = {f'month_{i}': Decimal('0') for i in range(1, 13)}
-        self._months_net = {f'month_{i}': Decimal('0') for i in range(1, 13)}
+    # Monthly values (initialized to zero)
+    month_1_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_1_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_2_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_2_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_3_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_3_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_4_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_4_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_5_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_5_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_6_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_6_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_7_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_7_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_8_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_8_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_9_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_9_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_10_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_10_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_11_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_11_net: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_12_gross: Decimal = field(default_factory=lambda: Decimal('0'))
+    month_12_net: Decimal = field(default_factory=lambda: Decimal('0'))
     
-    def set_month_value(self, month: int, gross_value: Union[Decimal, float, int], 
-                       net_value: Union[Decimal, float, int]):
-        """Set both gross and net values for specific month."""
+    def set_month_value(self, month: int, gross_value: Decimal, net_value: Decimal) -> None:
+        """Set the gross and net values for a specific month (1-12)"""
         if 1 <= month <= 12:
-            self._months_gross[f'month_{month}'] = Decimal(str(gross_value))
-            self._months_net[f'month_{month}'] = Decimal(str(net_value))
+            setattr(self, f'month_{month}_gross', gross_value)
+            setattr(self, f'month_{month}_net', net_value)
     
-    def get_month_value(self, month: int, revenue_field: str = 'gross') -> Decimal:
-        """Get value for specific month (gross or net)."""
+    def get_month_gross(self, month: int) -> Decimal:
+        """Get gross value for a specific month (1-12)"""
         if 1 <= month <= 12:
-            if revenue_field == 'net':
-                return self._months_net[f'month_{month}']
-            return self._months_gross[f'month_{month}']
+            return getattr(self, f'month_{month}_gross', Decimal('0'))
         return Decimal('0')
     
-    def get_total(self, revenue_field: str = 'gross') -> Decimal:
-        """Calculate total across all months for specified revenue type."""
-        if revenue_field == 'net':
-            return sum(self._months_net.values())
-        return sum(self._months_gross.values())
+    def get_month_net(self, month: int) -> Decimal:
+        """Get net value for a specific month (1-12)"""
+        if 1 <= month <= 12:
+            return getattr(self, f'month_{month}_net', Decimal('0'))
+        return Decimal('0')
     
     @property
-    def total(self) -> Decimal:
-        """Calculate total gross revenue (for backward compatibility)."""
-        return self.get_total('gross')
-    
-    @property 
     def total_gross(self) -> Decimal:
-        """Total gross revenue."""
-        return self.get_total('gross')
+        """Total gross revenue across all months"""
+        return sum(getattr(self, f'month_{m}_gross', Decimal('0')) for m in range(1, 13))
     
     @property
     def total_net(self) -> Decimal:
-        """Total net revenue."""
-        return self.get_total('net')
+        """Total net revenue across all months"""
+        return sum(getattr(self, f'month_{m}_net', Decimal('0')) for m in range(1, 13))
     
-    # Keep existing month properties for backward compatibility
-    @property 
-    def month_1(self) -> Decimal:
-        return self._months_gross['month_1']
-    # ... (keep all the existing month_2 through month_12 properties)
+    @property
+    def total(self) -> Decimal:
+        """Default total (gross revenue)"""
+        return self.total_gross
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+        """Convert to dictionary for template use"""
         result = {
             'customer_id': self.customer_id,
             'customer': self.customer,
             'ae': self.ae,
             'revenue_type': self.revenue_type,
             'sector': self.sector,
-            'total': float(self.total),
+            'is_new_customer': self.is_new_customer,
             'total_gross': float(self.total_gross),
-            'total_net': float(self.total_net)
+            'total_net': float(self.total_net),
+            'total': float(self.total)
         }
         
-        # Add monthly values as floats for JSON compatibility
+        # Add monthly values
         for month in range(1, 13):
-            result[f'month_{month}'] = float(self.get_month_value(month, 'gross'))
-            result[f'month_{month}_gross'] = float(self.get_month_value(month, 'gross'))
-            result[f'month_{month}_net'] = float(self.get_month_value(month, 'net'))
+            result[f'month_{month}_gross'] = float(self.get_month_gross(month))
+            result[f'month_{month}_net'] = float(self.get_month_net(month))
+            result[f'month_{month}'] = float(self.get_month_gross(month))  # Default to gross
         
         return result
-
 
 @dataclass
 class AEPerformanceData:
@@ -247,6 +259,7 @@ class MonthlyRevenueReportData:
     month_status: List[MonthStatus]
     filters: ReportFilters
     metadata: ReportMetadata
+    new_customers: int = 0
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for template consumption."""
@@ -255,6 +268,7 @@ class MonthlyRevenueReportData:
             'available_years': self.available_years,
             'total_customers': self.total_customers,
             'active_customers': self.active_customers,
+            'new_customers': self.new_customers,
             'total_revenue': float(self.total_revenue),
             'avg_monthly_revenue': float(self.avg_monthly_revenue),
             'revenue_data': [row.to_dict() for row in self.revenue_data],

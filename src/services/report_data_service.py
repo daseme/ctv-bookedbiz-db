@@ -1,32 +1,20 @@
 #!/usr/bin/env python3
 """
-Clean Architecture Implementation for Revenue Reporting
+Updated ReportDataService with New Customer Detection
 
-This refactor separates concerns into distinct layers:
-- Domain Models: Value objects and enums for business data
-- Data Access: Repository pattern for all database operations  
-- Business Logic: Service orchestration with clear responsibilities
-- Query Building: Reusable SQL construction utilities
-
-Key improvements:
-- Alpha ordering by AE then customer name
-- Repository pattern for data access separation
-- Query builder for reusable SQL components
-- Value objects for type safety
-- Single responsibility classes
-- Dependency injection throughout
+Added functionality to identify customers who are new this year (never appeared in previous years)
 """
 
 import logging
 import time
-from typing import List, Dict, Any, Optional, Tuple, Protocol
+from typing import List, Dict, Any, Optional, Tuple, Protocol, Set
 from datetime import datetime, date
 from decimal import Decimal
 from dataclasses import dataclass
 from enum import Enum
 
 # ============================================================================
-# Domain Models
+# Domain Models (updated with new customer tracking)
 # ============================================================================
 
 @dataclass
@@ -83,7 +71,7 @@ class AEFilter:
         return f"UPPER(TRIM({column})) = UPPER(TRIM(?))", [self.ae_value]
 
 # ============================================================================
-# Query Builder
+# Query Builder (enhanced with new customer queries)
 # ============================================================================
 
 class RevenueQueryBuilder:
@@ -168,7 +156,7 @@ class RevenueQueryBuilder:
         """
 
 # ============================================================================
-# Repository Interfaces
+# Repository Interfaces (updated with new customer detection)
 # ============================================================================
 
 class DatabaseConnection(Protocol):
@@ -185,6 +173,8 @@ class RevenueRepository(Protocol):
         filters: 'ReportFilters'
     ) -> List[Dict[str, Any]]: ...
     
+    def get_new_customers_for_year(self, year: int) -> Set[str]: ...
+    
     def get_ae_performance_data(
         self, 
         filters: 'ReportFilters'
@@ -195,7 +185,7 @@ class RevenueRepository(Protocol):
     def get_ae_list(self, year: Optional[int] = None) -> List[str]: ...
 
 # ============================================================================
-# Data Access Layer
+# Data Access Layer (enhanced with new customer detection)
 # ============================================================================
 
 class SQLiteRevenueRepository:
@@ -205,12 +195,54 @@ class SQLiteRevenueRepository:
         self.db = db_connection
         self.query_builder = RevenueQueryBuilder()
     
+    def get_new_customers_for_year(self, year: int) -> Set[str]:
+        """Get set of customers who are new in the specified year"""
+        current_year_range = YearRange.from_year(year)
+        
+        # Get all customers from current year
+        current_year_query = f"""
+            SELECT DISTINCT COALESCE(s.bill_code, 'Unknown') as customer
+            FROM spots s
+            WHERE s.broadcast_month LIKE ?
+              AND {self.query_builder.build_base_filters()}
+        """
+        
+        # Get all customers from previous years
+        previous_years_query = f"""
+            SELECT DISTINCT COALESCE(s.bill_code, 'Unknown') as customer
+            FROM spots s
+            WHERE s.broadcast_month NOT LIKE ?
+              AND s.broadcast_month IS NOT NULL
+              AND s.broadcast_month <> ''
+              AND {self.query_builder.build_base_filters()}
+        """
+        
+        conn = self.db.connect()
+        try:
+            cursor = conn.cursor()
+            
+            # Get current year customers
+            cursor.execute(current_year_query, (current_year_range.like_pattern,))
+            current_customers = {row[0] for row in cursor.fetchall()}
+            
+            # Get previous years customers
+            cursor.execute(previous_years_query, (current_year_range.like_pattern,))
+            previous_customers = {row[0] for row in cursor.fetchall()}
+            
+            # New customers = current year customers - previous years customers
+            new_customers = current_customers - previous_customers
+            
+            return new_customers
+            
+        finally:
+            conn.close()
+    
     def get_customer_monthly_data(
         self, 
         year_range: YearRange, 
         filters: 'ReportFilters'
     ) -> List[Dict[str, Any]]:
-        """Get customer monthly revenue data with proper AE ordering"""
+        """Get customer monthly revenue data with new customer flags"""
         month_expr = self.query_builder.build_broadcast_month_case()
         ae_display = self.query_builder.build_ae_display()
         
@@ -242,7 +274,17 @@ class SQLiteRevenueRepository:
             cursor.execute(query, params)
             rows = cursor.fetchall()
             columns = [description[0] for description in cursor.description]
-            return [dict(zip(columns, row)) for row in rows]
+            data = [dict(zip(columns, row)) for row in rows]
+            
+            # Get new customers for this year
+            new_customers = self.get_new_customers_for_year(year_range.year)
+            
+            # Add new customer flag to each row
+            for row in data:
+                row['is_new_customer'] = row['customer'] in new_customers
+            
+            return data
+            
         finally:
             conn.close()
     
@@ -372,7 +414,7 @@ class SQLiteRevenueRepository:
         return query, params
 
 # ============================================================================
-# Business Logic Layer
+# Business Logic Layer (updated to handle new customers)
 # ============================================================================
 
 class CustomerMonthlyDataProcessor:
@@ -400,6 +442,7 @@ class CustomerMonthlyDataProcessor:
                     'ae': row['ae'],
                     'revenue_type': row['revenue_type'],
                     'sector': row['sector'],
+                    'is_new_customer': row.get('is_new_customer', False),
                     'months_gross': {m: Decimal('0') for m in range(1, 13)},
                     'months_net': {m: Decimal('0') for m in range(1, 13)},
                 }
@@ -425,7 +468,8 @@ class CustomerMonthlyDataProcessor:
                 customer=data['customer'],
                 ae=data['ae'],
                 revenue_type=data['revenue_type'],
-                sector=data['sector']
+                sector=data['sector'],
+                is_new_customer=data['is_new_customer']
             )
             for month in range(1, 13):
                 row.set_month_value(
@@ -449,7 +493,7 @@ class CustomerMonthlyDataProcessor:
             return rows  # No ordering
 
 # ============================================================================
-# Service Layer
+# Service Layer (updated with new customer statistics)
 # ============================================================================
 
 class ReportDataService:
@@ -482,7 +526,7 @@ class ReportDataService:
         
         logger.info("Generating monthly revenue report for year=%s with filters=%s", year, filters.to_dict())
         
-        # Get data through repository
+        # Get data through repository (now includes new customer flags)
         raw_data = self.repository.get_customer_monthly_data(year_range, filters)
         revenue_data = self.processor.process_monthly_data(raw_data)
         
@@ -492,7 +536,7 @@ class ReportDataService:
         revenue_types = self._get_revenue_types()
         month_status = self._get_month_status(year)
         
-        # Calculate statistics
+        # Calculate statistics with new customer info
         stats = self._calculate_revenue_statistics(revenue_data, filters.revenue_field or 'gross')
         
         # Build metadata
@@ -512,6 +556,7 @@ class ReportDataService:
             available_years=available_years,
             total_customers=stats['total_customers'],
             active_customers=stats['active_customers'],
+            new_customers=stats.get('new_customers', 0),  # Add new customer count
             total_revenue=Decimal(str(round(stats['total_revenue'], 2))),
             avg_monthly_revenue=Decimal(str(round(stats['avg_monthly_revenue'], 2))),
             revenue_data=revenue_data,
@@ -582,16 +627,24 @@ class ReportDataService:
         return ReportFilters(year=year)
     
     def _calculate_revenue_statistics(self, revenue_data: List['CustomerMonthlyRow'], revenue_field: str) -> Dict[str, Any]:
-        """Calculate revenue statistics from processed data"""
+        """Calculate revenue statistics from processed data with new customer counts"""
         from src.utils.template_formatters import calculate_statistics
         
         rows_for_stats = []
+        new_customer_count = 0
+        
         for row in revenue_data:
             data = row.to_dict()
             data['total'] = float(row.total_net) if revenue_field.lower() == 'net' else float(row.total_gross)
             rows_for_stats.append(data)
+            
+            if getattr(row, 'is_new_customer', False):
+                new_customer_count += 1
         
-        return calculate_statistics(rows_for_stats)
+        stats = calculate_statistics(rows_for_stats)
+        stats['new_customers'] = new_customer_count
+        
+        return stats
     
     def _build_ae_performance_data(self, raw_data: List[Dict[str, Any]]) -> List['AEPerformanceData']:
         """Build AE performance data objects from raw data"""
