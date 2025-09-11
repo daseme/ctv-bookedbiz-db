@@ -3,7 +3,6 @@
 {% block title %}{{ title }} - CTV Reports{% endblock %}
 
 {% block header_title %}{{ title }}{% endblock %}
-{% block header_subtitle %}Interactive customer-level monthly revenue breakdown with year selection and advanced filtering{% endblock %}
 
 {% block breadcrumb %}
 <span class="breadcrumb-separator">›</span>
@@ -404,26 +403,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="insight-box" aria-live="polite">
-  <div class="insight-title">Customer Revenue Dashboard - {{ data.selected_year }}</div>
-  <div class="insight-text" id="insightText">
-    Interactive customer-level revenue analysis with year selection, filtering, and export capabilities.
-    Total customers: <span id="headerCustomers">{{ data.total_customers }}</span> | 
-    Active customers: <span id="headerActive">{{ data.active_customers }}</span> |
-    {% if data.new_customers is defined and data.new_customers > 0 %}
-    <span style="color: #2f855a; font-weight: 600;">New customers: <span id="headerNew">{{ data.new_customers }}</span></span> | 
-    {% endif %}
-    Total <span id="headerTotalLabel">gross revenue</span>: <span id="headerTotalValue">${{ "{:,}".format(data.total_revenue) }}</span>
-    <br>
-    <small style="color:#718096; font-size:11px;">
-      Data last updated: {{ data.metadata.data_last_updated | date_display('display') }}
-      (Report generated in {{ data.metadata.processing_time_ms | round(1) }}ms)
-      {% if data.filters.customer_search %}| Search: "{{ data.filters.customer_search }}"{% endif %}
-      {% if data.filters.ae_filter and data.filters.ae_filter != 'all' %}| AE: {{ data.filters.ae_filter }}{% endif %}
-      {% if data.filters.revenue_type and data.filters.revenue_type != 'all' %}| Type: {{ data.filters.revenue_type }}{% endif %}
-    </small>
-  </div>
-</div>
+
 
 <div class="dashboard-controls" role="group" aria-label="Dashboard controls">
   <div class="control-group">
@@ -551,54 +531,6 @@
   </div>
 </div>
 
-<div class="ae-summary" role="region" aria-labelledby="aeSummaryTitle">
-  <div class="ae-summary-header">
-    <span id="aeSummaryTitle">AE Revenue Summary</span>
-    <div class="ae-actions">
-      <div role="radiogroup" aria-labelledby="aeSortLabel">
-        <label class="radio-label">
-          <input type="radio" name="aeSort" value="total_desc" checked>
-          <span>Sort: Total ↓</span>
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="aeSort" value="alpha">
-          <span>Sort: A→Z</span>
-        </label>
-      </div>
-      <small id="aeSortLabel" class="sr-only">Sort AE summary by total revenue or alphabetically</small>
-      <button id="exportAECsv" 
-              class="export-btn" 
-              title="Export AE summary to CSV">
-        Export AE CSV
-      </button>
-    </div>
-  </div>
-  
-  <div id="aeChips" 
-       class="ae-chips" 
-       role="group" 
-       aria-label="Quick filter by account executive">
-  </div>
-  
-  <div class="table-container" style="margin-top:8px;">
-    <table class="revenue-table ae-table" role="table" aria-describedby="aeTableHelp">
-      <thead>
-        <tr>
-          <th style="text-align:left;" scope="col">AE</th>
-          <th scope="col" aria-sort="descending">Total</th>
-          <th scope="col">Avg / Mo</th>
-          <th scope="col">Customers</th>
-          <th scope="col" style="color: #2f855a;">New</th>
-        </tr>
-      </thead>
-      <tbody id="aeSummaryBody">
-        <tr><td colspan="5" class="no-data">Loading AE summary…</td></tr>
-      </tbody>
-    </table>
-    <span id="aeTableHelp" class="sr-only">AE totals, average per month, customer counts, and new customers this year.</span>
-  </div>
-</div>
-
 <div class="story-section" role="main">
   <div class="section-title">Customer Monthly Revenue Analysis</div>
   
@@ -664,6 +596,54 @@
       <span class="legend-badge legend-new-customer">NEW *</span>
       <span>Customer is new this year (first appearance in our data)</span>
     </div>
+  </div>
+</div>
+
+<div class="ae-summary" role="region" aria-labelledby="aeSummaryTitle">
+  <div class="ae-summary-header">
+    <span id="aeSummaryTitle">AE Revenue Summary</span>
+    <div class="ae-actions">
+      <div role="radiogroup" aria-labelledby="aeSortLabel">
+        <label class="radio-label">
+          <input type="radio" name="aeSort" value="total_desc" checked>
+          <span>Sort: Total ↓</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="aeSort" value="alpha">
+          <span>Sort: A→Z</span>
+        </label>
+      </div>
+      <small id="aeSortLabel" class="sr-only">Sort AE summary by total revenue or alphabetically</small>
+      <button id="exportAECsv" 
+              class="export-btn" 
+              title="Export AE summary to CSV">
+        Export AE CSV
+      </button>
+    </div>
+  </div>
+  
+  <div id="aeChips" 
+       class="ae-chips" 
+       role="group" 
+       aria-label="Quick filter by account executive">
+  </div>
+  
+  <div class="table-container" style="margin-top:8px;">
+    <table class="revenue-table ae-table" role="table" aria-describedby="aeTableHelp">
+      <thead>
+        <tr>
+          <th style="text-align:left;" scope="col">AE</th>
+          <th scope="col" aria-sort="descending">Total</th>
+          <th scope="col">Avg / Mo</th>
+          <th scope="col">Customers</th>
+          <th scope="col" style="color: #2f855a;">New</th>
+        </tr>
+      </thead>
+      <tbody id="aeSummaryBody">
+        <tr><td colspan="5" class="no-data">Loading AE summary…</td></tr>
+      </tbody>
+    </table>
+    <span id="aeTableHelp" class="sr-only">AE totals, average per month, customer counts, and new customers this year.</span>
   </div>
 </div>
 

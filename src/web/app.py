@@ -3,6 +3,8 @@
 Clean Flask application factory with dependency injection.
 All route handlers moved to blueprints, focuses on app configuration.
 """
+# src/web/app.py  (only the changed/important parts)
+
 import psutil
 import time
 from datetime import datetime, timedelta
@@ -15,31 +17,22 @@ from src.services.factory import initialize_services
 from src.config.settings import get_settings
 from src.web.blueprints import initialize_blueprints
 
-
 logger = logging.getLogger(__name__)
 
-
 def create_app(environment: Optional[str] = None) -> Flask:
-    """
-    Flask application factory with clean architecture.
-    """
-    print("🚨 DEBUG: create_app function called!")
-    print("🚨 DEBUG: create_app function called with:", environment)
-    # Load configuration
+    print("🚨 DEBUG: create_app function called!", environment)
     settings = get_settings(environment)
-    
-    # Initialize service container
+
     try:
         initialize_services()
         logger.info("Service container initialized successfully")
     except ServiceCreationError as e:
         logger.error(f"Failed to initialize services: {e}")
         raise
-    
-    # Create Flask app
+
     app = Flask(__name__)
-    
-    # Configure Flask app
+
+    # Add DATABASE_PATH alias so blueprints can read it
     app.config.update({
         'SECRET_KEY': settings.web.secret_key,
         'DEBUG': settings.web.debug,
@@ -47,18 +40,18 @@ def create_app(environment: Optional[str] = None) -> Flask:
         'ENVIRONMENT': settings.environment,
         'PROJECT_ROOT': str(settings.project_root),
         'DB_PATH': settings.database.db_path,
+        'DATABASE_PATH': settings.database.db_path,  # <-- compat for customer_normalization
         'DATA_PATH': settings.services.data_path,
     })
-    
-    # Initialize blueprints and all related configurations
+
     try:
         initialize_blueprints(app)
         logger.info("Blueprints initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize blueprints: {e}")
         raise
-    
-    # Register pipeline blueprint
+
+    # Register pipeline blueprint (as before)
     try:
         from src.web.routes.pipeline_routes import pipeline_bp
         app.register_blueprint(pipeline_bp)
@@ -67,18 +60,21 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.warning(f"Pipeline blueprint not available: {e}")
     except Exception as e:
         logger.error(f"Failed to register pipeline blueprint: {e}")
-    
-    """
-    # Register decay API blueprint (if available)
+
+    # ✅ Register the customer normalization blueprint *after* app exists
     try:
-        from src.web.routes.pipeline_decay_api import decay_api_bp
-        app.register_blueprint(decay_api_bp)
-        logger.info("Pipeline decay API blueprint registered successfully")
-    except ImportError as e:
-        logger.info(f"Pipeline decay API blueprint not available (optional): {e}")
+        from src.web.routes.customer_normalization import customer_norm_bp
+        app.register_blueprint(customer_norm_bp)
+        logger.info("Customer normalization blueprint registered successfully")
     except Exception as e:
-        logger.warning(f"Failed to register pipeline decay API blueprint: {e}")
-    """
+        logger.error(f"Failed to register customer normalization blueprint: {e}")
+
+    # ... (rest of your file unchanged)
+    # routes: /, /health, /info, /api/system-stats, etc.
+
+    logger.info(f"Flask app created for environment: {settings.environment}")
+    return app
+
     
     # Initialize decay system check (non-blocking) - FIXED for newer Flask
     def check_decay_system():
