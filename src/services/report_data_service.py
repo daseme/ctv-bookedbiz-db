@@ -196,116 +196,127 @@ class SQLiteRevenueRepository:
         self.query_builder = RevenueQueryBuilder()
     
     def get_new_customers_for_year(self, year: int) -> Set[str]:
-        """Get set of customers who are new in the specified year (using audit view)"""
-        current_year_range = YearRange.from_year(year)
-        
-        # Get all customers from current year using audit view
+        yr = YearRange.from_year(year)
+        base = self.query_builder.build_base_filters()
+
         current_year_query = f"""
-            SELECT DISTINCT audit.normalized_name as customer
+            SELECT DISTINCT audit.normalized_name AS customer
             FROM spots s
             LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
             WHERE s.broadcast_month LIKE ?
             AND audit.normalized_name IS NOT NULL
-            AND {self.query_builder.build_base_filters()}
+            AND {base}
         """
-        
-        # Get all customers from previous years using audit view
+
         previous_years_query = f"""
-            SELECT DISTINCT audit.normalized_name as customer
+            SELECT DISTINCT audit.normalized_name AS customer
             FROM spots s
             LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
             WHERE s.broadcast_month NOT LIKE ?
             AND s.broadcast_month IS NOT NULL
             AND s.broadcast_month <> ''
             AND audit.normalized_name IS NOT NULL
-            AND {self.query_builder.build_base_filters()}
+            AND {base}
         """
-        
+
         conn = self.db.connect()
         try:
-            cursor = conn.cursor()
-            
-            # Get current year customers
-            cursor.execute(current_year_query, (current_year_range.like_pattern,))
-            current_customers = {row[0] for row in cursor.fetchall()}
-            
-            # Get previous years customers
-            cursor.execute(previous_years_query, (current_year_range.like_pattern,))
-            previous_customers = {row[0] for row in cursor.fetchall()}
-            
-            # New customers = current year customers - previous years customers
-            new_customers = current_customers - previous_customers
-            
-            return new_customers
-            
+            cur = conn.cursor()
+            cur.execute(current_year_query, (yr.like_pattern,))
+            current_customers = {r[0] for r in cur.fetchall()}
+
+            cur.execute(previous_years_query, (yr.like_pattern,))
+            previous_customers = {r[0] for r in cur.fetchall()}
+
+            return current_customers - previous_customers
         finally:
             conn.close()
+
     
     # Update the get_customer_monthly_data method in ReportDataService
     # File: src/services/report_data_service.py
 
     def get_customer_monthly_data(
-        self, 
-        year_range: YearRange, 
+        self,
+        year_range: YearRange,
         filters: 'ReportFilters'
     ) -> List[Dict[str, Any]]:
-        """Get customer monthly revenue data with properly normalized names from audit view"""
-        month_expr = self.query_builder.build_broadcast_month_case()
+        """Customer monthly revenue with BOTH closed and open months included."""
+        month_expr = self.query_builder.build_broadcast_month_case("s.broadcast_month")
         ae_display = self.query_builder.build_ae_display()
-        
+        base_filters = self.query_builder.build_base_filters()
+
+        # Build main query via CTE to avoid WHERE/AND concat edge-cases
         query = f"""
+            WITH base AS (
+                SELECT
+                    COALESCE(s.customer_id, s.bill_code) AS customer_id,
+                    COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS customer,
+                    s.bill_code AS original_customer_name,
+                    {ae_display} AS ae,
+                    COALESCE(sect.sector_name, 'Unknown') AS sector,
+                    {month_expr} AS month_num,
+                    COALESCE(s.revenue_type, 'Regular') AS revenue_type,
+                    COALESCE(s.gross_rate, 0) AS gross_revenue,
+                    COALESCE(s.station_net, 0) AS net_revenue,
+                    CASE WHEN audit.normalized_name IS NOT NULL THEN 'normalized' ELSE 'raw' END AS name_source
+                FROM spots s
+                LEFT JOIN customers c ON s.customer_id = c.customer_id
+                LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+                LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+                WHERE s.broadcast_month LIKE ?
+                AND {base_filters}
+            )
             SELECT
-                COALESCE(s.customer_id, s.bill_code) AS customer_id,
-                COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS customer,
-                s.bill_code AS original_customer_name,
-                {ae_display} AS ae,
-                -- Combine all revenue types into a summary
-                GROUP_CONCAT(COALESCE(s.revenue_type, 'Regular'), ', ') AS revenue_type,
-                COALESCE(sect.sector_name, 'Unknown') AS sector,
-                {month_expr} AS month,
-                ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
-                ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue,
-                CASE WHEN audit.normalized_name IS NOT NULL THEN 'normalized' ELSE 'raw' END as name_source
-            FROM spots s
-            LEFT JOIN customers c ON s.customer_id = c.customer_id
-            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
-            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
-            WHERE s.broadcast_month LIKE ?
-            AND {self.query_builder.build_base_filters()}
+                customer_id,
+                customer,
+                original_customer_name,
+                ae,
+                -- collapse types per customer/AE/month
+                GROUP_CONCAT(DISTINCT revenue_type) AS revenue_type,
+                sector,
+                month_num,
+                ROUND(SUM(gross_revenue), 2) AS gross_revenue,
+                ROUND(SUM(net_revenue), 2) AS net_revenue,
+                MIN(name_source) AS name_source
+            FROM base
+            WHERE month_num IS NOT NULL
         """
-        
+
         params: List[Any] = [year_range.like_pattern]
+        # Append extra WHERE conditions deterministically
         query, params = self._apply_filters(query, params, filters)
-        
-        # REMOVE revenue_type from GROUP BY to combine all revenue types per customer
+
         query += """
-            GROUP BY 
-                
-                COALESCE(audit.normalized_name, s.bill_code, 'Unknown'),
-                ae, 
-                sect.sector_name, 
-                month
+            GROUP BY
+                customer_id,
+                customer,
+                original_customer_name,
+                ae,
+                sector,
+                month_num
+            ORDER BY
+                ae ASC, customer ASC, month_num ASC
         """
-        
+
         conn = self.db.connect()
         try:
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-            columns = [description[0] for description in cursor.description]
-            data = [dict(zip(columns, row)) for row in rows]
-            
-            # Get new customers for this year using audit view
+            cur = conn.cursor()
+            cur.execute(query, params)
+            rows = cur.fetchall()
+            cols = [d[0] for d in cur.description]
+            data = [dict(zip(cols, r)) for r in rows]
+
+            # mark new customers
             new_customers = self.get_new_customers_for_year(year_range.year)
-            
-            # Add new customer flag to each row
             for row in data:
-                row['is_new_customer'] = row['customer'] in new_customers
-            
+                row["is_new_customer"] = row["customer"] in new_customers
+
             return data
-            
         finally:
             conn.close()
+
+
     
     def get_ae_performance_data(self, filters: 'ReportFilters') -> List[Dict[str, Any]]:
         """Get AE performance data"""
@@ -395,31 +406,37 @@ class SQLiteRevenueRepository:
             conn.close()
     
     def _apply_filters(self, query: str, params: List[Any], filters: 'ReportFilters') -> Tuple[str, List[Any]]:
-        """Apply common filters to query with normalized name search"""
-        if filters.customer_search:
-            # Search both normalized name and original bill_code
-            query += """
-                AND (
-                    LOWER(COALESCE(c.normalized_name, '')) LIKE LOWER(?) OR
-                    LOWER(COALESCE(s.bill_code, '')) LIKE LOWER(?)
-                )
-            """
-            search_param = f"%{filters.customer_search}%"
-            params.extend([search_param, search_param])
-        
-        # ADD MISSING AE FILTER LOGIC
-        ae_filter = AEFilter.from_input(filters.ae_filter)
-        ae_sql, ae_params = ae_filter.build_where_clause("s.sales_person")
-        if ae_sql:
-            query += f" AND {ae_sql}"
-            params.extend(ae_params)
-        
-        if filters.revenue_type and filters.revenue_type != 'all':
-            query += " AND s.revenue_type = ?"
+        conds: List[str] = []
+
+        # text search over CTE columns
+        if getattr(filters, "customer_search", None):
+            q = f"%{filters.customer_search}%"
+            conds.append(
+                "(LOWER(COALESCE(customer, '')) LIKE LOWER(?) "
+                "OR LOWER(COALESCE(original_customer_name, '')) LIKE LOWER(?))"
+            )
+            params.extend([q, q])
+
+        # AE filter on CTE 'ae'
+        ae_filter = AEFilter.from_input(getattr(filters, "ae_filter", None))
+        if ae_filter.ae_value:
+            if ae_filter.is_unknown_filter():
+                conds.append("(ae IS NULL OR TRIM(ae) = '' OR UPPER(ae) = 'UNKNOWN')")
+            else:
+                conds.append("UPPER(TRIM(ae)) = UPPER(TRIM(?))")
+                params.append(ae_filter.ae_value)
+
+        # revenue_type in CTE
+        if getattr(filters, "revenue_type", None) and filters.revenue_type != "all":
+            conds.append("revenue_type = ?")
             params.append(filters.revenue_type)
-        
+
+        if conds:
+            query += " AND " + " AND ".join(conds)
         return query, params
-    
+
+
+   
     def _apply_ae_and_year_filters(self, query: str, params: List[Any], filters: 'ReportFilters') -> Tuple[str, List[Any]]:
         """Apply AE and year filters to query"""
         conditions: List[str] = []
@@ -478,7 +495,7 @@ class CustomerMonthlyDataProcessor:
                 }
             
             try:
-                month_num = int(row['month'])
+                month_num = int(row['month_num'])
                 if 1 <= month_num <= 12:
                     buckets[key]['months_gross'][month_num] = Decimal(str(row['gross_revenue']))
                     buckets[key]['months_net'][month_num] = Decimal(str(row['net_revenue']))
@@ -715,20 +732,55 @@ class ReportDataService:
         return stats
     
     def _build_ae_performance_data(self, raw_data: List[Dict[str, Any]]) -> List['AEPerformanceData']:
-        """Build AE performance data objects from raw data"""
-        from src.models.report_data import AEPerformanceData
-        
-        result = []
+        """Build AE performance data objects from raw repository rows.
+
+        Robust to NULLs, ISO datetimes with/without time, and non-Decimal numerics.
+        """
+        from src.models.report_data import AEPerformanceData  # local import avoids circulars
+
+        def _to_date(v: Optional[Any]) -> Optional[date]:
+            if v is None:
+                return None
+            if isinstance(v, date):
+                return v
+            s = str(v).strip()
+            if not s:
+                return None
+            # Prefer fromisoformat (handles YYYY-MM-DD and full ISO with time)
+            try:
+                return datetime.fromisoformat(s).date()
+            except Exception:
+                pass
+            # Fallback: slice first 10 chars as YYYY-MM-DD
+            try:
+                return datetime.strptime(s[:10], "%Y-%m-%d").date()
+            except Exception:
+                return None
+
+        def _to_decimal(v: Any, default: str = "0") -> Decimal:
+            if v is None:
+                return Decimal(default)
+            if isinstance(v, Decimal):
+                return v
+            try:
+                return Decimal(str(v))
+            except Exception:
+                return Decimal(default)
+
+        result: List[AEPerformanceData] = []
         for row in raw_data:
-            result.append(AEPerformanceData(
-                ae_name=row['ae_name'],
-                spot_count=row['spot_count'],
-                total_revenue=Decimal(str(row['total_revenue'])),
-                avg_rate=Decimal(str(row['avg_rate'])),
-                first_spot_date=datetime.strptime(row['first_spot_date'], '%Y-%m-%d').date() if row['first_spot_date'] else None,
-                last_spot_date=datetime.strptime(row['last_spot_date'], '%Y-%m-%d').date() if row['last_spot_date'] else None
-            ))
+            result.append(
+                AEPerformanceData(
+                    ae_name=(row.get("ae_name") or "").strip(),
+                    spot_count=int(row.get("spot_count") or 0),
+                    total_revenue=_to_decimal(row.get("total_revenue"), "0"),
+                    avg_rate=_to_decimal(row.get("avg_rate"), "0"),
+                    first_spot_date=_to_date(row.get("first_spot_date")),
+                    last_spot_date=_to_date(row.get("last_spot_date")),
+                )
+            )
         return result
+
     
     def _create_metadata(self, report_type: str, parameters: Dict[str, Any], row_count: int, processing_time: float) -> 'ReportMetadata':
         """Create report metadata"""
@@ -759,9 +811,13 @@ class ReportDataService:
             conn.close()
     
     def _get_month_status(self, year: int) -> List['MonthStatus']:
-        """Get month closure status"""
+        """Get month closure status with FIXED filtering"""
         year_range = YearRange.from_year(year)
-        query = "SELECT broadcast_month, closed_date, closed_by FROM month_closures WHERE broadcast_month LIKE ?"
+        query = """
+            SELECT broadcast_month, closed_date, closed_by 
+            FROM month_closures 
+            WHERE broadcast_month LIKE ?
+        """
         
         conn = self.repository.db.connect()
         try:

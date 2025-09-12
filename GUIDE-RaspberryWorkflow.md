@@ -34,6 +34,11 @@ This document outlines the collaborative development workflow for the CTV Booked
 ## Move files from your local computer to the raspberry pi
 scp "C:\Users\Kurt\Crossings TV Dropbox\kurt olmstead\Financial\Sales\WeeklyReports\ctv-bookedbiz-db\data\raw\2021.xlsx" daseme@raspberrypi:/opt/apps/ctv-bookedbiz-db/data/raw/2021.xlsx
 
+from pi to win
+
+tailscale file cp "./data/raw/daily/Commercial Log 250912.xlsx" desktop-7402tkp:
+
+
 ## Team Members
 - **daseme**: Primary developer with Pi admin access
 - **jellee26**: Collaborative developer with ctv-dev group access
