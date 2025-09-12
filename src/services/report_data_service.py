@@ -196,25 +196,29 @@ class SQLiteRevenueRepository:
         self.query_builder = RevenueQueryBuilder()
     
     def get_new_customers_for_year(self, year: int) -> Set[str]:
-        """Get set of customers who are new in the specified year"""
+        """Get set of customers who are new in the specified year (using audit view)"""
         current_year_range = YearRange.from_year(year)
         
-        # Get all customers from current year
+        # Get all customers from current year using audit view
         current_year_query = f"""
-            SELECT DISTINCT COALESCE(s.bill_code, 'Unknown') as customer
+            SELECT DISTINCT audit.normalized_name as customer
             FROM spots s
+            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
             WHERE s.broadcast_month LIKE ?
-              AND {self.query_builder.build_base_filters()}
+            AND audit.normalized_name IS NOT NULL
+            AND {self.query_builder.build_base_filters()}
         """
         
-        # Get all customers from previous years
+        # Get all customers from previous years using audit view
         previous_years_query = f"""
-            SELECT DISTINCT COALESCE(s.bill_code, 'Unknown') as customer
+            SELECT DISTINCT audit.normalized_name as customer
             FROM spots s
+            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
             WHERE s.broadcast_month NOT LIKE ?
-              AND s.broadcast_month IS NOT NULL
-              AND s.broadcast_month <> ''
-              AND {self.query_builder.build_base_filters()}
+            AND s.broadcast_month IS NOT NULL
+            AND s.broadcast_month <> ''
+            AND audit.normalized_name IS NOT NULL
+            AND {self.query_builder.build_base_filters()}
         """
         
         conn = self.db.connect()
@@ -237,36 +241,51 @@ class SQLiteRevenueRepository:
         finally:
             conn.close()
     
+    # Update the get_customer_monthly_data method in ReportDataService
+    # File: src/services/report_data_service.py
+
     def get_customer_monthly_data(
         self, 
         year_range: YearRange, 
         filters: 'ReportFilters'
     ) -> List[Dict[str, Any]]:
-        """Get customer monthly revenue data with new customer flags"""
+        """Get customer monthly revenue data with properly normalized names from audit view"""
         month_expr = self.query_builder.build_broadcast_month_case()
         ae_display = self.query_builder.build_ae_display()
         
         query = f"""
             SELECT
-                s.bill_code AS customer_id,
-                COALESCE(s.bill_code, 'Unknown') AS customer,
+                COALESCE(s.customer_id, s.bill_code) AS customer_id,
+                COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS customer,
+                s.bill_code AS original_customer_name,
                 {ae_display} AS ae,
-                COALESCE(s.revenue_type, 'Regular') AS revenue_type,
+                -- Combine all revenue types into a summary
+                GROUP_CONCAT(COALESCE(s.revenue_type, 'Regular'), ', ') AS revenue_type,
                 COALESCE(sect.sector_name, 'Unknown') AS sector,
                 {month_expr} AS month,
                 ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
-                ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue
+                ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue,
+                CASE WHEN audit.normalized_name IS NOT NULL THEN 'normalized' ELSE 'raw' END as name_source
             FROM spots s
             LEFT JOIN customers c ON s.customer_id = c.customer_id
-            LEFT JOIN agencies  a ON s.agency_id = a.agency_id
-            LEFT JOIN sectors  sect ON c.sector_id = sect.sector_id
+            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
             WHERE s.broadcast_month LIKE ?
-              AND {self.query_builder.build_base_filters()}
+            AND {self.query_builder.build_base_filters()}
         """
         
         params: List[Any] = [year_range.like_pattern]
         query, params = self._apply_filters(query, params, filters)
-        query += " GROUP BY s.bill_code, ae, revenue_type, sect.sector_name, month"
+        
+        # REMOVE revenue_type from GROUP BY to combine all revenue types per customer
+        query += """
+            GROUP BY 
+                
+                COALESCE(audit.normalized_name, s.bill_code, 'Unknown'),
+                ae, 
+                sect.sector_name, 
+                month
+        """
         
         conn = self.db.connect()
         try:
@@ -276,7 +295,7 @@ class SQLiteRevenueRepository:
             columns = [description[0] for description in cursor.description]
             data = [dict(zip(columns, row)) for row in rows]
             
-            # Get new customers for this year
+            # Get new customers for this year using audit view
             new_customers = self.get_new_customers_for_year(year_range.year)
             
             # Add new customer flag to each row
@@ -376,11 +395,19 @@ class SQLiteRevenueRepository:
             conn.close()
     
     def _apply_filters(self, query: str, params: List[Any], filters: 'ReportFilters') -> Tuple[str, List[Any]]:
-        """Apply common filters to query"""
+        """Apply common filters to query with normalized name search"""
         if filters.customer_search:
-            query += " AND LOWER(COALESCE(s.bill_code, '')) LIKE LOWER(?)"
-            params.append(f"%{filters.customer_search}%")
+            # Search both normalized name and original bill_code
+            query += """
+                AND (
+                    LOWER(COALESCE(c.normalized_name, '')) LIKE LOWER(?) OR
+                    LOWER(COALESCE(s.bill_code, '')) LIKE LOWER(?)
+                )
+            """
+            search_param = f"%{filters.customer_search}%"
+            params.extend([search_param, search_param])
         
+        # ADD MISSING AE FILTER LOGIC
         ae_filter = AEFilter.from_input(filters.ae_filter)
         ae_sql, ae_params = ae_filter.build_where_clause("s.sales_person")
         if ae_sql:
@@ -430,19 +457,22 @@ class CustomerMonthlyDataProcessor:
         return self._apply_ordering(customer_rows)
     
     def _group_data_by_customer(self, raw_data: List[Dict[str, Any]]) -> Dict[Any, Dict[str, Any]]:
-        """Group raw data by customer key"""
+        """Group raw data by customer key using normalized names"""
         buckets: Dict[Any, Dict[str, Any]] = {}
         
         for row in raw_data:
-            key = (row['customer_id'], row['customer'], row['ae'], row['revenue_type'])
+            # Use customer_id as primary key, normalized name as display
+            key = (row['customer'], row['ae'])
             if key not in buckets:
                 buckets[key] = {
                     'customer_id': row['customer_id'],
-                    'customer': row['customer'],
+                    'customer': row['customer'],  # This is now the normalized name
+                    'original_customer_name': row.get('original_customer_name', row['customer']),
                     'ae': row['ae'],
                     'revenue_type': row['revenue_type'],
                     'sector': row['sector'],
                     'is_new_customer': row.get('is_new_customer', False),
+                    'name_source': row.get('name_source', 'raw'),
                     'months_gross': {m: Decimal('0') for m in range(1, 13)},
                     'months_net': {m: Decimal('0') for m in range(1, 13)},
                 }
@@ -567,6 +597,44 @@ class ReportDataService:
             metadata=metadata
         )
     
+
+    def get_customer_normalization_stats(self, year: int) -> Dict[str, Any]:
+        """Get statistics about customer name normalization quality"""
+        year_range = YearRange.from_year(year)
+        
+        query = f"""
+            SELECT 
+                COUNT(DISTINCT s.bill_code) as total_raw_names,
+                COUNT(DISTINCT c.normalized_name) as total_normalized_names,
+                COUNT(DISTINCT CASE WHEN c.customer_id IS NOT NULL THEN s.bill_code END) as mapped_names,
+                COUNT(DISTINCT CASE WHEN c.customer_id IS NULL THEN s.bill_code END) as unmapped_names,
+                ROUND(
+                    (COUNT(DISTINCT CASE WHEN c.customer_id IS NOT NULL THEN s.bill_code END) * 100.0) / 
+                    COUNT(DISTINCT s.bill_code), 2
+                ) as normalization_coverage_pct
+            FROM spots s
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            WHERE s.broadcast_month LIKE ?
+            AND {self.query_builder.build_base_filters()}
+        """
+        
+        # FIX: Use repository connection, not self.db
+        conn = self.repository.db.connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, [year_range.like_pattern])
+            row = cursor.fetchone()
+            
+            return {
+                'total_raw_names': row[0],
+                'total_normalized_names': row[1], 
+                'mapped_names': row[2],
+                'unmapped_names': row[3],
+                'normalization_coverage_pct': row[4]
+            }
+        finally:
+            conn.close()
+
     def get_ae_performance_report_data(
         self,
         filters: Optional['ReportFilters'] = None

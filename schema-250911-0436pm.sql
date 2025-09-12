@@ -1,6 +1,6 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-09-03 07:32:27
+-- Generated on: 2025-09-11 16:36:34
 -- 
 -- SQLite Version: 3.40.1
 -- 
@@ -13,7 +13,7 @@
 
 PRAGMA foreign_keys = ON;
 
--- Tables (23)
+-- Tables (27)
 -- ============================================================
 
 -- Table: agencies
@@ -26,6 +26,26 @@ CREATE TABLE agencies (
         is_active BOOLEAN DEFAULT 1,
         notes TEXT
     );
+
+-- Table: agency_canonical_map
+-- ----------------------------------------
+CREATE TABLE agency_canonical_map (
+  alias_name TEXT PRIMARY KEY,            -- what appears in your list
+  canonical_name TEXT NOT NULL            -- what we want in normalized_name
+);
+
+-- Table: alias_conflicts
+-- ----------------------------------------
+CREATE TABLE alias_conflicts (
+  conflict_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type     TEXT NOT NULL CHECK (entity_type IN ('customer','agency')),
+  alias_name      TEXT NOT NULL,
+  normalized_name TEXT,                -- for customers (candidate target label)
+  existing_target_entity_id INTEGER,   -- what alias currently points to
+  proposed_target_entity_id INTEGER,   -- what we want to point to
+  detected_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  notes           TEXT
+);
 
 -- Table: budget
 -- ----------------------------------------
@@ -325,6 +345,13 @@ ON programming_schedules(effective_start_date, effective_end_date);
 CREATE INDEX idx_programming_schedules_type 
 ON programming_schedules(schedule_type, is_active);
 
+-- Table: raw_customer_inputs
+-- ----------------------------------------
+CREATE TABLE raw_customer_inputs (
+  raw_text TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Table: schedule_collision_log
 -- ----------------------------------------
 CREATE TABLE schedule_collision_log (
@@ -615,7 +642,13 @@ CREATE INDEX idx_spots_time_market_day
 ON spots(market_id, day_of_week, time_in, time_out) 
 WHERE day_of_week IS NOT NULL AND time_in IS NOT NULL;
 
--- Views (11)
+-- Table: text_strips
+-- ----------------------------------------
+CREATE TABLE text_strips (
+  needle TEXT PRIMARY KEY
+);
+
+-- Views (14)
 -- ============================================================
 
 CREATE VIEW business_rule_analytics AS
@@ -1017,6 +1050,228 @@ WHERE lbd.current_year_revenue > 0
 ORDER BY lbd.current_year_revenue DESC
 LIMIT 20;
 
+CREATE VIEW v_customer_normalization_audit AS
+WITH src_spots AS (
+  SELECT DISTINCT bill_code AS raw_text, revenue_type
+  FROM spots
+  WHERE bill_code IS NOT NULL AND bill_code <> ''
+    AND revenue_type IN ('Internal Ad Sales','Branded Content')
+),
+src_manual AS (
+  SELECT r.raw_text, NULL AS revenue_type
+  FROM raw_customer_inputs r
+),
+all_inputs AS (
+  SELECT * FROM src_manual
+  UNION
+  SELECT * FROM src_spots
+),
+cleaned AS (
+  SELECT
+    raw_text,
+    TRIM(
+      REPLACE(
+      REPLACE(
+      REPLACE(
+      REPLACE(
+      REPLACE(raw_text,
+        ' (Broker Fees  - DO NOT INVOICE)', ''),
+        ' (Broker Fees - DO NOT INVOICE)', ''),
+        ' (Broker Costs - DO NOT INVOICE)', ''),
+        ' (BROKER COSTS - DO NOT INVOICE)', ''),
+        ' CREDIT MEMO', '')
+    ) AS cleaned
+  FROM all_inputs
+),
+collapsed AS (
+  SELECT raw_text,
+         TRIM(REPLACE(REPLACE(REPLACE(cleaned,'  ',' '),'  ',' '),'  ',' ')) AS cleaned
+  FROM cleaned
+),
+pos AS (SELECT raw_text, cleaned, INSTR(cleaned, ':') AS p1 FROM collapsed),
+split1 AS (
+  SELECT
+    raw_text, cleaned, p1,
+    CASE WHEN p1=0 THEN NULL ELSE SUBSTR(cleaned,1,p1-1) END AS a1,
+    CASE WHEN p1=0 THEN cleaned ELSE SUBSTR(cleaned,p1+1) END AS rest
+  FROM pos
+),
+split2 AS (
+  SELECT raw_text, cleaned, a1, rest, CASE WHEN a1 IS NULL THEN 0 ELSE INSTR(rest, ':') END AS p2
+  FROM split1
+),
+parts AS (
+  SELECT
+    raw_text, cleaned,
+    a1 AS agency1_raw,
+    CASE WHEN p2>0 THEN SUBSTR(rest,1,p2-1) ELSE NULL END AS agency2_raw,
+    CASE WHEN a1 IS NULL THEN rest
+         WHEN p2=0   THEN rest
+         ELSE SUBSTR(rest,p2+1)
+    END AS customer_raw
+  FROM split2
+),
+canon_agencies AS (
+  SELECT
+    p.raw_text,
+    TRIM(COALESCE(a1.canonical_name, p.agency1_raw)) AS agency1,
+    TRIM(COALESCE(a2.canonical_name, p.agency2_raw)) AS agency2,
+    TRIM(p.customer_raw) AS customer_base,
+    p.cleaned
+  FROM parts p
+  LEFT JOIN agency_canonical_map a1 ON a1.alias_name = TRIM(p.agency1_raw)
+  LEFT JOIN agency_canonical_map a2 ON a2.alias_name = TRIM(p.agency2_raw)
+),
+strip_prod AS (
+  SELECT
+    raw_text, cleaned, agency1, agency2,
+    RTRIM(                                  -- <-- remove sentinel
+      REPLACE(REPLACE(REPLACE(REPLACE(
+        customer_base || '|',
+        ' PRODUCTION|','|'),
+        ' PROD|','|'),
+        '- PRODUCTION|','|'),
+        '- PROD|','|'
+      ), '|'
+    ) AS customer
+  FROM canon_agencies
+),
+normalized AS (
+  SELECT
+    raw_text,
+    cleaned AS cleaned_text,
+    agency1, agency2, customer,
+    CASE
+      WHEN agency1 IS NULL OR agency1='' THEN customer
+      WHEN agency2 IS NULL OR agency2='' THEN agency1 || ':' || customer
+      ELSE agency1 || ':' || agency2 || ':' || customer
+    END AS normalized_name
+  FROM strip_prod
+),
+roll_revenue AS (
+  SELECT raw_text, GROUP_CONCAT(DISTINCT revenue_type) AS revenue_types_seen_raw
+  FROM src_spots
+  GROUP BY raw_text
+),
+cust AS (SELECT customer_id, normalized_name, created_date FROM customers),
+alias AS (
+  SELECT alias_name, target_entity_id
+  FROM entity_aliases
+  WHERE entity_type='customer' AND is_active=1
+)
+SELECT
+  n.raw_text,
+  n.cleaned_text,
+  n.agency1,
+  n.agency2,
+  n.customer,
+  n.normalized_name,
+  REPLACE(rr.revenue_types_seen_raw, ',', ', ') AS revenue_types_seen,
+  CASE WHEN c.customer_id IS NOT NULL THEN 1 ELSE 0 END AS exists_in_customers,
+  a.target_entity_id IS NOT NULL AS has_alias,
+  CASE WHEN a.target_entity_id IS NOT NULL AND c.customer_id IS NOT NULL AND a.target_entity_id <> c.customer_id THEN 1 ELSE 0 END AS alias_conflict,
+  c.customer_id,
+  c.created_date AS customer_created_date
+FROM normalized n
+LEFT JOIN roll_revenue rr ON rr.raw_text = n.raw_text
+LEFT JOIN cust c ON c.normalized_name = n.normalized_name
+LEFT JOIN alias a ON a.alias_name = n.raw_text;
+
+CREATE VIEW v_normalized_candidates AS
+WITH base AS (
+  SELECT raw_text, cleaned, INSTR(cleaned, ':') AS pos1
+  FROM v_raw_clean
+),
+split1 AS (
+  SELECT
+    raw_text, cleaned, pos1,
+    CASE WHEN pos1=0 THEN NULL ELSE SUBSTR(cleaned,1,pos1-1) END AS part1,
+    CASE WHEN pos1=0 THEN cleaned ELSE SUBSTR(cleaned,pos1+1) END AS rest
+  FROM base
+),
+split2 AS (
+  SELECT
+    raw_text, cleaned, part1, rest,
+    CASE WHEN pos1=0 THEN 0 ELSE INSTR(rest, ':') END AS pos2_rel
+  FROM split1
+),
+split_final AS (
+  SELECT
+    raw_text, cleaned,
+    part1 AS agency1_raw,
+    CASE WHEN pos2_rel>0 THEN SUBSTR(rest,1,pos2_rel-1) ELSE NULL END AS agency2_raw,
+    CASE
+      WHEN pos2_rel=0 AND part1 IS NOT NULL THEN rest
+      WHEN part1 IS NULL THEN rest
+      ELSE SUBSTR(rest,pos2_rel+1)
+    END AS customer_raw
+  FROM split2
+),
+canon AS (
+  SELECT
+    f.raw_text,
+    f.cleaned,
+    TRIM(COALESCE(a1.canonical_name, f.agency1_raw)) AS agency1,
+    TRIM(COALESCE(a2.canonical_name, f.agency2_raw)) AS agency2,
+    TRIM(f.customer_raw)                              AS customer_base
+  FROM split_final f
+  LEFT JOIN agency_canonical_map a1 ON a1.alias_name = TRIM(f.agency1_raw)
+  LEFT JOIN agency_canonical_map a2 ON a2.alias_name = TRIM(f.agency2_raw)
+),
+customer_stripped AS (
+  SELECT
+    raw_text, cleaned, agency1, agency2,
+    RTRIM(                                  -- <-- remove sentinel
+      REPLACE(REPLACE(REPLACE(REPLACE(
+        customer_base || '|',
+        ' PRODUCTION|','|'),
+        ' PROD|','|'),
+        '- PRODUCTION|','|'),
+        '- PROD|','|'
+      ), '|'
+    ) AS customer
+  FROM canon
+)
+SELECT
+  raw_text,
+  cleaned AS cleaned_text,
+  agency1, agency2, customer,
+  CASE
+    WHEN (agency1 IS NULL OR agency1='') THEN customer
+    WHEN (agency2 IS NULL OR agency2='') THEN agency1||':'||customer
+    ELSE agency1||':'||agency2||':'||customer
+  END AS normalized_name;
+
+CREATE VIEW v_raw_clean AS
+WITH stripped AS (
+  SELECT
+    r.raw_text,
+    -- Iteratively strip all needles
+    TRIM(
+      REPLACE(
+      REPLACE(
+      REPLACE(
+      REPLACE(
+      REPLACE(r.raw_text,
+        (SELECT needle FROM text_strips WHERE needle=' (Broker Fees  - DO NOT INVOICE)'), ''),
+        (SELECT needle FROM text_strips WHERE needle=' (Broker Fees - DO NOT INVOICE)'), ''),
+        (SELECT needle FROM text_strips WHERE needle=' (Broker Costs - DO NOT INVOICE)'), ''),
+        (SELECT needle FROM text_strips WHERE needle=' (BROKER COSTS - DO NOT INVOICE)'), ''),
+        (SELECT needle FROM text_strips WHERE needle=' CREDIT MEMO'), '')
+    ) AS cleaned
+  FROM raw_customer_inputs r
+),
+collapsed AS (
+  -- Collapse multiple spaces to single space (SQLite trick using recursion via replace)
+  SELECT
+    raw_text,
+    TRIM(
+      REPLACE(REPLACE(REPLACE(cleaned, '  ', ' '), '  ', ' '), '  ', ' ')
+    ) AS cleaned
+  FROM stripped
+)
+SELECT * FROM collapsed;
+
 -- Triggers (3)
 -- ============================================================
 
@@ -1071,6 +1326,6 @@ BEGIN
 END;
 
 -- End of schema export
--- Total tables: 23
--- Total views: 11
+-- Total tables: 27
+-- Total views: 14
 -- Total triggers: 3

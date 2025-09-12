@@ -69,8 +69,17 @@ def create_app(environment: Optional[str] = None) -> Flask:
     except Exception as e:
         logger.error(f"Failed to register customer normalization blueprint: {e}")
 
-    # ... (rest of your file unchanged)
-    # routes: /, /health, /info, /api/system-stats, etc.
+
+    # ✅ Register the customer CANON tool *after* app exists
+    try:
+        from src.web.routes.canon_tools import canon_bp
+        app.register_blueprint(canon_bp)
+        logger.info("Customer canon blueprint registered successfully")
+    except Exception as e:
+        logger.error(f"Failed to register customer canon blueprint: {e}")
+
+
+
 
     logger.info(f"Flask app created for environment: {settings.environment}")
     return app

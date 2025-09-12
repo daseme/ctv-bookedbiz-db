@@ -63,7 +63,7 @@ EXCEL_COLUMN_POSITIONS = {
     26: 'affidavit_flag',      # Affidavit?
     27: 'contract',            # Notarize?
     28: 'market_name',         # Market
-    29: 'sheet_source',        # NEW: Sheet source tracking (added by commercial log importer)
+    30: 'sheet_source',        # NEW: Sheet source tracking (added by commercial log importer) (added by commercial log importer)
 }
 
 
