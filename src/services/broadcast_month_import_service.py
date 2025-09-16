@@ -30,6 +30,7 @@ from src.utils.broadcast_month_utils import BroadcastMonthParser, extract_broadc
 from src.services.base_service import BaseService
 from src.utils.broadcast_month_utils import normalize_broadcast_day
 from src.services.entity_alias_service import EntityAliasService
+from src.services.import_performance_optimization import BatchEntityResolver
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,7 @@ class BroadcastMonthImportService(BaseService):
         self.alias_service = EntityAliasService(db_connection)
         self.normalize_revenue_type = build_revenue_type_normalizer()
         self.normalize_spot_type = build_spot_type_normalizer()
+        self.batch_resolver = BatchEntityResolver(db_connection)
     
     def validate_import(self, excel_file: str, import_mode: str) -> ValidationResult:
         """
@@ -410,6 +412,12 @@ class BroadcastMonthImportService(BaseService):
                 result.success = True
                 return result
             
+            # 🚀 PERFORMANCE BOOST: Build cache BEFORE any transactions
+            tqdm.write("🚀 Phase 1: Building high-performance entity cache...")
+            self.batch_resolver.build_entity_cache_from_excel(excel_file)
+            cache_stats = self.batch_resolver.get_performance_stats()
+            tqdm.write(f"✅ Cache ready: {cache_stats['cache_size']} entities pre-resolved ({cache_stats['batch_resolved']} found)")
+
             # Step 4: Create import batch record
             batch_record_id = self._create_import_batch(batch_id, import_mode, excel_file, result.broadcast_months_affected)
             
@@ -430,8 +438,33 @@ class BroadcastMonthImportService(BaseService):
                     if import_mode == 'WEEKLY_UPDATE' and closed_months:
                         net_change = imported_count - deleted_count
                         tqdm.write(f"Import complete: {imported_count:,} imported, {deleted_count:,} deleted (net: {net_change:+,})")
+
+                    # Step 6: Enhanced: Validate and correct customer alignment
+                    tqdm.write(f"Validating customer alignment...")
+                    validation_result = self.validate_customer_alignment_post_import(batch_id, conn)
                     
-                    # Step 6: Handle HISTORICAL mode - close all months (atomic, same transaction)
+                    if not validation_result['validation_passed']:
+                        tqdm.write(f"⚠️ Customer alignment issues detected:")
+                        tqdm.write(f"   {validation_result['total_mismatches']} mismatches affecting {validation_result['total_spots_affected']:,} spots")
+                        tqdm.write(f"   Revenue affected: ${validation_result['total_revenue_affected']:,.2f}")
+                        
+                        # Auto-correct the mismatches
+                        tqdm.write(f"🔧 Auto-correcting customer_id mismatches...")
+                        corrections_made = self.auto_correct_customer_mismatches(batch_id, conn)
+                        
+                        # Re-validate after correction
+                        validation_result = self.validate_customer_alignment_post_import(batch_id, conn)
+                        
+                        if validation_result['validation_passed']:
+                            tqdm.write(f"✅ All customer_id mismatches corrected")
+                        else:
+                            error_msg = f"Failed to correct {validation_result['total_mismatches']} customer alignment issues"
+                            tqdm.write(f"❌ {error_msg}")
+                            raise BroadcastMonthImportError(error_msg)
+                    else:
+                        tqdm.write(f"✅ Customer alignment validation passed")
+
+                    # Step 7: Handle HISTORICAL mode - close all months (atomic, same transaction)
                     if import_mode == 'HISTORICAL':
                         with tqdm(total=len(result.broadcast_months_affected), desc="Closing months", unit=" months") as pbar:
                             for month in result.broadcast_months_affected:
@@ -446,7 +479,7 @@ class BroadcastMonthImportService(BaseService):
                                     pbar.update(1)
                         tqdm.write(f"Closed {len(result.closed_months)} months")
 
-                    # Step 7: Complete the batch record
+                    # Step 8: Complete the batch record
                     self._complete_import_batch(batch_id, result, conn)
                     
                     # If we get here, the transaction was successful
@@ -472,7 +505,80 @@ class BroadcastMonthImportService(BaseService):
         result.duration_seconds = (datetime.now() - start_time).total_seconds()
         
         return result
-    
+
+    def validate_customer_alignment_post_import(self, batch_id: str, conn) -> Dict[str, Any]:
+        """
+        Validate that all imported spots align with normalization system
+        Run this after every import to catch mismatches immediately
+        """
+        # Check for customer_id mismatches
+        cursor = conn.execute("""
+            SELECT 
+                s.bill_code,
+                s.customer_id as spots_customer_id,
+                audit.customer_id as audit_customer_id,
+                COUNT(*) as spot_count,
+                SUM(COALESCE(s.gross_rate, 0)) as revenue_affected
+            FROM spots s
+            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            WHERE s.import_batch_id = ?
+            AND (s.customer_id != audit.customer_id OR s.customer_id IS NULL)
+            AND audit.customer_id IS NOT NULL
+            GROUP BY s.bill_code, s.customer_id, audit.customer_id
+            ORDER BY revenue_affected DESC
+        """, (batch_id,))
+        
+        mismatches = []
+        total_spots = 0
+        total_revenue = 0
+        
+        for row in cursor.fetchall():
+            mismatch = {
+                'bill_code': row[0],
+                'spots_customer_id': row[1],
+                'audit_customer_id': row[2], 
+                'spot_count': row[3],
+                'revenue_affected': row[4]
+            }
+            mismatches.append(mismatch)
+            total_spots += row[3]
+            total_revenue += row[4]
+        
+        return {
+            'mismatches': mismatches,
+            'total_mismatches': len(mismatches),
+            'total_spots_affected': total_spots,
+            'total_revenue_affected': total_revenue,
+            'validation_passed': len(mismatches) == 0
+        }
+
+    def auto_correct_customer_mismatches(self, batch_id: str, conn) -> int:
+        """
+        Automatically correct customer_id mismatches after import
+        Returns number of corrections made
+        """
+        cursor = conn.execute("""
+            UPDATE spots 
+            SET customer_id = (
+                SELECT audit.customer_id 
+                FROM v_customer_normalization_audit audit
+                WHERE audit.raw_text = spots.bill_code
+            )
+            WHERE spots.import_batch_id = ?
+            AND EXISTS (
+                SELECT 1 FROM v_customer_normalization_audit audit
+                WHERE audit.raw_text = spots.bill_code
+                    AND (spots.customer_id != audit.customer_id OR spots.customer_id IS NULL)
+                    AND audit.customer_id IS NOT NULL
+            )
+        """, (batch_id,))
+        
+        corrections_made = cursor.rowcount
+        if corrections_made > 0:
+            tqdm.write(f"Auto-corrected {corrections_made} customer_id mismatches")
+        
+        return corrections_made
+
     def _create_import_batch(self, batch_id: str, import_mode: str, source_file: str, months: List[str]) -> int:
         """Create import batch record."""
         try:
@@ -554,6 +660,12 @@ class BroadcastMonthImportService(BaseService):
             unmatched_customers = set()
             unmatched_agencies = set()
             sheet_source_stats = {}  # Track sheet source statistics
+
+            # 🚀 PERFORMANCE BOOST: Pre-populate entity cache
+            tqdm.write("Phase 1: Building entity cache for high-performance lookups...")
+            self.batch_resolver.build_entity_cache_from_excel(excel_file)
+            cache_stats = self.batch_resolver.get_performance_stats()
+            tqdm.write(f"Cache ready: {cache_stats['cache_size']} entities pre-resolved")
 
             with tqdm(total=total_records, desc="Processing Excel rows", unit=" rows") as pbar:
                 for row_num, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
@@ -658,15 +770,15 @@ class BroadcastMonthImportService(BaseService):
                             if market_id:
                                 spot_data['market_id'] = market_id
 
+                        # NEW CODE - High-performance cached lookups:
                         if 'bill_code' in spot_data:
-                            with suppress_verbose_logging():
-                                entities = self._lookup_entities_with_aliases(spot_data['bill_code'], conn)
-                            if entities['customer_id']:
-                                spot_data['customer_id'] = entities['customer_id']
+                            entity_result = self.batch_resolver.lookup_entities_cached(spot_data['bill_code'], conn)
+                            if entity_result.customer_id:
+                                spot_data['customer_id'] = entity_result.customer_id
                             else:
                                 unmatched_customers.add(spot_data['bill_code'])
-                            if entities['agency_id']:
-                                spot_data['agency_id'] = entities['agency_id']
+                            if entity_result.agency_id:
+                                spot_data['agency_id'] = entity_result.agency_id
                             else:
                                 if ':' in spot_data['bill_code']:
                                     unmatched_agencies.add(spot_data['bill_code'].split(':', 1)[0].strip())
@@ -699,8 +811,14 @@ class BroadcastMonthImportService(BaseService):
 
             workbook.close()
             
-            # Enhanced completion logging with sheet source breakdown
+            # Enhanced completion logging with performance statistics
+            final_stats = self.batch_resolver.get_performance_stats()
             tqdm.write(f"Import complete: {imported_count:,} records imported")
+            tqdm.write(f"Entity resolution performance:")
+            tqdm.write(f"   Cache hit rate: {final_stats['cache_hit_rate_percent']}%")
+            tqdm.write(f"   Total lookups: {final_stats['total_lookups']:,}")
+            tqdm.write(f"   Cache hits: {final_stats['cache_hits']:,}")
+
             if sheet_source_stats:
                 tqdm.write(f"Sheet breakdown:")
                 for sheet, count in sorted(sheet_source_stats.items()):
@@ -723,42 +841,37 @@ class BroadcastMonthImportService(BaseService):
 
     def _lookup_entities_with_aliases(self, bill_code: str, conn) -> dict:
         """
-        Enhanced entity lookup with alias support.
-        Priority: exact match → alias match → None
+        ENHANCED: Use dashboard-compatible customer resolution
+        This prevents future customer_id mismatches
         """
-        result = {'agency_id': None, 'customer_id': None, 'used_alias': False}
+        result = {'customer_id': None, 'agency_id': None}
         
-        if not bill_code:
+        # PRIORITY 1: Use normalization system (what dashboard expects)
+        cursor = conn.execute("""
+            SELECT customer_id FROM v_customer_normalization_audit 
+            WHERE raw_text = ?
+        """, (bill_code,))
+        audit_result = cursor.fetchone()
+        
+        if audit_result:
+            result['customer_id'] = audit_result[0]
             return result
         
+        # PRIORITY 2: Create using normalization-compatible format
         if ':' in bill_code:
-            # Standard "Agency:Customer" format
-            agency_part, customer_part = bill_code.split(':', 1)
-            agency_name = agency_part.strip()
-            customer_name = customer_part.strip()
-            
-            # Customer lookup: exact then alias
-            result['customer_id'] = self._lookup_customer_id(customer_name, conn)
-            if not result['customer_id']:
-                result['customer_id'] = self.alias_service.lookup_customer_by_alias(customer_name, conn)
-                if result['customer_id']:
-                    result['used_alias'] = True
-            
-            # Agency lookup: exact then alias  
-            result['agency_id'] = self._lookup_agency_id(agency_name, conn)
-            if not result['agency_id']: 
-                result['agency_id'] = self.alias_service.lookup_agency_by_alias(agency_name, conn)
-                if result['agency_id']:
-                    result['used_alias'] = True
-                
+            # Create as agency:customer (dashboard-friendly)
+            normalized_name = bill_code.strip()
         else:
-            # Direct billing format
-            result['customer_id'] = self._lookup_direct_customer(bill_code, conn)
-            if not result['customer_id']:
-                result['customer_id'] = self.alias_service.lookup_customer_by_alias(bill_code.strip(), conn)
-                if result['customer_id']:
-                    result['used_alias'] = True
+            # Create as customer-only but log for review
+            normalized_name = bill_code.strip()
+            logger.warning(f"Creating customer-only record: {bill_code}")
         
+        cursor = conn.execute("""
+            INSERT INTO customers (normalized_name, is_active)
+            VALUES (?, 1)
+        """, (normalized_name,))
+        
+        result['customer_id'] = cursor.lastrowid
         return result
 
     def _lookup_customer_id(self, customer_name: str, conn) -> Optional[int]:

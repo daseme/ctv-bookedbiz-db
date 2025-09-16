@@ -1143,8 +1143,8 @@ class LanguageAssignmentService:
         
         try:
             # Import language assignment services
-            from services.spot_categorization_service import SpotCategorizationService
-            from services.language_processing_orchestrator import LanguageProcessingOrchestrator
+            from src.services.spot_categorization_service import SpotCategorizationService
+            from src.services.language_processing_orchestrator import LanguageProcessingOrchestrator
             
             conn = sqlite3.connect(self.db.db_path)
             
@@ -1221,7 +1221,7 @@ class LanguageAssignmentService:
     
     def _process_batch_categories(self, conn: sqlite3.Connection, batch_id: str) -> Dict[str, Any]:
         """Process all categories for the batch"""
-        from services.language_processing_orchestrator import LanguageProcessingOrchestrator
+        from src.services.language_processing_orchestrator import LanguageProcessingOrchestrator
         
         orchestrator = LanguageProcessingOrchestrator(conn)
         return orchestrator.process_batch_categories(batch_id)

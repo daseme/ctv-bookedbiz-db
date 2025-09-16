@@ -237,86 +237,82 @@ class SQLiteRevenueRepository:
     # File: src/services/report_data_service.py
 
     def get_customer_monthly_data(
-        self,
-        year_range: YearRange,
+        self, 
+        year_range: YearRange, 
         filters: 'ReportFilters'
     ) -> List[Dict[str, Any]]:
-        """Customer monthly revenue with BOTH closed and open months included."""
-        month_expr = self.query_builder.build_broadcast_month_case("s.broadcast_month")
+        """Get customer monthly revenue data with proper customer normalization - COMBINED revenue types"""
+        month_expr = self.query_builder.build_broadcast_month_case()
         ae_display = self.query_builder.build_ae_display()
-        base_filters = self.query_builder.build_base_filters()
-
-        # Build main query via CTE to avoid WHERE/AND concat edge-cases
+        
         query = f"""
-            WITH base AS (
-                SELECT
-                    COALESCE(s.customer_id, s.bill_code) AS customer_id,
-                    COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS customer,
-                    s.bill_code AS original_customer_name,
-                    {ae_display} AS ae,
-                    COALESCE(sect.sector_name, 'Unknown') AS sector,
-                    {month_expr} AS month_num,
-                    COALESCE(s.revenue_type, 'Regular') AS revenue_type,
-                    COALESCE(s.gross_rate, 0) AS gross_revenue,
-                    COALESCE(s.station_net, 0) AS net_revenue,
-                    CASE WHEN audit.normalized_name IS NOT NULL THEN 'normalized' ELSE 'raw' END AS name_source
-                FROM spots s
-                LEFT JOIN customers c ON s.customer_id = c.customer_id
-                LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
-                LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
-                WHERE s.broadcast_month LIKE ?
-                AND {base_filters}
-            )
             SELECT
-                customer_id,
-                customer,
-                original_customer_name,
-                ae,
-                -- collapse types per customer/AE/month
-                GROUP_CONCAT(DISTINCT revenue_type) AS revenue_type,
-                sector,
-                month_num,
-                ROUND(SUM(gross_revenue), 2) AS gross_revenue,
-                ROUND(SUM(net_revenue), 2) AS net_revenue,
-                MIN(name_source) AS name_source
-            FROM base
-            WHERE month_num IS NOT NULL
+                COALESCE(c.customer_id, 0) AS customer_id,
+                COALESCE(c.normalized_name, s.bill_code, 'Unknown') AS customer,
+                {ae_display} AS ae,
+                'Combined' AS revenue_type,
+                COALESCE(sect.sector_name, 'Unknown') AS sector,
+                {month_expr} AS month_num,
+                ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
+                ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue
+            FROM spots s
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN agencies  a ON s.agency_id = a.agency_id
+            LEFT JOIN sectors  sect ON c.sector_id = sect.sector_id
+            WHERE s.broadcast_month LIKE ?
+            AND {self.query_builder.build_base_filters()}
         """
-
+        
         params: List[Any] = [year_range.like_pattern]
-        # Append extra WHERE conditions deterministically
         query, params = self._apply_filters(query, params, filters)
-
-        query += """
-            GROUP BY
-                customer_id,
-                customer,
-                original_customer_name,
-                ae,
-                sector,
-                month_num
-            ORDER BY
-                ae ASC, customer ASC, month_num ASC
-        """
-
+        # FIXED: Group by normalized customer, not bill_code, and exclude revenue_type
+        query += " GROUP BY COALESCE(c.customer_id, 0), COALESCE(c.normalized_name, s.bill_code), ae, sect.sector_name, month_num"
+        
         conn = self.db.connect()
         try:
-            cur = conn.cursor()
-            cur.execute(query, params)
-            rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            data = [dict(zip(cols, r)) for r in rows]
-
-            # mark new customers
-            new_customers = self.get_new_customers_for_year(year_range.year)
-            for row in data:
-                row["is_new_customer"] = row["customer"] in new_customers
-
-            return data
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            columns = [description[0] for description in cursor.description]
+            return [dict(zip(columns, row)) for row in rows]
         finally:
             conn.close()
 
-
+    def build_debug_query(
+            self, 
+            year_range: YearRange, 
+            filters: 'ReportFilters'
+        ) -> Tuple[str, List[Any]]:
+            """
+            Build and return the exact SQL query and parameters used by get_customer_monthly_data
+            for debugging purposes. Returns the query string and parameter list.
+            """
+            month_expr = self.query_builder.build_broadcast_month_case()
+            ae_display = self.query_builder.build_ae_display()
+            
+            query = f"""
+                SELECT
+                    s.bill_code AS customer_id,
+                    COALESCE(s.bill_code, 'Unknown') AS customer,
+                    {ae_display} AS ae,
+                    COALESCE(s.revenue_type, 'Regular') AS revenue_type,
+                    COALESCE(sect.sector_name, 'Unknown') AS sector,
+                    {month_expr} AS month_num,
+                    ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
+                    ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue
+                FROM spots s
+                LEFT JOIN customers c ON s.customer_id = c.customer_id
+                LEFT JOIN agencies  a ON s.agency_id = a.agency_id
+                LEFT JOIN sectors  sect ON c.sector_id = sect.sector_id
+                WHERE s.broadcast_month LIKE ?
+                AND {self.query_builder.build_base_filters()}
+            """
+            
+            params: List[Any] = [year_range.like_pattern]
+            query, params = self._apply_filters(query, params, filters)
+            query += " GROUP BY s.bill_code, ae, revenue_type, sect.sector_name, month"
+            
+            return query, params
     
     def get_ae_performance_data(self, filters: 'ReportFilters') -> List[Dict[str, Any]]:
         """Get AE performance data"""
@@ -696,6 +692,160 @@ class ReportDataService:
             metadata=metadata
         )
     
+    def debug_service_vs_direct_sql(self, year: int) -> Dict[str, Any]:
+        """Debug discrepancies between Python service and direct SQL"""
+        year_range = YearRange.from_year(year)
+        
+        # 1. Get what your Python service currently produces
+        filters = self._create_default_filters(year)
+        service_data = self.repository.get_customer_monthly_data(year_range, filters)
+        
+        # Calculate service totals by month
+        service_totals = {}
+        service_record_count = 0
+        for row in service_data:
+            month_num = str(row.get('month_num', '')).zfill(2)
+            month_name = {
+                '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
+            }.get(month_num)
+            
+            if month_name:
+                if month_name not in service_totals:
+                    service_totals[month_name] = 0
+                service_totals[month_name] += float(row.get('gross_revenue', 0))
+                service_record_count += 1
+        
+        # 2. Get direct SQL results (the query we just tested)
+        conn = self.repository.db.connect()
+        try:
+            cursor = conn.cursor()
+            
+            # Execute the EXACT query from our successful test
+            direct_sql_query = """
+                WITH base AS (
+                    SELECT
+                        COALESCE(s.customer_id, s.bill_code) AS customer_id,
+                        COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS customer,
+                        s.bill_code AS original_customer_name,
+                        CASE 
+                          WHEN s.sales_person IS NULL OR TRIM(s.sales_person) = '' THEN 'Unknown'
+                          ELSE TRIM(s.sales_person)
+                        END AS ae,
+                        COALESCE(sect.sector_name, 'Unknown') AS sector,
+                        CASE 
+                            WHEN s.broadcast_month LIKE 'Jan-%' THEN '01'
+                            WHEN s.broadcast_month LIKE 'Feb-%' THEN '02'
+                            WHEN s.broadcast_month LIKE 'Mar-%' THEN '03'
+                            WHEN s.broadcast_month LIKE 'Apr-%' THEN '04'
+                            WHEN s.broadcast_month LIKE 'May-%' THEN '05'
+                            WHEN s.broadcast_month LIKE 'Jun-%' THEN '06'
+                            WHEN s.broadcast_month LIKE 'Jul-%' THEN '07'
+                            WHEN s.broadcast_month LIKE 'Aug-%' THEN '08'
+                            WHEN s.broadcast_month LIKE 'Sep-%' THEN '09'
+                            WHEN s.broadcast_month LIKE 'Oct-%' THEN '10'
+                            WHEN s.broadcast_month LIKE 'Nov-%' THEN '11'
+                            WHEN s.broadcast_month LIKE 'Dec-%' THEN '12'
+                        END AS month_num,
+                        COALESCE(s.revenue_type, 'Regular') AS revenue_type,
+                        COALESCE(s.gross_rate, 0) AS gross_revenue,
+                        COALESCE(s.station_net, 0) AS net_revenue
+                    FROM spots s
+                    LEFT JOIN customers c ON s.customer_id = c.customer_id
+                    LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+                    LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+                    WHERE s.broadcast_month LIKE ?
+                    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                    AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
+                ),
+                grouped AS (
+                    SELECT
+                        customer_id,
+                        customer,
+                        original_customer_name,
+                        ae,
+                        sector,
+                        month_num,
+                        ROUND(SUM(gross_revenue), 2) AS gross_revenue
+                    FROM base
+                    WHERE month_num IS NOT NULL
+                    GROUP BY
+                        customer_id,
+                        customer,
+                        original_customer_name,
+                        ae,
+                        sector,
+                        month_num
+                )
+                SELECT 
+                    CASE month_num 
+                        WHEN '09' THEN 'Sep'
+                        WHEN '10' THEN 'Oct' 
+                        WHEN '11' THEN 'Nov'
+                        WHEN '12' THEN 'Dec'
+                    END as month,
+                    ROUND(SUM(gross_revenue), 2) as total_revenue,
+                    COUNT(*) as row_count
+                FROM grouped
+                WHERE month_num IN ('09', '10', '11', '12')
+                GROUP BY month_num
+                ORDER BY month_num
+            """
+            
+            cursor.execute(direct_sql_query, [year_range.like_pattern])
+            direct_results = cursor.fetchall()
+            direct_totals = {row[0]: float(row[1]) for row in direct_results}
+            direct_row_counts = {row[0]: int(row[2]) for row in direct_results}
+            
+            # 3. Get pivot table targets for comparison
+            pivot_targets = {
+                'Sep': 242590.15,
+                'Oct': 126367.40,
+                'Nov': 90298.21,
+                'Dec': 73795.68
+            }
+            
+            # 4. Compare all three approaches
+            comparison = {}
+            all_months = set(service_totals.keys()) | set(direct_totals.keys()) | set(pivot_targets.keys())
+            
+            for month in sorted(all_months):
+                service_total = service_totals.get(month, 0)
+                direct_total = direct_totals.get(month, 0)
+                pivot_target = pivot_targets.get(month, 0)
+                
+                comparison[month] = {
+                    'python_service_total': round(service_total, 2),
+                    'direct_sql_total': direct_total,
+                    'pivot_table_target': pivot_target,
+                    'service_vs_sql_diff': round(service_total - direct_total, 2),
+                    'service_vs_pivot_diff': round(service_total - pivot_target, 2),
+                    'sql_vs_pivot_diff': round(direct_total - pivot_target, 2),
+                    'direct_sql_rows': direct_row_counts.get(month, 0)
+                }
+            
+            # 5. Debug the actual query your service builds
+            service_query, service_params = self._build_debug_query(year_range, filters)
+            
+            return {
+                'year': year,
+                'total_service_records': service_record_count,
+                'comparison': comparison,
+                'service_query_debug': {
+                    'query': service_query[:500] + "..." if len(service_query) > 500 else service_query,
+                    'params': service_params,
+                    'param_count': len(service_params)
+                },
+                'analysis': {
+                    'python_service_missing_vs_sql': round(sum(direct_totals.values()) - sum(service_totals.values()), 2),
+                    'direct_sql_over_vs_pivot': round(sum(direct_totals.values()) - sum(pivot_targets.values()), 2)
+                }
+            }
+            
+        finally:
+            conn.close()
+
+
+
     def _create_repository(self) -> RevenueRepository:
         """Factory method for creating repository instance"""
         db_connection = self.container.get('database_connection')

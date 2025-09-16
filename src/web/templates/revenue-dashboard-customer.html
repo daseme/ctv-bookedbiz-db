@@ -2011,4 +2011,141 @@ style.textContent = `
 document.head.appendChild(style);
 
 </script>
+// Add this JavaScript debugging code to your revenue-dashboard-customer.html template
+// Place it just before the closing </body> tag or in your existing <script> section
+
+<script>
+console.log("🔍 FRONTEND DEBUG - Checking BVK September data");
+
+// Debug the data that was passed to the template
+const scriptElement = document.getElementById('revenue-data');
+if (scriptElement) {
+    try {
+        const revenueData = JSON.parse(scriptElement.textContent);
+        console.log("📊 Total customers in frontend data:", revenueData.length);
+        
+        // Find BVK customers in frontend data
+        const bvkCustomers = revenueData.filter(customer => 
+            customer.customer && customer.customer.toLowerCase().includes('bvk')
+        );
+        
+        console.log("🏥 BVK customers found in frontend:", bvkCustomers.length);
+        
+        bvkCustomers.forEach((customer, index) => {
+            console.log(`🏥 BVK Customer ${index + 1}:`, {
+                name: customer.customer,
+                ae: customer.ae,
+                customer_id: customer.customer_id,
+                september_gross: customer.month_9_gross,
+                september_net: customer.month_9_net, 
+                september_total: customer.month_9,
+                all_september_keys: Object.keys(customer).filter(key => key.includes('month_9')),
+                all_keys: Object.keys(customer)
+            });
+            
+            // Check all monthly data
+            const monthlyData = [];
+            for (let month = 1; month <= 12; month++) {
+                const gross = customer[`month_${month}_gross`];
+                const net = customer[`month_${month}_net`];
+                if (gross && gross !== 0) {
+                    monthlyData.push({
+                        month: month,
+                        gross: gross,
+                        net: net
+                    });
+                }
+            }
+            console.log(`📅 Non-zero months for ${customer.customer}:`, monthlyData);
+        });
+        
+    } catch (e) {
+        console.error("❌ Error parsing revenue data:", e);
+    }
+} else {
+    console.error("❌ No revenue-data script element found!");
+}
+
+// Debug the table rendering after it's populated
+setTimeout(() => {
+    console.log("🔍 CHECKING TABLE AFTER RENDER");
+    
+    const table = document.querySelector('.revenue-table, #revenueTable, table');
+    if (!table) {
+        console.error("❌ No revenue table found!");
+        return;
+    }
+    
+    console.log("📋 Table found:", table);
+    
+    // Check table headers
+    const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+    console.log("📋 Table headers:", headers);
+    
+    const septemberHeaderIndex = headers.findIndex(header => 
+        header.toLowerCase().includes('sep') || header.toLowerCase().includes('9')
+    );
+    console.log("📅 September header index:", septemberHeaderIndex, headers[septemberHeaderIndex]);
+    
+    // Check table rows for BVK data
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    console.log("📋 Total rows in table:", rows.length);
+    
+    const bvkRows = rows.filter(row => {
+        const firstCell = row.querySelector('td');
+        return firstCell && firstCell.textContent.toLowerCase().includes('bvk');
+    });
+    
+    console.log("🏥 BVK rows in table:", bvkRows.length);
+    
+    bvkRows.forEach((row, index) => {
+        const cells = Array.from(row.querySelectorAll('td'));
+        const rowData = cells.map(cell => cell.textContent.trim());
+        
+        console.log(`🏥 BVK Row ${index + 1} data:`, rowData);
+        
+        if (septemberHeaderIndex >= 0 && cells[septemberHeaderIndex]) {
+            const septemberValue = cells[septemberHeaderIndex].textContent.trim();
+            console.log(`📅 September cell value for BVK row ${index + 1}:`, septemberValue);
+            
+            // Check if the cell has any styling that might hide it
+            const septemberCell = cells[septemberHeaderIndex];
+            const computedStyle = window.getComputedStyle(septemberCell);
+            console.log(`🎨 September cell styling:`, {
+                display: computedStyle.display,
+                visibility: computedStyle.visibility,
+                opacity: computedStyle.opacity,
+                color: computedStyle.color,
+                backgroundColor: computedStyle.backgroundColor
+            });
+        }
+    });
+    
+}, 2000); // Wait 2 seconds for table to be fully rendered
+
+// Also debug any filtering that might be applied
+setTimeout(() => {
+    console.log("🔍 CHECKING FOR APPLIED FILTERS");
+    
+    // Check common filter elements
+    const filterElements = {
+        yearSelect: document.getElementById('yearSelect'),
+        customerSearch: document.getElementById('customerSearch'),
+        aeFilter: document.getElementById('aeFilter'),
+        revenueType: document.getElementById('revenueType'),
+        revenueField: document.getElementById('revenueField')
+    };
+    
+    Object.entries(filterElements).forEach(([name, element]) => {
+        if (element) {
+            console.log(`🔧 Filter ${name}:`, element.value);
+        }
+    });
+    
+    // Check if any JavaScript filtering is hiding rows
+    const hiddenRows = Array.from(document.querySelectorAll('tbody tr[style*="display: none"], tbody tr.hidden'));
+    console.log("👻 Hidden rows:", hiddenRows.length);
+    
+}, 3000);
+</script>
 {% endblock %}
