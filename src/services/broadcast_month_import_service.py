@@ -250,19 +250,20 @@ class BroadcastMonthImportService(BaseService):
             error_msg = f"Failed to validate import: {str(e)}"
             logger.error(error_msg)
             raise BroadcastMonthImportError(error_msg)
-    
+        
     def _lookup_market_id(self, market_name: str, conn) -> Optional[int]:
-        """Look up market_id from market_name/market_code"""
         if not market_name:
+            return None
+        
+        # Validate input first
+        if len(market_name) > 50 or any(c in market_name for c in [';', '--', '/*']):
+            logger.warning(f"Suspicious market_name rejected: {market_name}")
             return None
             
         cursor = conn.execute("""
             SELECT market_id FROM markets 
-            WHERE market_code = ? 
-            OR market_name = ? 
-            OR (? = 'Admin' AND market_code = 'ADMIN')
-            OR (? = 'Admin' AND market_name = 'ADMINISTRATIVE')
-        """, (market_name, market_name, market_name, market_name))
+            WHERE market_code = ? OR market_name = ?
+        """, (market_name.strip(), market_name.strip()))
         
         result = cursor.fetchone()
         return result[0] if result else None

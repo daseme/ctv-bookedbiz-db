@@ -36,7 +36,7 @@ scp "C:\Users\Kurt\Crossings TV Dropbox\kurt olmstead\Financial\Sales\WeeklyRepo
 
 from pi to win
 
-tailscale file cp "./data/raw/daily/Commercial Log 250912.xlsx" desktop-7402tkp:
+sudo tailscale file cp "./data/raw/daily/Commercial Log 250912.xlsx" desktop-7402tkp:
 
 
 ## Team Members

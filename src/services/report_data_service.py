@@ -237,18 +237,25 @@ class SQLiteRevenueRepository:
     # File: src/services/report_data_service.py
 
     def get_customer_monthly_data(
-        self, 
-        year_range: YearRange, 
+        self,
+        year_range: YearRange,
         filters: 'ReportFilters'
     ) -> List[Dict[str, Any]]:
-        """Get customer monthly revenue data with proper customer normalization - COMBINED revenue types"""
+        """
+        Get customer monthly revenue data with proper customer normalization
+        Shows clean normalized customer names while preserving revenue accuracy
+        
+        Note: DISTINCT removed from v_customer_normalization_audit since duplicate
+        root cause was fixed in agency_canonical_map (2025-09-17)
+        """
         month_expr = self.query_builder.build_broadcast_month_case()
         ae_display = self.query_builder.build_ae_display()
-        
+    
         query = f"""
             SELECT
-                COALESCE(c.customer_id, 0) AS customer_id,
-                COALESCE(c.normalized_name, s.bill_code, 'Unknown') AS customer,
+                COALESCE(audit.customer_id, 0) AS customer_id,
+                COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS customer,
+                s.bill_code AS original_customer_name,
                 {ae_display} AS ae,
                 'Combined' AS revenue_type,
                 COALESCE(sect.sector_name, 'Unknown') AS sector,
@@ -256,18 +263,28 @@ class SQLiteRevenueRepository:
                 ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
                 ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue
             FROM spots s
-            LEFT JOIN customers c ON s.customer_id = c.customer_id
-            LEFT JOIN agencies  a ON s.agency_id = a.agency_id
-            LEFT JOIN sectors  sect ON c.sector_id = sect.sector_id
+            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            LEFT JOIN customers c ON audit.customer_id = c.customer_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
             WHERE s.broadcast_month LIKE ?
             AND {self.query_builder.build_base_filters()}
         """
-        
+    
         params: List[Any] = [year_range.like_pattern]
         query, params = self._apply_filters(query, params, filters)
-        # FIXED: Group by normalized customer, not bill_code, and exclude revenue_type
-        query += " GROUP BY COALESCE(c.customer_id, 0), COALESCE(c.normalized_name, s.bill_code), ae, sect.sector_name, month_num"
-        
+    
+        # Group by the normalized customer data
+        query += """
+            GROUP BY
+                COALESCE(audit.customer_id, 0),
+                COALESCE(audit.normalized_name, s.bill_code),
+                ae,
+                sect.sector_name,
+                month_num
+            ORDER BY customer, ae
+        """
+    
         conn = self.db.connect()
         try:
             cursor = conn.cursor()

@@ -1,210 +1,187 @@
-# Customer Name Matching & Review Tool
+# Customer Name Normalization System
 
-## Scope
-This tool identifies and normalizes customer names from `spots.bill_code` and matches them to existing `customers` or `entity_aliases` using **blocking keys** + **RapidFuzz token scoring**.
+## System Overview
 
-What it does: Aggregates revenue to the canonical customer using your approved aliases in entity_aliases.
+The customer normalization system resolves `spots.bill_code` entries to canonical customer records through a multi-layer approach combining exact matches, fuzzy matching, and alias resolution.
 
-Key: We join spots → (billcode_customer_map optional) → entity_aliases → customers.
+**Architecture**: `spots` → `v_customer_normalization_audit` → `customers` / `entity_aliases`
 
-    If an alias exists, we use entity_aliases.target_entity_id.
+**Primary Goal**: Aggregate revenue accurately to canonical customer entities while handling name variations and data quality issues.
 
-    If no alias but the extracted name already equals a customers.normalized_name, we use that.
+## Core Components
 
-    Otherwise the row is tagged [UNRESOLVED] so you can triage.
+| Component | Function |
+|-----------|----------|
+| `v_customer_normalization_audit` | Main normalization view joining spots data with customer resolution |
+| `v_normalized_candidates` | Underlying view handling bill_code parsing and canonical mapping |
+| `agency_canonical_map` | Maps agency name variants to canonical forms |
+| `customer_canonical_map` | Maps customer name variants to canonical forms |
+| `entity_aliases` | User-approved aliases linking variants to target entities |
+| `customers` | Master customer records |
 
-billcode_customer_map (optional): A tiny helper mapping of bill_code → extracted_name produced by the analyzer (same raw string you reviewed in the UI). It ensures the SQL sees the same extracted text you approved, without trying to re-parse bill_code in SQL. If you don’t have this table yet, create it and populate it from the analyzer’s distinct bill codes + extracted names.
+## Data Flow
 
+1. **Bill Code Parsing**: Extract agency and customer components from `bill_code`
+2. **Canonical Mapping**: Apply agency/customer canonical maps for normalization
+3. **Alias Resolution**: Match through `entity_aliases` for approved variants
+4. **Direct Matching**: Fall back to exact matches in `customers` table
+5. **Revenue Aggregation**: Sum revenue by resolved canonical customer
 
-It supports:
-- **Exact & alias matches** (via DB lookup)
-- **High-confidence & review candidates** (fuzzy match)
-- **Unknowns** (no viable match)
-- **Review queue** with a simple approval UI to create aliases safely
+## Key Views Structure
 
-**Goals:** improve match rates, catch typos/variants, reduce manual cleanup.
+### v_customer_normalization_audit
+Combines normalized candidates with customer data and revenue type information.
 
----
+**Critical Dependencies:**
+- `v_normalized_candidates` (must return unique records per raw_text)
+- `entity_aliases` (customer type only)
+- `customers` table
 
-## Components
+### v_normalized_candidates  
+Handles bill_code parsing through complex CTE logic:
+- Parses agency:customer format
+- Applies canonical mappings
+- Strips PROD/PRODUCTION suffixes
+- Constructs normalized names
 
-| File | Purpose |
-|------|---------|
-| `src/services/customer_matching/normalization.py` | Shared normalization & bill_code parsing logic |
-| `src/services/customer_matching/blocking_matcher.py` | Core analyzer (blocking + fuzzy matching) |
-| `src/cli/customer_names.py` | CLI wrapper to run the analyzer |
-| `src/database/migrations/001_review_queue.sql` | Creates `customer_match_review` table & indexes |
-| `scripts/load_review_queue.py` | Batch job to populate review queue |
-| `src/web/review_ui/app.py` | Flask UI to approve/reject matches & create aliases |
+## Data Quality Requirements
 
----
+### Canonical Mapping Tables
+**Critical**: Mapping tables must not contain case-insensitive duplicates.
 
-## Quickstart
+**Example Problem:**
+```sql
+-- This causes duplicate records in views:
+INSERT INTO agency_canonical_map VALUES ('iGraphix', 'iGraphix');
+INSERT INTO agency_canonical_map VALUES ('iGRAPHIX', 'iGraphix');
+```
 
-1. Analyze customer names (CLI):
+**Solution**: Maintain single canonical entry per logical entity.
+
+### Detection Query
+```sql
+-- Find case-insensitive duplicates in canonical maps
+SELECT 
+    LOWER(alias_name) as lowercase_alias,
+    GROUP_CONCAT(alias_name, ', ') as variants,
+    COUNT(*) as variant_count
+FROM agency_canonical_map
+GROUP BY LOWER(alias_name)
+HAVING COUNT(*) > 1;
+```
+
+## Revenue Query Pattern
+
+### Standard Customer Revenue Query
+```sql
+SELECT
+    COALESCE(audit.customer_id, 0) AS customer_id,
+    COALESCE(audit.normalized_name, s.bill_code) AS customer,
+    ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
+    ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue
+FROM spots s
+LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+WHERE s.broadcast_month = ?
+GROUP BY 
+    COALESCE(audit.customer_id, 0),
+    COALESCE(audit.normalized_name, s.bill_code)
+ORDER BY gross_revenue DESC;
+```
+
+**Note**: Direct JOIN to `v_customer_normalization_audit` assumes clean underlying data. Use DISTINCT subquery only if view returns duplicates.
+
+## Customer Matching Tools
+
+### CLI Analysis Tool
+```bash
 python -m src.cli.customer_names --db-path data/database/production.db \
   --export-unmatched --suggest-aliases
+```
 
-
-2. Load review queue (batch):
+### Review Queue Management
+```bash
 python scripts/load_review_queue.py --db data/database/production.db --auto-approve
+```
 
-
-3. Start review UI:
+### Review UI
+```bash
 export DB_PATH=data/database/production.db
 export APP_PIN=1234
 python -m src.web.review_ui.app --host 0.0.0.0 --port 5088
+```
 
-Match Statuses
+## Match Classification
 
-| Status            | Meaning                                    |
-| ----------------- | ------------------------------------------ |
-| `exact`           | Exact match to `customers.normalized_name` |
-| `alias`           | Direct match to `entity_aliases`           |
-| `high_confidence` | Fuzzy score ≥ 0.92 & revenue ≥ \$2k        |
-| `review`          | Fuzzy score ≥ 0.80 but < high confidence   |
-| `unknown`         | No match or low score                      |
+| Status | Criteria | Action |
+|--------|----------|---------|
+| `exact` | Direct match to `customers.normalized_name` | Use existing customer |
+| `alias` | Match through `entity_aliases` | Use target entity |
+| `high_confidence` | Fuzzy score ≥ 0.92 & revenue ≥ $2k | Auto-approve candidate |
+| `review` | Fuzzy score ≥ 0.80 but below high confidence | Queue for manual review |
+| `unknown` | No viable match found | Requires manual resolution |
 
-Recommendations
+## Troubleshooting
 
-    Always run load_review_queue.py after new data loads.
+### Revenue Reporting Discrepancies
+**Symptoms**: Dashboard shows $0 or incorrect totals for known customers.
 
-    Use the review UI for alias creation; avoids direct SQL editing.
+**Common Causes**:
+1. **View Duplicates**: Duplicate records in normalization views causing double-counting
+2. **Customer ID Mismatches**: Spots reference different customer_id than normalization system expects
+3. **Missing Aliases**: New customer name variants not yet mapped
 
-    Keep normalization.py as the single source of truth for name cleaning.
+### Diagnostic Queries
+```sql
+-- Check for view duplicates
+SELECT raw_text, COUNT(*) 
+FROM v_customer_normalization_audit 
+GROUP BY raw_text 
+HAVING COUNT(*) > 1;
 
-    Install dependencies:
-    pip install rapidfuzz metaphone Unidecode flask
-
-
-    Queries:
-
-    Customer Totals
-
-    -- Requires: entity_aliases (customer aliases you approved)
--- Optional but recommended: billcode_customer_map(bill_code TEXT PRIMARY KEY, alias_name TEXT NOT NULL)
---   -> alias_name = the extracted client string you reviewed (same as in the UI)
-
-WITH base AS (
-  SELECT
-    s.station_net,
+-- Verify customer ID alignment
+SELECT 
     s.bill_code,
-    COALESCE(m.alias_name, s.bill_code) AS extracted_name  -- fallback if map not populated
-  FROM spots s
-  LEFT JOIN billcode_customer_map m
-    ON m.bill_code = s.bill_code
-),
-resolved AS (
-  SELECT
-    -- Resolve to canonical customer via alias first, then direct name match
-    COALESCE(c_by_alias.customer_id, c_by_name.customer_id)    AS customer_id,
-    COALESCE(c_by_alias.normalized_name, c_by_name.normalized_name,
-             '[UNRESOLVED]')                                   AS customer_name,
-    b.station_net
-  FROM base b
-  -- 1) alias path (preferred)
-  LEFT JOIN entity_aliases ea
-    ON ea.entity_type = 'customer'
-   AND ea.is_active = 1
-   AND ea.alias_name = b.extracted_name
-  LEFT JOIN customers c_by_alias
-    ON c_by_alias.customer_id = ea.target_entity_id
-  -- 2) direct match fallback (for exact names already in customers)
-  LEFT JOIN customers c_by_name
-    ON c_by_name.normalized_name = b.extracted_name
-)
-SELECT
-  customer_id,
-  customer_name,
-  SUM(station_net) AS total_revenue
-FROM resolved
-GROUP BY customer_id, customer_name
-ORDER BY total_revenue DESC;
+    s.customer_id as spots_customer_id,
+    audit.customer_id as audit_customer_id,
+    COUNT(*) as affected_spots
+FROM spots s
+LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+WHERE s.customer_id != audit.customer_id
+GROUP BY s.bill_code, s.customer_id, audit.customer_id;
+```
 
+### Performance Considerations
+- Views use complex CTE logic; avoid nested subqueries where possible
+- Canonical mapping tables should have appropriate indexes on alias_name
+- Large fuzzy matching operations should use blocking keys for performance
 
-Query (customer × month)
+## Agency Normalization (Future)
 
-WITH base AS (
-  SELECT
-    s.station_net,
-    s.bill_code,
-    s.broadcast_month,
-    COALESCE(m.alias_name, s.bill_code) AS extracted_name
-  FROM spots s
-  LEFT JOIN billcode_customer_map m
-    ON m.bill_code = s.bill_code
-),
-resolved AS (
-  SELECT
-    COALESCE(c_by_alias.customer_id, c_by_name.customer_id)    AS customer_id,
-    COALESCE(c_by_alias.normalized_name, c_by_name.normalized_name,
-             '[UNRESOLVED]')                                   AS customer_name,
-    b.broadcast_month,
-    b.station_net
-  FROM base b
-  LEFT JOIN entity_aliases ea
-    ON ea.entity_type = 'customer'
-   AND ea.is_active = 1
-   AND ea.alias_name = b.extracted_name
-  LEFT JOIN customers c_by_alias
-    ON c_by_alias.customer_id = ea.target_entity_id
-  LEFT JOIN customers c_by_name
-    ON c_by_name.normalized_name = b.extracted_name
-)
-SELECT
-  customer_id,
-  customer_name,
-  broadcast_month,
-  SUM(station_net) AS total_revenue
-FROM resolved
-GROUP BY customer_id, customer_name, broadcast_month
-ORDER BY broadcast_month, total_revenue DESC;
+**Current State**: Agency names preserved as raw text from bill_code parsing.
 
+**Planned Enhancement**: Similar normalization system for agency names with:
+- `agencies` master table
+- Agency-specific canonical mapping
+- `entity_aliases` support for agency type
+- Fuzzy matching for agency name variants
 
-AGENCY NEXT PROJECT:
+**Implementation Approach**:
+1. Create `src/services/agency_matching/normalization.py`
+2. Adapt blocking matcher for agency-specific patterns
+3. Extend review UI to support agency entity types
+4. Add agency resolution to main revenue queries
 
-# Agency Normalization – Developer Kickoff
+## Dependencies
 
-## Current State
-- **Bill codes** often have the format: `agency_name:customer_name`.
-- Our current customer matching pipeline (`src/services/customer_matching/normalization.py`) now includes:
-  - `extract_billcode_parts(...) -> (agency_raw, customer_raw)`
-  - `extract_customer_from_bill_code(...)` for backward compatibility.
-- Customer matching **only** normalizes the **customer** segment. Agency info is preserved **raw**.
+**Required Python Packages**:
+- `rapidfuzz` (fuzzy string matching)
+- `metaphone` (phonetic matching)  
+- `Unidecode` (character normalization)
+- `flask` (review UI)
 
-## Goal for Agency Normalization Tool
-- Build a parallel tool to:
-  1. **Normalize agency names** consistently (casefold, punctuation removal, business suffix cleanup, etc.).
-  2. Maintain a mapping of raw → normalized agencies.
-  3. Detect alias/variant agencies (e.g., `H&L Agency Co` vs. `H and L Agency Company`).
-  4. Provide match statistics, CSV exports, and alias suggestions (similar to customer tool).
-  5. Optionally store canonical agencies in an `agencies` table with an `entity_aliases` entry for agency type.
+## System Maintenance
 
-## Schema Considerations
-- Likely need:
-  - `agencies` table (id, normalized_name, is_active, etc.).
-  - `entity_aliases` can be reused by setting `entity_type = 'agency'`.
-  - Optionally, `agency_id` foreign key in `spots` (if you want direct joins later).
-- Migration would follow the pattern of `001_review_queue.sql` for customer review.
-
-## Approach
-- Create `src/services/agency_matching/normalization.py` (start from customer normalizer; adjust patterns for agency-specific suffixes like “Agency”, “Media”, “Partners”).
-- Create `src/services/agency_matching/blocking_matcher.py` (clone customer blocking matcher; adapt to `agencies` table).
-- Build CLI: `src/cli/agencies.py` (mirror `customer_names.py`).
-- Add batch loader + review UI reusing the current review system, but filter by `entity_type='agency'`.
-
-## Key Lessons from Customer Tool
-- **Single normalization function** used everywhere.
-- **Blocking keys** for performance on Pi.
-- Use **RapidFuzz token scoring** for robustness.
-- Store raw + normalized strings for auditability.
-- Preserve original bill_code for reference.
-- Keep analyzer read-only; writes go through controlled queue/approval UI.
-
----
-**Next Steps:**
-1. Copy `normalization.py` → `agency_matching/normalization.py` and update suffix/noise lists.
-2. Implement blocking matcher for agencies.
-3. Create migration for `agencies` table and `entity_aliases` support.
-4. Hook into review queue & UI.
-
+- Run customer analysis after major data imports
+- Monitor canonical mapping tables for duplicate entries
+- Review unmatched customers periodically through UI
+- Document approved alias patterns for consistency
