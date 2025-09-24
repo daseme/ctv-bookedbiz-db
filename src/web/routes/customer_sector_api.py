@@ -12,25 +12,33 @@ def get_customers():
         container = get_container()
         db = container.get('database_connection')
         
+        # FIXED: Use the same proven pattern as get_customer_monthly_data
+        # Start with spots, then map to customers via normalization audit
         query = """
-        SELECT DISTINCT
-            c.customer_id,
-            c.normalized_name as name,
-            s.sector_name as sector,
-            c.updated_date as lastUpdated,
-            SUM(sp.gross_rate) as total_revenue,
-            COUNT(sp.spot_id) as spot_count
-        FROM customers c
-        LEFT JOIN sectors s ON c.sector_id = s.sector_id
-        LEFT JOIN agencies a ON c.agency_id = a.agency_id
-        INNER JOIN spots sp ON c.customer_id = sp.customer_id
-        WHERE c.is_active = 1
-          AND sp.revenue_type = 'Internal Ad Sales'
+        SELECT
+            COALESCE(audit.customer_id, 0) AS customer_id,
+            COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS name,
+            COALESCE(sect.sector_name, 'Unassigned') AS sector,
+            COALESCE(c.updated_date, '2025-01-01') AS lastUpdated,
+            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
+            COUNT(s.spot_id) AS spot_count
+        FROM spots s
+        LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+        LEFT JOIN customers c ON audit.customer_id = c.customer_id
+        LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+        WHERE s.revenue_type = 'Internal Ad Sales'
           AND (a.agency_name != 'WorldLink' OR a.agency_name IS NULL)
-          AND sp.gross_rate > 0
-        GROUP BY c.customer_id, c.normalized_name, s.sector_name, c.updated_date
-        HAVING COUNT(sp.spot_id) > 0
-        ORDER BY c.normalized_name
+          AND s.gross_rate > 0
+          AND COALESCE(audit.customer_id, 0) != 0  -- Only include resolved customers
+          AND COALESCE(c.is_active, 1) = 1  -- Only active customers
+        GROUP BY 
+            COALESCE(audit.customer_id, 0),
+            COALESCE(audit.normalized_name, s.bill_code),
+            sect.sector_name,
+            c.updated_date
+        HAVING COUNT(s.spot_id) > 0
+        ORDER BY name
         """
         
         conn = db.connect()
@@ -43,7 +51,7 @@ def get_customers():
             customers.append({
                 'id': row[0],
                 'name': row[1],
-                'sector': row[2],
+                'sector': row[2] if row[2] != 'Unassigned' else None,
                 'lastUpdated': str(row[3])[:10] if row[3] else '2025-01-01',
                 'totalRevenue': float(row[4]) if row[4] else 0.0,
                 'spotCount': row[5] if row[5] else 0
@@ -203,11 +211,15 @@ def bulk_update_sectors():
 
 @customer_sector_bp.route('/sectors', methods=['POST'])
 def add_sector():
-    """Add a new sector"""
+    """Add a new sector - FIXED VERSION"""
     try:
         data = request.get_json()
-        name = data.get('name', '').strip()
-        description = data.get('description', '').strip()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # FIXED: Handle None values properly
+        name = (data.get('name') or '').strip()
+        description = (data.get('description') or '').strip()
         
         if not name:
             return jsonify({'success': False, 'error': 'Sector name is required'}), 400
@@ -220,6 +232,7 @@ def add_sector():
         # Check if sector already exists
         cursor.execute("SELECT sector_id FROM sectors WHERE sector_name = ?", (name,))
         if cursor.fetchone():
+            conn.close()
             return jsonify({'success': False, 'error': 'Sector already exists'}), 400
         
         # Insert new sector
@@ -231,6 +244,8 @@ def add_sector():
         conn.commit()
         sector_id = cursor.lastrowid
         conn.close()
+        
+        logger.info(f"Successfully created sector '{name}' with ID {sector_id}")
         
         return jsonify({
             'success': True, 

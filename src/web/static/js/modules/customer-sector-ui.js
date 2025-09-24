@@ -316,21 +316,43 @@ class CustomerSectorUI {
     // Filter UI Updates
     // ============================================================================
 
-    /**
-     * Populate sector-specific filter dropdown
-     */
-    populateSectorSpecificFilter() {
-        if (!this.elements.sectorSpecificFilter) return;
-        
-        let options = '<option value="">All Sectors</option>';
-        const uniqueSectors = this.state.getUniqueSectors();
-        
-        uniqueSectors.forEach(sectorName => {
-            options += `<option value="${sectorName}">${sectorName}</option>`;
-        });
-        
-        this.elements.sectorSpecificFilter.innerHTML = options;
-    }
+/**
+ * Populate sector-specific filter dropdown with customer counts
+ */
+populateSectorSpecificFilter() {
+    if (!this.elements.sectorSpecificFilter) return;
+   
+    let options = '<option value="">All Sectors</option>';
+    
+    // Get sectors with customer counts
+    const sectorCounts = this.getSectorCounts();
+    
+    // Sort sectors alphabetically
+    const sortedSectors = Object.keys(sectorCounts).sort();
+    
+    sortedSectors.forEach(sectorName => {
+        const count = sectorCounts[sectorName];
+        options += `<option value="${sectorName}">${sectorName} (${count})</option>`;
+    });
+   
+    this.elements.sectorSpecificFilter.innerHTML = options;
+}
+
+/**
+ * Get customer count per sector
+ * @returns {Object} Object with sector names as keys and customer counts as values
+ */
+getSectorCounts() {
+    const counts = {};
+    
+    this.state.customers.forEach(customer => {
+        if (customer.sector) {
+            counts[customer.sector] = (counts[customer.sector] || 0) + 1;
+        }
+    });
+    
+    return counts;
+}
 
     /**
      * Populate bulk sector select dropdown
