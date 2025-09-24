@@ -241,16 +241,12 @@ class SQLiteRevenueRepository:
         year_range: YearRange,
         filters: 'ReportFilters'
     ) -> List[Dict[str, Any]]:
-        """
-        Get customer monthly revenue data with proper customer normalization
-        Shows clean normalized customer names while preserving revenue accuracy
+        """Get customer monthly revenue data with new customer flagging"""
         
-        Note: DISTINCT removed from v_customer_normalization_audit since duplicate
-        root cause was fixed in agency_canonical_map (2025-09-17)
-        """
+        # Get the main customer data (existing query)
         month_expr = self.query_builder.build_broadcast_month_case()
         ae_display = self.query_builder.build_ae_display()
-    
+
         query = f"""
             SELECT
                 COALESCE(audit.customer_id, 0) AS customer_id,
@@ -270,11 +266,10 @@ class SQLiteRevenueRepository:
             WHERE s.broadcast_month LIKE ?
             AND {self.query_builder.build_base_filters()}
         """
-    
+
         params: List[Any] = [year_range.like_pattern]
         query, params = self._apply_filters(query, params, filters)
-    
-        # Group by the normalized customer data
+
         query += """
             GROUP BY
                 COALESCE(audit.customer_id, 0),
@@ -284,14 +279,24 @@ class SQLiteRevenueRepository:
                 month_num
             ORDER BY customer, ae
         """
-    
+
         conn = self.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
             rows = cursor.fetchall()
             columns = [description[0] for description in cursor.description]
-            return [dict(zip(columns, row)) for row in rows]
+            raw_data = [dict(zip(columns, row)) for row in rows]
+            
+            # Get new customers for this year
+            new_customers = self.get_new_customers_for_year(year_range.year)
+            
+            # Add is_new_customer flag to each row
+            for row in raw_data:
+                row['is_new_customer'] = row['customer'] in new_customers
+                
+            return raw_data
+            
         finally:
             conn.close()
 
