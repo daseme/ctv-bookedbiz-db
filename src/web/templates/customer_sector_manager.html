@@ -31,107 +31,65 @@
         </div>
     </div>
 
-    <!-- Enhanced Controls -->
+    <!-- Single Consolidated Controls Section -->
     <div class="enhanced-controls">
-        
-        <!-- Search Section -->
-        <div class="controls-section">
-            <div class="section-header">
-                <span class="section-icon">🔍</span>
-                <h3 class="section-title">Search & Quick Filters</h3>
-            </div>
-            <div class="section-content">
-                <input type="text" id="customer-search" class="search-input" placeholder="Search customers by name...">
-                <select id="sector-filter" class="enhanced-select">
-                    <option value="all">All Customers</option>
-                    <option value="unassigned">Unassigned Only</option>
-                    <option value="assigned">Assigned Only</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Filter & Sort Section -->
         <div class="controls-section">
             <div class="section-header">
                 <span class="section-icon">⚙️</span>
-                <h3 class="section-title">Advanced Filters & Sorting</h3>
+                <h3 class="section-title">Customer Controls</h3>
             </div>
-            <div class="section-content">
-                <div class="filter-controls">
-                    <div class="filter-group">
-                        <label class="filter-label">
-                            <span class="filter-label-icon">🏷️</span>
-                            Filter by Specific Sector
-                        </label>
+            <div class="unified-controls">
+                
+                <!-- Top Row: Search, Quick Filter, Action Buttons -->
+                <div class="controls-row">
+                    <input type="text" id="customer-search" class="search-input" placeholder="Search customers by name...">
+                    
+                    <select id="sector-filter" class="enhanced-select">
+                        <option value="all">All Customers</option>
+                        <option value="unassigned">Unassigned Only</option>
+                        <option value="assigned">Assigned Only</option>
+                    </select>
+                    
+                    <button class="action-btn secondary" onclick="clearFilters()">Clear</button>
+                    <button class="action-btn secondary" onclick="exportData()">Export</button>
+                    <button id="add-sector-btn" class="action-btn primary">Add Sector</button>
+                </div>
+
+                <!-- Bottom Row: Filters -->
+                <div class="controls-row">
+                    <div class="filter-trio">
                         <select id="sector-specific-filter" class="enhanced-select">
                             <option value="">All Sectors</option>
                         </select>
-                    </div>
-                    
-                    <div class="filter-group">
-                        <label class="filter-label">
-                            <span class="filter-label-icon">📊</span>
-                            Sort Order
-                        </label>
+                        
                         <select id="sort-option" class="enhanced-select">
-                            <option value="name">Customer Name A-Z</option>
-                            <option value="name_desc">Customer Name Z-A</option>
-                            <option value="status">Assignment Status</option>
-                            <option value="revenue_desc">Revenue (High to Low)</option>
-                            <option value="revenue_asc">Revenue (Low to High)</option>
-                            <option value="updated_desc">Recently Updated</option>
-                            <option value="sector">Sector Name A-Z</option>
+                            <option value="name">Sort: Name A-Z</option>
+                            <option value="name_desc">Sort: Name Z-A</option>
+                            <option value="status">Sort: Status</option>
+                            <option value="revenue_desc">Sort: Revenue High-Low</option>
+                            <option value="revenue_asc">Sort: Revenue Low-High</option>
+                            <option value="updated_desc">Sort: Recently Updated</option>
+                            <option value="sector">Sort: Sector A-Z</option>
                         </select>
-                    </div>
-                    
-                    <div class="filter-group">
-                        <label class="filter-label">
-                            <span class="filter-label-icon">💰</span>
-                            Revenue Range
-                        </label>
+                        
                         <select class="enhanced-select" id="revenue-filter">
                             <option value="">All Revenue Levels</option>
-                            <option value="high">$100K+ (High Value)</option>
-                            <option value="medium">$25K - $100K (Medium)</option>
-                            <option value="low">Under $25K (Low Value)</option>
+                            <option value="high">$100K+ (High)</option>
+                            <option value="medium">$25K-$100K (Medium)</option>
+                            <option value="low">Under $25K (Low)</option>
                             <option value="zero">$0 (No Revenue)</option>
                         </select>
                     </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Actions Section -->
-        <div class="controls-section">
-            <div class="section-header">
-                <span class="section-icon">⚡</span>
-                <h3 class="section-title">Bulk Actions & Management</h3>
-            </div>
-            <div class="section-content">
-                <div class="bulk-operations" style="display: none;" id="bulk-operations">
-                    <span class="bulk-info" id="bulk-info">
-                        📋 0 customers selected
-                    </span>
-                    <select id="bulk-sector-select" class="bulk-select">
-                        <option value="">Assign selected to...</option>
-                    </select>
-                    <button id="apply-bulk" class="action-btn success">Apply</button>
-                    <button id="cancel-bulk" class="action-btn secondary">Cancel</button>
-                </div>
-                
-                <div class="action-buttons">
-                    <button class="action-btn secondary" onclick="clearFilters()">
-                        <span>🔄</span>
-                        Clear Filters
-                    </button>
-                    <button class="action-btn secondary" onclick="exportData()">
-                        <span>📤</span>
-                        Export Data
-                    </button>
-                    <button id="add-sector-btn" class="action-btn primary">
-                        <span>➕</span>
-                        Add New Sector
-                    </button>
+                    <!-- Bulk Operations (appears when customers selected) -->
+                    <div class="bulk-operations" style="display: none;" id="bulk-operations">
+                        <span class="bulk-info" id="bulk-info">0 selected</span>
+                        <select id="bulk-sector-select" class="enhanced-select">
+                            <option value="">Assign to...</option>
+                        </select>
+                        <button id="apply-bulk" class="action-btn success">Apply</button>
+                        <button id="cancel-bulk" class="action-btn secondary">Cancel</button>
+                    </div>
                 </div>
             </div>
         </div>

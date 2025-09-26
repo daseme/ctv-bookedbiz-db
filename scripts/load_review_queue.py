@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 """
 Load customer name matches into review queue.
-
-- Runs the blocking+RapidFuzz analyzer
-- Inserts 'review' and 'unknown' items into customer_match_review
-- Optionally auto-approves very high-confidence items
-
-Usage:
-  python scripts/load_review_queue.py --db /path/to/production.db --limit 5000 --auto-approve
+...
 """
 
 from __future__ import annotations
 import argparse, json, sqlite3
+import sys
 from pathlib import Path
-from typing import List, Dict
+
+# Add project root to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ---- import the analyzer from the previous drop-in file ----
-# Assumes you saved it as customer_name_matcher_blocking.py in the project root.
-from customer_name_matcher_blocking import (
+from src.services.customer_matching.blocking_matcher import (
     analyze_customer_names, summarize, normalize_business_name,
     NORMALIZATION_CONFIG, HIGH_CONF
 )

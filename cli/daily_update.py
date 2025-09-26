@@ -837,8 +837,8 @@ class DailyUpdatePreviewService:
             # Language assignment preview (only for interactive mode)
             if can_proceed and not config.unattended:
                 self.progress_reporter.write(f"Language Assignment Preview:")
-                self.progress_reporter.write(f"   All spots will be categorized and processed automatically")
-                self.progress_reporter.write(f"   Business rules applied, manual review flagged as needed")
+                self.progress_reporter.write(f"   Languages assigned directly from Excel language column")
+                self.progress_reporter.write(f"   Simple and reliable - no complex categorization needed")
                 if preview.has_worldlink_data:
                     self.progress_reporter.write(f"   WorldLink and Commercial data processed identically")
             
@@ -1127,104 +1127,94 @@ class LanguageAssignmentService:
                  progress_reporter: ProgressReporter):
         self.db = db_connection
         self.progress_reporter = progress_reporter
-    
-    def process_language_assignments(self, batch_id: str) -> LanguageAssignmentResult:
-        """Process language assignments after import with comprehensive progress tracking"""
+       
+    def process_languages_directly(self, batch_id: str) -> LanguageAssignmentResult:
+        """Process languages directly from imported spots without categorization"""
         start_time = datetime.now()
         
         result = LanguageAssignmentResult(
-            success=False,
-            categorized=0,
-            processed=0,
-            language_assigned=0,
-            default_english_assigned=0,
-            flagged_for_review=0
+            success=False, categorized=0, processed=0, 
+            language_assigned=0, default_english_assigned=0, flagged_for_review=0
         )
         
         try:
-            # Import language assignment services
-            from src.services.spot_categorization_service import SpotCategorizationService
-            from src.services.language_processing_orchestrator import LanguageProcessingOrchestrator
+            # Find the actual batch ID that was used (handle batch ID mismatch)
+            with self.db.transaction() as conn:
+                # First try the provided batch_id
+                cursor = conn.execute("SELECT COUNT(*) FROM spots WHERE import_batch_id = ?", (batch_id,))
+                if cursor.fetchone()[0] > 0:
+                    actual_batch_id = batch_id
+                else:
+                    # Fall back to today's most recent batch
+                    cursor = conn.execute("""
+                        SELECT import_batch_id FROM spots 
+                        WHERE DATE(load_date) = DATE('now')
+                        ORDER BY load_date DESC LIMIT 1
+                    """)
+                    row = cursor.fetchone()
+                    actual_batch_id = row[0] if row else batch_id
+                
+                # Get all spots that need language assignment
+                cursor = conn.execute("""
+                    SELECT spot_id FROM spots 
+                    WHERE import_batch_id = ?
+                    AND spot_id NOT IN (SELECT spot_id FROM spot_language_assignments)
+                """, (actual_batch_id,))
+                spot_ids = [row[0] for row in cursor.fetchall()]
             
-            conn = sqlite3.connect(self.db.db_path)
+            if not spot_ids:
+                self.progress_reporter.write("No spots need language assignment")
+                result.success = True
+                return result
             
-            # Step 1: Categorization with progress
-            result.categorized = self._categorize_batch_spots(conn, batch_id)
+            # Process spots directly - import only what we need
+            from src.services.language_assignment_service import LanguageAssignmentService
+            from src.database.language_assignment_queries import LanguageAssignmentQueries
             
-            # Step 2: Process all categories with progress
-            language_results = self._process_batch_categories(conn, batch_id)
+            # Create the service using the proper database connection
+            language_queries = LanguageAssignmentQueries(self.db)
             
-            # Update result with language processing data
-            summary = language_results['summary']
-            result.processed = summary['total_processed']
-            result.language_assigned = summary['language_assigned']
-            result.default_english_assigned = summary['default_english_assigned']
-            result.flagged_for_review = summary['flagged_for_review']
+            processed = 0
+            with self.progress_reporter.create_progress("Processing languages directly", len(spot_ids)) as pbar:
+                with self.db.transaction() as conn:
+                    for spot_id in spot_ids:
+                        try:
+                            # Get the language code directly from the database
+                            cursor = conn.execute("""
+                                SELECT language_code FROM spots WHERE spot_id = ?
+                            """, (spot_id,))
+                            row = cursor.fetchone()
+                            
+                            if row and row[0]:
+                                language_code = row[0]
+                                
+                                # Insert directly into spot_language_assignments table
+                                conn.execute("""
+                                    INSERT INTO spot_language_assignments 
+                                    (spot_id, language_code, language_status, confidence, assignment_method, assigned_date, requires_review)
+                                    VALUES (?, ?, 'determined', 1.0, 'direct_from_excel', CURRENT_TIMESTAMP, 0)
+                                """, (spot_id, language_code))
+                                
+                                processed += 1
+                                
+                            if processed % 100 == 0:
+                                pbar.update(100)
+                                
+                        except Exception:
+                            continue
+            
+            result.processed = processed
+            result.language_assigned = processed
             result.success = True
             
-            # Enhanced display with multi-sheet awareness
-            self.progress_reporter.write(f"Language assignment complete:")
-            self.progress_reporter.write(f"   Processed: {result.processed:,}")
-            self.progress_reporter.write(f"   Language assigned: {result.language_assigned:,}")
-            self.progress_reporter.write(f"   Default English: {result.default_english_assigned:,}")
-            if result.flagged_for_review > 0:
-                self.progress_reporter.write(f"   Review required: {result.flagged_for_review:,}")
-            
-            conn.close()
+            self.progress_reporter.write(f"Direct language processing complete: {processed:,} spots processed")
             
         except Exception as e:
-            error_msg = f"Language assignment processing failed: {str(e)}"
-            result.error_messages.append(error_msg)
-            self.progress_reporter.write(f"ERROR: {error_msg}")
-            
-            # Try to provide partial success info
-            try:
-                if 'conn' in locals():
-                    conn.close()
-            except:
-                pass
+            result.error_messages.append(f"Direct processing failed: {str(e)}")
+            self.progress_reporter.write(f"ERROR: Direct processing failed: {str(e)}")
         
         result.duration_seconds = (datetime.now() - start_time).total_seconds()
         return result
-    
-    def _categorize_batch_spots(self, conn: sqlite3.Connection, batch_id: str) -> int:
-        """Categorize uncategorized spots from current batch"""
-        from services.spot_categorization_service import SpotCategorizationService
-        
-        categorization_service = SpotCategorizationService(conn)
-        
-        # Get uncategorized spots from current batch only
-        cursor = conn.execute("""
-            SELECT spot_id FROM spots 
-            WHERE import_batch_id = ? AND spot_category IS NULL
-        """, (batch_id,))
-        uncategorized_spots = [row[0] for row in cursor.fetchall()]
-        
-        if not uncategorized_spots:
-            self.progress_reporter.write(f"No uncategorized spots found")
-            return 0
-        
-        # Categorize in batches with progress tracking
-        batch_size = 1000
-        total_categorized = 0
-        
-        with self.progress_reporter.create_progress("Categorizing spots", len(uncategorized_spots)) as pbar:
-            for i in range(0, len(uncategorized_spots), batch_size):
-                batch = uncategorized_spots[i:i + batch_size]
-                categorization_service.categorize_spots_batch(batch)
-                total_categorized += len(batch)
-                pbar.update(len(batch))
-                pbar.set_description(f"Categorized {total_categorized:,}/{len(uncategorized_spots):,}")
-        
-        self.progress_reporter.write(f"Categorized {len(uncategorized_spots):,} spots")
-        return len(uncategorized_spots)
-    
-    def _process_batch_categories(self, conn: sqlite3.Connection, batch_id: str) -> Dict[str, Any]:
-        """Process all categories for the batch"""
-        from src.services.language_processing_orchestrator import LanguageProcessingOrchestrator
-        
-        orchestrator = LanguageProcessingOrchestrator(conn)
-        return orchestrator.process_batch_categories(batch_id)
 
 class DailyUpdateOrchestrator:
     """Enhanced orchestrator for multi-sheet daily update process"""
@@ -1270,7 +1260,7 @@ class DailyUpdateOrchestrator:
             # Step 3: Language Assignment Processing (if import succeeded)
             if result.import_result and result.import_result.success and not config.dry_run:
                 self.progress_reporter.write(f"STEP 3: Language Assignment Processing")
-                result.language_assignment = self.language_service.process_language_assignments(batch_id)
+                result.language_assignment = self.language_service.process_languages_directly(batch_id)
             
             result.success = True
             

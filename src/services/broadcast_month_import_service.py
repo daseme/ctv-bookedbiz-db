@@ -901,7 +901,7 @@ class BroadcastMonthImportService(BaseService):
         except:
             return None
     
-    def _complete_import_batch(self, batch_id: str, result: ImportResult, conn):
+    def _complete_import_batch(self, batch_id: str, result, conn):
         """Mark import batch as completed with statistics."""
         try:
             conn.execute("""
@@ -911,16 +911,16 @@ class BroadcastMonthImportService(BaseService):
                     records_imported = ?,
                     records_deleted = ?
                 WHERE batch_id = ?
-            """, (result.records_imported, result.records_deleted, batch_id))
-            
+            """, (result.records_imported if hasattr(result, 'records_imported') else 0, 
+                result.records_deleted if hasattr(result, 'records_deleted') else 0, 
+                batch_id))
         except Exception as e:
-            tqdm.write(f"Failed to update batch completion: {e}")
-    
+            logger.error(f"Failed to update batch completion: {e}")
+
     def _fail_import_batch(self, batch_id: str, error_message: str):
         """Mark import batch as failed."""
         try:
-            if self.in_transaction:
-                conn = self.get_connection()
+            with self.safe_transaction() as conn:
                 conn.execute("""
                     UPDATE import_batches 
                     SET status = 'FAILED',
@@ -928,16 +928,6 @@ class BroadcastMonthImportService(BaseService):
                         error_summary = ?
                     WHERE batch_id = ?
                 """, (error_message, batch_id))
-            else:
-                with self.safe_transaction() as conn:
-                    conn.execute("""
-                        UPDATE import_batches 
-                        SET status = 'FAILED',
-                            completed_at = CURRENT_TIMESTAMP,
-                            error_summary = ?
-                        WHERE batch_id = ?
-                    """, (error_message, batch_id))
-            
         except Exception as e:
             logger.error(f"Failed to mark batch as failed: {e}")
     

@@ -12,7 +12,7 @@ class LanguageAssignmentService:
     """Language assignment with undetermined language detection"""
 
     def __init__(self, db_connection):
-        self.db = db_connection
+        self.db_connection = db_connection
         self.queries = LanguageAssignmentQueries(db_connection)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.valid_language_codes = self._load_valid_language_codes()

@@ -82,7 +82,7 @@ TEMPLATE = """
           <input type="hidden" name="pin" value="{{ pin }}">
           <input type="hidden" name="alias_name" value="{{ r['bill_code_name_raw'] }}">
           <input type="hidden" name="target_customer_id" value="{{ r['suggested_customer_id'] }}">
-          <input type="hidden" name="confidence" value="{{ int(r['best_score']*100) }}">
+          <input type="hidden" name="confidence" value="{{ (r['best_score']*100)|int }}">
           <input type="text" name="notes" placeholder="notes" />
           <button>Approve → Create alias</button>
         </form>
