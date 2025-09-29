@@ -6,7 +6,8 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 ## System Components
 
 ### Commercial Log Import (Stage 1)
-- **Source**: `/mnt/k-drive/Traffic/Media Library/Commercial Log.xlsx`
+- **Source**: `/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx` ⚠️ Note: "Media library" (lowercase 'l')
+- **Network Share**: `//100.102.206.113/K Drive` ⚠️ Note: "K Drive" (with space)
 - **Processing**: Multi-sheet processing - Commercials + Worldlink Lines sheets
 - **Destination**: `/opt/apps/ctv-bookedbiz-db/data/raw/daily/Commercial Log YYMMDD.xlsx`
 - **Python Script**: `/opt/apps/ctv-bookedbiz-db/src/importers/commercial_log_importer.py`
@@ -22,20 +23,65 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 - **Log Directory**: `/var/log/ctv-daily-update/`
 
 ### Storage Management
-- **Rotation Script**: `/opt/apps/ctv-bookedbiz-db/bin/rotate_commercial_logs.sh`
+- **Rotation Script**: `/opt/apps/ctv-bookedbiz-db/bin/rotate_commercial_logs.sh` ⚠️ Known Issue: Fails with filenames containing spaces
 - **Archive Directory**: `/opt/apps/ctv-bookedbiz-db/data/raw/archive/`
+
+### Network Access and Mounting
+- **K Drive Credentials**: `/etc/cifs-credentials` (secured with 600 permissions)
+- **Automatic Mounting**: Configured via `/etc/fstab` with systemd automount
+- **Dependencies**: Requires Tailscale connectivity to reach 100.102.206.113
 
 ### systemd Services
 
 #### Commercial Log Import Services
 - **Import Service**: `ctv-commercial-import.service`
 - **Import Timer**: `ctv-commercial-import.timer` (daily at 1:00 AM)
-- **Rotation Service**: `ctv-commercial-rotation.service`
+- **Rotation Service**: `ctv-commercial-rotation.service` ⚠️ Currently failing due to space handling
 - **Rotation Timer**: `ctv-commercial-rotation.timer` (weekly on Sundays at 2:30 AM)
 
 #### Daily Update Processing Services
 - **Update Service**: `ctv-daily-update.service`
 - **Update Timer**: `ctv-daily-update.timer` (daily at 1:30 AM)
+
+## System Setup and Configuration
+
+### Network Share Setup
+1. **Create credentials file**:
+   ```bash
+   sudo nano /etc/cifs-credentials
+   ```
+   Add content:
+   ```
+   username=usrjp
+   password=Cro88ings
+   domain=CTVETERE
+   ```
+   
+2. **Secure credentials**:
+   ```bash
+   sudo chmod 600 /etc/cifs-credentials
+   ```
+
+3. **Configure fstab for automatic mounting**:
+   ```bash
+   sudo nano /etc/fstab
+   ```
+   Add line:
+   ```
+   //100.102.206.113/K\040Drive /mnt/k-drive cifs credentials=/etc/cifs-credentials,uid=daseme,gid=ctvapps,iocharset=utf8,file_mode=0755,dir_mode=0755,noauto,x-systemd.automount,x-systemd.device-timeout=30 0 0
+   ```
+
+4. **Create mount point**:
+   ```bash
+   sudo mkdir -p /mnt/k-drive
+   ```
+
+5. **Test mounting**:
+   ```bash
+   sudo mount -a
+   # Test access
+   ls -la "/mnt/k-drive/Traffic/Media library/"
+   ```
 
 ## Data Processing
 
@@ -46,7 +92,7 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 
 ### File Retention
 - **Recent Files**: Keep 7 days of individual Excel files
-- **Monthly Archives**: Compress older files into monthly ZIP archives
+- **Monthly Archives**: Compress older files into monthly ZIP archives ⚠️ Currently failing
 - **Archive Retention**: Keep 12 months of archived data
 - **Automatic Cleanup**: Files older than retention periods automatically deleted
 
@@ -59,9 +105,9 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 
 ### Stage 1: Commercial Log Import (1:00 AM)
 1. Timer triggers daily at 1:00 AM (+5 min random delay)
-2. Test connectivity to K: drive server (100.102.206.113)
-3. Mount CIFS share with stored credentials
-4. Read both "Commercials" and "Worldlink Lines" sheets
+2. Test connectivity to K: drive server (100.102.206.113) via Tailscale
+3. Mount CIFS share with stored credentials (if not already mounted via automount)
+4. Read both "Commercials" and "Worldlink Lines" sheets from `/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx`
 5. Combine sheets with `sheet_source` tracking column
 6. Create single combined file in Pi project structure
 7. Log operations with sheet-specific statistics
@@ -114,6 +160,21 @@ tail -20 /var/log/ctv-commercial-import/import.log
 tail -20 /var/log/ctv-daily-update/update.log
 ```
 
+### Network and Mount Status
+```bash
+# Check Tailscale connectivity
+sudo tailscale status
+
+# Verify K drive mount status  
+mount | grep k-drive
+
+# Test K drive access
+ls -la "/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx"
+
+# Manual mount if needed
+sudo mount /mnt/k-drive
+```
+
 ### Commercial Log Import Operations
 ```bash
 # View import timer status
@@ -133,7 +194,7 @@ else:
     print('Single-sheet file')
 "
 
-# Check storage status
+# Check storage status (rotation currently failing)
 /opt/apps/ctv-bookedbiz-db/bin/rotate_commercial_logs.sh status
 ```
 
@@ -225,6 +286,77 @@ ORDER BY import_date DESC, spots DESC;
 
 ## Troubleshooting
 
+### Post-Reboot System Recovery
+After a power outage or system reboot, follow these steps to verify system integrity:
+
+#### 1. Verify Tailscale Connectivity
+```bash
+# Check Tailscale status
+sudo tailscale status
+
+# Look for 100.102.206.113 etere-datamover in the list
+# Should show as 'active' or '-' (not 'offline')
+```
+
+#### 2. Verify K Drive Access
+```bash
+# Check if automount is active
+mount | grep k-drive
+# Should show: systemd-1 on /mnt/k-drive type autofs
+
+# Test access (triggers actual mount)
+ls -la "/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx"
+
+# Manual mount if needed
+sudo mount /mnt/k-drive
+```
+
+#### 3. Verify Services and Timers
+```bash
+# Check that timers are active and scheduled
+systemctl list-timers | grep ctv
+
+# If timers are inactive, restart them
+sudo systemctl enable --now ctv-commercial-import.timer
+sudo systemctl enable --now ctv-daily-update.timer
+```
+
+#### 4. Test Import Process
+```bash
+# Test commercial import
+sudo systemctl start ctv-commercial-import.service
+
+# Check logs
+tail -10 /var/log/ctv-commercial-import/import.log
+
+# Should show successful import with file creation
+```
+
+### Path and Case Sensitivity Issues
+**Symptoms**:
+- "Source file not found" errors in logs
+- Import service failing with exit code 1
+
+**Common Causes**:
+1. **Incorrect share name**: Use "K Drive" (with space), not "Traffic"
+2. **Case sensitivity**: Directory is "Media library" (lowercase 'l'), not "Media Library"
+3. **Network connectivity**: Ensure Tailscale is running and etere-datamover is accessible
+
+**Solution Steps**:
+```bash
+# 1. Verify network share name
+smbclient -L 100.102.206.113 -U usrjp%Cro88ings -W CTVETERE
+# Should show "K Drive" in the list
+
+# 2. Check directory case sensitivity
+ls -la /mnt/k-drive/Traffic/
+# Should show "Media library" directory
+
+# 3. Fix import script if needed
+grep -n "Media Library" /opt/apps/ctv-bookedbiz-db/src/importers/commercial_log_importer.py
+# Change any "Media Library" to "Media library"
+```
+
 ### Missing Revenue/Incomplete Data Processing
 **Symptoms**:
 - Automated runs process fewer months than manual commands
@@ -250,6 +382,50 @@ sudo systemctl daemon-reload
 sudo -u daseme /opt/apps/ctv-bookedbiz-db/bin/daily_update.sh
 ```
 
+### Network Mount Issues
+**Symptoms**:
+- K drive not mounted after reboot
+- "Connection timed out" or "Operation now in progress" errors
+
+**Solutions**:
+```bash
+# Check if Tailscale is connected
+sudo tailscale status | grep etere-datamover
+
+# Test network connectivity
+ping -c 2 100.102.206.113
+
+# Check fstab configuration
+tail -3 /etc/fstab
+# Should have automount options: noauto,x-systemd.automount,x-systemd.device-timeout=30
+
+# Manual mount test
+sudo mount /mnt/k-drive
+
+# Check for boot-time mount errors
+sudo journalctl -b | grep -i "k-drive\|cifs\|mount"
+```
+
+### File Rotation Issues ⚠️ KNOWN ISSUE
+**Symptoms**:
+- ctv-commercial-rotation.service fails with exit code 12
+- Archive directory remains empty despite log showing "Archiving X files"
+
+**Root Cause**: 
+The rotation script improperly handles filenames with spaces. Filenames like "Commercial Log 250915.xlsx" are split into separate array elements: "Commercial", "Log", "250915.xlsx", causing zip command to fail.
+
+**Current Status**: Issue identified but not yet fixed
+
+**Workaround**:
+```bash
+# Manual cleanup of old files (if disk space becomes an issue)
+find /opt/apps/ctv-bookedbiz-db/data/raw/daily/ -name "Commercial Log *.xlsx" -mtime +7 -exec ls -la {} \;
+
+# Manual archive creation (if needed)
+cd /opt/apps/ctv-bookedbiz-db/data/raw/daily/
+zip "../archive/manual-archive-$(date +%Y%m).zip" Commercial\ Log\ *.xlsx
+```
+
 ### Commercial Log Import Issues
 ```bash
 # Check if K drive is mounted
@@ -264,7 +440,7 @@ sudo journalctl -u ctv-commercial-import.service -n 20
 # Check if both sheets exist in source file
 uv run python -c "
 from openpyxl import load_workbook
-wb = load_workbook('/mnt/k-drive/Traffic/Media Library/Commercial Log.xlsx', read_only=True)
+wb = load_workbook('/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx', read_only=True)
 print('Available sheets:', wb.sheetnames)
 print('Commercials found:', 'Commercials' in wb.sheetnames)
 print('Worldlink Lines found:', 'Worldlink Lines' in wb.sheetnames)
@@ -343,6 +519,18 @@ grep "spots across" /var/log/ctv-daily-update/update.log | tail -1
 # Should match (both showing 28+ months, 260k+ spots)
 ```
 
+### Verify Network Dependencies
+```bash
+# Check automount trigger
+ls -la /mnt/k-drive/ >/dev/null 2>&1 && echo "Automount triggered successfully" || echo "Automount failed"
+
+# Verify Tailscale connectivity
+tailscale ping 100.102.206.113
+
+# Test CIFS connectivity
+smbclient -L 100.102.206.113 -U usrjp%Cro88ings -W CTVETERE >/dev/null 2>&1 && echo "CIFS server accessible" || echo "CIFS server unreachable"
+```
+
 ## System Monitoring
 
 ### Quick Health Check
@@ -364,6 +552,12 @@ if grep -q "Commercial Log.xlsx" /var/log/ctv-daily-update/update.log; then
 else
     echo "✅ System correctly using local dated files"
 fi
+
+# Verify network dependencies
+echo "=== Network Status ==="
+sudo tailscale status | grep etere-datamover
+mount | grep k-drive
+ping -c 1 100.102.206.113 >/dev/null 2>&1 && echo "✅ K drive server reachable" || echo "❌ K drive server unreachable"
 ```
 
 ### Performance Monitoring
@@ -420,20 +614,20 @@ conn.close()
 - **1:00 AM**: Multi-sheet commercial log import from network share
 - **1:30 AM**: Database processing with multi-sheet awareness, automatic market setup, and language assignment
 - **2:05 AM**: Database backup to Dropbox (existing system)
-- **2:30 AM (Sundays)**: File archival and cleanup
+- **2:30 AM (Sundays)**: File archival and cleanup ⚠️ Currently failing
 
 ### Storage Efficiency
 - **Active Files**: 7 × 1.4MB = ~10MB (combined multi-sheet logs)
-- **Monthly Archives**: 12 × ~42MB = ~504MB (compressed multi-sheet data)
+- **Monthly Archives**: 12 × ~42MB = ~504MB (compressed multi-sheet data) ⚠️ Archives not created due to rotation failure
 - **Log Files**: ~120MB annually (with rotation)
-- **Total Storage**: ~634MB (with automatic cleanup)
+- **Total Storage**: ~634MB (with automatic cleanup when rotation works)
 
 ## Security and Credentials
 
 ### Commercial Log Import
-- Network share credentials stored in `/etc/ctv-commercial-import.env` (root:ctvapps 644)
+- Network share credentials stored in `/etc/cifs-credentials` (root:root 600)
 - Service runs as `daseme` user with `ctvapps` group permissions
-- K drive mount persists between runs for efficiency
+- K drive mount persists between runs via systemd automount
 
 ### Daily Update Processing
 - Configuration stored in `/etc/ctv-daily-update.env` (root:ctvapps 644)
@@ -446,6 +640,11 @@ conn.close()
 - **CRITICAL**: `DAILY_UPDATE_DATA_FILE` variable should be commented out to use local files
 - Incorrect configuration causes system to bypass local processing and use K drive directly
 
+### Network Security
+- Access to K drive via Tailscale VPN (100.102.206.113)
+- CIFS credentials secured with restricted permissions
+- Automatic mounting configured for resilience across reboots
+
 ## Monitoring and Alerting
 
 ### Built-in Monitoring
@@ -453,6 +652,7 @@ conn.close()
 - **Error Detection**: Proper exit codes and error messages for automated monitoring
 - **Health Checks**: Prerequisites validated before each run
 - **Performance Tracking**: Processing times and record counts logged
+- **Network Monitoring**: Automatic mount triggers and connectivity validation
 
 ### Optional Notification Systems
 Configure in respective environment files:
@@ -460,3 +660,28 @@ Configure in respective environment files:
 - **Slack**: Set `SLACK_WEBHOOK_URL` in environment files for team notifications
 
 Both systems alert on import or processing failures for proactive monitoring.
+
+## Known Issues and Limitations
+
+### File Rotation Script (ctv-commercial-rotation.service)
+- **Status**: Failing with exit code 12
+- **Cause**: Improper handling of filenames with spaces in bash arrays
+- **Impact**: Old files accumulate in daily directory, no monthly archives created
+- **Workaround**: Manual cleanup if disk space becomes limited
+- **Resolution**: Requires script modification to properly quote filenames with spaces
+
+### Path Case Sensitivity
+- **Issue**: Directory names are case-sensitive on the network share
+- **Requirement**: Must use exact case "Media library" (lowercase 'l')
+- **Fixed**: Import script updated to use correct case
+
+### Network Timing Dependencies
+- **Issue**: K drive mount requires Tailscale to be fully connected
+- **Solution**: Implemented systemd automount with timeout handling
+- **Status**: Resolved with fstab automount configuration
+
+### Environment Configuration Sensitivity
+- **Issue**: Environment variables can cause service to bypass local files
+- **Critical**: DAILY_UPDATE_DATA_FILE must remain commented out
+- **Impact**: Incorrect configuration causes incomplete data processing
+- **Monitoring**: Log analysis can detect incorrect file usage patterns

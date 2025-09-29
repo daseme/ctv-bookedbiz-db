@@ -63,7 +63,7 @@ class CommercialLogConfig:
     REQUIRED_SHEETS = ["Commercials", "Worldlink Lines", "Add to booked business"]
     
     # Source and destination paths
-    SOURCE_FILE = "/mnt/k-drive/Traffic/Media Library/Commercial Log.xlsx"
+    SOURCE_FILE = "/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx"
     DESTINATION_DIR = "/opt/apps/ctv-bookedbiz-db/data/raw/daily"
     
     @staticmethod
@@ -399,7 +399,7 @@ class CommercialLogImportFacade:
             bool: True if successful, False otherwise
         """
         self.logger.info("Starting Multi-Sheet Commercial Log copy process - PRODUCTION MODE")
-        self.logger.info("Source: K-Drive:/Traffic/Media Library/Commercial Log.xlsx")
+        self.logger.info("Source: K-Drive:/Traffic/Media library/Commercial Log.xlsx")
         self.logger.info("Destination: /opt/apps/ctv-bookedbiz-db/data/raw/daily/")
         self.logger.info(f"Processing sheets: {CommercialLogConfig.REQUIRED_SHEETS}")
         
