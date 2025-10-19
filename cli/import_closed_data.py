@@ -469,7 +469,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python import_closed_data.py data/monthly/May-2025.xlsx --year 2025 --closed-by "Kurt"
+ uv run python ./cli/import_closed_data.py data/raw/2025.xlsx --year 2
+025 --closed-by "Kurt"
   python import_closed_data.py data/historical/2024-complete.xlsx --year 2024 --closed-by "Kurt" --auto-setup
   python import_closed_data.py data/March-2025.xlsx --year 2025 --closed-by "Kurt" --dry-run
 

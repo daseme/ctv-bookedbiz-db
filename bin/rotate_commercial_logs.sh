@@ -2,7 +2,7 @@
 # Commercial Log File Rotation Script
 # Keeps 7 days of individual files, archives older files by month
 
-set -euo pipefail
+set -uo pipefail
 
 # Configuration
 DATA_DIR="/opt/apps/ctv-bookedbiz-db/data/raw/daily"
@@ -71,7 +71,7 @@ archive_by_month() {
         
         if [[ -n "$file_date_short" ]]; then
             local year_month="20${file_date_short:0:2}-${file_date_short:2:2}"
-            monthly_files["$year_month"]+="$file "
+            monthly_files["$year_month"]+="$file"$'\n'
         fi
     done <<< "$files_to_archive"
     
@@ -79,7 +79,28 @@ archive_by_month() {
     for month in "${!monthly_files[@]}"; do
         local archive_file="$ARCHIVE_DIR/commercial-logs-$month.zip"
         local temp_archive="$archive_file.tmp"
-        local files_array=(${monthly_files[$month]})
+        local files_list="${monthly_files[$month]}"
+	mapfile -t files_array <<< "$files_list"
+	# Remove empty elements
+	local filtered_array=()
+	for file in "${files_array[@]}"; do
+    		[[ -n "$file" ]] && filtered_array+=("$file")
+	done
+	files_array=("${filtered_array[@]}")
+
+    # Only include files that actually exist
+    local existing_files=()
+    for file in "${files_array[@]}"; do
+        [[ -f "$file" ]] && existing_files+=("$file")
+    done
+
+    # Skip if no files to archive
+    if [[ ${#existing_files[@]} -eq 0 ]]; then
+        log "No files to archive for $month (already archived)"
+        continue
+    fi
+
+    files_array=("${existing_files[@]}")
         
         log "Archiving ${#files_array[@]} files for $month"
         
@@ -92,9 +113,9 @@ archive_by_month() {
             # Create new archive
             zip -j "$temp_archive" "${files_array[@]}" >/dev/null 2>&1
         fi
-        
+
         # Verify archive was created successfully
-        if zip -T "$temp_archive" >/dev/null 2>&1; then
+        if [[ -f "$temp_archive" ]] && [[ -s "$temp_archive" ]]; then
             mv "$temp_archive" "$archive_file"
             
             # Remove original files

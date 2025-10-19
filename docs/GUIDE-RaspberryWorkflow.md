@@ -467,6 +467,56 @@ docker push daseme/ctv-flask:latest
 3. **Select Python Interpreter**: Ctrl+Shift+P → "Python: Select Interpreter" → `.venv/bin/python`
 4. **Develop** with full VS Code features (IntelliSense, debugging, etc.)
 
+Yes — add a new **“VS Code Remote-Tunnel Access”** section right after section 5 (“VS Code Remote Development”).
+
+Example insert:
+
+---
+
+### 5.1 VS Code Remote-Tunnel Access (pi-ctv)
+
+Use when you don’t want to rely on SSH or when VS Code tunnel auto-connect is needed from anywhere.
+
+#### Setup (on Pi)
+
+```bash
+# one-time
+code tunnel user login                     # authenticate via GitHub or MS
+code tunnel service install --name raspberrypi --accept-server-license-terms
+sudo loginctl enable-linger $USER          # keep tunnel alive after logout
+```
+
+*DNS fallback* (for NetworkManager Wi-Fi):
+
+```bash
+sudo nmcli con mod "NETGEAR42" ipv4.dns "1.1.1.1 9.9.9.9" ipv4.ignore-auto-dns yes
+sudo nmcli con up "NETGEAR42"
+```
+
+*Status / logs*
+
+```bash
+code tunnel status
+journalctl --user -u code-tunnel -f
+```
+
+#### Use (on Desktop)
+
+1. Open local window → `Ctrl + Shift + P` → **Remote Tunnels: Connect to Tunnel…** → `raspberrypi`
+2. Ensure same GitHub/MS account as used on Pi.
+3. After connecting, open `/opt/apps/ctv-bookedbiz-db`.
+
+**Tips**
+
+* Tunnel auto-starts on boot via `code-tunnel.service`.
+* Use `systemctl --user restart code-tunnel.service` after network/DNS changes.
+* For troubleshooting, rely on `journalctl` not the `--lines/--follow` options (arm64 stable build).
+
+---
+
+No other sections need edits; section 5 continues to cover SSH development, while 5.1 documents the tunnel workflow you just stabilized.
+
+
 ### 6. Collaboration Guidelines
 
 #### Code Collaboration
