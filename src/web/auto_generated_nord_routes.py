@@ -1,5 +1,6 @@
 from flask import render_template
 
+
 def register_nord_routes(app):
     @app.route("/management_report_nord")
     def management_report_nord():

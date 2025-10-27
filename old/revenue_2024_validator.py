@@ -5,7 +5,7 @@ import pandas as pd
 DB_PATH = "./data/database/production.db"
 CSV_PATH = "./data/final_2024_revenue_breakdown.csv"
 
-query = '''
+query = """
 WITH revenue_breakdown AS (
   SELECT 'Direct Response' as category, COUNT(*) as spots, SUM(gross_rate) as revenue
   FROM spots s LEFT JOIN agencies a ON s.agency_id = a.agency_id
@@ -115,7 +115,7 @@ WITH revenue_breakdown AS (
 SELECT category, spots, ROUND(revenue, 2) AS revenue
 FROM revenue_breakdown
 ORDER BY revenue DESC;
-'''
+"""
 
 conn = sqlite3.connect(DB_PATH)
 df = pd.read_sql_query(query, conn)

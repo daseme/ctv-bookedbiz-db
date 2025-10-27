@@ -17,66 +17,76 @@ from enum import Enum
 # Domain Models (updated with new customer tracking)
 # ============================================================================
 
+
 @dataclass
 class YearRange:
     """Value object representing a year range for filtering"""
+
     year: int
     suffix: str
-    
+
     @classmethod
-    def from_year(cls, year: int) -> 'YearRange':
+    def from_year(cls, year: int) -> "YearRange":
         return cls(year=year, suffix=str(year)[-2:])
-    
+
     @property
     def like_pattern(self) -> str:
         return f"%-{self.suffix}"
 
+
 class OrderingStrategy(Enum):
     """Enumeration of available ordering strategies for reports"""
+
     AE_THEN_CUSTOMER = ("ae_customer", "AE then Customer (Alphabetical)")
     REVENUE_DESC = ("revenue_desc", "Revenue (Highest to Lowest)")
     CUSTOMER_ALPHA = ("customer_alpha", "Customer (Alphabetical)")
-    
+
     def __init__(self, key: str, display_name: str):
         self.key = key
         self.display_name = display_name
 
+
 @dataclass
 class AEFilter:
     """Value object for AE filtering logic"""
+
     ae_value: Optional[str]
-    
+
     @classmethod
-    def from_input(cls, ae_filter: Optional[str]) -> 'AEFilter':
+    def from_input(cls, ae_filter: Optional[str]) -> "AEFilter":
         if not ae_filter or ae_filter.strip().lower() == "all":
             return cls(ae_value=None)
         return cls(ae_value=ae_filter.strip())
-    
+
     def is_unknown_filter(self) -> bool:
         return self.ae_value and self.ae_value.lower() == "unknown"
-    
-    def build_where_clause(self, column: str = "s.sales_person") -> Tuple[str, List[Any]]:
+
+    def build_where_clause(
+        self, column: str = "s.sales_person"
+    ) -> Tuple[str, List[Any]]:
         """Build SQL predicate and parameters for AE filtering"""
         if not self.ae_value:
             return "", []
-            
+
         if column == "ae_key":  # already normalized
             if self.is_unknown_filter():
                 return "ae_key = 'UNKNOWN'", []
             return "ae_key = UPPER(TRIM(?))", [self.ae_value]
-        
+
         # Raw column filtering
         if self.is_unknown_filter():
             return f"( {column} IS NULL OR TRIM({column}) = '' )", []
         return f"UPPER(TRIM({column})) = UPPER(TRIM(?))", [self.ae_value]
 
+
 # ============================================================================
 # Query Builder (enhanced with new customer queries)
 # ============================================================================
 
+
 class RevenueQueryBuilder:
     """Utility class for building reusable SQL query components"""
-    
+
     @staticmethod
     def build_broadcast_month_case(expr: str = "s.broadcast_month") -> str:
         """Build CASE statement to extract month number from broadcast_month"""
@@ -96,7 +106,7 @@ class RevenueQueryBuilder:
                 WHEN {expr} LIKE 'Dec-%' THEN '12'
             END
         """.strip()
-    
+
     @staticmethod
     def build_year_case(expr: str = "broadcast_month") -> str:
         """Build CASE statement to extract year from broadcast_month"""
@@ -114,7 +124,7 @@ class RevenueQueryBuilder:
                 WHEN {expr} LIKE '%-30' THEN 2030
             END
         """.strip()
-    
+
     @staticmethod
     def build_quarter_case(expr: str = "s.broadcast_month") -> str:
         """Build CASE statement to extract quarter from broadcast_month"""
@@ -126,7 +136,7 @@ class RevenueQueryBuilder:
               WHEN {expr} LIKE 'Oct-%' OR {expr} LIKE 'Nov-%' OR {expr} LIKE 'Dec-%' THEN 'Q4'
             END
         """.strip()
-    
+
     @staticmethod
     def build_ae_normalization() -> str:
         """Build AE normalization expression"""
@@ -136,7 +146,7 @@ class RevenueQueryBuilder:
                 ELSE UPPER(TRIM(s.sales_person))
             END
         """.strip()
-    
+
     @staticmethod
     def build_ae_display() -> str:
         """Build AE display name expression"""
@@ -146,7 +156,7 @@ class RevenueQueryBuilder:
               ELSE TRIM(s.sales_person)
             END
         """.strip()
-    
+
     @staticmethod
     def build_base_filters() -> str:
         """Build common filters for revenue queries"""
@@ -155,46 +165,49 @@ class RevenueQueryBuilder:
             AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
         """
 
+
 # ============================================================================
 # Repository Interfaces (updated with new customer detection)
 # ============================================================================
 
+
 class DatabaseConnection(Protocol):
     """Protocol for database connections"""
+
     def connect(self): ...
     def close(self) -> None: ...
 
+
 class RevenueRepository(Protocol):
     """Protocol defining revenue data access operations"""
-    
+
     def get_customer_monthly_data(
-        self, 
-        year_range: YearRange, 
-        filters: 'ReportFilters'
+        self, year_range: YearRange, filters: "ReportFilters"
     ) -> List[Dict[str, Any]]: ...
-    
+
     def get_new_customers_for_year(self, year: int) -> Set[str]: ...
-    
+
     def get_ae_performance_data(
-        self, 
-        filters: 'ReportFilters'
+        self, filters: "ReportFilters"
     ) -> List[Dict[str, Any]]: ...
-    
+
     def get_available_years(self) -> List[int]: ...
-    
+
     def get_ae_list(self, year: Optional[int] = None) -> List[str]: ...
+
 
 # ============================================================================
 # Data Access Layer (enhanced with new customer detection)
 # ============================================================================
 
+
 class SQLiteRevenueRepository:
     """SQLite implementation of revenue data access"""
-    
+
     def __init__(self, db_connection: DatabaseConnection):
         self.db = db_connection
         self.query_builder = RevenueQueryBuilder()
-    
+
     def get_new_customers_for_year(self, year: int) -> Set[str]:
         yr = YearRange.from_year(year)
         base = self.query_builder.build_base_filters()
@@ -232,17 +245,14 @@ class SQLiteRevenueRepository:
         finally:
             conn.close()
 
-    
     # Update the get_customer_monthly_data method in ReportDataService
     # File: src/services/report_data_service.py
 
     def get_customer_monthly_data(
-        self,
-        year_range: YearRange,
-        filters: 'ReportFilters'
+        self, year_range: YearRange, filters: "ReportFilters"
     ) -> List[Dict[str, Any]]:
         """Get customer monthly revenue data with new customer flagging"""
-        
+
         # Get the main customer data (existing query)
         month_expr = self.query_builder.build_broadcast_month_case()
         ae_display = self.query_builder.build_ae_display()
@@ -287,32 +297,30 @@ class SQLiteRevenueRepository:
             rows = cursor.fetchall()
             columns = [description[0] for description in cursor.description]
             raw_data = [dict(zip(columns, row)) for row in rows]
-            
+
             # Get new customers for this year
             new_customers = self.get_new_customers_for_year(year_range.year)
-            
+
             # Add is_new_customer flag to each row
             for row in raw_data:
-                row['is_new_customer'] = row['customer'] in new_customers
-                
+                row["is_new_customer"] = row["customer"] in new_customers
+
             return raw_data
-            
+
         finally:
             conn.close()
 
     def build_debug_query(
-            self, 
-            year_range: YearRange, 
-            filters: 'ReportFilters'
-        ) -> Tuple[str, List[Any]]:
-            """
-            Build and return the exact SQL query and parameters used by get_customer_monthly_data
-            for debugging purposes. Returns the query string and parameter list.
-            """
-            month_expr = self.query_builder.build_broadcast_month_case()
-            ae_display = self.query_builder.build_ae_display()
-            
-            query = f"""
+        self, year_range: YearRange, filters: "ReportFilters"
+    ) -> Tuple[str, List[Any]]:
+        """
+        Build and return the exact SQL query and parameters used by get_customer_monthly_data
+        for debugging purposes. Returns the query string and parameter list.
+        """
+        month_expr = self.query_builder.build_broadcast_month_case()
+        ae_display = self.query_builder.build_ae_display()
+
+        query = f"""
                 SELECT
                     s.bill_code AS customer_id,
                     COALESCE(s.bill_code, 'Unknown') AS customer,
@@ -329,18 +337,18 @@ class SQLiteRevenueRepository:
                 WHERE s.broadcast_month LIKE ?
                 AND {self.query_builder.build_base_filters()}
             """
-            
-            params: List[Any] = [year_range.like_pattern]
-            query, params = self._apply_filters(query, params, filters)
-            query += " GROUP BY s.bill_code, ae, revenue_type, sect.sector_name, month"
-            
-            return query, params
-    
-    def get_ae_performance_data(self, filters: 'ReportFilters') -> List[Dict[str, Any]]:
+
+        params: List[Any] = [year_range.like_pattern]
+        query, params = self._apply_filters(query, params, filters)
+        query += " GROUP BY s.bill_code, ae, revenue_type, sect.sector_name, month"
+
+        return query, params
+
+    def get_ae_performance_data(self, filters: "ReportFilters") -> List[Dict[str, Any]]:
         """Get AE performance data"""
         ae_key = self.query_builder.build_ae_normalization()
         ae_display = self.query_builder.build_ae_display()
-        
+
         query = f"""
             WITH norm AS (
                 SELECT
@@ -363,11 +371,11 @@ class SQLiteRevenueRepository:
             FROM norm
             WHERE 1=1
         """
-        
+
         params: List[Any] = []
         query, params = self._apply_ae_and_year_filters(query, params, filters)
         query += " GROUP BY ae_key ORDER BY ae_name"  # Alpha ordering by AE
-        
+
         conn = self.db.connect()
         try:
             cursor = conn.cursor()
@@ -377,10 +385,10 @@ class SQLiteRevenueRepository:
             return [dict(zip(columns, row)) for row in rows]
         finally:
             conn.close()
-    
+
     def get_available_years(self) -> List[int]:
         """Get list of available years from data"""
-        year_expr = self.query_builder.build_year_case('broadcast_month')
+        year_expr = self.query_builder.build_year_case("broadcast_month")
         query = f"""
             SELECT DISTINCT {year_expr} AS year
             FROM spots
@@ -389,7 +397,7 @@ class SQLiteRevenueRepository:
               AND broadcast_month LIKE '%-__'
             ORDER BY year DESC
         """
-        
+
         conn = self.db.connect()
         try:
             cursor = conn.cursor()
@@ -398,7 +406,7 @@ class SQLiteRevenueRepository:
             return sorted(list(set(years)), reverse=True)
         finally:
             conn.close()
-    
+
     def get_ae_list(self, year: Optional[int] = None) -> List[str]:
         """Get list of available AEs, optionally filtered by year"""
         query = """
@@ -406,15 +414,15 @@ class SQLiteRevenueRepository:
             FROM spots
             WHERE sales_person IS NOT NULL AND TRIM(sales_person) <> ''
         """
-        
+
         params: List[Any] = []
         if year:
             year_range = YearRange.from_year(year)
             query += " AND broadcast_month LIKE ?"
             params.append(year_range.like_pattern)
-        
+
         query += " GROUP BY UPPER(TRIM(sales_person)) ORDER BY ae_display"
-        
+
         conn = self.db.connect()
         try:
             cursor = conn.cursor()
@@ -422,8 +430,10 @@ class SQLiteRevenueRepository:
             return [r[0] for r in cursor.fetchall()]
         finally:
             conn.close()
-    
-    def _apply_filters(self, query: str, params: List[Any], filters: 'ReportFilters') -> Tuple[str, List[Any]]:
+
+    def _apply_filters(
+        self, query: str, params: List[Any], filters: "ReportFilters"
+    ) -> Tuple[str, List[Any]]:
         conds: List[str] = []
 
         # text search over CTE columns
@@ -453,100 +463,116 @@ class SQLiteRevenueRepository:
             query += " AND " + " AND ".join(conds)
         return query, params
 
-
-   
-    def _apply_ae_and_year_filters(self, query: str, params: List[Any], filters: 'ReportFilters') -> Tuple[str, List[Any]]:
+    def _apply_ae_and_year_filters(
+        self, query: str, params: List[Any], filters: "ReportFilters"
+    ) -> Tuple[str, List[Any]]:
         """Apply AE and year filters to query"""
         conditions: List[str] = []
-        
+
         if filters.year:
             year_range = YearRange.from_year(filters.year)
             conditions.append("broadcast_month LIKE ?")
             params.append(year_range.like_pattern)
-        
+
         ae_filter = AEFilter.from_input(filters.ae_filter)
         ae_sql, ae_params = ae_filter.build_where_clause("ae_key")
         if ae_sql:
             conditions.append(ae_sql)
             params.extend(ae_params)
-        
+
         if conditions:
             query += " AND " + " AND ".join(conditions)
-        
+
         return query, params
+
 
 # ============================================================================
 # Business Logic Layer (updated to handle new customers)
 # ============================================================================
 
+
 class CustomerMonthlyDataProcessor:
     """Service for processing customer monthly revenue data"""
-    
-    def __init__(self, ordering_strategy: OrderingStrategy = OrderingStrategy.AE_THEN_CUSTOMER):
+
+    def __init__(
+        self, ordering_strategy: OrderingStrategy = OrderingStrategy.AE_THEN_CUSTOMER
+    ):
         self.ordering_strategy = ordering_strategy
-    
-    def process_monthly_data(self, raw_data: List[Dict[str, Any]]) -> List['CustomerMonthlyRow']:
+
+    def process_monthly_data(
+        self, raw_data: List[Dict[str, Any]]
+    ) -> List["CustomerMonthlyRow"]:
         """Process raw monthly data into structured customer rows"""
         buckets = self._group_data_by_customer(raw_data)
         customer_rows = self._build_customer_rows(buckets)
         return self._apply_ordering(customer_rows)
-    
-    def _group_data_by_customer(self, raw_data: List[Dict[str, Any]]) -> Dict[Any, Dict[str, Any]]:
+
+    def _group_data_by_customer(
+        self, raw_data: List[Dict[str, Any]]
+    ) -> Dict[Any, Dict[str, Any]]:
         """Group raw data by customer key using normalized names"""
         buckets: Dict[Any, Dict[str, Any]] = {}
-        
+
         for row in raw_data:
             # Use customer_id as primary key, normalized name as display
-            key = (row['customer'], row['ae'])
+            key = (row["customer"], row["ae"])
             if key not in buckets:
                 buckets[key] = {
-                    'customer_id': row['customer_id'],
-                    'customer': row['customer'],  # This is now the normalized name
-                    'original_customer_name': row.get('original_customer_name', row['customer']),
-                    'ae': row['ae'],
-                    'revenue_type': row['revenue_type'],
-                    'sector': row['sector'],
-                    'is_new_customer': row.get('is_new_customer', False),
-                    'name_source': row.get('name_source', 'raw'),
-                    'months_gross': {m: Decimal('0') for m in range(1, 13)},
-                    'months_net': {m: Decimal('0') for m in range(1, 13)},
+                    "customer_id": row["customer_id"],
+                    "customer": row["customer"],  # This is now the normalized name
+                    "original_customer_name": row.get(
+                        "original_customer_name", row["customer"]
+                    ),
+                    "ae": row["ae"],
+                    "revenue_type": row["revenue_type"],
+                    "sector": row["sector"],
+                    "is_new_customer": row.get("is_new_customer", False),
+                    "name_source": row.get("name_source", "raw"),
+                    "months_gross": {m: Decimal("0") for m in range(1, 13)},
+                    "months_net": {m: Decimal("0") for m in range(1, 13)},
                 }
-            
+
             try:
-                month_num = int(row['month_num'])
+                month_num = int(row["month_num"])
                 if 1 <= month_num <= 12:
-                    buckets[key]['months_gross'][month_num] = Decimal(str(row['gross_revenue']))
-                    buckets[key]['months_net'][month_num] = Decimal(str(row['net_revenue']))
+                    buckets[key]["months_gross"][month_num] = Decimal(
+                        str(row["gross_revenue"])
+                    )
+                    buckets[key]["months_net"][month_num] = Decimal(
+                        str(row["net_revenue"])
+                    )
             except (TypeError, ValueError):
                 continue
-        
+
         return buckets
-    
-    def _build_customer_rows(self, buckets: Dict[Any, Dict[str, Any]]) -> List['CustomerMonthlyRow']:
+
+    def _build_customer_rows(
+        self, buckets: Dict[Any, Dict[str, Any]]
+    ) -> List["CustomerMonthlyRow"]:
         """Build CustomerMonthlyRow objects from grouped data"""
         from src.models.report_data import CustomerMonthlyRow
-        
+
         result: List[CustomerMonthlyRow] = []
         for data in buckets.values():
             row = CustomerMonthlyRow(
-                customer_id=data['customer_id'],
-                customer=data['customer'],
-                ae=data['ae'],
-                revenue_type=data['revenue_type'],
-                sector=data['sector'],
-                is_new_customer=data['is_new_customer']
+                customer_id=data["customer_id"],
+                customer=data["customer"],
+                ae=data["ae"],
+                revenue_type=data["revenue_type"],
+                sector=data["sector"],
+                is_new_customer=data["is_new_customer"],
             )
             for month in range(1, 13):
                 row.set_month_value(
-                    month, 
-                    data['months_gross'][month], 
-                    data['months_net'][month]
+                    month, data["months_gross"][month], data["months_net"][month]
                 )
             result.append(row)
-        
+
         return result
-    
-    def _apply_ordering(self, rows: List['CustomerMonthlyRow']) -> List['CustomerMonthlyRow']:
+
+    def _apply_ordering(
+        self, rows: List["CustomerMonthlyRow"]
+    ) -> List["CustomerMonthlyRow"]:
         """Apply the configured ordering strategy"""
         if self.ordering_strategy == OrderingStrategy.AE_THEN_CUSTOMER:
             return sorted(rows, key=lambda x: (x.ae.upper(), x.customer.upper()))
@@ -557,86 +583,91 @@ class CustomerMonthlyDataProcessor:
         else:
             return rows  # No ordering
 
+
 # ============================================================================
 # Service Layer (updated with new customer statistics)
 # ============================================================================
 
+
 class ReportDataService:
     """Main service for generating revenue reports with clean architecture"""
-    
+
     def __init__(self, container=None):
         self.container = container or self._get_default_container()
         self.repository = self._create_repository()
         self.processor = CustomerMonthlyDataProcessor(OrderingStrategy.AE_THEN_CUSTOMER)
         self.query_builder = RevenueQueryBuilder()
-        
+
         # Configuration
-        self._cache_enabled = self.container.get_config('CACHE_ENABLED', True)
-        self._cache_ttl = self.container.get_config('CACHE_TTL', 300)
-    
+        self._cache_enabled = self.container.get_config("CACHE_ENABLED", True)
+        self._cache_ttl = self.container.get_config("CACHE_TTL", 300)
+
     def get_monthly_revenue_report_data(
-        self,
-        year: int,
-        filters: Optional['ReportFilters'] = None
-    ) -> 'MonthlyRevenueReportData':
+        self, year: int, filters: Optional["ReportFilters"] = None
+    ) -> "MonthlyRevenueReportData":
         """Generate monthly revenue report with AE-then-customer ordering"""
         start_time = time.time()
-        
+
         # Validate inputs
         if year < 2020 or year > 2030:
             raise ValueError(f"Year {year} is outside valid range (2020-2030)")
-        
+
         filters = filters or self._create_default_filters(year)
         year_range = YearRange.from_year(year)
-        
-        logger.info("Generating monthly revenue report for year=%s with filters=%s", year, filters.to_dict())
-        
+
+        logger.info(
+            "Generating monthly revenue report for year=%s with filters=%s",
+            year,
+            filters.to_dict(),
+        )
+
         # Get data through repository (now includes new customer flags)
         raw_data = self.repository.get_customer_monthly_data(year_range, filters)
         revenue_data = self.processor.process_monthly_data(raw_data)
-        
+
         # Get supporting data
         available_years = self.repository.get_available_years()
         ae_list = self.repository.get_ae_list(year)
         revenue_types = self._get_revenue_types()
         month_status = self._get_month_status(year)
-        
+
         # Calculate statistics with new customer info
-        stats = self._calculate_revenue_statistics(revenue_data, filters.revenue_field or 'gross')
-        
+        stats = self._calculate_revenue_statistics(
+            revenue_data, filters.revenue_field or "gross"
+        )
+
         # Build metadata
         processing_time = (time.time() - start_time) * 1000.0
         metadata = self._create_metadata(
             "monthly_revenue",
-            {'year': year, 'filters': filters.to_dict()},
+            {"year": year, "filters": filters.to_dict()},
             len(revenue_data),
-            processing_time
+            processing_time,
         )
-        
+
         # Import here to avoid circular imports
         from src.models.report_data import MonthlyRevenueReportData
-        
+
         return MonthlyRevenueReportData(
             selected_year=year,
             available_years=available_years,
-            total_customers=stats['total_customers'],
-            active_customers=stats['active_customers'],
-            new_customers=stats.get('new_customers', 0),  # Add new customer count
-            total_revenue=Decimal(str(round(stats['total_revenue'], 2))),
-            avg_monthly_revenue=Decimal(str(round(stats['avg_monthly_revenue'], 2))),
+            total_customers=stats["total_customers"],
+            active_customers=stats["active_customers"],
+            new_customers=stats.get("new_customers", 0),  # Add new customer count
+            total_revenue=Decimal(str(round(stats["total_revenue"], 2))),
+            avg_monthly_revenue=Decimal(str(round(stats["avg_monthly_revenue"], 2))),
             revenue_data=revenue_data,
             ae_list=ae_list,
             revenue_types=revenue_types,
             month_status=month_status,
             filters=filters,
-            metadata=metadata
+            metadata=metadata,
         )
-    
 
     def get_customer_normalization_stats(self, year: int) -> Dict[str, Any]:
         """Get statistics about customer name normalization quality"""
         year_range = YearRange.from_year(year)
-        
+
         query = f"""
             SELECT 
                 COUNT(DISTINCT s.bill_code) as total_raw_names,
@@ -652,96 +683,104 @@ class ReportDataService:
             WHERE s.broadcast_month LIKE ?
             AND {self.query_builder.build_base_filters()}
         """
-        
+
         # FIX: Use repository connection, not self.db
         conn = self.repository.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query, [year_range.like_pattern])
             row = cursor.fetchone()
-            
+
             return {
-                'total_raw_names': row[0],
-                'total_normalized_names': row[1], 
-                'mapped_names': row[2],
-                'unmapped_names': row[3],
-                'normalization_coverage_pct': row[4]
+                "total_raw_names": row[0],
+                "total_normalized_names": row[1],
+                "mapped_names": row[2],
+                "unmapped_names": row[3],
+                "normalization_coverage_pct": row[4],
             }
         finally:
             conn.close()
 
     def get_ae_performance_report_data(
-        self,
-        filters: Optional['ReportFilters'] = None
-    ) -> 'AEPerformanceReportData':
+        self, filters: Optional["ReportFilters"] = None
+    ) -> "AEPerformanceReportData":
         """Generate AE performance report with alphabetical ordering"""
         start_time = time.time()
         filters = filters or self._create_default_filters()
-        
-        logger.info("Generating AE performance report with filters=%s", filters.to_dict())
-        
+
+        logger.info(
+            "Generating AE performance report with filters=%s", filters.to_dict()
+        )
+
         # Get data through repository (already ordered by AE name)
         raw_data = self.repository.get_ae_performance_data(filters)
         ae_data = self._build_ae_performance_data(raw_data)
-        
+
         # Calculate aggregates
         total_revenue = sum(ae.total_revenue for ae in ae_data)
         performance_percentages = [
-            ae.performance_pct for ae in ae_data 
-            if hasattr(ae, 'performance_pct') and ae.performance_pct is not None
+            ae.performance_pct
+            for ae in ae_data
+            if hasattr(ae, "performance_pct") and ae.performance_pct is not None
         ]
-        avg_performance_pct = sum(performance_percentages) / len(performance_percentages) if performance_percentages else None
-        top_performer = max(ae_data, key=lambda x: x.total_revenue).ae_name if ae_data else None
-        
+        avg_performance_pct = (
+            sum(performance_percentages) / len(performance_percentages)
+            if performance_percentages
+            else None
+        )
+        top_performer = (
+            max(ae_data, key=lambda x: x.total_revenue).ae_name if ae_data else None
+        )
+
         # Build metadata
         processing_time = (time.time() - start_time) * 1000.0
         metadata = self._create_metadata(
             "ae_performance",
-            {'filters': filters.to_dict()},
+            {"filters": filters.to_dict()},
             len(ae_data),
-            processing_time
+            processing_time,
         )
-        
+
         # Import here to avoid circular imports
         from src.models.report_data import AEPerformanceReportData
-        
+
         return AEPerformanceReportData(
             ae_performance=ae_data,
             total_revenue=total_revenue,
             avg_performance_pct=avg_performance_pct,
             top_performer=top_performer,
             filters=filters,
-            metadata=metadata
+            metadata=metadata,
         )
-    
+
     def debug_service_vs_direct_sql(self, year: int) -> Dict[str, Any]:
         """Debug discrepancies between Python service and direct SQL"""
         year_range = YearRange.from_year(year)
-        
+
         # 1. Get what your Python service currently produces
         filters = self._create_default_filters(year)
         service_data = self.repository.get_customer_monthly_data(year_range, filters)
-        
+
         # Calculate service totals by month
         service_totals = {}
         service_record_count = 0
         for row in service_data:
-            month_num = str(row.get('month_num', '')).zfill(2)
-            month_name = {
-                '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
-            }.get(month_num)
-            
+            month_num = str(row.get("month_num", "")).zfill(2)
+            month_name = {"09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec"}.get(
+                month_num
+            )
+
             if month_name:
                 if month_name not in service_totals:
                     service_totals[month_name] = 0
-                service_totals[month_name] += float(row.get('gross_revenue', 0))
+                service_totals[month_name] += float(row.get("gross_revenue", 0))
                 service_record_count += 1
-        
+
         # 2. Get direct SQL results (the query we just tested)
         conn = self.repository.db.connect()
         try:
             cursor = conn.cursor()
-            
+
             # Execute the EXACT query from our successful test
             direct_sql_query = """
                 WITH base AS (
@@ -812,103 +851,123 @@ class ReportDataService:
                 GROUP BY month_num
                 ORDER BY month_num
             """
-            
+
             cursor.execute(direct_sql_query, [year_range.like_pattern])
             direct_results = cursor.fetchall()
             direct_totals = {row[0]: float(row[1]) for row in direct_results}
             direct_row_counts = {row[0]: int(row[2]) for row in direct_results}
-            
+
             # 3. Get pivot table targets for comparison
             pivot_targets = {
-                'Sep': 242590.15,
-                'Oct': 126367.40,
-                'Nov': 90298.21,
-                'Dec': 73795.68
+                "Sep": 242590.15,
+                "Oct": 126367.40,
+                "Nov": 90298.21,
+                "Dec": 73795.68,
             }
-            
+
             # 4. Compare all three approaches
             comparison = {}
-            all_months = set(service_totals.keys()) | set(direct_totals.keys()) | set(pivot_targets.keys())
-            
+            all_months = (
+                set(service_totals.keys())
+                | set(direct_totals.keys())
+                | set(pivot_targets.keys())
+            )
+
             for month in sorted(all_months):
                 service_total = service_totals.get(month, 0)
                 direct_total = direct_totals.get(month, 0)
                 pivot_target = pivot_targets.get(month, 0)
-                
+
                 comparison[month] = {
-                    'python_service_total': round(service_total, 2),
-                    'direct_sql_total': direct_total,
-                    'pivot_table_target': pivot_target,
-                    'service_vs_sql_diff': round(service_total - direct_total, 2),
-                    'service_vs_pivot_diff': round(service_total - pivot_target, 2),
-                    'sql_vs_pivot_diff': round(direct_total - pivot_target, 2),
-                    'direct_sql_rows': direct_row_counts.get(month, 0)
+                    "python_service_total": round(service_total, 2),
+                    "direct_sql_total": direct_total,
+                    "pivot_table_target": pivot_target,
+                    "service_vs_sql_diff": round(service_total - direct_total, 2),
+                    "service_vs_pivot_diff": round(service_total - pivot_target, 2),
+                    "sql_vs_pivot_diff": round(direct_total - pivot_target, 2),
+                    "direct_sql_rows": direct_row_counts.get(month, 0),
                 }
-            
+
             # 5. Debug the actual query your service builds
             service_query, service_params = self._build_debug_query(year_range, filters)
-            
+
             return {
-                'year': year,
-                'total_service_records': service_record_count,
-                'comparison': comparison,
-                'service_query_debug': {
-                    'query': service_query[:500] + "..." if len(service_query) > 500 else service_query,
-                    'params': service_params,
-                    'param_count': len(service_params)
+                "year": year,
+                "total_service_records": service_record_count,
+                "comparison": comparison,
+                "service_query_debug": {
+                    "query": service_query[:500] + "..."
+                    if len(service_query) > 500
+                    else service_query,
+                    "params": service_params,
+                    "param_count": len(service_params),
                 },
-                'analysis': {
-                    'python_service_missing_vs_sql': round(sum(direct_totals.values()) - sum(service_totals.values()), 2),
-                    'direct_sql_over_vs_pivot': round(sum(direct_totals.values()) - sum(pivot_targets.values()), 2)
-                }
+                "analysis": {
+                    "python_service_missing_vs_sql": round(
+                        sum(direct_totals.values()) - sum(service_totals.values()), 2
+                    ),
+                    "direct_sql_over_vs_pivot": round(
+                        sum(direct_totals.values()) - sum(pivot_targets.values()), 2
+                    ),
+                },
             }
-            
+
         finally:
             conn.close()
 
-
-
     def _create_repository(self) -> RevenueRepository:
         """Factory method for creating repository instance"""
-        db_connection = self.container.get('database_connection')
+        db_connection = self.container.get("database_connection")
         return SQLiteRevenueRepository(db_connection)
-    
+
     def _get_default_container(self):
         """Get default container if none provided"""
         from src.services.container import get_container
+
         return get_container()
-    
-    def _create_default_filters(self, year: Optional[int] = None) -> 'ReportFilters':
+
+    def _create_default_filters(self, year: Optional[int] = None) -> "ReportFilters":
         """Create default filters"""
         from src.models.report_data import ReportFilters
+
         return ReportFilters(year=year)
-    
-    def _calculate_revenue_statistics(self, revenue_data: List['CustomerMonthlyRow'], revenue_field: str) -> Dict[str, Any]:
+
+    def _calculate_revenue_statistics(
+        self, revenue_data: List["CustomerMonthlyRow"], revenue_field: str
+    ) -> Dict[str, Any]:
         """Calculate revenue statistics from processed data with new customer counts"""
         from src.utils.template_formatters import calculate_statistics
-        
+
         rows_for_stats = []
         new_customer_count = 0
-        
+
         for row in revenue_data:
             data = row.to_dict()
-            data['total'] = float(row.total_net) if revenue_field.lower() == 'net' else float(row.total_gross)
+            data["total"] = (
+                float(row.total_net)
+                if revenue_field.lower() == "net"
+                else float(row.total_gross)
+            )
             rows_for_stats.append(data)
-            
-            if getattr(row, 'is_new_customer', False):
+
+            if getattr(row, "is_new_customer", False):
                 new_customer_count += 1
-        
+
         stats = calculate_statistics(rows_for_stats)
-        stats['new_customers'] = new_customer_count
-        
+        stats["new_customers"] = new_customer_count
+
         return stats
-    
-    def _build_ae_performance_data(self, raw_data: List[Dict[str, Any]]) -> List['AEPerformanceData']:
+
+    def _build_ae_performance_data(
+        self, raw_data: List[Dict[str, Any]]
+    ) -> List["AEPerformanceData"]:
         """Build AE performance data objects from raw repository rows.
 
         Robust to NULLs, ISO datetimes with/without time, and non-Decimal numerics.
         """
-        from src.models.report_data import AEPerformanceData  # local import avoids circulars
+        from src.models.report_data import (
+            AEPerformanceData,
+        )  # local import avoids circulars
 
         def _to_date(v: Optional[Any]) -> Optional[date]:
             if v is None:
@@ -953,19 +1012,24 @@ class ReportDataService:
             )
         return result
 
-    
-    def _create_metadata(self, report_type: str, parameters: Dict[str, Any], row_count: int, processing_time: float) -> 'ReportMetadata':
+    def _create_metadata(
+        self,
+        report_type: str,
+        parameters: Dict[str, Any],
+        row_count: int,
+        processing_time: float,
+    ) -> "ReportMetadata":
         """Create report metadata"""
         from src.models.report_data import ReportMetadata
-        
+
         return ReportMetadata(
             report_type=report_type,
             parameters=parameters,
             row_count=row_count,
             processing_time_ms=processing_time,
-            data_last_updated=self._get_data_last_updated()
+            data_last_updated=self._get_data_last_updated(),
         )
-    
+
     def _get_revenue_types(self) -> List[str]:
         """Get available revenue types"""
         query = """
@@ -981,8 +1045,8 @@ class ReportDataService:
             return [row[0] for row in cursor.fetchall()]
         finally:
             conn.close()
-    
-    def _get_month_status(self, year: int) -> List['MonthStatus']:
+
+    def _get_month_status(self, year: int) -> List["MonthStatus"]:
         """Get month closure status with FIXED filtering"""
         year_range = YearRange.from_year(year)
         query = """
@@ -990,20 +1054,20 @@ class ReportDataService:
             FROM month_closures 
             WHERE broadcast_month LIKE ?
         """
-        
+
         conn = self.repository.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query, (year_range.like_pattern,))
             rows = cursor.fetchall()
             closures = [
-                {'broadcast_month': row[0], 'closed_date': row[1], 'closed_by': row[2]} 
+                {"broadcast_month": row[0], "closed_date": row[1], "closed_by": row[2]}
                 for row in rows
             ]
             return create_month_status_from_closure_data(closures, year)
         finally:
             conn.close()
-    
+
     def _get_data_last_updated(self) -> datetime:
         """Get last data update timestamp"""
         query = "SELECT MAX(load_date) AS last_update FROM spots WHERE load_date IS NOT NULL"
@@ -1021,17 +1085,21 @@ class ReportDataService:
         finally:
             conn.close()
 
+
 # ============================================================================
 # Factory Functions
 # ============================================================================
+
 
 def create_report_data_service():
     """Factory function to create configured ReportDataService"""
     return ReportDataService()
 
+
 def create_revenue_repository(db_connection: DatabaseConnection) -> RevenueRepository:
     """Factory function to create configured RevenueRepository"""
     return SQLiteRevenueRepository(db_connection)
+
 
 # ============================================================================
 # Module Configuration
@@ -1041,9 +1109,14 @@ logger = logging.getLogger(__name__)
 
 # Proper imports at top of file
 from src.models.report_data import (
-    ReportFilters, MonthlyRevenueReportData, AEPerformanceReportData,
-    CustomerMonthlyRow, AEPerformanceData, ReportMetadata, MonthStatus,
-    create_month_status_from_closure_data
+    ReportFilters,
+    MonthlyRevenueReportData,
+    AEPerformanceReportData,
+    CustomerMonthlyRow,
+    AEPerformanceData,
+    ReportMetadata,
+    MonthStatus,
+    create_month_status_from_closure_data,
 )
 from src.services.container import get_container
 from src.utils.template_formatters import calculate_statistics

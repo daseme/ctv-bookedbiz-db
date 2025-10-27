@@ -44,7 +44,13 @@ from datetime import datetime
 from typing import Optional, List
 
 import dropbox
-from dropbox.files import WriteMode, UploadSessionCursor, CommitInfo, FileMetadata, FolderMetadata
+from dropbox.files import (
+    WriteMode,
+    UploadSessionCursor,
+    CommitInfo,
+    FileMetadata,
+    FolderMetadata,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -53,6 +59,7 @@ load_dotenv()
 # ───────────────────────────────────────────────────────────────────────────────
 # Pure helpers (no side effects)
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def human_size(size_bytes: int) -> str:
     size = float(size_bytes)
@@ -116,8 +123,9 @@ def normalize_list_path(arg: Optional[str]) -> str:
 # Dropbox client wrapper
 # ───────────────────────────────────────────────────────────────────────────────
 
+
 class DropboxDBSync:
-    CHUNK_SIZE = 100 * 1024 * 1024          # 100 MB
+    CHUNK_SIZE = 100 * 1024 * 1024  # 100 MB
     LARGE_FILE_THRESHOLD = 100 * 1024 * 1024
 
     def __init__(self) -> None:
@@ -131,7 +139,9 @@ class DropboxDBSync:
         self.local_db_path = os.getenv("DATABASE_PATH")
         self.dropbox_db_path = os.getenv("DROPBOX_DB_PATH", "/database.db")
 
-        if not self.access_token and not (self.refresh_token and self.app_key and self.app_secret):
+        if not self.access_token and not (
+            self.refresh_token and self.app_key and self.app_secret
+        ):
             raise ValueError(
                 "No valid authentication found. Set either:\n"
                 "1) DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY + DROPBOX_APP_SECRET\n"
@@ -177,7 +187,11 @@ class DropboxDBSync:
                 return None
             raise
 
-        files = [e for e in resp.entries if isinstance(e, FileMetadata) and e.name.endswith(".db")]
+        files = [
+            e
+            for e in resp.entries
+            if isinstance(e, FileMetadata) and e.name.endswith(".db")
+        ]
         if not files:
             return None
         # Lexicographic sort works due to YYYYMMDD_HHMMSS in names
@@ -233,14 +247,18 @@ class DropboxDBSync:
         try:
             with open(file_path, "rb") as f:
                 start = self.dbx.files_upload_session_start(f.read(self.CHUNK_SIZE))
-                cursor = UploadSessionCursor(session_id=start.session_id, offset=f.tell())
+                cursor = UploadSessionCursor(
+                    session_id=start.session_id, offset=f.tell()
+                )
 
                 chunk_num = 1
                 while f.tell() < size:
                     remaining = size - f.tell()
                     to_read = min(self.CHUNK_SIZE, remaining)
                     chunk_num += 1
-                    print(f"   Uploading chunk {chunk_num} ({human_size(f.tell())}/{human_size(size)})")
+                    print(
+                        f"   Uploading chunk {chunk_num} ({human_size(f.tell())}/{human_size(size)})"
+                    )
 
                     if remaining <= self.CHUNK_SIZE:
                         self.dbx.files_upload_session_finish(
@@ -270,7 +288,9 @@ class DropboxDBSync:
                 try:
                     local_hash = compute_dropbox_content_hash(self.local_db_path)
                     if local_hash == getattr(remote, "content_hash", None):
-                        print("✓ Remote already up to date (content hash). Skipping upload.")
+                        print(
+                            "✓ Remote already up to date (content hash). Skipping upload."
+                        )
                         return True
                 except Exception:
                     pass
@@ -284,7 +304,9 @@ class DropboxDBSync:
 
             print("📤 Using simple upload")
             with open(self.local_db_path, "rb") as f:
-                self.dbx.files_upload(f.read(), self.dropbox_db_path, mode=WriteMode.overwrite)
+                self.dbx.files_upload(
+                    f.read(), self.dropbox_db_path, mode=WriteMode.overwrite
+                )
             print("✓ Database uploaded to Dropbox")
             return True
 
@@ -305,7 +327,9 @@ class DropboxDBSync:
                 try:
                     local_hash = compute_dropbox_content_hash(self.local_db_path)
                     if local_hash == getattr(remote, "content_hash", None):
-                        print("✓ Local DB already matches Dropbox (content hash). Skipping download.")
+                        print(
+                            "✓ Local DB already matches Dropbox (content hash). Skipping download."
+                        )
                         return True
                 except Exception:
                     pass
@@ -334,7 +358,9 @@ class DropboxDBSync:
     def backup_db(self, backup_name: Optional[str] = None) -> bool:
         """Create timestamped backup under /backups/ (or custom name)."""
         if not backup_name:
-            backup_name = f"database_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            backup_name = (
+                f"database_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            )
         backup_path = f"/backups/{backup_name}"
         try:
             if not os.path.exists(self.local_db_path):
@@ -395,7 +421,9 @@ class DropboxDBSync:
         else:
             md = self._get_meta(self.dropbox_db_path)
             if not md:
-                print(f"✗ No source found: neither /backups/ nor {self.dropbox_db_path}")
+                print(
+                    f"✗ No source found: neither /backups/ nor {self.dropbox_db_path}"
+                )
                 return False
             src_path = md.path_lower
             src_label = md.path_display
@@ -408,7 +436,9 @@ class DropboxDBSync:
             try:
                 local_hash = compute_dropbox_content_hash(target)
                 if local_hash == remote_hash:
-                    print("✓ Local database already matches source (content hash). Skipping download.")
+                    print(
+                        "✓ Local database already matches source (content hash). Skipping download."
+                    )
                     return True
             except Exception:
                 pass
@@ -434,9 +464,12 @@ class DropboxDBSync:
 # CLI
 # ───────────────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: python cli_db_sync.py [test|info|list|list-backups|upload|download|backup|restore-latest]")
+        print(
+            "Usage: python cli_db_sync.py [test|info|list|list-backups|upload|download|backup|restore-latest]"
+        )
         sys.exit(1)
 
     action = sys.argv[1].lower()
@@ -495,7 +528,9 @@ def main() -> None:
         sys.exit(0 if ok else 1)
 
     else:
-        print("Invalid action. Use: test, info, list, list-backups, upload, download, backup, restore-latest")
+        print(
+            "Invalid action. Use: test, info, list, list-backups, upload, download, backup, restore-latest"
+        )
         sys.exit(1)
 
 

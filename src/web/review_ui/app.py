@@ -100,6 +100,7 @@ TEMPLATE = """
 </html>
 """
 
+
 def require_pin(f):
     @wraps(f)
     def wrapped(*a, **kw):
@@ -107,7 +108,9 @@ def require_pin(f):
         if not pin or pin != os.environ.get("APP_PIN", ""):
             return abort(401)
         return f(*a, **kw)
+
     return wrapped
+
 
 def connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
@@ -116,28 +119,38 @@ def connect(db_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
+
 def get_counts(conn):
-    cur = conn.execute("SELECT status, COUNT(*) c FROM customer_match_review GROUP BY status")
-    d = {"pending":0,"approved":0,"rejected":0,"aliased":0}
+    cur = conn.execute(
+        "SELECT status, COUNT(*) c FROM customer_match_review GROUP BY status"
+    )
+    d = {"pending": 0, "approved": 0, "rejected": 0, "aliased": 0}
     for r in cur.fetchall():
         d[r["status"]] = r["c"]
     return d
 
+
 def list_pending(conn, min_rev: float | None, limit: int):
     if min_rev:
-        cur = conn.execute("""
+        cur = conn.execute(
+            """
           SELECT * FROM customer_match_review
           WHERE status='pending' AND revenue>=?
           ORDER BY revenue DESC, best_score DESC
           LIMIT ?
-        """, (min_rev, limit))
+        """,
+            (min_rev, limit),
+        )
     else:
-        cur = conn.execute("""
+        cur = conn.execute(
+            """
           SELECT * FROM customer_match_review
           WHERE status='pending'
           ORDER BY revenue DESC, best_score DESC
           LIMIT ?
-        """, (limit,))
+        """,
+            (limit,),
+        )
     rows = [dict(r) for r in cur.fetchall()]
     for r in rows:
         try:
@@ -146,20 +159,42 @@ def list_pending(conn, min_rev: float | None, limit: int):
             r["suggestions"] = []
     return rows
 
-def create_alias(conn, alias_name: str, target_customer_id: int, confidence_score: int, created_by: str, notes: str):
-    conn.execute("""
+
+def create_alias(
+    conn,
+    alias_name: str,
+    target_customer_id: int,
+    confidence_score: int,
+    created_by: str,
+    notes: str,
+):
+    conn.execute(
+        """
       INSERT INTO entity_aliases (alias_name, entity_type, target_entity_id, confidence_score, created_by, notes, is_active)
       VALUES (?, 'customer', ?, ?, ?, ?, 1)
-    """, (alias_name, target_customer_id, confidence_score, created_by, notes))
+    """,
+        (alias_name, target_customer_id, confidence_score, created_by, notes),
+    )
     conn.commit()
 
+
 def mark_review(conn, row_id: int, status: str, who: str, notes: str):
-    conn.execute("""
+    conn.execute(
+        """
       UPDATE customer_match_review
          SET status=?, decided_at=?, decided_by=?, notes=COALESCE(NULLIF(?,'') , notes)
        WHERE id=?
-    """, (status, datetime.utcnow().isoformat(timespec="seconds")+"Z", who, notes, row_id))
+    """,
+        (
+            status,
+            datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            who,
+            notes,
+            row_id,
+        ),
+    )
     conn.commit()
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -188,18 +223,23 @@ def main():
             conn.close()
         return render_template_string(
             TEMPLATE,
-            rows=rows, pending_count=counts["pending"], approved_count=counts["approved"],
-            rejected_count=counts["rejected"], pin=pin, min_rev=min_rev, limit=limit
+            rows=rows,
+            pending_count=counts["pending"],
+            approved_count=counts["approved"],
+            rejected_count=counts["rejected"],
+            pin=pin,
+            min_rev=min_rev,
+            limit=limit,
         )
 
     @app.post("/approve/<int:id>")
     @require_pin
     def approve(id: int):
         pin = request.form.get("pin")
-        alias_name = request.form.get("alias_name","").strip()
-        target_cust = int(request.form.get("target_customer_id","0"))
-        confidence = int(request.form.get("confidence","95"))
-        notes = request.form.get("notes","").strip()
+        alias_name = request.form.get("alias_name", "").strip()
+        target_cust = int(request.form.get("target_customer_id", "0"))
+        confidence = int(request.form.get("confidence", "95"))
+        notes = request.form.get("notes", "").strip()
         who = "review_ui"
 
         if not alias_name or target_cust <= 0:
@@ -218,7 +258,7 @@ def main():
     @require_pin
     def reject(id: int):
         pin = request.form.get("pin")
-        notes = request.form.get("notes","").strip()
+        notes = request.form.get("notes", "").strip()
         conn = connect(db_path)
         try:
             mark_review(conn, id, "rejected", "review_ui", notes or "rejected")
@@ -227,6 +267,7 @@ def main():
         return redirect(url_for("index", pin=pin))
 
     app.run(host=args.host, port=args.port)
+
 
 if __name__ == "__main__":
     main()

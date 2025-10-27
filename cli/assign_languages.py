@@ -117,15 +117,22 @@ import sys
 from tqdm import tqdm
 import sys
 
+
 def _make_cli_pbar(total: int, desc: str):
-    return tqdm(total=total, desc=desc, unit="spot", dynamic_ncols=True, mininterval=0.3,
-                disable=not sys.stderr.isatty())
+    return tqdm(
+        total=total,
+        desc=desc,
+        unit="spot",
+        dynamic_ncols=True,
+        mininterval=0.3,
+        disable=not sys.stderr.isatty(),
+    )
 
 
 # ----- import bootstrap (repo_root + src) -----
 HERE = Path(__file__).resolve()
-REPO_ROOT = HERE.parent.parent          # repo_root
-SRC = REPO_ROOT / "src"                 # repo_root/src
+REPO_ROOT = HERE.parent.parent  # repo_root
+SRC = REPO_ROOT / "src"  # repo_root/src
 
 # Make both repo_root and src importable
 if str(REPO_ROOT) not in sys.path:
@@ -139,7 +146,10 @@ from src.models.spot_category import SpotCategory
 from src.services.language_processing_orchestrator import LanguageProcessingOrchestrator
 from src.services.language_assignment_service import LanguageAssignmentService
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 def open_sqlite(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, isolation_level=None)
@@ -151,24 +161,34 @@ def open_sqlite(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-
 # ---------- CLI actions ----------
+
 
 def force_recategorize_all_spots(conn: sqlite3.Connection, assume_yes: bool) -> None:
     print("\n🔄 FORCE RECATEGORIZING ALL SPOTS...")
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM spots WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)")
+    cur.execute(
+        "SELECT COUNT(*) FROM spots WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)"
+    )
     total = cur.fetchone()[0]
     print(f"Found {total:,} spots to recategorize...")
 
     if not assume_yes:
-        confirm = input(f"\n⚠️  This will RECATEGORIZE ALL {total:,} spots.\nProceed? (yes/no): ").strip().lower()
+        confirm = (
+            input(
+                f"\n⚠️  This will RECATEGORIZE ALL {total:,} spots.\nProceed? (yes/no): "
+            )
+            .strip()
+            .lower()
+        )
         if confirm not in ("yes", "y"):
             print("❌ Force recategorization cancelled")
             return
 
     print("Clearing existing categorizations...")
-    cur.execute("UPDATE spots SET spot_category = NULL WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)")
+    cur.execute(
+        "UPDATE spots SET spot_category = NULL WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)"
+    )
     try:
         cur.execute("DELETE FROM spot_categorizations")
     except sqlite3.OperationalError:
@@ -209,16 +229,22 @@ def show_undetermined_spots(service: LanguageAssignmentService) -> None:
 def show_review_required(service: LanguageAssignmentService) -> None:
     summary: Dict[str, Any] = service.get_review_summary()
     print(f"\n📋 SPOTS REQUIRING MANUAL REVIEW:")
-    print(f"   • Undetermined language (L code): {summary.get('undetermined_language', 0):,}")
+    print(
+        f"   • Undetermined language (L code): {summary.get('undetermined_language', 0):,}"
+    )
     print(f"   • Invalid language codes: {summary.get('invalid_codes', 0):,}")
-    print(f"   • High-value undetermined: {summary.get('high_value_undetermined', 0):,}")
+    print(
+        f"   • High-value undetermined: {summary.get('high_value_undetermined', 0):,}"
+    )
     print(f"   • Total requiring review: {summary.get('total_review_required', 0):,}")
 
 
 def show_all_review_required_spots(service: LanguageAssignmentService) -> None:
     review_spots = service.get_review_required_spots(limit=200)
     print(f"\n🔍 ALL SPOTS REQUIRING REVIEW (showing first 50):")
-    print(f"{'Spot ID':>8} {'Code':>6} {'Bill Code':>18} {'Revenue':>10} {'Status':>14} {'Reason'}")
+    print(
+        f"{'Spot ID':>8} {'Code':>6} {'Bill Code':>18} {'Revenue':>10} {'Status':>14} {'Reason'}"
+    )
     print("-" * 100)
 
     if not review_spots:
@@ -230,16 +256,24 @@ def show_all_review_required_spots(service: LanguageAssignmentService) -> None:
         revenue = f"${sd.gross_rate:,.0f}" if sd and sd.get("gross_rate") else "N/A"
         bill_code = (sd.get("bill_code", "N/A")[:18]) if sd else "N/A"
         status_val = getattr(a.language_status, "value", a.language_status)
-        reason = "Undetermined" if getattr(a, "language_code", "") == "L" else "Invalid Code"
-        print(f"{a.spot_id:>8} {getattr(a, 'language_code',''):>6} {bill_code:>18} {revenue:>10} {status_val:>14} {reason}")
+        reason = (
+            "Undetermined" if getattr(a, "language_code", "") == "L" else "Invalid Code"
+        )
+        print(
+            f"{a.spot_id:>8} {getattr(a, 'language_code', ''):>6} {bill_code:>18} {revenue:>10} {status_val:>14} {reason}"
+        )
 
 
 def show_assignment_status(service: LanguageAssignmentService) -> None:
     s = service.get_review_summary()
     print(f"\n📊 LANGUAGE ASSIGNMENT STATUS:")
-    print(f"   • Spots needing language determination (L): {s.get('undetermined_language', 0):,}")
+    print(
+        f"   • Spots needing language determination (L): {s.get('undetermined_language', 0):,}"
+    )
     print(f"   • Spots with invalid language codes: {s.get('invalid_codes', 0):,}")
-    print(f"   • High-value undetermined spots: {s.get('high_value_undetermined', 0):,}")
+    print(
+        f"   • High-value undetermined spots: {s.get('high_value_undetermined', 0):,}"
+    )
     print(f"   • Total spots requiring review: {s.get('total_review_required', 0):,}")
 
 
@@ -336,7 +370,8 @@ def assign_all(service, assume_yes: bool) -> None:
     if not assume_yes:
         confirm = input("Proceed with assignment? (yes/no): ").strip().lower()
         if confirm not in ("yes", "y"):
-            print("❌ Assignment cancelled"); return
+            print("❌ Assignment cancelled")
+            return
 
     saved = errors = 0
     with _make_cli_pbar(len(ids), "Assigning all") as pbar:
@@ -374,7 +409,7 @@ def show_status_by_category(conn: sqlite3.Connection) -> None:
         count = int(summary.get(category.value, 0))
         total += count
         print(f"   • {category.value.replace('_', ' ').title()}: {count:,}")
-    uncategorized = int(summary.get('uncategorized', 0))
+    uncategorized = int(summary.get("uncategorized", 0))
     total += uncategorized
     print(f"   • Uncategorized: {uncategorized:,}")
     print(f"   • Total: {total:,}")
@@ -442,7 +477,7 @@ def process_all_categories(conn: sqlite3.Connection) -> None:
     print(f"\n🚀 PROCESSING ALL CATEGORIES...")
     orch = LanguageProcessingOrchestrator(conn)
     res = orch.process_all_categories()
-    s = res.get('summary', {})
+    s = res.get("summary", {})
     print(f"\n🎉 ALL CATEGORIES PROCESSING COMPLETE:")
     print(f"   • Total processed: {s.get('total_processed', 0):,}")
     print(f"   • Language assigned: {s.get('language_assigned', 0):,}")
@@ -461,7 +496,9 @@ def show_processing_status(conn: sqlite3.Connection) -> None:
         processed = int(status.get(f"{key}_processed", 0))
         if total > 0:
             pct = processed / total * 100
-            print(f"   • {key.replace('_',' ').title()}: {processed:,}/{total:,} ({pct:.1f}%)")
+            print(
+                f"   • {key.replace('_', ' ').title()}: {processed:,}/{total:,} ({pct:.1f}%)"
+            )
 
 
 def process_all_categories_simple(conn: sqlite3.Connection) -> None:
@@ -471,7 +508,9 @@ def process_all_categories_simple(conn: sqlite3.Connection) -> None:
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM spot_language_assignments")
     total = int(cur.fetchone()[0])
-    cur.execute("SELECT COUNT(*) FROM spot_language_assignments WHERE requires_review = 1")
+    cur.execute(
+        "SELECT COUNT(*) FROM spot_language_assignments WHERE requires_review = 1"
+    )
     needs_review = int(cur.fetchone()[0])
     print(f"\n🎉 ALL PROCESSING COMPLETE:")
     print(f"   • Total spots processed: {total:,}")
@@ -481,35 +520,85 @@ def process_all_categories_simple(conn: sqlite3.Connection) -> None:
 
 # ---------- main ----------
 
+
 def main() -> int:
     import __main__
+
     p = argparse.ArgumentParser(
         description=__main__.__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--database", default="data/database/production.db")
-    p.add_argument("--yes", action="store_true", help="Assume 'yes' for destructive prompts")
+    p.add_argument(
+        "--yes", action="store_true", help="Assume 'yes' for destructive prompts"
+    )
 
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--test", type=int, help="Test with N spots")
     g.add_argument("--batch", type=int, help="Assign N spots")
     g.add_argument("--all", action="store_true", help="Assign all unassigned spots")
     g.add_argument("--status", action="store_true", help="Show assignment status")
-    g.add_argument("--undetermined", action="store_true", help="Show undetermined language spots (L code)")
-    g.add_argument("--review-required", action="store_true", help="Show review required summary")
-    g.add_argument("--all-review", action="store_true", help="Show all spots requiring review")
-    g.add_argument("--invalid-codes", action="store_true", help="Show invalid language codes")
-    g.add_argument("--categorize-all", action="store_true", help="Categorize all uncategorized spots")
-    g.add_argument("--force-recategorize-all", action="store_true", help="Force recategorize ALL spots")
-    g.add_argument("--status-by-category", action="store_true", help="Show breakdown by category")
-    g.add_argument("--test-categorization", type=int, help="Test categorization with N spots")
-    g.add_argument("--uncategorized", action="store_true", help="Show uncategorized spot count")
-    g.add_argument("--process-language-required", action="store_true", help="Process language assignment required spots")
-    g.add_argument("--process-review-category", action="store_true", help="Process review category spots")
-    g.add_argument("--process-default-english", action="store_true", help="Process default English spots")
-    g.add_argument("--process-all-categories", action="store_true", help="Process all categories")
-    g.add_argument("--process-all-remaining", action="store_true", help="Process all remaining categories (simple)")
-    g.add_argument("--processing-status", action="store_true", help="Show processing status by category")
+    g.add_argument(
+        "--undetermined",
+        action="store_true",
+        help="Show undetermined language spots (L code)",
+    )
+    g.add_argument(
+        "--review-required", action="store_true", help="Show review required summary"
+    )
+    g.add_argument(
+        "--all-review", action="store_true", help="Show all spots requiring review"
+    )
+    g.add_argument(
+        "--invalid-codes", action="store_true", help="Show invalid language codes"
+    )
+    g.add_argument(
+        "--categorize-all",
+        action="store_true",
+        help="Categorize all uncategorized spots",
+    )
+    g.add_argument(
+        "--force-recategorize-all",
+        action="store_true",
+        help="Force recategorize ALL spots",
+    )
+    g.add_argument(
+        "--status-by-category", action="store_true", help="Show breakdown by category"
+    )
+    g.add_argument(
+        "--test-categorization", type=int, help="Test categorization with N spots"
+    )
+    g.add_argument(
+        "--uncategorized", action="store_true", help="Show uncategorized spot count"
+    )
+    g.add_argument(
+        "--process-language-required",
+        action="store_true",
+        help="Process language assignment required spots",
+    )
+    g.add_argument(
+        "--process-review-category",
+        action="store_true",
+        help="Process review category spots",
+    )
+    g.add_argument(
+        "--process-default-english",
+        action="store_true",
+        help="Process default English spots",
+    )
+    g.add_argument(
+        "--process-all-categories", action="store_true", help="Process all categories"
+    )
+    g.add_argument(
+        "--process-all-remaining",
+        action="store_true",
+        help="Process all remaining categories (simple)",
+    )
+    g.add_argument(
+        "--processing-status",
+        action="store_true",
+        help="Show processing status by category",
+    )
 
     args = p.parse_args()
 

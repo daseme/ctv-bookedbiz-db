@@ -7,17 +7,20 @@ import sqlite3
 from contextlib import contextmanager
 
 from ..models.customer_matching import (
-    CustomerMatchCandidate, CustomerMatchFilters, MatchSuggestion,
-    CustomerMatchStatus, MatchMethod
+    CustomerMatchCandidate,
+    CustomerMatchFilters,
+    MatchSuggestion,
+    CustomerMatchStatus,
+    MatchMethod,
 )
 
 
 class CustomerMatchingRepository:
     """Repository for customer matching operations using existing DB patterns."""
-    
+
     def __init__(self, db_path: str):
         self.db_path = db_path
-    
+
     @contextmanager
     def _get_db_ro(self):
         """Read-only connection - matches existing pattern."""
@@ -30,7 +33,7 @@ class CustomerMatchingRepository:
             yield conn
         finally:
             conn.close()
-    
+
     @contextmanager
     def _get_db_rw(self):
         """Read-write connection for updates."""
@@ -41,10 +44,11 @@ class CustomerMatchingRepository:
             yield conn
         finally:
             conn.close()
-    
+
     def _retry(self, op, retries=3, delay=0.25):
         """Retry logic - matches existing pattern."""
         import time
+
         for i in range(retries):
             try:
                 return op()
@@ -52,11 +56,13 @@ class CustomerMatchingRepository:
                 msg = str(e).lower()
                 if "database is locked" in msg or "busy" in msg:
                     if i < retries - 1:
-                        time.sleep(delay * (2 ** i))
+                        time.sleep(delay * (2**i))
                         continue
                 raise
-    
-    def get_unmatched_customers(self, filters: CustomerMatchFilters) -> List[CustomerMatchCandidate]:
+
+    def get_unmatched_customers(
+        self, filters: CustomerMatchFilters
+    ) -> List[CustomerMatchCandidate]:
         """
         Get customers that appear in spots but don't exist in customers table.
         This is the core query to identify 'Polaris Campaign' type customers.
@@ -96,63 +102,71 @@ class CustomerMatchingRepository:
         FROM unmatched_spots us
         LEFT JOIN v_customer_normalization_audit vcna ON vcna.raw_text = us.bill_code
         """
-        
+
         where_clauses = []
         params = []
-        
+
         if filters.min_revenue > 0:
             where_clauses.append("us.revenue >= ?")
             params.append(filters.min_revenue)
-        
+
         if filters.min_spots > 0:
-            where_clauses.append("us.spot_count >= ?") 
+            where_clauses.append("us.spot_count >= ?")
             params.append(filters.min_spots)
-        
+
         if filters.search_text:
             where_clauses.append("(us.bill_code LIKE ? OR vcna.normalized_name LIKE ?)")
             like_term = f"%{filters.search_text}%"
             params.extend([like_term, like_term])
-        
+
         if filters.revenue_types:
             revenue_conditions = []
             for rev_type in filters.revenue_types:
                 revenue_conditions.append("us.revenue_types_raw LIKE ?")
                 params.append(f"%{rev_type}%")
             where_clauses.append(f"({' OR '.join(revenue_conditions)})")
-        
+
         if not filters.include_low_value:
             where_clauses.append("(us.revenue >= 500 OR us.spot_count >= 3)")
-        
+
         if where_clauses:
             base_query += " WHERE " + " AND ".join(where_clauses)
-        
+
         base_query += " ORDER BY us.revenue DESC, us.spot_count DESC LIMIT 200"
-        
+
         with self._get_db_ro() as db:
             rows = self._retry(lambda: db.execute(base_query, params).fetchall())
-        
+
         candidates = []
         for row in rows:
             # Parse the data into domain objects
-            months = [m.strip() for m in (row['months_active'] or '').split(',') if m.strip()]
-            revenue_types = [r.strip() for r in (row['revenue_types_raw'] or '').split(',') if r.strip()]
-            
+            months = [
+                m.strip() for m in (row["months_active"] or "").split(",") if m.strip()
+            ]
+            revenue_types = [
+                r.strip()
+                for r in (row["revenue_types_raw"] or "").split(",")
+                if r.strip()
+            ]
+
             candidate = CustomerMatchCandidate(
-                bill_code_raw=row['bill_code'],
-                normalized_name=row['normalized_name'] or row['bill_code'],
-                revenue=float(row['revenue'] or 0),
-                spot_count=int(row['spot_count'] or 0),
-                first_seen=row['first_seen'],
-                last_seen=row['last_seen'], 
+                bill_code_raw=row["bill_code"],
+                normalized_name=row["normalized_name"] or row["bill_code"],
+                revenue=float(row["revenue"] or 0),
+                spot_count=int(row["spot_count"] or 0),
+                first_seen=row["first_seen"],
+                last_seen=row["last_seen"],
                 months_active=months,
                 revenue_types=revenue_types,
-                match_status=CustomerMatchStatus.UNMATCHED
+                match_status=CustomerMatchStatus.UNMATCHED,
             )
             candidates.append(candidate)
-        
+
         return candidates
-    
-    def find_customer_matches(self, candidate: CustomerMatchCandidate, limit: int = 5) -> List[MatchSuggestion]:
+
+    def find_customer_matches(
+        self, candidate: CustomerMatchCandidate, limit: int = 5
+    ) -> List[MatchSuggestion]:
         """
         Find potential customer matches using fuzzy matching.
         This will eventually integrate with the existing blocking matcher logic.
@@ -198,25 +212,27 @@ class CustomerMatchingRepository:
         ORDER BY final_score DESC, normalized_name
         LIMIT ?
         """
-        
+
         with self._get_db_ro() as db:
-            rows = self._retry(lambda: db.execute(
-                match_query, 
-                [candidate.bill_code_raw, candidate.normalized_name, limit]
-            ).fetchall())
-        
+            rows = self._retry(
+                lambda: db.execute(
+                    match_query,
+                    [candidate.bill_code_raw, candidate.normalized_name, limit],
+                ).fetchall()
+            )
+
         suggestions = []
         for row in rows:
             suggestion = MatchSuggestion(
-                customer_id=row['customer_id'],
-                customer_name=row['normalized_name'],
-                confidence_score=row['final_score'],
-                match_reasons=['fuzzy_name_match']  # Can be enhanced
+                customer_id=row["customer_id"],
+                customer_name=row["normalized_name"],
+                confidence_score=row["final_score"],
+                match_reasons=["fuzzy_name_match"],  # Can be enhanced
             )
             suggestions.append(suggestion)
-        
+
         return suggestions
-    
+
     def get_matching_stats(self) -> Dict[str, int]:
         """Get statistics for the matching dashboard."""
         stats_query = """
@@ -242,20 +258,21 @@ class CustomerMatchingRepository:
             SUM(revenue) as total_unmatched_revenue
         FROM unmatched_customers
         """
-        
+
         with self._get_db_ro() as db:
             row = self._retry(lambda: db.execute(stats_query).fetchone())
-        
+
         return {
-            'total_unmatched': row['total_unmatched'] or 0,
-            'high_value': row['high_value'] or 0, 
-            'medium_value': row['medium_value'] or 0,
-            'high_volume': row['high_volume'] or 0,
-            'total_unmatched_revenue': float(row['total_unmatched_revenue'] or 0)
+            "total_unmatched": row["total_unmatched"] or 0,
+            "high_value": row["high_value"] or 0,
+            "medium_value": row["medium_value"] or 0,
+            "high_volume": row["high_volume"] or 0,
+            "total_unmatched_revenue": float(row["total_unmatched_revenue"] or 0),
         }
-    
-    def create_customer_alias(self, bill_code: str, target_customer_id: int, 
-                            created_by: str, notes: str = "") -> int:
+
+    def create_customer_alias(
+        self, bill_code: str, target_customer_id: int, created_by: str, notes: str = ""
+    ) -> int:
         """Create an entity alias to resolve a customer match."""
         insert_alias_sql = """
         INSERT INTO entity_aliases 
@@ -263,14 +280,16 @@ class CustomerMatchingRepository:
          created_by, notes, is_active)
         VALUES (?, 'customer', ?, 100, ?, ?, 1)
         """
-        
+
         with self._get_db_rw() as db:
             cursor = db.cursor()
-            cursor.execute(insert_alias_sql, [bill_code, target_customer_id, created_by, notes])
+            cursor.execute(
+                insert_alias_sql, [bill_code, target_customer_id, created_by, notes]
+            )
             alias_id = cursor.lastrowid
             db.commit()
             return alias_id
-    
+
     def get_normalization_context(self, bill_code: str) -> Optional[Dict[str, Any]]:
         """Get normalization context for a bill code - bridges to existing system."""
         context_query = """
@@ -280,8 +299,8 @@ class CustomerMatchingRepository:
         FROM v_customer_normalization_audit 
         WHERE raw_text = ?
         """
-        
+
         with self._get_db_ro() as db:
             row = self._retry(lambda: db.execute(context_query, [bill_code]).fetchone())
-        
+
         return dict(row) if row else None

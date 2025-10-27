@@ -6,8 +6,9 @@ from revenue_diff_tools import (
     compare_rows,
     compare_aggregates_fixed,
     generate_report_final,
-    generate_email_safe_html_report
+    generate_email_safe_html_report,
 )
+
 
 def get_daily_file_paths(base_dir: Path, suffix: str = ".xlsx") -> tuple[str, str]:
     today = datetime.today()
@@ -16,6 +17,7 @@ def get_daily_file_paths(base_dir: Path, suffix: str = ".xlsx") -> tuple[str, st
     f1 = base_dir / f"Commercial Log {yesterday.strftime('%y%m%d')}{suffix}"
     f2 = base_dir / f"Commercial Log {today.strftime('%y%m%d')}{suffix}"
     return str(f1), str(f2)
+
 
 def run_daily_report(base_dir: str, output_dir: str) -> None:
     old_file, new_file = get_daily_file_paths(Path(base_dir))
@@ -44,6 +46,7 @@ def run_daily_report(base_dir: str, output_dir: str) -> None:
     generate_email_safe_html_report(deltas, str(out_dir / "revenue_change_report.html"))
 
     print(f"Reports saved to: {out_dir.resolve()}")
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
