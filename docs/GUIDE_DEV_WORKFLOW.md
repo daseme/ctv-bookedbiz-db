@@ -1,259 +1,144 @@
+````markdown
 # Developer Guide — ctv-bookedbiz-db (Raspberry Pi)
 
-This guide covers day-to-day development on the Pi, how to view the **dev server**, and how to merge **feature → dev → main**. A troubleshooting section follows.
+Clear workflow for developing on the Pi, viewing the **dev server**, and promoting changes **feat/* → dev → main**. Includes baby-step guides and troubleshooting.
 
 ---
 
 ## Overview
 
-* Repo: `/opt/apps/ctv-bookedbiz-db`
-* Python env: `.venv` managed by `uv`
-* Dev server: Flask reloader on **:5100** via `ctv-dev.service`
-* DBs:
-
-  * **Prod**: `data/database/production.db`
-  * **Dev**:  `data/database/production_dev.db` (copy of prod)
-* Env files:
-
-  * `.env.dev` → `APP_ENV=dev`, `DB_PATH=data/database/production_dev.db`
-  * `.env.prod` → `APP_ENV=prod`, `DB_PATH=data/database/production.db`
+- Repo: `/opt/apps/ctv-bookedbiz-db`
+- Python env: `.venv` via `uv`
+- Dev server (systemd): **:5100** (`ctv-dev.service`)
+- Databases:
+  - **Prod**: `data/database/production.db`
+  - **Dev**:  `data/database/production_dev.db` (copy of prod)
+- Env files (kept **out of git**):
+  - `.env.dev`  → `APP_ENV=dev`,  `DB_PATH=data/database/production_dev.db`
+  - `.env.prod` → `APP_ENV=prod`, `DB_PATH=data/database/production.db`
 
 ---
 
-## Prerequisites (already set up)
+## Quick start (day-to-day loop)
 
 ```bash
-# On the Pi
-cd /opt/apps/ctv-bookedbiz-db
-uv sync                           # creates .venv and installs deps
-ls .env.dev .env.prod             # both should exist
-systemctl --user status ctv-dev.service
-```
+# 1) sync dev and branch
+git switch dev
+git pull --ff-only
+git switch -c feat/<yourname>/<slug>
 
-If `ctv-dev.service` is not running:
+# 2) code; lint/format before each commit
+uvx ruff check .
+uvx ruff format .
 
-```bash
-sudo loginctl enable-linger $USER
-systemctl --user daemon-reload
-systemctl --user enable --now ctv-dev.service
-```
+# 3) commit & push
+git add -A
+git commit -m "feat: <one clear change>"
+git push -u origin HEAD
 
----
+# 4) open PR: feat/* → dev (small, focused)
+````
 
-## How to see the dev server
-
-From a browser on your LAN/Tailscale:
-
-```
-http://<pi-ip>:5100
-```
-
-Health check:
+After your PR is merged into `dev`:
 
 ```bash
+git switch dev && git pull --ff-only
+systemctl --user restart ctv-dev.service
 curl -sf http://localhost:5100/health/ && echo DEV_OK
 ```
 
-If the page isn’t reachable, see **Troubleshooting**.
+When validated on dev, open PR **dev → main** and **Squash merge**.
 
 ---
 
-## Day-to-day workflow
+## How to view the dev server
 
-### 1) Sync and branch
+* Browser: `http://<pi-ip>:5100`
+* Health:
 
-```bash
-cd /opt/apps/ctv-bookedbiz-db
-git fetch origin
+  ```bash
+  curl -sf http://localhost:5100/health/ && echo DEV_OK
+  ```
 
-# Work branches are short-lived: feat/<owner>/<slug>
-git switch -c feat/jenna/<slug> origin/dev
-```
-
-> Rule: All feature branches start from `origin/dev`.
-
-### 2) Run locally (optional ad-hoc run instead of systemd)
+Optional local run (don’t collide with :5100):
 
 ```bash
-# Uses dev DB and enables hot-reload
 uv run --env-file .env.dev \
   flask --app src.web.app:create_app run --debug -h 0.0.0.0 -p 5101
 # browse http://<pi-ip>:5101
 ```
 
-Systemd dev stays on :5100. Don’t double-bind the same port.
-
-### 3) Code standards
-
-```bash
-uvx ruff check .
-uvx ruff format .
-```
-
-Keep commits small and focused.
-
-### 4) Commit and push
-
-```bash
-git add -A
-git commit -m "feat: <slug> ..."
-git push -u origin HEAD
-```
-
-Open a PR: **feat/* → dev**. Require green checks and review.
-
-### 5) Verify on dev server
-
-After merging the feature PR into `dev`, pull and restart the dev service:
-
-```bash
-git switch dev && git pull --ff-only
-systemctl --user restart ctv-dev.service
-
-# Sanity
-curl -sf http://localhost:5100/health/ && echo DEV_OK
-```
-
-Validate functionality against **dev DB**.
-
-### 6) Promote dev → main (release)
-
-When staging on dev is validated:
-
-* Open PR: **dev → main**
-* Require green checks and review
-* Use **Squash merge**
-* Tag release in GitHub if needed
-
-If prod also runs on this Pi under a prod service, refresh it after merge:
-
-```bash
-git switch main && git pull --ff-only
-# (start or restart prod service if used here)
-# systemctl --user enable --now ctv-prod.service
-```
-
 ---
 
-## Database practices
+## Baby-step: Start a feature branch
 
-* Dev database is a copy of prod (`production_dev.db`).
-* Selection is **env-driven**; runtime reads `DB_PATH` from `.env.dev` or `.env.prod`.
-* To refresh dev DB from prod (non-destructive to prod):
+1. Update `dev`:
 
 ```bash
-# STOP dev if you need a clean copy without live writes
-systemctl --user stop ctv-dev.service
-
-sqlite3 data/database/production.db \
-  ".backup 'data/database/production_dev.db'"
-
-systemctl --user start ctv-dev.service
-```
-
-* Migrations or schema changes must be applied **first to dev**, then promoted.
-
----
-
-## Branching rules
-
-* `main`: production, always releasable, protected.
-* `dev`: integration/staging, protected.
-* `feat/<owner>/<slug>`: short-lived; PR into `dev`.
-
-**Merging policy**
-
-* **Squash merge** only.
-* Rebase your feature branch on `origin/dev` before merge when needed:
-
-  ```bash
-  git fetch origin
-  git rebase origin/dev
-  git push --force-with-lease
-  ```
-
----
-
-Great.
-
-## Step 4 — sync the Pi’s `main` with GitHub `main`
-
-Run:
-
-```bash
-cd /opt/apps/ctv-bookedbiz-db
-git switch main
+git switch dev
 git pull --ff-only
 ```
 
-You should see the new commit from the PR.
+2. Branch from `dev`:
 
-If this box also runs **prod** code, that’s when you’d restart the prod service (not the dev one). If it’s only a dev box, you’re done.
+```bash
+git switch -c feat/<yourname>/<slug>
+# ex: feat/jenna/sector-filter-fix
+```
 
-Reply **done** (paste any odd output).
+3. Work and test:
+
+* Systemd dev uses the **dev DB** on **:5100**.
+* Optional ad-hoc run on **:5101** (above) if you want a separate instance.
+
+4. Lint/format and commit small units:
+
+```bash
+uvx ruff check . ; uvx ruff format .
+git add -A
+git commit -m "feat: <one clear change>"
+git push -u origin HEAD
+```
+
+5. Open PR: **base = dev**, **compare = your feat/** branch.
 
 ---
 
-## Text to paste into the guide (baby-step PR workflow)
+## Baby-step: Promote `dev` → `main`
 
-Add this under a new section in `docs/GUIDE_DEV_WORKFLOW.md`:
+1. Ensure `dev` is current:
 
-````markdown
-## Baby-step: Promote changes from `dev` to `main`
-
-1) **Make sure `dev` is current**
-   ```bash
-   git switch dev
-   git fetch origin
-   git pull --ff-only
-````
-
-2. **Open the PR**
-
-   * On GitHub → Pull requests → New pull request
-   * **base** = `main`, **compare** = `dev`
-   * Title: short and clear (e.g., `docs: add GUIDE_DEV_WORKFLOW`)
-   * Create pull request.
-
-3. **Merge with “Squash and merge”**
-
-   * Click the ▼ next to **Merge pull request** → **Squash and merge** → Confirm.
-   * Why: keeps `main` history clean (one commit per PR).
-
-4. **Update the production machine (only if it runs prod)**
-
-   ```bash
-   git switch main
-   git pull --ff-only
-   # restart prod service here if the machine serves prod
-   ```
-
-### Notes
-
-* Use **`git pull --ff-only`** to prevent accidental merge commits on the box.
-* If `--ff-only` fails, rebase your local branch on the remote or ask for help.
-* Keep working on `dev`; open PRs from feature → `dev`, and from `dev` → `main` when ready.
-
-```
+```bash
+git switch dev
+git fetch origin
+git pull --ff-only
 ```
 
+2. Open PR on GitHub:
+
+* **base = main**, **compare = dev**
+* Title: short and clear (e.g., `docs: add GUIDE_DEV_WORKFLOW`)
+* Create PR
+
+3. Merge with **Squash and merge** (keeps main history tidy).
+
+4. If this box also runs prod, update `main` locally:
+
+```bash
+git switch main
+git pull --ff-only
+# restart prod service here if this machine serves prod
+```
+
+---
 
 ## Configuration reference
 
-* `src/config/settings.py` chooses DB path via environment in this order:
+* DB path resolution in `src/config/settings.py` (priority):
 
-  1. `DB_PATH` (if set)
-  2. `DEV_DB_PATH` / `PROD_DB_PATH` (by `APP_ENV`)
+  1. `DB_PATH`
+  2. `DEV_DB_PATH` / `PROD_DB_PATH` (selected by `APP_ENV`)
   3. Defaults: `production_dev.db` for `dev/test`, `production.db` for `prod`
-
-* `.env.dev`
-
-  ```ini
-  APP_ENV=dev
-  DB_PATH=data/database/production_dev.db
-  DEV_DB_PATH=data/database/production_dev.db
-  PROD_DB_PATH=data/database/production.db
-  ```
 
 * Dev service unit: `~/.config/systemd/user/ctv-dev.service`
 
@@ -264,6 +149,9 @@ Add this under a new section in `docs/GUIDE_DEV_WORKFLOW.md`:
   ExecStart=/opt/apps/ctv-bookedbiz-db/.venv/bin/flask --app src.web.app:create_app run --debug -h 0.0.0.0 -p 5100
   Restart=always
   RestartSec=2
+  # Recommended:
+  Environment=PYTHONUNBUFFERED=1
+  Environment=PYTHONPATH=/opt/apps/ctv-bookedbiz-db
   ```
 
 ---
@@ -278,25 +166,79 @@ git status
 # Env → DB mapping
 uv run --env-file .env.dev python - <<'PY'
 from src.config.settings import get_settings
-s=get_settings(); print(s.environment, s.database.db_path)
+s = get_settings(); print("ENV:", s.environment, "| DB:", s.database.db_path)
 PY
-# expect: dev data/database/production_dev.db
+# expect: ENV: dev | DB: data/database/production_dev.db
 
 # Service health
 systemctl --user status ctv-dev.service --no-pager
 curl -sf http://localhost:5100/health/ && echo DEV_OK
 
-# No hardcoded prod paths in runtime modules
+# Ensure no hardcoded prod DB in runtime modules
 grep -RIn "data/database/production\.db" src | sed -n '1,50p'
 ```
 
 ---
 
+## VS Code branch sanity
+
+* Check current branch in the status bar.
+* Switch: **Ctrl+Shift+P** → “Git: Checkout to…”
+* Verify from terminal:
+
+  ```bash
+  git branch --show-current
+  git status
+  ```
+
+---
+
+## Definitions (plain language)
+
+* **`git pull --ff-only`**
+  Update your current branch *only if* it can move forward cleanly to match the remote (no local divergence). Prevents accidental merge commits on the box.
+
+  * If it fails:
+
+    * Rebase local changes on the remote:
+
+      ```bash
+      git fetch origin
+      git rebase origin/dev   # or origin/main, as appropriate
+      git push --force-with-lease
+      ```
+    * Or, discard local changes and match remote (destructive):
+
+      ```bash
+      git fetch origin
+      git reset --hard origin/dev
+      ```
+
+* **Squash merge**
+  PR is merged as a single commit → keeps `main` history compact and readable.
+
+* **Feature branch naming**
+  `feat/<owner>/<slug>` in short, kebab-case (e.g., `feat/jenna/report-cleanup`).
+
+---
+
+## Database practices
+
+* Dev DB is a copy of prod; selection is **env-driven** (`DB_PATH`).
+* Refresh dev DB from prod (non-destructive to prod):
+
+  ```bash
+  systemctl --user stop ctv-dev.service
+  sqlite3 data/database/production.db ".backup 'data/database/production_dev.db'"
+  systemctl --user start ctv-dev.service
+  ```
+* Apply migrations/schema changes on **dev** first, then promote.
+
+---
+
 ## Troubleshooting
 
-### Port 5100 in use
-
-Symptoms: unit flaps with `Address already in use`.
+**Port 5100 in use**
 
 ```bash
 ss -ltnp | grep ':5100' || true
@@ -304,40 +246,21 @@ fuser -k 5100/tcp
 systemctl --user restart ctv-dev.service
 ```
 
-If you need a parallel manual run, use `-p 5101`.
-
-### Dev server won’t start under systemd
-
-1. Inspect logs:
+**Dev service won’t start**
 
 ```bash
-journalctl --user -u ctv-dev --no-pager -n 200
-```
-
-2. Ensure Flask binary exists and PYTHONPATH is correct:
-
-```bash
+journalctl --user -xeu ctv-dev.service --no-pager -n 100
 /opt/apps/ctv-bookedbiz-db/.venv/bin/flask --version
 ```
 
-If imports fail, add to the unit:
-
-```ini
-# in [Service] section
-Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/opt/apps/ctv-bookedbiz-db
-```
-
-Then:
+If imports fail, add the `Environment=` lines shown in the unit, then:
 
 ```bash
 systemctl --user daemon-reload
 systemctl --user restart ctv-dev.service
 ```
 
-### Wrong database is being used
-
-Check env mapping:
+**Wrong database in use**
 
 ```bash
 sed -n '1,20p' .env.dev
@@ -345,48 +268,33 @@ uv run --env-file .env.dev python - <<'PY'
 from src.config.settings import get_settings
 print(get_settings().environment, get_settings().database.db_path)
 PY
-```
-
-Confirm runtime module code reads `DB_PATH` (no hard-coded fallbacks). Restart dev:
-
-```bash
 systemctl --user restart ctv-dev.service
 ```
 
-### Dev DB out of date vs prod
-
-Re-copy from prod:
+**PR says “out-of-date” or conflicts**
 
 ```bash
-systemctl --user stop ctv-dev.service
-sqlite3 data/database/production.db ".backup 'data/database/production_dev.db'"
-systemctl --user start ctv-dev.service
+git fetch origin
+git switch dev
+git rebase origin/main
+git push --force-with-lease
+# refresh PR, then Squash and merge
 ```
 
-### Health endpoint redirects
-
-Flask may redirect `/health` → `/health/`. Use:
+**Lint/format issues**
 
 ```bash
-curl -sf http://localhost:5100/health/ && echo OK
-```
-
-### Linting or formatting fails
-
-```bash
-uvx ruff check .
+uvx ruff check . --fix
 uvx ruff format .
 ```
-
-Fix issues and re-run.
 
 ---
 
 ## Safe operations
 
-* Do not edit `production.db` in dev flows.
-* Keep feature branches small; rebase before merge if diverged.
-* Use PRs for **feat/* → dev** and **dev → main** with reviews and CI.
+* Do **not** write to `production.db` during dev flows.
+* Keep PRs small; rebase as needed.
+* Protect `main` and `dev` in GitHub (require PRs + squash + CI).
 * Back up prod DB periodically:
 
   ```bash
@@ -399,26 +307,25 @@ Fix issues and re-run.
 ## Appendix: Useful commands
 
 ```bash
-# Restart dev server
+# restart dev service
 systemctl --user restart ctv-dev.service
 
-# Tail logs
+# tail logs
 journalctl --user -u ctv-dev --no-pager -f
 
-# Run quick ad-hoc server on 5101
+# ad-hoc dev server on 5101
 uv run --env-file .env.dev flask --app src.web.app:create_app run --debug -h 0.0.0.0 -p 5101
 
-# Clean branch update
+# clean branch update
 git fetch origin
 git switch dev && git pull --ff-only
 git switch -c feat/<owner>/<slug> origin/dev
 
-# Rebase feature on latest dev
+# rebase feature on latest dev
 git fetch origin
 git rebase origin/dev
 git push --force-with-lease
 ```
 
----
-
-Place this file at `docs/DEV_WORKFLOW.md` and keep it updated as processes evolve.
+```
+```
