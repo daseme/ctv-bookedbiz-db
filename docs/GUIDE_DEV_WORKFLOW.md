@@ -174,6 +174,70 @@ systemctl --user start ctv-dev.service
 
 ---
 
+Great.
+
+## Step 4 — sync the Pi’s `main` with GitHub `main`
+
+Run:
+
+```bash
+cd /opt/apps/ctv-bookedbiz-db
+git switch main
+git pull --ff-only
+```
+
+You should see the new commit from the PR.
+
+If this box also runs **prod** code, that’s when you’d restart the prod service (not the dev one). If it’s only a dev box, you’re done.
+
+Reply **done** (paste any odd output).
+
+---
+
+## Text to paste into the guide (baby-step PR workflow)
+
+Add this under a new section in `docs/GUIDE_DEV_WORKFLOW.md`:
+
+````markdown
+## Baby-step: Promote changes from `dev` to `main`
+
+1) **Make sure `dev` is current**
+   ```bash
+   git switch dev
+   git fetch origin
+   git pull --ff-only
+````
+
+2. **Open the PR**
+
+   * On GitHub → Pull requests → New pull request
+   * **base** = `main`, **compare** = `dev`
+   * Title: short and clear (e.g., `docs: add GUIDE_DEV_WORKFLOW`)
+   * Create pull request.
+
+3. **Merge with “Squash and merge”**
+
+   * Click the ▼ next to **Merge pull request** → **Squash and merge** → Confirm.
+   * Why: keeps `main` history clean (one commit per PR).
+
+4. **Update the production machine (only if it runs prod)**
+
+   ```bash
+   git switch main
+   git pull --ff-only
+   # restart prod service here if the machine serves prod
+   ```
+
+### Notes
+
+* Use **`git pull --ff-only`** to prevent accidental merge commits on the box.
+* If `--ff-only` fails, rebase your local branch on the remote or ask for help.
+* Keep working on `dev`; open PRs from feature → `dev`, and from `dev` → `main` when ready.
+
+```
+```
+
+
 ## Configuration reference
 
 * `src/config/settings.py` chooses DB path via environment in this order:
