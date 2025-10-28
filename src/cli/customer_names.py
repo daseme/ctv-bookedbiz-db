@@ -39,13 +39,38 @@ def build_parser():
         prog="customer_names",
         description="Analyze and normalize customer names from bill_code with blocking + fuzzy matching",
     )
-    p.add_argument("--db-path", required=True, help="Path to SQLite DB (e.g., data/database/production.db)")
-    p.add_argument("--limit", type=int, default=50, help="Max rows in detailed output (default: 50)")
-    p.add_argument("--export-unmatched", action="store_true", help="Export review/unknown to CSV")
+    p.add_argument(
+        "--db-path",
+        required=True,
+        help="Path to SQLite DB (e.g., data/database/production.db)",
+    )
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Max rows in detailed output (default: 50)",
+    )
+    p.add_argument(
+        "--export-unmatched", action="store_true", help="Export review/unknown to CSV"
+    )
     p.add_argument("--export-filename", help="Optional CSV filename")
-    p.add_argument("--suggest-aliases", action="store_true", help="Print suggested aliases (no writes)")
-    p.add_argument("--alias-min-revenue", type=float, default=1000.0, help="Min revenue to suggest alias (default: 1000)")
-    p.add_argument("--alias-min-score", type=float, default=0.85, help="Min score to suggest alias (default: 0.85)")
+    p.add_argument(
+        "--suggest-aliases",
+        action="store_true",
+        help="Print suggested aliases (no writes)",
+    )
+    p.add_argument(
+        "--alias-min-revenue",
+        type=float,
+        default=1000.0,
+        help="Min revenue to suggest alias (default: 1000)",
+    )
+    p.add_argument(
+        "--alias-min-score",
+        type=float,
+        default=0.85,
+        help="Min score to suggest alias (default: 0.85)",
+    )
     return p
 
 
@@ -58,28 +83,34 @@ def _ensure_db(db_path: str) -> None:
 def _warn_if_no_rapidfuzz() -> None:
     """Warn if rapidfuzz is not available."""
     if not HAVE_RAPIDFUZZ:
-        print("Warning: rapidfuzz not installed; fallback scoring is less accurate. `pip install rapidfuzz`")
+        print(
+            "Warning: rapidfuzz not installed; fallback scoring is less accurate. `pip install rapidfuzz`"
+        )
 
 
-def _run_analysis(db_path: str,
-                  limit: int,
-                  do_export: bool,
-                  export_filename: Optional[str],
-                  do_suggest: bool,
-                  alias_min_revenue: float,
-                  alias_min_score: float) -> None:
+def _run_analysis(
+    db_path: str,
+    limit: int,
+    do_export: bool,
+    export_filename: Optional[str],
+    do_suggest: bool,
+    alias_min_revenue: float,
+    alias_min_score: float,
+) -> None:
     """Run the main analysis workflow."""
     matches = analyze_customer_names(db_path, NORMALIZATION_CONFIG)
     s = summarize(matches)
     print_summary(s)
     print_detailed(matches, limit=limit)
-    
+
     if do_suggest:
-        suggest_alias_sql(matches, min_revenue=alias_min_revenue, min_score=alias_min_score)
-    
+        suggest_alias_sql(
+            matches, min_revenue=alias_min_revenue, min_score=alias_min_score
+        )
+
     if do_export:
         export_unmatched_csv(matches, export_filename)
-    
+
     print("\nDone.")
 
 
@@ -99,13 +130,13 @@ def run_with_args(args) -> None:
     _ensure_db(args.db_path)
     _warn_if_no_rapidfuzz()
     _run_analysis(
-        args.db_path, 
-        args.limit, 
-        args.export_unmatched, 
+        args.db_path,
+        args.limit,
+        args.export_unmatched,
         args.export_filename,
-        args.suggest_aliases, 
-        args.alias_min_revenue, 
-        args.alias_min_score
+        args.suggest_aliases,
+        args.alias_min_revenue,
+        args.alias_min_score,
     )
 
 

@@ -18,6 +18,7 @@ from typing import Iterable, List, Tuple
 try:
     from unidecode import unidecode  # type: ignore
 except ImportError:  # pragma: no cover
+
     def unidecode(s: str) -> str:  # minimal fallback
         return s
 
@@ -27,9 +28,33 @@ except ImportError:  # pragma: no cover
 
 # Business suffixes commonly appended to legal names.
 BUSINESS_SUFFIXES: Iterable[str] = (
-    "incorporated", "inc", "l.l.c", "llc", "co", "co.", "corp", "corp.", "ltd", "ltd.",
-    "company", "companies", "llp", "lp", "plc", "gmbh", "s.a.", "s.a", "s.p.a", "sa", "bv",
-    "pty", "pte", "kk", "kabushiki", "有限会社", "株式会社"
+    "incorporated",
+    "inc",
+    "l.l.c",
+    "llc",
+    "co",
+    "co.",
+    "corp",
+    "corp.",
+    "ltd",
+    "ltd.",
+    "company",
+    "companies",
+    "llp",
+    "lp",
+    "plc",
+    "gmbh",
+    "s.a.",
+    "s.a",
+    "s.p.a",
+    "sa",
+    "bv",
+    "pty",
+    "pte",
+    "kk",
+    "kabushiki",
+    "有限会社",
+    "株式会社",
 )
 
 # Leading articles to remove.
@@ -37,9 +62,9 @@ ARTICLES: Iterable[str] = ("the",)
 
 # Tokens frequently present after/around client names inside bill codes.
 NOISE_TOKENS: Iterable[str] = (
-    r"\b(q\d{1}|fy\d{2,4}|h\d|s\d|w\d)\b",          # Q4, FY24, H1, S2, W3
+    r"\b(q\d{1}|fy\d{2,4}|h\d|s\d|w\d)\b",  # Q4, FY24, H1, S2, W3
     r"\b(holiday|promo|flight|brand|test|usa|us|na|intl|global)\b",
-    r"\b(sfo|sf|la|ny|nyc|chi|dal|sea|min|cv)\b",    # market/geo shorthands
+    r"\b(sfo|sf|la|ny|nyc|chi|dal|sea|min|cv)\b",  # market/geo shorthands
     r"\b(summer|spring|fall|winter)\b",
 )
 
@@ -50,14 +75,17 @@ SEPARATORS = r"[:\|\-/–—]"
 # Compiled regexes
 # -----------------
 _SUFFIXES_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(s) for s in BUSINESS_SUFFIXES) + r")\b\.?", re.IGNORECASE
+    r"\b(?:" + "|".join(re.escape(s) for s in BUSINESS_SUFFIXES) + r")\b\.?",
+    re.IGNORECASE,
 )
 _ARTICLES_RE = re.compile(
     r"\b(?:" + "|".join(re.escape(a) for a in ARTICLES) + r")\b", re.IGNORECASE
 )
 _NON_WORD_RE = re.compile(r"[^\w\s&]")
 _MULTI_WS_RE = re.compile(r"\s+")
-_YEAR_CODE_RE = re.compile(r"\b\d{2,4}\b")  # drop isolated years/codes commonly appended
+_YEAR_CODE_RE = re.compile(
+    r"\b\d{2,4}\b"
+)  # drop isolated years/codes commonly appended
 
 _NOISE_RES = [re.compile(pat, re.IGNORECASE) for pat in NOISE_TOKENS]
 _SEPARATORS_RE = re.compile(SEPARATORS)
@@ -66,6 +94,7 @@ _SEPARATORS_RE = re.compile(SEPARATORS)
 # -----------------
 # Public functions
 # -----------------
+
 
 def normalize_business_name(s: str) -> str:
     """

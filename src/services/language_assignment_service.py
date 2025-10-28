@@ -2,11 +2,13 @@ from typing import Dict, List, Optional
 import logging
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from src.models.language_assignment import LanguageAssignment, LanguageStatus
 from src.database.language_assignment_queries import LanguageAssignmentQueries
 from src.models.spot_category import SpotCategory
+
 
 class LanguageAssignmentService:
     """Language assignment with undetermined language detection"""
@@ -26,7 +28,7 @@ class LanguageAssignmentService:
             return default
         if hasattr(row, "get"):  # dict-like
             return row.get(key, default)
-        try:                     # sqlite3.Row
+        try:  # sqlite3.Row
             return row[key]
         except Exception:
             return getattr(row, key, default)
@@ -59,9 +61,9 @@ class LanguageAssignmentService:
                 language_code=self._english_code(),
                 language_status=LanguageStatus.INVALID,
                 confidence=0.0,
-                assignment_method='error_fallback',
+                assignment_method="error_fallback",
                 requires_review=True,
-                notes='Spot data not found',
+                notes="Spot data not found",
             )
 
         code = self._get(sd, "language_code")
@@ -87,21 +89,21 @@ class LanguageAssignmentService:
                 language_code=self._english_code(),
                 language_status=LanguageStatus.DEFAULT,
                 confidence=0.5,
-                assignment_method='default_english',
+                assignment_method="default_english",
                 requires_review=False,
-                notes='No language code provided, defaulted to English',
+                notes="No language code provided, defaulted to English",
             )
 
         # 'L' is undetermined (unless handled by COM/BB above)
-        if code_u == 'L':
+        if code_u == "L":
             return LanguageAssignment(
                 spot_id=spot_id,
-                language_code='L',
+                language_code="L",
                 language_status=LanguageStatus.UNDETERMINED,
                 confidence=0.0,
-                assignment_method='undetermined_flagged',
+                assignment_method="undetermined_flagged",
                 requires_review=True,
-                notes='Language not determined - requires manual review',
+                notes="Language not determined - requires manual review",
             )
 
         # Valid code present?
@@ -111,7 +113,7 @@ class LanguageAssignmentService:
                 language_code=code_u,  # store canonical uppercase
                 language_status=LanguageStatus.DETERMINED,
                 confidence=1.0,
-                assignment_method='direct_mapping',
+                assignment_method="direct_mapping",
                 requires_review=False,
                 notes=None,
             )
@@ -122,12 +124,14 @@ class LanguageAssignmentService:
             language_code=str(code) if code is not None else "",
             language_status=LanguageStatus.INVALID,
             confidence=0.0,
-            assignment_method='invalid_code_flagged',
+            assignment_method="invalid_code_flagged",
             requires_review=True,
             notes=f'Language code "{code}" not found in languages table - requires manual review',
         )
 
-    def batch_assign_languages(self, spot_ids: List[int]) -> Dict[int, LanguageAssignment]:
+    def batch_assign_languages(
+        self, spot_ids: List[int]
+    ) -> Dict[int, LanguageAssignment]:
         results: Dict[int, LanguageAssignment] = {}
         for i, sid in enumerate(spot_ids):
             try:
@@ -138,16 +142,18 @@ class LanguageAssignmentService:
                 self.logger.error(f"Error processing spot {sid}: {e}")
                 results[sid] = LanguageAssignment(
                     spot_id=sid,
-                    language_code='ERROR',
+                    language_code="ERROR",
                     language_status=LanguageStatus.INVALID,
                     confidence=0.0,
-                    assignment_method='error',
+                    assignment_method="error",
                     requires_review=True,
-                    notes=f'Processing error: {e}',
+                    notes=f"Processing error: {e}",
                 )
         return results
 
-    def get_review_required_spots(self, limit: Optional[int] = None) -> List[LanguageAssignment]:
+    def get_review_required_spots(
+        self, limit: Optional[int] = None
+    ) -> List[LanguageAssignment]:
         """Return only spots that *still* require review after applying rules."""
         ids = self.queries.get_all_review_required_spots(limit)
         out = []
@@ -186,12 +192,16 @@ class LanguageAssignmentService:
 
     def _load_valid_language_codes(self) -> set:
         cur = self.db_connection.cursor()
-        cur.execute("SELECT UPPER(language_code) FROM languages WHERE language_code IS NOT NULL")
+        cur.execute(
+            "SELECT UPPER(language_code) FROM languages WHERE language_code IS NOT NULL"
+        )
         return {r[0] for r in cur.fetchall()}
 
     # ---- category APIs (single, de-duped versions) ----
 
-    def get_spots_by_category(self, category: SpotCategory, limit: Optional[int] = None) -> List[int]:
+    def get_spots_by_category(
+        self, category: SpotCategory, limit: Optional[int] = None
+    ) -> List[int]:
         cur = self.db_connection.cursor()
         q = "SELECT spot_id FROM spots WHERE spot_category = ? ORDER BY spot_id"
         if limit:
@@ -202,7 +212,9 @@ class LanguageAssignmentService:
         return [r[0] for r in cur.fetchall()]
 
     def process_language_required_spots(self, spot_ids: List[int]) -> Dict[str, int]:
-        self.logger.info(f"Processing {len(spot_ids):,} language assignment required spots...")
+        self.logger.info(
+            f"Processing {len(spot_ids):,} language assignment required spots..."
+        )
         res = {"processed": 0, "assigned": 0, "errors": 0, "review_flagged": 0}
         for i, sid in enumerate(spot_ids):
             try:
@@ -214,7 +226,9 @@ class LanguageAssignmentService:
                 else:
                     res["assigned"] += 1
                 if (i + 1) % 1000 == 0:
-                    self.logger.info(f"Processed {i + 1:,}/{len(spot_ids):,} language required spots...")
+                    self.logger.info(
+                        f"Processed {i + 1:,}/{len(spot_ids):,} language required spots..."
+                    )
             except Exception as e:
                 self.logger.error(f"Error processing language required spot {sid}: {e}")
                 res["errors"] += 1
@@ -229,10 +243,13 @@ class LanguageAssignmentService:
 
                 if a.requires_review:
                     # Keep specific reasons (L or invalid) as-is; only generalize to business_review_required otherwise
-                    if a.language_status not in (LanguageStatus.UNDETERMINED, LanguageStatus.INVALID):
+                    if a.language_status not in (
+                        LanguageStatus.UNDETERMINED,
+                        LanguageStatus.INVALID,
+                    ):
                         a = LanguageAssignment(
                             spot_id=sid,
-                            language_code=self._english_code(),           # or keep the spot code if you prefer
+                            language_code=self._english_code(),  # or keep the spot code if you prefer
                             language_status=LanguageStatus.DEFAULT,
                             confidence=0.5,
                             assignment_method="business_review_required",
@@ -245,12 +262,16 @@ class LanguageAssignmentService:
                 saved += 1
 
             except Exception as e:
-                self.logger.debug(f"Error saving review category assignment for spot {sid}: {e}")
+                self.logger.debug(
+                    f"Error saving review category assignment for spot {sid}: {e}"
+                )
                 errors += 1
 
-        return {"processed": len(spot_ids), "flagged_for_review": flagged, "errors": errors}
-
-
+        return {
+            "processed": len(spot_ids),
+            "flagged_for_review": flagged,
+            "errors": errors,
+        }
 
     def process_default_english_spots(self, spot_ids: List[int]) -> Dict[str, int]:
         self.logger.info(f"Processing {len(spot_ids):,} default English spots...")
@@ -258,27 +279,33 @@ class LanguageAssignmentService:
         saved = errors = 0
         code = self._english_code()
         for i in range(0, len(spot_ids), batch_size):
-            for sid in spot_ids[i:i + batch_size]:
+            for sid in spot_ids[i : i + batch_size]:
                 try:
                     a = LanguageAssignment(
                         spot_id=sid,
                         language_code=code,
                         language_status=LanguageStatus.DETERMINED,
                         confidence=1.0,
-                        assignment_method='business_rule_default_english',
+                        assignment_method="business_rule_default_english",
                         requires_review=False,
-                        notes='Default English by business rule - no language assignment required',
+                        notes="Default English by business rule - no language assignment required",
                     )
                     self.queries.save_language_assignment(a)
                     saved += 1
                 except Exception as e:
-                    self.logger.error(f"Error saving default English assignment for spot {sid}: {e}")
+                    self.logger.error(
+                        f"Error saving default English assignment for spot {sid}: {e}"
+                    )
                     errors += 1
             if (i + batch_size) % (batch_size * 5) == 0:
-                self.logger.info(f"Processed {saved:,}/{len(spot_ids):,} default English spots...")
+                self.logger.info(
+                    f"Processed {saved:,}/{len(spot_ids):,} default English spots..."
+                )
         return {"processed": len(spot_ids), "assigned": saved, "errors": errors}
 
-    def get_spots_by_category_and_batch(self, category, batch_id: str, limit: Optional[int] = None) -> List[int]:
+    def get_spots_by_category_and_batch(
+        self, category, batch_id: str, limit: Optional[int] = None
+    ) -> List[int]:
         cur = self.db_connection.cursor()
         q = """
             SELECT spot_id FROM spots
@@ -287,7 +314,17 @@ class LanguageAssignmentService:
         """
         if limit:
             q += " LIMIT ?"
-            cur.execute(q, (category.value if hasattr(category, 'value') else category, batch_id, limit))
+            cur.execute(
+                q,
+                (
+                    category.value if hasattr(category, "value") else category,
+                    batch_id,
+                    limit,
+                ),
+            )
         else:
-            cur.execute(q, (category.value if hasattr(category, 'value') else category, batch_id))
+            cur.execute(
+                q,
+                (category.value if hasattr(category, "value") else category, batch_id),
+            )
         return [r[0] for r in cur.fetchall()]

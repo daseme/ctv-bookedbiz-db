@@ -19,16 +19,16 @@ from pathlib import Path
 
 def create_directory_structure():
     """Create the proper directory structure"""
-    
+
     directories = [
         "src",
         "src/reports",
         "tests",
         "tests/migration_tests",
         "reports",
-        "docs"
+        "docs",
     ]
-    
+
     for directory in directories:
         Path(directory).mkdir(parents=True, exist_ok=True)
         print(f"✅ Created directory: {directory}")
@@ -36,25 +36,23 @@ def create_directory_structure():
 
 def move_files_to_proper_locations():
     """Move files to their proper locations"""
-    
+
     # Files to move to tests/migration_tests/
     test_files = [
         "test_base_builder.py",
         "complete_revenue_test.py",
         "individual_language_migration.py",
-        "chinese_prime_time_migration.py", 
+        "chinese_prime_time_migration.py",
         "multi_language_migration.py",
         "other_non_language_migration.py",
         "overnight_shopping_migration.py",
         "prd_svc_migration.py",
-        "complete_reconciliation_test.py"
+        "complete_reconciliation_test.py",
     ]
-    
+
     # Core files to move to src/
-    core_files = [
-        "query_builders.py"
-    ]
-    
+    core_files = ["query_builders.py"]
+
     # Move test files
     for file in test_files:
         if os.path.exists(file):
@@ -62,7 +60,7 @@ def move_files_to_proper_locations():
             print(f"✅ Moved {file} to tests/migration_tests/")
         else:
             print(f"⚠️  {file} not found, skipping")
-    
+
     # Move core files
     for file in core_files:
         if os.path.exists(file):
@@ -74,19 +72,19 @@ def move_files_to_proper_locations():
 
 def create_main_files():
     """Create the main system files"""
-    
+
     # Create src/__init__.py
     with open("src/__init__.py", "w") as f:
         f.write('"""Revenue Analysis System"""\n')
-    
+
     # Create tests/__init__.py
     with open("tests/__init__.py", "w") as f:
         f.write('"""Revenue Analysis Tests"""\n')
-    
+
     # Create tests/migration_tests/__init__.py
     with open("tests/migration_tests/__init__.py", "w") as f:
         f.write('"""Migration Tests"""\n')
-    
+
     # Create main CLI script
     with open("revenue_analysis.py", "w") as f:
         f.write("""#!/usr/bin/env python3
@@ -113,7 +111,7 @@ from revenue_analysis import main
 if __name__ == "__main__":
     main()
 """)
-    
+
     # Create README.md
     with open("README.md", "w") as f:
         f.write("""# Revenue Analysis System
@@ -162,13 +160,13 @@ The system achieves 0.000000% error rate with perfect revenue reconciliation acr
 - **Cross-Audience Strategy**: $1.1M+ total revenue
 - **Weekend Programming**: Strong cross-audience weekend performance
 """)
-    
+
     print("✅ Created main system files")
 
 
 def create_example_usage():
     """Create example usage script"""
-    
+
     with open("example_usage.py", "w") as f:
         f.write("""#!/usr/bin/env python3
 \"\"\"
@@ -217,18 +215,20 @@ def main():
 if __name__ == "__main__":
     main()
 """)
-    
+
     print("✅ Created example usage script")
 
 
 def update_query_builders():
     """Update query_builders.py with all the new classes"""
-    
+
     # Check if src/query_builders.py exists, if not create it
     if not os.path.exists("src/query_builders.py"):
-        print("⚠️  src/query_builders.py not found, you'll need to copy the BaseQueryBuilder code there")
+        print(
+            "⚠️  src/query_builders.py not found, you'll need to copy the BaseQueryBuilder code there"
+        )
         return
-    
+
     # Add the additional classes to query_builders.py
     additional_classes = '''
 
@@ -365,39 +365,39 @@ class ServicesQueryBuilder(BaseQueryBuilder):
         self.add_filter("s.spot_type = 'SVC'")
         return self
 '''
-    
+
     with open("src/query_builders.py", "a") as f:
         f.write(additional_classes)
-    
+
     print("✅ Updated query_builders.py with additional classes")
 
 
 def main():
     """Main cleanup function"""
-    
+
     print("🧹 Cleaning up and organizing BaseQueryBuilder files")
     print("=" * 60)
-    
+
     # Step 1: Create directory structure
     print("\\n1. Creating directory structure...")
     create_directory_structure()
-    
+
     # Step 2: Move files to proper locations
     print("\\n2. Moving files to proper locations...")
     move_files_to_proper_locations()
-    
+
     # Step 3: Create main system files
     print("\\n3. Creating main system files...")
     create_main_files()
-    
+
     # Step 4: Create example usage
     print("\\n4. Creating example usage...")
     create_example_usage()
-    
+
     # Step 5: Update query builders
     print("\\n5. Updating query builders...")
     # update_query_builders()  # Commented out since we need to handle this manually
-    
+
     print("\\n✅ CLEANUP COMPLETE!")
     print("=" * 60)
     print("\\nYour new file structure:")
@@ -411,16 +411,20 @@ def main():
     print("├── revenue_analysis.py         # Main CLI script")
     print("├── example_usage.py            # Example usage")
     print("└── README.md                   # Documentation")
-    
+
     print("\\n🚀 HOW TO USE THE CLEAN SYSTEM:")
     print("  # Quick summary")
     print("  python revenue_analysis.py --year 2024")
     print("  ")
     print("  # Full markdown report")
-    print("  python revenue_analysis.py --year 2024 --format markdown --output reports/revenue_2024.md")
+    print(
+        "  python revenue_analysis.py --year 2024 --format markdown --output reports/revenue_2024.md"
+    )
     print("  ")
     print("  # JSON for other systems")
-    print("  python revenue_analysis.py --year 2024 --format json --output reports/revenue_2024.json")
+    print(
+        "  python revenue_analysis.py --year 2024 --format json --output reports/revenue_2024.json"
+    )
     print("  ")
     print("  # Example usage")
     print("  python example_usage.py")

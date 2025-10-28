@@ -29,9 +29,11 @@ from dataclasses import dataclass
 # Ensure relative imports resolve if needed
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+
 @dataclass
 class UnifiedResult:
     """Unified result structure for both language and category analysis"""
+
     name: str
     revenue: float
     percentage: float
@@ -46,7 +48,7 @@ class UpdatedUnifiedAnalysisEngine:
     """
     Updated unified analysis engine using the new language assignment system
     with multiyear support and simplified business rule categories.
-    
+
     Language-Targeted Advertising now includes ALL Internal Ad Sales spots.
     """
 
@@ -74,7 +76,9 @@ class UpdatedUnifiedAnalysisEngine:
             start_year = int(start_year)
             end_year = int(end_year)
             if start_year > end_year:
-                raise ValueError(f"Start year {start_year} cannot be greater than end year {end_year}")
+                raise ValueError(
+                    f"Start year {start_year} cannot be greater than end year {end_year}"
+                )
             full_years = [str(y) for y in range(start_year, end_year + 1)]
             suffixes = [y[-2:] for y in full_years]
         else:
@@ -119,8 +123,9 @@ class UpdatedUnifiedAnalysisEngine:
             "year_range": year_input,
         }
 
-
-    def get_business_category_assignment_method_crosstab(self, year_input: str = "2024"):
+    def get_business_category_assignment_method_crosstab(
+        self, year_input: str = "2024"
+    ):
         """
         Language-Targeted Advertising now includes ALL Internal Ad Sales spots.
         """
@@ -196,7 +201,7 @@ class UpdatedUnifiedAnalysisEngine:
             "Internal Ad Sales",
             "Direct Response Sales",
             "Paid Programming",
-            "Branded Content",    
+            "Branded Content",
             "Other/Review Required",
         ]
 
@@ -217,10 +222,11 @@ class UpdatedUnifiedAnalysisEngine:
 
         return {"rows": rows_ordered, "cols": cols, "cells": table}
 
-
     # ---------------- Categories (mutually exclusive) ----------------
 
-    def get_mutually_exclusive_categories(self, year_input: str = "2024") -> List[UnifiedResult]:
+    def get_mutually_exclusive_categories(
+        self, year_input: str = "2024"
+    ) -> List[UnifiedResult]:
         """
         Categories based on business rules:
         1) Internal Ad Sales spots
@@ -264,7 +270,11 @@ class UpdatedUnifiedAnalysisEngine:
         AND s.revenue_type = 'Internal Ad Sales'
         """
         rev, paid, bns, tot = fetch(q4)
-        cats.append(UnifiedResult("Internal Ad Sales", rev, 0, paid, bns, tot, rev / tot if tot else 0))
+        cats.append(
+            UnifiedResult(
+                "Internal Ad Sales", rev, 0, paid, bns, tot, rev / tot if tot else 0
+            )
+        )
 
         # 2) Direct Response Sales
         q1 = f"""
@@ -278,7 +288,11 @@ class UpdatedUnifiedAnalysisEngine:
         AND s.revenue_type = 'Direct Response Sales'
         """
         rev, paid, bns, tot = fetch(q1)
-        cats.append(UnifiedResult("Direct Response Sales", rev, 0, paid, bns, tot, rev / tot if tot else 0))
+        cats.append(
+            UnifiedResult(
+                "Direct Response Sales", rev, 0, paid, bns, tot, rev / tot if tot else 0
+            )
+        )
 
         # 3) Paid Programming
         q2 = f"""
@@ -292,7 +306,11 @@ class UpdatedUnifiedAnalysisEngine:
         AND s.revenue_type = 'Paid Programming'
         """
         rev, paid, bns, tot = fetch(q2)
-        cats.append(UnifiedResult("Paid Programming", rev, 0, paid, bns, tot, rev / tot if tot else 0))
+        cats.append(
+            UnifiedResult(
+                "Paid Programming", rev, 0, paid, bns, tot, rev / tot if tot else 0
+            )
+        )
 
         # 4) Branded Content
         q3 = f"""
@@ -306,8 +324,11 @@ class UpdatedUnifiedAnalysisEngine:
         AND s.revenue_type = 'Branded Content'
         """
         rev, paid, bns, tot = fetch(q3)
-        cats.append(UnifiedResult("Branded Content", rev, 0, paid, bns, tot, rev / tot if tot else 0))
-
+        cats.append(
+            UnifiedResult(
+                "Branded Content", rev, 0, paid, bns, tot, rev / tot if tot else 0
+            )
+        )
 
         # 5) Other/Review Required (only revenue_type = 'Other' now)
         q6 = f"""
@@ -322,7 +343,11 @@ class UpdatedUnifiedAnalysisEngine:
         """
 
         rev, paid, bns, tot = fetch(q6)
-        cats.append(UnifiedResult("Other/Review Required", rev, 0, paid, bns, tot, rev / tot if tot else 0))
+        cats.append(
+            UnifiedResult(
+                "Other/Review Required", rev, 0, paid, bns, tot, rev / tot if tot else 0
+            )
+        )
 
         # Calculate percentages
         total_rev = sum(c.revenue for c in cats)
@@ -332,7 +357,9 @@ class UpdatedUnifiedAnalysisEngine:
 
     # ---------------- Language analysis ----------------
 
-    def get_unified_language_analysis(self, year_input: str = "2024") -> List[UnifiedResult]:
+    def get_unified_language_analysis(
+        self, year_input: str = "2024"
+    ) -> List[UnifiedResult]:
         """
         Simplified language categorization: Only main business-relevant categories,
         everything else goes to "Other: Undetermined"
@@ -384,7 +411,9 @@ class UpdatedUnifiedAnalysisEngine:
             paid = int(row["paid_spots"] or 0)
             bns = int(row["bonus_spots"] or 0)
             tot = int(row["total_spots"] or 0)
-            out.append(UnifiedResult(lang, rev, 0, paid, bns, tot, rev / tot if tot else 0))
+            out.append(
+                UnifiedResult(lang, rev, 0, paid, bns, tot, rev / tot if tot else 0)
+            )
         total_rev = sum(x.revenue for x in out)
         for x in out:
             x.percentage = (x.revenue / total_rev * 100) if total_rev else 0
@@ -392,7 +421,9 @@ class UpdatedUnifiedAnalysisEngine:
 
     # ---------------- Assignment method analysis ----------------
 
-    def get_assignment_method_analysis(self, year_input: str = "2024") -> List[UnifiedResult]:
+    def get_assignment_method_analysis(
+        self, year_input: str = "2024"
+    ) -> List[UnifiedResult]:
         """
         Include the new auto_default_com_bb method in the mapping.
         """
@@ -435,7 +466,9 @@ class UpdatedUnifiedAnalysisEngine:
                     paid_spots=int(row["paid_spots"] or 0),
                     bonus_spots=int(row["bonus_spots"] or 0),
                     total_spots=int(row["total_spots"] or 0),
-                    avg_per_spot=(float(row["revenue"] or 0) / int(row["total_spots"])) if int(row["total_spots"]) else 0,
+                    avg_per_spot=(float(row["revenue"] or 0) / int(row["total_spots"]))
+                    if int(row["total_spots"])
+                    else 0,
                     details={
                         "avg_confidence": float(row["avg_confidence"] or 0),
                         "review_count": int(row["review_count"] or 0),
@@ -616,7 +649,9 @@ class UpdatedUnifiedAnalysisEngine:
 
     # ---------------- Report formatting ----------------
 
-    def _format_table(self, results: List[UnifiedResult], title: str, subtitle: str, year_display: str) -> str:
+    def _format_table(
+        self, results: List[UnifiedResult], title: str, subtitle: str, year_display: str
+    ) -> str:
         total_revenue = sum(r.revenue for r in results)
         total_paid_spots = sum(r.paid_spots for r in results)
         total_bonus_spots = sum(r.bonus_spots for r in results)
@@ -633,16 +668,22 @@ class UpdatedUnifiedAnalysisEngine:
             lines.append(
                 f"| {r.name} | ${r.revenue:,.2f} | {r.percentage:.1f}% | {r.paid_spots:,} | {r.bonus_spots:,} | {r.total_spots:,} | ${r.avg_per_spot:.2f} |"
             )
-        lines.append("|----------|---------|------------|-----------|-----------|-------------|----------|")
+        lines.append(
+            "|----------|---------|------------|-----------|-----------|-------------|----------|"
+        )
         lines.append(
             f"| **TOTAL** | **${total_revenue:,.2f}** | **100.0%** | **{total_paid_spots:,}** | **{total_bonus_spots:,}** | **{total_all_spots:,}** | **${total_avg_per_spot:.2f}** |"
         )
         return "\n".join(lines)
 
-    def _format_assignment_method_table(self, results: List[UnifiedResult], title: str, subtitle: str, year_display: str) -> str:
+    def _format_assignment_method_table(
+        self, results: List[UnifiedResult], title: str, subtitle: str, year_display: str
+    ) -> str:
         total_revenue = sum(r.revenue for r in results)
         total_spots = sum(r.total_spots for r in results)
-        total_review = sum(r.details.get("review_count", 0) for r in results if r.details)
+        total_review = sum(
+            r.details.get("review_count", 0) for r in results if r.details
+        )
 
         lines = [
             f"## {title}",
@@ -656,13 +697,17 @@ class UpdatedUnifiedAnalysisEngine:
             lines.append(
                 f"| {r.name} | ${r.revenue:,.2f} | {r.percentage:.1f}% | {r.total_spots:,} | {avg_conf:.2f} | {rev_cnt:,} |"
             )
-        lines.append("|-------------------|---------|------------|-------------|----------------|--------------|")
+        lines.append(
+            "|-------------------|---------|------------|-------------|----------------|--------------|"
+        )
         lines.append(
             f"| **TOTAL** | **${total_revenue:,.2f}** | **100.0%** | **{total_spots:,}** | **N/A** | **{total_review:,}** |"
         )
         return "\n".join(lines)
 
-    def _format_crosstab_counts_table(self, xtab, title: str, subtitle: str, year_display: str) -> str:
+    def _format_crosstab_counts_table(
+        self, xtab, title: str, subtitle: str, year_display: str
+    ) -> str:
         """
         Render a Markdown table where each cell shows:
         spots (rev $K)  — e.g., "1,234 ($567k)"
@@ -673,8 +718,17 @@ class UpdatedUnifiedAnalysisEngine:
         cells = xtab["cells"]
 
         # Header
-        header = "| Business Category | " + " | ".join(cols) + " | Total Spots | Review Count |\n"
-        sep = "|" + "------------------|" + "|".join(["---------------------------" for _ in cols]) + "|-------------|--------------|\n"
+        header = (
+            "| Business Category | "
+            + " | ".join(cols)
+            + " | Total Spots | Review Count |\n"
+        )
+        sep = (
+            "|"
+            + "------------------|"
+            + "|".join(["---------------------------" for _ in cols])
+            + "|-------------|--------------|\n"
+        )
 
         lines = [f"## {title}", f"### {subtitle} ({year_display})", header, sep]
 
@@ -686,7 +740,9 @@ class UpdatedUnifiedAnalysisEngine:
             row_total_review = 0
             cells_markdown = []
             for m in cols:
-                cell = cells.get(cat, {}).get(m, {"spots": 0, "revenue": 0.0, "review_count": 0})
+                cell = cells.get(cat, {}).get(
+                    m, {"spots": 0, "revenue": 0.0, "review_count": 0}
+                )
                 spots = int(cell["spots"])
                 rev_k = cell["revenue"] / 1000.0
                 row_total_spots += spots
@@ -694,19 +750,30 @@ class UpdatedUnifiedAnalysisEngine:
                 cells_markdown.append(f"{spots:,} (${rev_k:,.0f}k)")
             grand_total_spots += row_total_spots
             grand_total_review += row_total_review
-            lines.append(f"| {cat} | " + " | ".join(cells_markdown) + f" | {row_total_spots:,} | {row_total_review:,} |")
+            lines.append(
+                f"| {cat} | "
+                + " | ".join(cells_markdown)
+                + f" | {row_total_spots:,} | {row_total_review:,} |"
+            )
 
         # Totals row (column totals for spots)
         col_totals = []
         for m in cols:
-            total_spots = sum(cells.get(cat, {}).get(m, {"spots": 0})["spots"] for cat in rows)
-            total_rev = sum(cells.get(cat, {}).get(m, {"revenue": 0.0})["revenue"] for cat in rows)
-            col_totals.append(f"**{total_spots:,} (${total_rev/1000.0:,.0f}k)**")
+            total_spots = sum(
+                cells.get(cat, {}).get(m, {"spots": 0})["spots"] for cat in rows
+            )
+            total_rev = sum(
+                cells.get(cat, {}).get(m, {"revenue": 0.0})["revenue"] for cat in rows
+            )
+            col_totals.append(f"**{total_spots:,} (${total_rev / 1000.0:,.0f}k)**")
 
-        lines.append("| **TOTAL** | " + " | ".join(col_totals) + f" | **{grand_total_spots:,}** | **{grand_total_review:,}** |")
+        lines.append(
+            "| **TOTAL** | "
+            + " | ".join(col_totals)
+            + f" | **{grand_total_spots:,}** | **{grand_total_review:,}** |"
+        )
 
         return "\n".join(lines)
-
 
     def _generate_updated_system_notes(self) -> str:
         return """## 📋 Language Assignment System Notes
@@ -739,32 +806,41 @@ Other Notes:
   The new system focuses primarily on revenue_type for business categorization, with spot_type being less critical.
 """
 
-
     def generate_updated_unified_tables(self, year_input: str = "2024") -> str:
         full_years, _ = self.parse_year_range(year_input)
-        year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
+        year_display = (
+            f"{full_years[0]}-{full_years[-1]}"
+            if len(full_years) > 1
+            else full_years[0]
+        )
 
         categories = self.get_mutually_exclusive_categories(year_input)
         languages = self.get_unified_language_analysis(year_input)
         validation = self.validate_reconciliation(year_input)
 
         category_table = self._format_table(
-            categories, "📊 Business Rule Category Breakdown", "Revenue Categories", year_display
+            categories,
+            "📊 Business Rule Category Breakdown",
+            "Revenue Categories",
+            year_display,
         )
         language_table = self._format_table(
-            languages, "🌐 Language-Targeted Advertising", "Internal Ad Sales by Language", year_display
+            languages,
+            "🌐 Language-Targeted Advertising",
+            "Internal Ad Sales by Language",
+            year_display,
         )
 
         return f"""# Language-Targeted Advertising Analysis - {year_display}
 
     ## 🎯 Reconciliation
 
-    - **Years**: {', '.join(validation['base_totals']['years'])}
-    - **Base Revenue**: ${validation['base_totals']['revenue']:,.2f}
-    - **Category Total**: ${validation['category_totals']['revenue']:,.2f}
-    - **Revenue Δ**: ${validation['revenue_difference']:,.2f}
-    - **Spots Δ**: {validation['spot_difference']:,}
-    - **Perfect?**: {'✅ YES' if validation['perfect_reconciliation'] else '❌ NO'}
+    - **Years**: {", ".join(validation["base_totals"]["years"])}
+    - **Base Revenue**: ${validation["base_totals"]["revenue"]:,.2f}
+    - **Category Total**: ${validation["category_totals"]["revenue"]:,.2f}
+    - **Revenue Δ**: ${validation["revenue_difference"]:,.2f}
+    - **Spots Δ**: {validation["spot_difference"]:,}
+    - **Perfect?**: {"✅ YES" if validation["perfect_reconciliation"] else "❌ NO"}
 
     {category_table}
 
@@ -792,17 +868,37 @@ Examples:
   python src/unified_analysis.py --year 2024 --output reports/updated_unified_2024.md
         """,
     )
-    p.add_argument("--year", default="2024", help="Year or range, e.g. 2024 or 2023-2024")
-    p.add_argument("--db-path", default="data/database/production.db", help="SQLite DB path")
+    p.add_argument(
+        "--year", default="2024", help="Year or range, e.g. 2024 or 2023-2024"
+    )
+    p.add_argument(
+        "--db-path", default="data/database/production.db", help="SQLite DB path"
+    )
     p.add_argument("--output", help="Write full report (Markdown) to this file")
-    p.add_argument("--validate-only", action="store_true", help="Only run reconciliation checks")
-    p.add_argument("--assignment-methods-only", action="store_true", help="Print only assignment method analysis")
+    p.add_argument(
+        "--validate-only", action="store_true", help="Only run reconciliation checks"
+    )
+    p.add_argument(
+        "--assignment-methods-only",
+        action="store_true",
+        help="Print only assignment method analysis",
+    )
     # New: Python export of review lines
-    p.add_argument("--export-review", metavar="CSV", help="Export review-required lines to CSV")
+    p.add_argument(
+        "--export-review", metavar="CSV", help="Export review-required lines to CSV"
+    )
     p.add_argument(
         "--review-type",
         default="all",
-        choices=["all", "business", "undetermined", "invalid", "high-value", "low-confidence", "fallback"],
+        choices=[
+            "all",
+            "business",
+            "undetermined",
+            "invalid",
+            "high-value",
+            "low-confidence",
+            "fallback",
+        ],
         help="Filter for --export-review (default: all)",
     )
     args = p.parse_args()
@@ -810,8 +906,12 @@ Examples:
     try:
         with UpdatedUnifiedAnalysisEngine(args.db_path) as eng:
             if args.export_review:
-                count = eng.export_review_required(args.year, args.export_review, args.review_type)
-                print(f"✅ Exported {count} review-required rows to {args.export_review}")
+                count = eng.export_review_required(
+                    args.year, args.export_review, args.review_type
+                )
+                print(
+                    f"✅ Exported {count} review-required rows to {args.export_review}"
+                )
                 return
 
             if args.validate_only:
@@ -833,7 +933,9 @@ Examples:
                 for r in rows:
                     avg_conf = r.details.get("avg_confidence", 0) if r.details else 0
                     rev_cnt = r.details.get("review_count", 0) if r.details else 0
-                    print(f"{r.name}: ${r.revenue:,.2f} ({r.percentage:.1f}%) - {r.total_spots:,} spots")
+                    print(
+                        f"{r.name}: ${r.revenue:,.2f} ({r.percentage:.1f}%) - {r.total_spots:,} spots"
+                    )
                     print(f"  Confidence: {avg_conf:.2f}, Review Count: {rev_cnt:,}")
                 return
 
@@ -854,6 +956,7 @@ Examples:
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

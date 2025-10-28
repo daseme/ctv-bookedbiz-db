@@ -17,22 +17,22 @@ from .report_data import (
     QuarterlyPerformanceReportData,
     SectorPerformanceReportData,
     create_customer_monthly_row_from_dict,
-    create_month_status_from_closure_data
+    create_month_status_from_closure_data,
 )
 
 __all__ = [
-    'ReportFilters',
-    'ReportMetadata', 
-    'MonthStatus',
-    'CustomerMonthlyRow',
-    'AEPerformanceData',
-    'QuarterlyData',
-    'SectorData',
-    'CustomerSectorData',
-    'MonthlyRevenueReportData',
-    'AEPerformanceReportData',
-    'QuarterlyPerformanceReportData',
-    'SectorPerformanceReportData',
-    'create_customer_monthly_row_from_dict',
-    'create_month_status_from_closure_data'
+    "ReportFilters",
+    "ReportMetadata",
+    "MonthStatus",
+    "CustomerMonthlyRow",
+    "AEPerformanceData",
+    "QuarterlyData",
+    "SectorData",
+    "CustomerSectorData",
+    "MonthlyRevenueReportData",
+    "AEPerformanceReportData",
+    "QuarterlyPerformanceReportData",
+    "SectorPerformanceReportData",
+    "create_customer_monthly_row_from_dict",
+    "create_month_status_from_closure_data",
 ]

@@ -36,6 +36,7 @@ from .normalization import (
 # Optional deps (guarded)
 try:
     from rapidfuzz import fuzz
+
     HAVE_RAPIDFUZZ = True
 except ImportError:
     HAVE_RAPIDFUZZ = False
@@ -45,21 +46,26 @@ try:
 except ImportError:
     doublemetaphone = None  # type: ignore
 
+
 def _metaphone_primary(s: str) -> str:
     if not doublemetaphone:
         return ""
     a, b = doublemetaphone(s)
     return a or ""
 
+
 try:
     from unidecode import unidecode
 except ImportError:
+
     def unidecode(s: str) -> str:  # minimal fallback
         return s
 
 
 # ---------- Configuration (edit without touching code) ----------
-BUSINESS_SUFFIXES = r"(incorporated|inc|l\.l\.c|llc|co|co\.|corp|corp\.|ltd|ltd\.|company|companies)"
+BUSINESS_SUFFIXES = (
+    r"(incorporated|inc|l\.l\.c|llc|co|co\.|corp|corp\.|ltd|ltd\.|company|companies)"
+)
 ARTICLES = r"(the)"
 
 NORMALIZATION_CONFIG = {
@@ -73,7 +79,7 @@ NORMALIZATION_CONFIG = {
 
 # Tokens you often see after the client name inside bill codes
 NOISE_TOKENS = [
-    r"\b(q\d{1}|fy\d{2,4}|h\d|s\d|w\d)\b",     # Q4, FY24, H1, S2, W3
+    r"\b(q\d{1}|fy\d{2,4}|h\d|s\d|w\d)\b",  # Q4, FY24, H1, S2, W3
     r"\b(holiday|promo|flight|brand|test|usa|us|na|intl|global)\b",
     r"\b(sfo|sf|la|ny|nyc|chi|dal|sea|min|cv)\b",  # market/geo shorthands
     r"\b(summer|spring|fall|winter)\b",
@@ -85,13 +91,15 @@ SEPARATORS = r"[:\|\-/–—]"
 HIGH_CONF = 0.92
 REVIEW_MIN = 0.80
 
+
 # ---------- Data classes ----------
 @dataclass
 class Candidate:
     customer_id: int
-    name: str           # normalized name
-    raw_name: str       # the DB stored normalized_name (pre-normalized upstream)
+    name: str  # normalized name
+    raw_name: str  # the DB stored normalized_name (pre-normalized upstream)
     score: float = 0.0
+
 
 @dataclass
 class CustomerMatch:
@@ -104,11 +112,12 @@ class CustomerMatch:
     months: Set[str] = field(default_factory=set)
 
     # Matching outcome
-    status: str = "unknown"   # exact|alias|high_confidence|review|unknown
+    status: str = "unknown"  # exact|alias|high_confidence|review|unknown
     matched_customer_id: Optional[int] = None
     matched_customer_name: Optional[str] = None
     best_score: float = 0.0
     suggestions: List[Tuple[str, float]] = field(default_factory=list)
+
 
 # ---------- Pure helpers (top-down) ----------
 def analyze_customer_names(db_path: str, cfg: dict) -> List[CustomerMatch]:
@@ -134,7 +143,9 @@ def analyze_customer_names(db_path: str, cfg: dict) -> List[CustomerMatch]:
             revenue=row["total_revenue"] or 0.0,
             first_seen=row["first_seen"],
             last_seen=row["last_seen"],
-            months=set((row["broadcast_months"] or "").split(",")) if row["broadcast_months"] else set(),
+            months=set((row["broadcast_months"] or "").split(","))
+            if row["broadcast_months"]
+            else set(),
         )
 
         # 1) exact
@@ -317,7 +328,9 @@ def connect_ro(db_path: str) -> sqlite3.Connection:
     return con
 
 
-def load_customer_maps(db_path: str) -> Tuple[Dict[str, Tuple[int, str]], Dict[str, Tuple[int, str]]]:
+def load_customer_maps(
+    db_path: str,
+) -> Tuple[Dict[str, Tuple[int, str]], Dict[str, Tuple[int, str]]]:
     """
     Returns:
       customers: normalized_name(normalized) -> (customer_id, raw_db_name)
@@ -396,13 +409,15 @@ def summarize(matches: List[CustomerMatch]) -> Dict[str, float]:
 
 def print_summary(s: Dict[str, float]) -> None:
     pct = lambda n: (n / s["total"] * 100) if s["total"] else 0.0
-    print("\n" + "="*72)
+    print("\n" + "=" * 72)
     print("CUSTOMER NAME MATCHING — SUMMARY")
-    print("="*72)
+    print("=" * 72)
     print(f"Total unique:       {s['total']:,}")
     print(f"Exact:              {s['exact']:,} ({pct(s['exact']):.1f}%)")
     print(f"Alias:              {s['alias']:,} ({pct(s['alias']):.1f}%)")
-    print(f"High confidence:    {s['high_confidence']:,} ({pct(s['high_confidence']):.1f}%)")
+    print(
+        f"High confidence:    {s['high_confidence']:,} ({pct(s['high_confidence']):.1f}%)"
+    )
     print(f"Review:             {s['review']:,} ({pct(s['review']):.1f}%)")
     print(f"Unknown:            {s['unknown']:,} ({pct(s['unknown']):.1f}%)")
     print(f"Total revenue:      ${s['total_revenue']:,.2f}")
@@ -419,24 +434,34 @@ def print_detailed(matches: List[CustomerMatch], limit: int = 50) -> None:
 
     if review:
         print("\nREVIEW (top by revenue)")
-        print("-"*120)
-        print(f"{'BillCode Name':<34} | {'Revenue':>12} | {'Best Match':<36} | {'Score':>5}")
-        print("-"*120)
+        print("-" * 120)
+        print(
+            f"{'BillCode Name':<34} | {'Revenue':>12} | {'Best Match':<36} | {'Score':>5}"
+        )
+        print("-" * 120)
         for m in review:
             best = m.suggestions[0] if m.suggestions else ("", 0.0)
-            print(f"{m.bill_code_name_raw[:34]:<34} | ${m.revenue:>10,.0f} | {best[0][:36]:<36} | {best[1]:.3f}")
+            print(
+                f"{m.bill_code_name_raw[:34]:<34} | ${m.revenue:>10,.0f} | {best[0][:36]:<36} | {best[1]:.3f}"
+            )
 
     if unknown:
         print("\nUNKNOWN (top by revenue)")
-        print("-"*120)
+        print("-" * 120)
         print(f"{'BillCode Name':<50} | {'Revenue':>12} | {'First–Last Seen'}")
-        print("-"*120)
+        print("-" * 120)
         for m in unknown:
-            rng = m.first_seen if m.first_seen == m.last_seen else f"{m.first_seen} to {m.last_seen}"
+            rng = (
+                m.first_seen
+                if m.first_seen == m.last_seen
+                else f"{m.first_seen} to {m.last_seen}"
+            )
             print(f"{m.bill_code_name_raw[:50]:<50} | ${m.revenue:>10,.0f} | {rng}")
 
 
-def export_unmatched_csv(matches: List[CustomerMatch], filename: Optional[str]) -> Optional[str]:
+def export_unmatched_csv(
+    matches: List[CustomerMatch], filename: Optional[str]
+) -> Optional[str]:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = filename or f"unmatched_customers_{ts}.csv"
     rows = [m for m in matches if m.status in ("review", "unknown")]
@@ -445,40 +470,66 @@ def export_unmatched_csv(matches: List[CustomerMatch], filename: Optional[str]) 
         return None
     with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["customer_name_raw","norm_name","status","spot_count","revenue","first_seen","last_seen","months","suggestions_json"])
+        w.writerow(
+            [
+                "customer_name_raw",
+                "norm_name",
+                "status",
+                "spot_count",
+                "revenue",
+                "first_seen",
+                "last_seen",
+                "months",
+                "suggestions_json",
+            ]
+        )
         for m in rows:
-            w.writerow([
-                m.bill_code_name_raw,
-                m.norm_name,
-                m.status,
-                m.spot_count,
-                f"{m.revenue:.2f}",
-                m.first_seen,
-                m.last_seen,
-                "|".join(sorted(m.months)),
-                json.dumps([{"name": n, "score": round(s,3)} for n,s in m.suggestions], ensure_ascii=False),
-            ])
+            w.writerow(
+                [
+                    m.bill_code_name_raw,
+                    m.norm_name,
+                    m.status,
+                    m.spot_count,
+                    f"{m.revenue:.2f}",
+                    m.first_seen,
+                    m.last_seen,
+                    "|".join(sorted(m.months)),
+                    json.dumps(
+                        [{"name": n, "score": round(s, 3)} for n, s in m.suggestions],
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
     print(f"Exported: {out}")
     return out
 
 
-def suggest_alias_sql(matches: List[CustomerMatch],
-                      min_revenue: float = 1000.0,
-                      min_score: float = 0.85) -> None:
+def suggest_alias_sql(
+    matches: List[CustomerMatch], min_revenue: float = 1000.0, min_score: float = 0.85
+) -> None:
     cands = []
     for m in matches:
-        if m.status in ("high_confidence", "review") and m.matched_customer_id and m.best_score >= min_score and m.revenue >= min_revenue:
+        if (
+            m.status in ("high_confidence", "review")
+            and m.matched_customer_id
+            and m.best_score >= min_score
+            and m.revenue >= min_revenue
+        ):
             cands.append(m)
     if not cands:
         print("\nNo alias suggestions meeting thresholds.")
         return
 
     print("\nSUGGESTED ALIASES (review then run parameterized in your admin tool)")
-    print("-"*110)
-    print(f"{'Alias Name (from bill_code)':<40} | {'Target Customer':<36} | {'Score':>5} | {'Revenue':>10}")
-    print("-"*110)
+    print("-" * 110)
+    print(
+        f"{'Alias Name (from bill_code)':<40} | {'Target Customer':<36} | {'Score':>5} | {'Revenue':>10}"
+    )
+    print("-" * 110)
     for m in cands[:100]:
-        print(f"{m.bill_code_name_raw[:40]:<40} | {m.matched_customer_name[:36]:<36} | {m.best_score:.3f} | ${m.revenue:>10,.0f}")
+        print(
+            f"{m.bill_code_name_raw[:40]:<40} | {m.matched_customer_name[:36]:<36} | {m.best_score:.3f} | ${m.revenue:>10,.0f}"
+        )
 
     # Parameterized template (safer)
     print("\n-- Parameterized SQL template (example):")
@@ -490,7 +541,9 @@ VALUES (:alias_name, 'customer', :target_customer_id, :confidence_score, :create
 
 # ---------- Main ----------
 def main():
-    p = argparse.ArgumentParser(description="Customer name matching with blocking + robust normalization")
+    p = argparse.ArgumentParser(
+        description="Customer name matching with blocking + robust normalization"
+    )
     p.add_argument("--db-path", required=True)
     p.add_argument("--limit", type=int, default=50)
     p.add_argument("--export-unmatched", action="store_true")
@@ -505,7 +558,9 @@ def main():
         sys.exit(1)
 
     if not HAVE_RAPIDFUZZ:
-        print("Warning: rapidfuzz not installed; falling back to a basic token Jaccard. Install with: pip install rapidfuzz")
+        print(
+            "Warning: rapidfuzz not installed; falling back to a basic token Jaccard. Install with: pip install rapidfuzz"
+        )
 
     matches = analyze_customer_names(args.db_path, NORMALIZATION_CONFIG)
     s = summarize(matches)

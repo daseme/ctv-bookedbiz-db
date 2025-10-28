@@ -14,9 +14,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ---- import the analyzer from the previous drop-in file ----
 from src.services.customer_matching.blocking_matcher import (
-    analyze_customer_names, summarize, normalize_business_name,
-    NORMALIZATION_CONFIG, HIGH_CONF
+    analyze_customer_names,
+    summarize,
+    normalize_business_name,
+    NORMALIZATION_CONFIG,
+    HIGH_CONF,
 )
+
 
 def insert_review_rows(conn: sqlite3.Connection, rows: List[dict]) -> int:
     q = """
@@ -30,30 +34,40 @@ def insert_review_rows(conn: sqlite3.Connection, rows: List[dict]) -> int:
     cur = conn.cursor()
     n = 0
     for r in rows:
-        cur.execute(q, (
-            r["bill_code_name_raw"],
-            r["norm_name"],
-            r.get("suggested_customer_id"),
-            r.get("suggested_customer_name"),
-            r["best_score"],
-            r["revenue"],
-            r["spot_count"],
-            r.get("first_seen"),
-            r.get("last_seen"),
-            "|".join(sorted(r.get("months", []))),
-            json.dumps(r.get("suggestions", []), ensure_ascii=False),
-            r["status"],
-            r.get("notes", "")
-        ))
+        cur.execute(
+            q,
+            (
+                r["bill_code_name_raw"],
+                r["norm_name"],
+                r.get("suggested_customer_id"),
+                r.get("suggested_customer_name"),
+                r["best_score"],
+                r["revenue"],
+                r["spot_count"],
+                r.get("first_seen"),
+                r.get("last_seen"),
+                "|".join(sorted(r.get("months", []))),
+                json.dumps(r.get("suggestions", []), ensure_ascii=False),
+                r["status"],
+                r.get("notes", ""),
+            ),
+        )
         n += 1
     conn.commit()
     return n
 
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--db", required=True)
-    p.add_argument("--limit", type=int, default=10000, help="Max rows to insert into queue")
-    p.add_argument("--auto-approve", action="store_true", help="Auto-approve very high-confidence matches (score>=0.97 & revenue>=2000)")
+    p.add_argument(
+        "--limit", type=int, default=10000, help="Max rows to insert into queue"
+    )
+    p.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Auto-approve very high-confidence matches (score>=0.97 & revenue>=2000)",
+    )
     args = p.parse_args()
 
     if not Path(args.db).exists():
@@ -79,7 +93,9 @@ def main():
                 "first_seen": m.first_seen,
                 "last_seen": m.last_seen,
                 "months": list(m.months),
-                "suggestions": [{"name": n, "score": round(s,3)} for n,s in m.suggestions],
+                "suggestions": [
+                    {"name": n, "score": round(s, 3)} for n, s in m.suggestions
+                ],
                 "status": "pending",
                 "notes": "",
             }
@@ -89,9 +105,11 @@ def main():
     approved_rows: List[Dict] = []
     if args.auto_approve:
         for r in queue_rows:
-            if (r.get("suggested_customer_id")
+            if (
+                r.get("suggested_customer_id")
                 and r["best_score"] >= 0.97
-                and r["revenue"] >= 2000):
+                and r["revenue"] >= 2000
+            ):
                 r["status"] = "approved"
                 r["notes"] = "auto-approved (very high confidence)"
                 approved_rows.append(r)
@@ -104,14 +122,17 @@ def main():
         # Insert approved first so the UI shows them as such
         inserted = 0
         if approved_rows:
-            inserted += insert_review_rows(conn, approved_rows[:args.limit])
+            inserted += insert_review_rows(conn, approved_rows[: args.limit])
         # Insert remaining pending
         pending_rows = [r for r in queue_rows if r["status"] == "pending"]
         if pending_rows:
-            inserted += insert_review_rows(conn, pending_rows[: max(0, args.limit - inserted)])
+            inserted += insert_review_rows(
+                conn, pending_rows[: max(0, args.limit - inserted)]
+            )
         print(f"Inserted into review queue: {inserted}")
     finally:
         conn.close()
+
 
 if __name__ == "__main__":
     main()

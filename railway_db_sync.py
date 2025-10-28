@@ -14,6 +14,7 @@ from dropbox.files import FileMetadata, FolderMetadata
 
 # ==== Pure helpers ============================================================
 
+
 def human_size(n: int) -> str:
     s = float(n)
     for u in ("B", "KB", "MB", "GB"):
@@ -36,7 +37,9 @@ def compute_dropbox_content_hash(path: str) -> str:
             chunk = f.read(4 * 1024 * 1024)
             if not chunk:
                 break
-            h = hashlib.sha256(); h.update(chunk); blocks.append(h.digest())
+            h = hashlib.sha256()
+            h.update(chunk)
+            blocks.append(h.digest())
     hfin = hashlib.sha256()
     for d in blocks:
         hfin.update(d)
@@ -55,6 +58,7 @@ def atomic_replace(src_tmp: str, dst_final: str) -> None:
 
 # ==== Dropbox access ==========================================================
 
+
 def make_dbx() -> dropbox.Dropbox:
     app_key = os.getenv("DROPBOX_APP_KEY")
     app_secret = os.getenv("DROPBOX_APP_SECRET")
@@ -69,7 +73,9 @@ def make_dbx() -> dropbox.Dropbox:
         )
     if access_token:
         return dropbox.Dropbox(access_token)
-    raise RuntimeError("Missing Dropbox creds: need refresh token+app keys or access token.")
+    raise RuntimeError(
+        "Missing Dropbox creds: need refresh token+app keys or access token."
+    )
 
 
 def get_latest_backup_meta(dbx: dropbox.Dropbox) -> Optional[FileMetadata]:
@@ -79,14 +85,22 @@ def get_latest_backup_meta(dbx: dropbox.Dropbox) -> Optional[FileMetadata]:
         if e.error.is_path_not_found():
             return None
         raise
-    files = [e for e in resp.entries if isinstance(e, FileMetadata) and e.name.endswith(".db")]
+    files = [
+        e
+        for e in resp.entries
+        if isinstance(e, FileMetadata) and e.name.endswith(".db")
+    ]
     if not files:
         return None
-    files.sort(key=lambda e: e.name, reverse=True)  # names are timestamped; lexicographic works
+    files.sort(
+        key=lambda e: e.name, reverse=True
+    )  # names are timestamped; lexicographic works
     return files[0]
 
 
-def get_main_db_meta(dbx: dropbox.Dropbox, path="/database.db") -> Optional[FileMetadata]:
+def get_main_db_meta(
+    dbx: dropbox.Dropbox, path="/database.db"
+) -> Optional[FileMetadata]:
     try:
         md = dbx.files_get_metadata(path)
         return md if isinstance(md, FileMetadata) else None
@@ -97,6 +111,7 @@ def get_main_db_meta(dbx: dropbox.Dropbox, path="/database.db") -> Optional[File
 
 
 # ==== Restore logic ===========================================================
+
 
 def restore_database() -> bool:
     """
@@ -151,13 +166,17 @@ def restore_database() -> bool:
         try:
             local_hash = compute_dropbox_content_hash(local_path)
             if local_hash == remote_hash:
-                print("✓ Local database already matches source (content hash). No download needed.")
+                print(
+                    "✓ Local database already matches source (content hash). No download needed."
+                )
                 return True
         except Exception:
             pass  # continue to download
 
     # Download to temp, then atomic replace
-    fd, tmp_path = tempfile.mkstemp(prefix=".railway_restore_", dir=os.path.dirname(local_path))
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".railway_restore_", dir=os.path.dirname(local_path)
+    )
     os.close(fd)
     try:
         print(f"⬇️  Downloading to temp file...")
@@ -180,6 +199,7 @@ def create_minimal_database() -> bool:
     print("🗄️ Creating minimal database for Railway...")
     try:
         import sqlite3
+
         db_path = os.getenv("RAILWAY_DB_PATH", "/app/data/database/production.db")
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         conn = sqlite3.connect(db_path)
@@ -207,6 +227,7 @@ def create_minimal_database() -> bool:
 
 
 # ==== CLI =====================================================================
+
 
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "download":

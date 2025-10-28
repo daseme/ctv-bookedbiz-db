@@ -1,39 +1,44 @@
 from typing import Optional, List
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from src.models.language_assignment import SpotLanguageData, LanguageAssignment
 
+
 class LanguageAssignmentQueries:
     """Database operations with undetermined language support"""
-    
+
     def __init__(self, db_connection):
         self.db = db_connection
-    
+
     def get_spot_language_data(self, spot_id: int) -> Optional[SpotLanguageData]:
         """Get spot data including language code"""
         cursor = self.db.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT spot_id, language_code, revenue_type, market_id, gross_rate, bill_code
             FROM spots 
             WHERE spot_id = ?
             AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-        """, (spot_id,))
-        
+        """,
+            (spot_id,),
+        )
+
         row = cursor.fetchone()
         if not row:
             return None
-            
+
         return SpotLanguageData(
             spot_id=row[0],
             language_code=row[1],
-            revenue_type=row[2], 
+            revenue_type=row[2],
             market_id=row[3],
             gross_rate=row[4],
-            bill_code=row[5]
+            bill_code=row[5],
         )
-    
+
     def get_undetermined_language_spots(self, limit: Optional[int] = None) -> List[int]:
         """Get spots with language_code = 'L' (undetermined)"""
         cursor = self.db.cursor()
@@ -46,10 +51,10 @@ class LanguageAssignmentQueries:
         """
         if limit:
             query += f" LIMIT {limit}"
-            
+
         cursor.execute(query)
         return [row[0] for row in cursor.fetchall()]
-    
+
     def get_invalid_language_spots(self, limit: Optional[int] = None) -> List[int]:
         """Get spots with invalid language codes"""
         cursor = self.db.cursor()
@@ -64,26 +69,30 @@ class LanguageAssignmentQueries:
         """
         if limit:
             query += f" LIMIT {limit}"
-            
+
         cursor.execute(query)
         return [row[0] for row in cursor.fetchall()]
-    
+
     def get_high_value_undetermined_spots(self, min_value: float = 1000.0) -> List[int]:
         """Get high-value spots with undetermined language"""
         cursor = self.db.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT spot_id FROM spots s
             WHERE s.language_code = 'L'
             AND s.gross_rate >= ?
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
             ORDER BY s.gross_rate DESC
-        """, (min_value,))
+        """,
+            (min_value,),
+        )
         return [row[0] for row in cursor.fetchall()]
-    
+
     # LanguageAssignmentQueries.save_language_assignment
     def save_language_assignment(self, a: LanguageAssignment) -> None:
         cur = self.db.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO spot_language_assignments
                 (spot_id, language_code, language_status, confidence,
                 assignment_method, requires_review, notes, assigned_date)
@@ -96,18 +105,21 @@ class LanguageAssignmentQueries:
                 requires_review  = excluded.requires_review,
                 notes            = excluded.notes,
                 assigned_date    = CURRENT_TIMESTAMP
-        """, (
-            a.spot_id,
-            a.language_code,
-            a.language_status.value if hasattr(a.language_status, "value") else a.language_status,
-            a.confidence,
-            a.assignment_method,
-            1 if a.requires_review else 0,
-            a.notes,
-        ))
+        """,
+            (
+                a.spot_id,
+                a.language_code,
+                a.language_status.value
+                if hasattr(a.language_status, "value")
+                else a.language_status,
+                a.confidence,
+                a.assignment_method,
+                1 if a.requires_review else 0,
+                a.notes,
+            ),
+        )
         self.db.commit()
 
-    
     def get_unassigned_spots(self, limit: Optional[int] = None) -> List[int]:
         """Get spots without language assignments"""
         cursor = self.db.cursor()
@@ -121,7 +133,7 @@ class LanguageAssignmentQueries:
         """
         if limit:
             query += f" LIMIT {limit}"
-            
+
         cursor.execute(query)
         return [row[0] for row in cursor.fetchall()]
 
@@ -140,6 +152,6 @@ class LanguageAssignmentQueries:
         """
         if limit:
             query += f" LIMIT {limit}"
-            
+
         cursor.execute(query)
         return [row[0] for row in cursor.fetchall()]

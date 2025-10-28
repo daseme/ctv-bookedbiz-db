@@ -3,7 +3,7 @@ import sqlite3
 from query_builders import BaseQueryBuilder
 
 # Connect to your database
-conn = sqlite3.connect('data/database/production.db')
+conn = sqlite3.connect("data/database/production.db")
 
 # Test basic functionality
 builder = BaseQueryBuilder("2024")
