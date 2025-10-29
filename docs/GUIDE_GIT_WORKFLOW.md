@@ -52,20 +52,20 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    S1[1. Sync dev<br/><code>git switch dev && git pull --ff-only</code>]
-    S2[2. Create feature branch<br/><code>git switch -c feat/&lt;you&gt;/&lt;slug&gt;</code>]
-    S3[3. Code / test locally<br/><code>uvx ruff check .<br/>uvx ruff format .</code>]
-    S4[4. Commit + push<br/><code>git add -A && git commit -m "..."
-git push -u origin HEAD</code>]
-    S5[5. Open PR:<br/>base=dev, compare=feat/...]
-    S6[6. After merge, pull dev on Pi<br/><code>git switch dev && git pull --ff-only</code>]
-    S7[7. Restart dev service<br/><code>systemctl --user restart ctv-dev.service</code>]
-    S8[8. Health check<br/><code>curl -sf http://localhost:5100/health/ && echo DEV_OK</code>]
-    S9[9. If OK, open PR dev → main<br/>Squash merge]
-    S10[10. On prod box:<br/><code>git switch main && git pull --ff-only</code>]
-    S11[11. Restart prod service]
+    S1["1. Sync dev\n git switch dev && git pull --ff-only"]
+    S2["2. Create feature branch\n git switch -c feat/<you>/<slug>"]
+    S3["3. Code / test locally\n uvx ruff check .\n uvx ruff format ."]
+    S4["4. Commit + push\n git add -A && git commit -m '...'\n git push -u origin HEAD"]
+    S5["5. Open PR: base=dev, compare=feat/..."]
+    S6["6. After merge, pull dev on Pi\n git switch dev && git pull --ff-only"]
+    S7["7. Restart dev service\n systemctl --user restart ctv-dev.service"]
+    S8["8. Health check\n curl -sf http://localhost:5100/health/ && echo DEV_OK"]
+    S9["9. If OK, open PR dev → main (Squash merge)"]
+    S10["10. On prod box\n git switch main && git pull --ff-only"]
+    S11["11. Restart prod service"]
 
     S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10 --> S11
+
 ```
 
 This is basically:
