@@ -78,15 +78,15 @@ This is basically:
 ```mermaid
 flowchart LR
     subgraph DevService["Pi dev service (:5100)"]
-        D1[systemd user unit<br/>ctv-dev.service]
-        D2[.env.dev]
-        D3[DB_PATH = data/database/production_dev.db]
+        D1["systemd user unit\nctv-dev.service"]
+        D2[".env.dev"]
+        D3["DB_PATH = data/database/production_dev.db"]
     end
 
     subgraph ProdService["Prod service"]
-        P1[systemd unit (prod)]
-        P2[.env.prod]
-        P3[DB_PATH = data/database/production.db]
+        P1["systemd unit (prod)"]
+        P2[".env.prod"]
+        P3["DB_PATH = data/database/production.db"]
     end
 
     D1 --> D2 --> D3
