@@ -169,3 +169,27 @@ That gives you:
 * human steps (already in GUIDE_DEV_WORKFLOW.md),
 * dev-facing visuals in `docs/git_workflow.md`,
 * a clean SVG for onboarding decks / sending to someone new.
+
+```mermaid
+gitGraph
+    commit id: "main init"
+    branch dev
+    checkout dev
+    commit id: "dev setup"
+
+    branch feat/sector-filter
+    checkout feat/sector-filter
+    commit id: "feat: sector filter logic"
+    commit id: "fix: edge case"
+    checkout dev
+    merge feat/sector-filter id: "merge feat → dev"
+
+    branch feat/dashboard-ui
+    checkout feat/dashboard-ui
+    commit id: "feat: dashboard UI"
+    checkout dev
+    merge feat/dashboard-ui id: "merge feat → dev"
+
+    checkout main
+    merge dev id: "release dev → main" 
+    ```
