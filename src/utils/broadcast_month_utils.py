@@ -326,7 +326,7 @@ def extract_broadcast_months_from_excel(
 
     try:
         workbook = load_workbook(excel_file_path, read_only=True, data_only=True)
-        worksheet = workbook.active
+        worksheet = workbook['Data']
 
         # Find the month column
         header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))[
