@@ -9,6 +9,10 @@ You can paste these directly into your repo.
 
 ## 1. `docs/git_workflow.md`
 
+For a visual overview of the Git + Deploy process, see:
+[docs/git_workflow.md](docs/git_workflow.md)
+
+
 ````markdown
 # CTV BookedBiz Git + Deploy Flow
 
