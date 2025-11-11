@@ -1,233 +1,172 @@
 /**
- * Customer Sector Management API Layer
- * 
- * Handles all communication with the backend API following clean architecture principles.
- * Provides a clean interface for data operations with proper error handling.
+ * Customer Sector API - FIXED VERSION
+ * Handles all API interactions for customer sector management
+ * FIXED: Now properly handles unresolved customers (customer_id = 0)
  */
-
 class CustomerSectorAPI {
     constructor() {
         this.baseUrl = '/api/customer-sector';
+        console.log('CustomerSectorAPI initialized');
     }
 
-    /**
-     * Fetch all customers for sector management
-     * @returns {Promise<Object>} API response with customers data
-     */
     async fetchCustomers() {
         try {
             const response = await fetch(`${this.baseUrl}/customers`);
-            const result = await response.json();
-            
-            if (result.success) {
-                console.log('Loaded', result.data.length, 'Internal Ad Sales customers (excluding WorldLink)');
-                return { success: true, data: result.data };
-            } else {
-                throw new Error(result.error || 'Failed to fetch customers');
-            }
+            return await response.json();
         } catch (error) {
             console.error('Error fetching customers:', error);
-            return {
-                success: false,
-                error: error.message,
-                data: []
-            };
+            return { success: false, error: error.message };
         }
     }
 
-    /**
-     * Fetch all available sectors
-     * @returns {Promise<Object>} API response with sectors data
-     */
     async fetchSectors() {
         try {
             const response = await fetch(`${this.baseUrl}/sectors`);
-            const result = await response.json();
-            
-            if (result.success) {
-                console.log('Loaded', result.data.length, 'sectors');
-                return { success: true, data: result.data };
-            } else {
-                throw new Error(result.error || 'Failed to fetch sectors');
-            }
+            return await response.json();
         } catch (error) {
             console.error('Error fetching sectors:', error);
-            return {
-                success: false,
-                error: error.message,
-                data: []
-            };
+            return { success: false, error: error.message };
         }
     }
 
     /**
-     * Update a customer's sector assignment
-     * @param {number} customerId - Customer ID to update
-     * @param {string|null} newSector - New sector name (null for unassigned)
+     * Update customer sector assignment - FIXED VERSION
+     * @param {number} customerId - Customer ID (can be 0 for unresolved customers)
+     * @param {string} sectorName - New sector name
      * @returns {Promise<Object>} API response
      */
-    async updateCustomerSector(customerId, newSector) {
-        if (!customerId) {
-            return { success: false, error: 'Customer ID is required' };
-        }
-
+    async updateCustomerSector(customerId, sectorName) {
         try {
+            // CRITICAL FIX: For unresolved customers, we need to get the customer name
+            let customerName = null;
+            
+            // If this is an unresolved customer (id = 0), find the customer name
+            if (customerId === 0) {
+                if (window.customerSectorManager && window.customerSectorManager.state) {
+                    const customer = window.customerSectorManager.state.customers.find(c => c.id === 0);
+                    if (customer) {
+                        customerName = customer.name;
+                    }
+                }
+                
+                if (!customerName) {
+                    throw new Error('Customer name is required for unresolved customers');
+                }
+            }
+
+            const payload = {
+                sector: sectorName
+            };
+
+            // CRITICAL FIX: Include customer name for unresolved customers
+            if (customerId === 0 && customerName) {
+                payload.customer_name = customerName;
+            }
+
             const response = await fetch(`${this.baseUrl}/customers/${customerId}/sector`, {
                 method: 'PUT',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ sector: newSector })
+                body: JSON.stringify(payload)
             });
-            
+
             const result = await response.json();
             
-            if (result.success) {
-                const sectorName = newSector || 'Unassigned';
-                return {
-                    success: true,
-                    message: `Customer sector updated to ${sectorName}`,
-                    data: result.data
-                };
-            } else {
-                throw new Error(result.error || 'Update failed');
+            // IMPORTANT: If a customer was created, update the customer ID in the state
+            if (result.success && result.customer_id && customerId === 0) {
+                if (window.customerSectorManager && window.customerSectorManager.state) {
+                    window.customerSectorManager.state.updateCustomerId(customerName, result.customer_id);
+                }
+                console.log(`Customer "${customerName}" now has ID ${result.customer_id}`);
             }
+            
+            return result;
+            
         } catch (error) {
             console.error('Error updating customer sector:', error);
-            return {
-                success: false,
-                error: error.message
-            };
+            return { success: false, error: error.message };
         }
     }
 
     /**
-     * Create a new sector
-     * @param {string} name - Sector name
-     * @param {string} [group] - Optional sector group
-     * @returns {Promise<Object>} API response with new sector data
+     * Bulk update customer sectors - FIXED VERSION
+     * @param {Array<number>} customerIds - Array of customer IDs
+     * @param {string} sectorName - New sector name
+     * @returns {Promise<Object>} API response
      */
-    async createSector(name, group = '') {
-        if (!name || !name.trim()) {
-            return { success: false, error: 'Sector name is required' };
-        }
+    async bulkUpdateCustomerSectors(customerIds, sectorName) {
+        try {
+            // CRITICAL FIX: Build customer updates with names for unresolved customers
+            const customerUpdates = [];
+            
+            if (window.customerSectorManager && window.customerSectorManager.state) {
+                for (const customerId of customerIds) {
+                    const customer = window.customerSectorManager.state.customers.find(c => c.id === customerId);
+                    if (customer) {
+                        customerUpdates.push({
+                            id: customer.id,
+                            name: customer.name,  // Always include name
+                            sector: sectorName
+                        });
+                    }
+                }
+            }
 
+            const payload = {
+                customer_updates: customerUpdates,
+                sector: sectorName
+            };
+
+            const response = await fetch(`${this.baseUrl}/customers/bulk-sector`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                console.log(`Bulk update: ${result.updated_count} updated, ${result.created_count || 0} created`);
+            }
+            
+            return result;
+            
+        } catch (error) {
+            console.error('Error bulk updating customer sectors:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async createSector(name, group) {
         try {
             const response = await fetch(`${this.baseUrl}/sectors`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    name: name.trim(),
-                    description: group.trim() || null
-                })
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                return {
-                    success: true,
-                    message: `Sector "${name}" added successfully`,
-                    data: {
-                        id: result.data.id,
-                        name: result.data.name,
-                        description: result.data.description,
-                        color: this._generateRandomSectorColor()
-                    }
-                };
-            } else {
-                throw new Error(result.error || 'Failed to add sector');
-            }
-        } catch (error) {
-            console.error('Error adding sector:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-
-    /**
-     * Bulk update customer sectors
-     * @param {number[]} customerIds - Array of customer IDs
-     * @param {string} sectorName - Sector name to assign
-     * @returns {Promise<Object>} API response
-     */
-    async bulkUpdateCustomerSectors(customerIds, sectorName) {
-        if (!customerIds || customerIds.length === 0) {
-            return { success: false, error: 'No customers selected' };
-        }
-
-        if (!sectorName) {
-            return { success: false, error: 'Please select a sector to assign' };
-        }
-
-        try {
-            const response = await fetch(`${this.baseUrl}/customers/bulk-sector`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    customer_ids: customerIds,
-                    sector: sectorName
+                    name: name.trim(),
+                    description: group ? group.trim() : ''
                 })
             });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                return {
-                    success: true,
-                    message: result.message || `Updated ${customerIds.length} customers`,
-                    data: result.data
-                };
-            } else {
-                throw new Error(result.error || 'Bulk update failed');
-            }
+
+            return await response.json();
         } catch (error) {
-            console.error('Error in bulk update:', error);
-            return {
-                success: false,
-                error: error.message
-            };
+            console.error('Error creating sector:', error);
+            return { success: false, error: error.message };
         }
     }
 
-    /**
-     * Generate a random color for new sectors
-     * @private
-     * @returns {string} Hex color code
-     */
-    _generateRandomSectorColor() {
-        const colors = [
-            '#88c0d0', '#81a1c1', '#5e81ac', '#bf616a', 
-            '#d08770', '#ebcb8b', '#a3be8c', '#b48ead'
-        ];
-        return colors[Math.floor(Math.random() * colors.length)];
-    }
-
-    /**
-     * Check API health
-     * @returns {Promise<boolean>} True if API is responsive
-     */
     async checkHealth() {
         try {
-            const response = await fetch('/health', { method: 'HEAD' });
+            const response = await fetch(`${this.baseUrl}/sectors`);
             return response.ok;
         } catch (error) {
-            console.warn('API health check failed:', error);
+            console.error('API health check failed:', error);
             return false;
         }
     }
-}
-
-// Export for module usage
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = CustomerSectorAPI;
-} else {
-    // Browser global
-    window.CustomerSectorAPI = CustomerSectorAPI;
 }

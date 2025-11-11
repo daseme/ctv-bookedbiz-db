@@ -120,6 +120,30 @@ class CustomerSectorState {
     }
 
     /**
+     * Update customer ID for an unresolved customer after it's been created
+     * @param {string} customerName - Customer name to find
+     * @param {number} newCustomerId - New customer ID from database
+     */
+    updateCustomerId(customerName, newCustomerId) {
+        const customer = this.customers.find(c => c.name === customerName && c.id === 0);
+        if (customer) {
+            customer.id = newCustomerId;
+            customer.isUnresolved = false;  // No longer unresolved
+            console.log(`Updated customer "${customerName}" from ID 0 to ID ${newCustomerId}`);
+            
+            // Update filtered customers as well
+            const filteredCustomer = this.filteredCustomers.find(c => c.name === customerName && c.id === newCustomerId);
+            if (filteredCustomer) {
+                filteredCustomer.id = newCustomerId;
+                filteredCustomer.isUnresolved = false;
+            }
+            
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Bulk update customer sectors
      * @param {number[]} customerIds - Array of customer IDs
      * @param {string} sectorName - Sector name to assign

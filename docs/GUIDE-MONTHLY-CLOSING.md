@@ -25,26 +25,14 @@ sudo mount /mnt/k-drive
 cd /opt/apps/ctv-bookedbiz-db
 source .venv/bin/activate
 
-# Copy current year's cash revenue recap
-YEAR=$(date +%Y)
-SOURCE_PATH="/mnt/k-drive/Sales/Yearly Reports/${YEAR} Cash Revenue Recap.xlsx"
-DEST_PATH="data/raw/${YEAR}.xlsx"
-
-# Verify source file exists and copy
-if [ -f "$SOURCE_PATH" ]; then
-    cp "$SOURCE_PATH" "$DEST_PATH"
-    echo "✅ Updated ${YEAR}.xlsx successfully"
-    ls -la "$DEST_PATH"
-else
-    echo "❌ Source file not found: $SOURCE_PATH"
-    exit 1
-fi
+# Copy current year's cash revenue recap use year at end that you in
+./scripts/update_yearly_recap.sh 2025 
 ```
 
 ### 3. Import Closed Data
 ```bash
 # Process the updated annual recap into database
-python cli/import_closed_data.py
+uv run python import_closed_data.py data/raw/2025.xlsx --year 2025 --closed-by "Kurt" --skip-closed
 
 # Verify import completed successfully
 echo "Import completed. Check logs for any errors."

@@ -1,6 +1,6 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-09-26 08:38:34
+-- Generated on: 2025-11-10 16:37:23
 -- 
 -- SQLite Version: 3.40.1
 -- 
