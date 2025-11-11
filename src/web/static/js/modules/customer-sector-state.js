@@ -85,19 +85,43 @@ class CustomerSectorState {
     }
 
     /**
-     * Update a single customer's sector
+     * Update a single customer's sector - ENHANCED DEBUG VERSION
      * @param {number} customerId - Customer ID
      * @param {string|null} newSector - New sector name
      */
     updateCustomerSector(customerId, newSector) {
+        console.log("=== STATE UPDATE DEBUG START ===");
+        console.log(`Updating customer ${customerId} to sector: ${newSector}`);
+        
         const customer = this.customers.find(c => c.id === customerId);
+        console.log("Found customer:", customer);
+        
         if (customer) {
+            const oldSector = customer.sector;
             customer.sector = newSector;
             customer.lastUpdated = new Date().toISOString().split('T')[0];
-            console.log(`Updated customer ${customerId} sector to: ${newSector || 'Unassigned'}`);
+            
+            console.log(`Customer ${customerId} updated:`);
+            console.log(`  Old sector: ${oldSector}`);
+            console.log(`  New sector: ${newSector}`);
+            console.log(`  Updated customer object:`, customer);
+            
+            // Also update in filtered customers if it exists there
+            const filteredCustomer = this.filteredCustomers.find(c => c.id === customerId);
+            if (filteredCustomer) {
+                filteredCustomer.sector = newSector;
+                filteredCustomer.lastUpdated = customer.lastUpdated;
+                console.log("Also updated filtered customer");
+            }
+            
+            console.log("=== STATE UPDATE DEBUG END ===");
             return true;
+        } else {
+            console.error(`Customer ${customerId} not found in state!`);
+            console.log("Available customers:", this.customers.map(c => ({id: c.id, name: c.name})));
+            console.log("=== STATE UPDATE DEBUG END ===");
+            return false;
         }
-        return false;
     }
 
     /**

@@ -1,3 +1,5 @@
+# REPLACE YOUR ENTIRE src/web/routes/customer_sector_api.py file with this:
+
 from flask import Blueprint, request, jsonify, current_app
 from src.services.container import get_container
 import logging
@@ -11,12 +13,10 @@ logger = logging.getLogger(__name__)
 @customer_sector_bp.route("/customers", methods=["GET"])
 def get_customers():
     """Get customers with Internal Ad Sales revenue, INCLUDING unresolved ones"""
-    """Get customers with Internal Ad Sales revenue, INCLUDING unresolved ones"""
     try:
         container = get_container()
         db = container.get("database_connection")
 
-        # FIXED: Include both resolved AND unresolved customers
         # FIXED: Include both resolved AND unresolved customers
         query = """
         SELECT
@@ -25,12 +25,6 @@ def get_customers():
             COALESCE(sect.sector_name, 'Unassigned') AS sector,
             COALESCE(c.updated_date, '2025-01-01') AS lastUpdated,
             ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
-            COUNT(s.spot_id) AS spot_count,
-            -- Add flag to distinguish resolved vs unresolved
-            CASE 
-                WHEN audit.customer_id IS NOT NULL THEN 'resolved'
-                ELSE 'unresolved'
-            END AS resolution_status
             COUNT(s.spot_id) AS spot_count,
             -- Add flag to distinguish resolved vs unresolved
             CASE 
@@ -48,18 +42,12 @@ def get_customers():
           -- CRITICAL FIX: Remove this line that was excluding unresolved customers
           -- AND COALESCE(audit.customer_id, 0) != 0  <-- This was the problem!
           AND (COALESCE(c.is_active, 1) = 1 OR audit.customer_id IS NULL)  -- Include unresolved
-          -- CRITICAL FIX: Remove this line that was excluding unresolved customers
-          -- AND COALESCE(audit.customer_id, 0) != 0  <-- This was the problem!
-          AND (COALESCE(c.is_active, 1) = 1 OR audit.customer_id IS NULL)  -- Include unresolved
         GROUP BY 
             COALESCE(audit.customer_id, 0),
             COALESCE(audit.normalized_name, s.bill_code),
             sect.sector_name,
             c.updated_date
         HAVING COUNT(s.spot_id) > 0
-        ORDER BY 
-            CASE WHEN audit.customer_id IS NULL THEN 0 ELSE 1 END,  -- Unresolved first
-            name
         ORDER BY 
             CASE WHEN audit.customer_id IS NULL THEN 0 ELSE 1 END,  -- Unresolved first
             name
@@ -82,8 +70,6 @@ def get_customers():
                     "spotCount": row[5] if row[5] else 0,
                     "resolutionStatus": row[6],  
                     "isUnresolved": row[6] == 'unresolved'  
-                    "resolutionStatus": row[6],  
-                    "isUnresolved": row[6] == 'unresolved'  
                 }
             )
 
@@ -92,13 +78,7 @@ def get_customers():
         resolved_count = len([c for c in customers if not c['isUnresolved']])
         unresolved_count = len([c for c in customers if c['isUnresolved']])
         
-        
-        resolved_count = len([c for c in customers if not c['isUnresolved']])
-        unresolved_count = len([c for c in customers if c['isUnresolved']])
-        
         logger.info(
-            f"Fetched {len(customers)} total customers: "
-            f"{resolved_count} resolved, {unresolved_count} unresolved"
             f"Fetched {len(customers)} total customers: "
             f"{resolved_count} resolved, {unresolved_count} unresolved"
         )
@@ -163,7 +143,7 @@ def get_sectors():
 
 @customer_sector_bp.route("/customers/<int:customer_id>/sector", methods=["PUT"])
 def update_customer_sector(customer_id):
-    """Update customer sector assignment - FIXED VERSION"""
+    """Update customer sector assignment - COMPLETE DEBUG VERSION"""
     try:
         data = request.get_json()
         sector_name = data.get("sector")
@@ -393,16 +373,11 @@ def update_customer_sector(customer_id):
 
 @customer_sector_bp.route("/customers/bulk-sector", methods=["PUT"])
 def bulk_update_sectors():
-    """Bulk update customer sectors - COMPLETE DEBUG VERSION"""
+    """Bulk update customer sectors - FIXED to handle unresolved customers"""
     try:
         data = request.get_json()
-        customer_updates = data.get("customer_updates", [])  
+        customer_updates = data.get("customer_updates", [])  # Array of {id, name, sector}
         sector_name = data.get("sector")
-
-        logger.info(f"=== BULK UPDATE DEBUG START ===")
-        logger.info(f"Sector: {sector_name}")
-        logger.info(f"Customer updates: {len(customer_updates)} customers")
-        logger.info(f"Full request data: {data}")
 
         if not customer_updates:
             return jsonify({"success": False, "error": "No customers selected"}), 400
@@ -411,11 +386,6 @@ def bulk_update_sectors():
         db = container.get("database_connection")
         conn = db.connect()
         cursor = conn.cursor()
-
-        # DEBUG: Database info
-        cursor.execute("PRAGMA database_list")
-        db_info = cursor.fetchall()
-        logger.info(f"Database list: {db_info}")
 
         # Get sector_id from sector_name
         sector_id = None
@@ -427,164 +397,76 @@ def bulk_update_sectors():
             result = cursor.fetchone()
             if result:
                 sector_id = result[0]
-                logger.info(f"Found sector_id {sector_id} for sector '{sector_name}'")
-            else:
-                logger.warning(f"Sector '{sector_name}' not found")
-        else:
-            logger.info("Setting sector to NULL (unassigned)")
 
         updated_count = 0
         created_count = 0
 
-        for i, customer_update in enumerate(customer_updates):
+        for customer_update in customer_updates:
             customer_id = customer_update.get("id")
             customer_name = customer_update.get("name")
-            
-            logger.info(f"Processing customer {i+1}/{len(customer_updates)}: ID={customer_id}, Name='{customer_name}'")
 
-            # Handle unresolved customers (customer_id = 0)
+            # CRITICAL FIX: Handle unresolved customers (customer_id = 0)
             if customer_id == 0:
                 if not customer_name:
                     logger.warning(f"Skipping unresolved customer without name")
                     continue
 
-                # Check if customer already exists
+                # Create the customer record
                 cursor.execute(
-                    "SELECT customer_id FROM customers WHERE normalized_name = ? AND is_active = 1",
+                    """
+                    INSERT INTO customers (normalized_name, is_active, created_date, updated_date)
+                    VALUES (?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """,
                     (customer_name,)
                 )
-                existing = cursor.fetchone()
-                
-                if existing:
-                    customer_id = existing[0]
-                    logger.info(f"Found existing customer: {customer_name} (ID: {customer_id})")
-                else:
-                    # Create the customer record
-                    cursor.execute(
-                        """
-                        INSERT INTO customers (normalized_name, is_active, created_date, updated_date)
-                        VALUES (?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """,
-                        (customer_name,)
-                    )
-                    customer_id = cursor.lastrowid
-                    created_count += 1
-                    logger.info(f"Created new customer record: {customer_name} (ID: {customer_id})")
-                    
-                    # Verify creation
-                    cursor.execute("SELECT customer_id, normalized_name FROM customers WHERE customer_id = ?", (customer_id,))
-                    verify = cursor.fetchone()
-                    logger.info(f"Verified creation: {verify}")
+                customer_id = cursor.lastrowid
+                created_count += 1
+                logger.info(f"Created new customer record: {customer_name} (ID: {customer_id})")
 
             # Update customer sector
-            logger.info(f"Updating customer {customer_id} to sector_id {sector_id}")
-            
-            # Check current state
-            cursor.execute("SELECT customer_id, normalized_name, sector_id FROM customers WHERE customer_id = ?", (customer_id,))
-            before_update = cursor.fetchone()
-            logger.info(f"Before update: {before_update}")
-            
             cursor.execute(
                 """
                 UPDATE customers 
                 SET sector_id = ?, updated_date = CURRENT_TIMESTAMP
                 WHERE customer_id = ?
-                """,
+            """,
                 (sector_id, customer_id),
             )
 
-            rows_affected = cursor.rowcount
-            logger.info(f"Update affected {rows_affected} rows for customer {customer_id}")
-
-            if rows_affected > 0:
+            if cursor.rowcount > 0:
                 updated_count += 1
-                
-                # Verify the update
-                cursor.execute("SELECT customer_id, normalized_name, sector_id FROM customers WHERE customer_id = ?", (customer_id,))
-                after_update = cursor.fetchone()
-                logger.info(f"After update: {after_update}")
-                
-                # Log audit trail
+                # Log the sector assignment change for audit trail
                 try:
                     cursor.execute(
                         """
                         INSERT INTO sector_assignment_audit 
                         (customer_id, new_sector_id, assignment_method, assigned_by)
                         VALUES (?, ?, 'bulk_update', 'web_interface')
-                        """,
+                    """,
                         (customer_id, sector_id),
                     )
-                    logger.info(f"Audit logged for customer {customer_id}")
                 except Exception as audit_error:
-                    logger.warning(f"Audit logging failed for customer {customer_id}: {audit_error}")
-            else:
-                logger.warning(f"No rows updated for customer {customer_id}")
-
-        # COMMIT ALL CHANGES
-        logger.info(f"=== COMMITTING BULK TRANSACTION ===")
-        logger.info(f"About to commit: {updated_count} updates, {created_count} creates")
-        
-        try:
-            conn.commit()
-            logger.info("Bulk transaction committed successfully")
-        except Exception as commit_error:
-            logger.error(f"BULK COMMIT FAILED: {commit_error}")
-            conn.rollback()
-            logger.info("Bulk transaction rolled back")
-            return jsonify({
-                "success": False, 
-                "error": f"Failed to commit bulk changes: {commit_error}"
-            }), 500
-
-        # FINAL VERIFICATION - Check a few updated customers
-        try:
-            if updated_count > 0:
-                sample_ids = [cu.get("id") for cu in customer_updates[:3]]  # Check first 3
-                sample_ids = [cid for cid in sample_ids if cid != 0]  # Filter out unresolved
-                
-                if sample_ids:
-                    placeholders = ','.join(['?'] * len(sample_ids))
-                    cursor.execute(
-                        f"""
-                        SELECT c.customer_id, c.normalized_name, c.sector_id, s.sector_name
-                        FROM customers c
-                        LEFT JOIN sectors s ON c.sector_id = s.sector_id
-                        WHERE c.customer_id IN ({placeholders})
-                        """,
-                        sample_ids
+                    logger.warning(
+                        f"Audit logging failed for customer {customer_id}: {audit_error}"
                     )
-                    sample_verification = cursor.fetchall()
-                    logger.info(f"Sample verification after commit: {sample_verification}")
-                    
-        except Exception as verify_error:
-            logger.error(f"Final verification failed: {verify_error}")
 
+        conn.commit()
         conn.close()
-        
-        logger.info(f"=== BULK UPDATE DEBUG END ===")
 
         return jsonify({
             "success": True,
             "message": f"{updated_count} customers updated, {created_count} customers created",
             "updated_count": updated_count,
-            "created_count": created_count,
-            "debug_info": {
-                "sector_id": sector_id,
-                "total_processed": len(customer_updates)
-            }
+            "created_count": created_count
         })
 
     except Exception as e:
-        logger.error(f"ERROR in bulk_update_sectors: {e}")
-        logger.error(f"Error type: {type(e)}")
-        import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+        logger.error(f"Error bulk updating sectors: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
 @customer_sector_bp.route("/sectors", methods=["POST"])
 def add_sector():
-    """Add a new sector"""
     """Add a new sector"""
     try:
         data = request.get_json()
@@ -633,6 +515,250 @@ def add_sector():
 
     except Exception as e:
         logger.error(f"Error adding sector: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@customer_sector_bp.route("/sectors/<int:sector_id>", methods=["PUT"])
+def update_sector(sector_id):
+    """Update an existing sector"""
+    try:
+        data = request.get_json()
+        name = data.get("name", "").strip()
+        description = data.get("description", "").strip()
+
+        if not name:
+            return jsonify({"success": False, "error": "Sector name is required"}), 400
+
+        container = get_container()
+        db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
+
+        # Check if another sector already has this name
+        cursor.execute(
+            "SELECT sector_id FROM sectors WHERE sector_name = ? AND sector_id != ? AND is_active = 1",
+            (name, sector_id),
+        )
+        if cursor.fetchone():
+            return jsonify(
+                {"success": False, "error": "A sector with this name already exists"}
+            ), 400
+
+        # Update sector
+        cursor.execute(
+            """
+            UPDATE sectors 
+            SET sector_name = ?, 
+                sector_group = ?, 
+                sector_code = UPPER(REPLACE(?, ' ', '_')),
+                updated_date = CURRENT_TIMESTAMP
+            WHERE sector_id = ? AND is_active = 1
+        """,
+            (name, description, name, sector_id),
+        )
+
+        if cursor.rowcount == 0:
+            return jsonify(
+                {"success": False, "error": "Sector not found or inactive"}
+            ), 404
+
+        conn.commit()
+        conn.close()
+
+        return jsonify(
+            {
+                "success": True,
+                "message": f'Sector updated to "{name}"',
+                "data": {"id": sector_id, "name": name, "description": description},
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error updating sector: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@customer_sector_bp.route("/sectors/<int:sector_id>", methods=["DELETE"])
+def delete_sector(sector_id):
+    """Delete a sector (unassigns customers first)"""
+    try:
+        container = get_container()
+        db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
+
+        # First, unassign all customers from this sector
+        cursor.execute(
+            """
+            UPDATE customers 
+            SET sector_id = NULL, updated_date = CURRENT_TIMESTAMP
+            WHERE sector_id = ?
+        """,
+            (sector_id,),
+        )
+
+        # Then deactivate the sector (don't hard delete)
+        cursor.execute(
+            """
+            UPDATE sectors 
+            SET is_active = 0, updated_date = CURRENT_TIMESTAMP
+            WHERE sector_id = ?
+        """,
+            (sector_id,),
+        )
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"success": True, "message": "Sector deleted successfully"})
+
+    except Exception as e:
+        logger.error(f"Error deleting sector: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# =============================================================================
+# DEBUG ENDPOINTS
+# =============================================================================
+
+@customer_sector_bp.route("/debug/full-flow/<int:customer_id>", methods=["GET"])
+def debug_customer_full_flow(customer_id):
+    """Comprehensive diagnostic for a specific customer"""
+    try:
+        container = get_container()
+        db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
+        
+        # Get customer's current state from all relevant tables
+        customer_query = """
+        SELECT 
+            c.customer_id,
+            c.normalized_name,
+            c.sector_id,
+            s.sector_name,
+            c.created_date,
+            c.updated_date,
+            c.is_active
+        FROM customers c
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE c.customer_id = ?
+        """
+        
+        cursor.execute(customer_query, (customer_id,))
+        customer_raw = cursor.fetchone()
+        
+        if not customer_raw:
+            return jsonify({"error": f"Customer {customer_id} not found"})
+        
+        customer_data = {
+            "customer_id": customer_raw[0],
+            "normalized_name": customer_raw[1],
+            "sector_id": customer_raw[2],
+            "sector_name": customer_raw[3],
+            "created_date": customer_raw[4],
+            "updated_date": customer_raw[5],
+            "is_active": bool(customer_raw[6])
+        }
+        
+        # Get audit trail for this customer
+        audit_query = """
+        SELECT 
+            audit_id,
+            old_sector_id,
+            new_sector_id,
+            assignment_method,
+            assigned_by,
+            assigned_at,
+            notes
+        FROM sector_assignment_audit
+        WHERE customer_id = ?
+        ORDER BY assigned_at DESC
+        LIMIT 10
+        """
+        
+        cursor.execute(audit_query, (customer_id,))
+        audit_raw = cursor.fetchall()
+        
+        audit_data = []
+        for audit_row in audit_raw:
+            audit_data.append({
+                "audit_id": audit_row[0],
+                "old_sector_id": audit_row[1],
+                "new_sector_id": audit_row[2],
+                "assignment_method": audit_row[3],
+                "assigned_by": audit_row[4],
+                "assigned_at": audit_row[5],
+                "notes": audit_row[6]
+            })
+        
+        # Check how this customer appears in the main query used by the frontend
+        frontend_query = """
+        SELECT
+            COALESCE(audit.customer_id, 0) AS customer_id,
+            COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS name,
+            COALESCE(sect.sector_name, 'Unassigned') AS sector,
+            COALESCE(c.updated_date, '2025-01-01') AS lastUpdated,
+            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
+            COUNT(s.spot_id) AS spot_count,
+            CASE 
+                WHEN audit.customer_id IS NOT NULL THEN 'resolved'
+                ELSE 'unresolved'
+            END AS resolution_status
+        FROM spots s
+        LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+        LEFT JOIN customers c ON audit.customer_id = c.customer_id
+        LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
+        WHERE s.revenue_type = 'Internal Ad Sales'
+          AND (a.agency_name != 'WorldLink' OR a.agency_name IS NULL)
+          AND s.gross_rate > 0
+          AND (COALESCE(c.is_active, 1) = 1 OR audit.customer_id IS NULL)
+          AND COALESCE(audit.customer_id, 0) = ?
+        GROUP BY 
+            COALESCE(audit.customer_id, 0),
+            COALESCE(audit.normalized_name, s.bill_code),
+            sect.sector_name,
+            c.updated_date
+        """
+        
+        cursor.execute(frontend_query, (customer_id,))
+        frontend_raw = cursor.fetchone()
+        
+        frontend_data = None
+        if frontend_raw:
+            frontend_data = {
+                "customer_id": frontend_raw[0],
+                "name": frontend_raw[1],
+                "sector": frontend_raw[2],
+                "lastUpdated": frontend_raw[3],
+                "total_revenue": float(frontend_raw[4]) if frontend_raw[4] else 0.0,
+                "spot_count": frontend_raw[5],
+                "resolution_status": frontend_raw[6]
+            }
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "customer_id": customer_id,
+            "diagnostics": {
+                "customer_table": customer_data,
+                "audit_trail": audit_data,
+                "frontend_query_result": frontend_data,
+                "summary": {
+                    "customer_exists": customer_data is not None,
+                    "has_sector": customer_data["sector_id"] is not None,
+                    "appears_in_frontend": frontend_data is not None,
+                    "audit_entries": len(audit_data)
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Full flow diagnostic failed: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -845,6 +971,7 @@ def test_database_write():
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 @customer_sector_bp.route("/debug/db-info", methods=["GET"])
 def get_database_info():
     """Quick database info endpoint"""
@@ -886,104 +1013,4 @@ def get_database_info():
         })
         
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@customer_sector_bp.route("/sectors/<int:sector_id>", methods=["PUT"])
-def update_sector(sector_id):
-    """Update an existing sector"""
-    try:
-        data = request.get_json()
-        name = data.get("name", "").strip()
-        description = data.get("description", "").strip()
-
-        if not name:
-            return jsonify({"success": False, "error": "Sector name is required"}), 400
-
-        container = get_container()
-        db = container.get("database_connection")
-        conn = db.connect()
-        cursor = conn.cursor()
-
-        # Check if another sector already has this name
-        cursor.execute(
-            "SELECT sector_id FROM sectors WHERE sector_name = ? AND sector_id != ? AND is_active = 1",
-            (name, sector_id),
-        )
-        if cursor.fetchone():
-            return jsonify(
-                {"success": False, "error": "A sector with this name already exists"}
-            ), 400
-
-        # Update sector
-        cursor.execute(
-            """
-            UPDATE sectors 
-            SET sector_name = ?, 
-                sector_group = ?, 
-                sector_code = UPPER(REPLACE(?, ' ', '_')),
-                updated_date = CURRENT_TIMESTAMP
-            WHERE sector_id = ? AND is_active = 1
-        """,
-            (name, description, name, sector_id),
-            (name, description, name, sector_id),
-        )
-
-        if cursor.rowcount == 0:
-            return jsonify(
-                {"success": False, "error": "Sector not found or inactive"}
-            ), 404
-
-        conn.commit()
-        conn.close()
-
-        return jsonify(
-            {
-                "success": True,
-                "message": f'Sector updated to "{name}"',
-                "data": {"id": sector_id, "name": name, "description": description},
-                "data": {"id": sector_id, "name": name, "description": description},
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error updating sector: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@customer_sector_bp.route("/sectors/<int:sector_id>", methods=["DELETE"])
-def delete_sector(sector_id):
-    """Delete a sector (unassigns customers first)"""
-    try:
-        container = get_container()
-        db = container.get("database_connection")
-        conn = db.connect()
-        cursor = conn.cursor()
-
-        # First, unassign all customers from this sector
-        cursor.execute(
-            """
-            UPDATE customers 
-            SET sector_id = NULL, updated_date = CURRENT_TIMESTAMP
-            WHERE sector_id = ?
-        """,
-            (sector_id,),
-        )
-
-        # Then deactivate the sector (don't hard delete)
-        cursor.execute(
-            """
-            UPDATE sectors 
-            SET is_active = 0, updated_date = CURRENT_TIMESTAMP
-            WHERE sector_id = ?
-        """,
-            (sector_id,),
-        )
-
-        conn.commit()
-        conn.close()
-
-        return jsonify({"success": True, "message": "Sector deleted successfully"})
-
-    except Exception as e:
-        logger.error(f"Error deleting sector: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
