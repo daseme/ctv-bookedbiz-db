@@ -11,10 +11,12 @@ logger = logging.getLogger(__name__)
 @customer_sector_bp.route("/customers", methods=["GET"])
 def get_customers():
     """Get customers with Internal Ad Sales revenue, INCLUDING unresolved ones"""
+    """Get customers with Internal Ad Sales revenue, INCLUDING unresolved ones"""
     try:
         container = get_container()
         db = container.get("database_connection")
 
+        # FIXED: Include both resolved AND unresolved customers
         # FIXED: Include both resolved AND unresolved customers
         query = """
         SELECT
@@ -23,6 +25,12 @@ def get_customers():
             COALESCE(sect.sector_name, 'Unassigned') AS sector,
             COALESCE(c.updated_date, '2025-01-01') AS lastUpdated,
             ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
+            COUNT(s.spot_id) AS spot_count,
+            -- Add flag to distinguish resolved vs unresolved
+            CASE 
+                WHEN audit.customer_id IS NOT NULL THEN 'resolved'
+                ELSE 'unresolved'
+            END AS resolution_status
             COUNT(s.spot_id) AS spot_count,
             -- Add flag to distinguish resolved vs unresolved
             CASE 
@@ -40,12 +48,18 @@ def get_customers():
           -- CRITICAL FIX: Remove this line that was excluding unresolved customers
           -- AND COALESCE(audit.customer_id, 0) != 0  <-- This was the problem!
           AND (COALESCE(c.is_active, 1) = 1 OR audit.customer_id IS NULL)  -- Include unresolved
+          -- CRITICAL FIX: Remove this line that was excluding unresolved customers
+          -- AND COALESCE(audit.customer_id, 0) != 0  <-- This was the problem!
+          AND (COALESCE(c.is_active, 1) = 1 OR audit.customer_id IS NULL)  -- Include unresolved
         GROUP BY 
             COALESCE(audit.customer_id, 0),
             COALESCE(audit.normalized_name, s.bill_code),
             sect.sector_name,
             c.updated_date
         HAVING COUNT(s.spot_id) > 0
+        ORDER BY 
+            CASE WHEN audit.customer_id IS NULL THEN 0 ELSE 1 END,  -- Unresolved first
+            name
         ORDER BY 
             CASE WHEN audit.customer_id IS NULL THEN 0 ELSE 1 END,  -- Unresolved first
             name
@@ -68,6 +82,8 @@ def get_customers():
                     "spotCount": row[5] if row[5] else 0,
                     "resolutionStatus": row[6],  
                     "isUnresolved": row[6] == 'unresolved'  
+                    "resolutionStatus": row[6],  
+                    "isUnresolved": row[6] == 'unresolved'  
                 }
             )
 
@@ -76,7 +92,13 @@ def get_customers():
         resolved_count = len([c for c in customers if not c['isUnresolved']])
         unresolved_count = len([c for c in customers if c['isUnresolved']])
         
+        
+        resolved_count = len([c for c in customers if not c['isUnresolved']])
+        unresolved_count = len([c for c in customers if c['isUnresolved']])
+        
         logger.info(
+            f"Fetched {len(customers)} total customers: "
+            f"{resolved_count} resolved, {unresolved_count} unresolved"
             f"Fetched {len(customers)} total customers: "
             f"{resolved_count} resolved, {unresolved_count} unresolved"
         )
@@ -563,6 +585,7 @@ def bulk_update_sectors():
 @customer_sector_bp.route("/sectors", methods=["POST"])
 def add_sector():
     """Add a new sector"""
+    """Add a new sector"""
     try:
         data = request.get_json()
         if not data:
@@ -902,6 +925,7 @@ def update_sector(sector_id):
             WHERE sector_id = ? AND is_active = 1
         """,
             (name, description, name, sector_id),
+            (name, description, name, sector_id),
         )
 
         if cursor.rowcount == 0:
@@ -916,6 +940,7 @@ def update_sector(sector_id):
             {
                 "success": True,
                 "message": f'Sector updated to "{name}"',
+                "data": {"id": sector_id, "name": name, "description": description},
                 "data": {"id": sector_id, "name": name, "description": description},
             }
         )
