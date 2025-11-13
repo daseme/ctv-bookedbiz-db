@@ -62,6 +62,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Generator, Set, Dict, List, Tuple
+import pandas as pd
 import sqlite3
 
 # Add tqdm for progress bars
@@ -92,10 +93,10 @@ class EnhancedMarketSetupManager:
         print(f"🔍 Scanning Excel file for market codes: {excel_file}")
 
         try:
-            from openpyxl import load_workbook
+            from src.services.import_integration_utilities import get_excel_worksheet_flexible
 
-            workbook = load_workbook(excel_file, read_only=True, data_only=True)
-            worksheet = workbook.active
+            worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
+            print(f"📄 Market scan using sheet: {sheet_name}")
 
             # Find required columns
             header_row = next(
@@ -380,6 +381,90 @@ class SimpleHistoricalImporter:
         self.import_service = BroadcastMonthImportService(db_connection)
         self.process = psutil.Process(os.getpid())
 
+    def _ensure_bill_codes_in_raw_inputs(self, excel_file: str) -> None:
+        """
+        Ensure all bill_code values from Excel are added to raw_customer_inputs
+        This prevents normalization gaps from occurring.
+        """
+        try:
+            import pandas as pd
+            
+            # Try to read the main data sheet - handle multiple possible sheet names
+            sheet_names_to_try = ["Commercials", "Commercial Lines", "Sheet1", 0]  # 0 = first sheet
+            df = None
+            sheet_used = None
+            
+            for sheet_name in sheet_names_to_try:
+                try:
+                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    sheet_used = sheet_name
+                    print(f"   📄 Reading bill codes from sheet: {sheet_name}")
+                    break
+                except Exception:
+                    continue
+            
+            if df is None:
+                print("   ⚠️ Warning: Could not read any sheet from Excel file")
+                return
+
+            # Get unique bill codes - try multiple possible column names
+            bill_code_columns = ['bill_code', 'Bill Code', 'Customer', 'Client', 'Advertiser', 'customer']
+            bill_codes = []
+            column_used = None
+            
+            for col in bill_code_columns:
+                if col in df.columns:
+                    bill_codes = df[col].dropna().unique().tolist()
+                    column_used = col
+                    break
+            
+            if not bill_codes:
+                print("   ⚠️ Warning: No bill code column found in Excel file")
+                available_columns = list(df.columns)[:10]  # Show first 10 columns
+                print(f"   Available columns: {available_columns}")
+                return
+            
+            # Clean and filter bill codes
+            clean_bill_codes = []
+            for bill_code in bill_codes:
+                if bill_code and str(bill_code).strip() and str(bill_code).strip().upper() != 'NAN':
+                    clean_bill_codes.append(str(bill_code).strip())
+            
+            if clean_bill_codes:
+                # Add to raw_customer_inputs using tqdm for progress
+                current_time = datetime.now().isoformat()
+                added_count = 0
+                
+                with self.db.transaction() as conn:
+                    with tqdm(clean_bill_codes, desc="   🔧 Adding bill codes", unit=" codes") as pbar:
+                        for bill_code in pbar:
+                            try:
+                                cursor = conn.execute("""
+                                    INSERT OR IGNORE INTO raw_customer_inputs (raw_text, created_at)
+                                    VALUES (?, ?)
+                                """, (bill_code, current_time))
+                                
+                                if cursor.rowcount > 0:
+                                    added_count += 1
+                                    
+                            except Exception as e:
+                                # Continue with other bill codes if one fails
+                                continue
+                
+                print(f"   ✅ Normalization system updated:")
+                print(f"      Sheet: {sheet_used}, Column: {column_used}")
+                print(f"      Total bill codes found: {len(clean_bill_codes):,}")
+                print(f"      New bill codes added: {added_count:,}")
+                
+                if added_count == 0:
+                    print(f"      (All bill codes were already in system)")
+            else:
+                print("   ⚠️ Warning: No valid bill codes found after cleaning")
+        
+        except Exception as e:
+            print(f"   ⚠️ Warning: Could not update raw_customer_inputs: {e}")
+            # Don't fail the entire import if this step fails
+
     def execute_simple_import(
         self,
         excel_file: str,
@@ -435,6 +520,12 @@ class SimpleHistoricalImporter:
                 print(
                     f"   📅 Schedule dates updated: {market_setup_result['dates_updated']}"
                 )
+                print()
+
+            # Step 1.5: CRITICAL FIX - Update normalization system
+            if not dry_run:
+                print(f"🔧 STEP 1.5: Updating normalization system with new bill codes...")
+                self._ensure_bill_codes_in_raw_inputs(excel_file)
                 print()
 
             # Step 2: Historical data import (includes language from Excel)
@@ -501,25 +592,23 @@ def display_production_preview(
             # Market setup preview
             market_manager = EnhancedMarketSetupManager(db_connection)
 
-            # Quick scan for preview
-            from openpyxl import load_workbook
+            # Quick scan for preview (flexible sheet selection)
+            from src.services.import_integration_utilities import get_excel_worksheet_flexible
+            worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
+            print(f"📄 Preview using sheet: {sheet_name}")
 
-            workbook = load_workbook(excel_file, read_only=True, data_only=True)
-
-            total_rows = workbook.max_row - 1
+            total_rows = max(0, (worksheet.max_row or 1) - 1)  # exclude header
             print(f"📊 File contains ~{total_rows:,} rows to analyze")
 
             # Quick market analysis
             excel_markets = market_manager.scan_excel_for_markets(excel_file)
             existing_markets = market_manager.get_existing_markets()
-
             missing_markets = set(excel_markets.keys()) - set(existing_markets.keys())
 
             print(f"🏗️  Market Setup Preview:")
             print(f"   📊 Markets in Excel: {len(excel_markets)}")
             print(f"   ✅ Already exist: {len(existing_markets)}")
             print(f"   🏗️  Will create: {len(missing_markets)}")
-
             if missing_markets:
                 print(f"   📋 New markets to create: {sorted(missing_markets)}")
             print()
@@ -531,22 +620,17 @@ def display_production_preview(
 
         print(f"📦 Import Preview:")
         print(f"   📅 Months found: {len(summary['months_in_excel'])}")
-        print(
-            f"   📊 Total spots to process: {summary['total_existing_spots_affected']:,}"
-        )
+        print(f"   📊 Existing DB records to replace: {summary['total_existing_spots_affected']:,}")
+        print(f"   📄 Rows in Excel (est.): {summary.get('total_rows_in_excel', 0):,}")
         print(f"   🔒 Closed months: {len(summary['closed_months'])}")
         print(f"   📂 Open months: {len(summary['open_months'])}")
 
         if skip_closed:
-            print(
-                f"   🎯 Mode: WEEKLY_UPDATE (will skip {len(summary['closed_months'])} closed months)"
-            )
+            print(f"   🎯 Mode: WEEKLY_UPDATE (will skip {len(summary['closed_months'])} closed months)")
         else:
-            print(
-                f"   🎯 Mode: HISTORICAL (will process all months, replace existing data)"
-            )
+            print(f"   🎯 Mode: HISTORICAL (will process all months, replace existing data)")
 
-        print(f"")
+        print("")
         print(f"🔤 Language Handling:")
         print(f"   📋 Language data will be read directly from Excel Language column")
         print(f"   🎯 No complex processing needed - simple and reliable")
@@ -556,7 +640,6 @@ def display_production_preview(
 
     except Exception as e:
         print(f"❌ Error generating preview: {e}")
-
 
 def main():
     """Simple main function - language comes from Excel directly."""

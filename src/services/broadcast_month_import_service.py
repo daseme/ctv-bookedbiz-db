@@ -41,6 +41,7 @@ from src.services.base_service import BaseService
 from src.utils.broadcast_month_utils import normalize_broadcast_day
 from src.services.entity_alias_service import EntityAliasService
 from src.services.import_performance_optimization import BatchEntityResolver
+from src.services.import_integration_utilities import get_excel_worksheet_flexible
 
 logger = logging.getLogger(__name__)
 
@@ -755,8 +756,8 @@ class BroadcastMonthImportService(BaseService):
 
         try:
             with suppress_verbose_logging(), suppress_stdout_stderr():
-                workbook = load_workbook(excel_file, read_only=True, data_only=True)
-                worksheet = workbook.active
+                worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
+                tqdm.write(f"Using sheet: {sheet_name}")
 
             total_records = worksheet.max_row - 1
             imported_count = 0

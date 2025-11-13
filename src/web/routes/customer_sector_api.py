@@ -12,82 +12,635 @@ logger = logging.getLogger(__name__)
 
 @customer_sector_bp.route("/customers", methods=["GET"])
 def get_customers():
-    """Get customers with Internal Ad Sales revenue, INCLUDING unresolved ones"""
+    """Get customers - FILTER WORLDLINK CLIENTS VERSION"""
     try:
         container = get_container()
         db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
 
-        # FIXED: Include both resolved AND unresolved customers
-        query = """
-        SELECT
-            COALESCE(audit.customer_id, 0) AS customer_id,
-            COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS name,
-            COALESCE(sect.sector_name, 'Unassigned') AS sector,
-            COALESCE(c.updated_date, '2025-01-01') AS lastUpdated,
+        # Get all active customers, excluding WorldLink-related names
+        customer_query = """
+        SELECT 
+            c.customer_id,
+            c.normalized_name,
+            COALESCE(s.sector_name, 'Unassigned') AS sector,
+            c.updated_date
+        FROM customers c
+        LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        WHERE c.is_active = 1
+          -- Filter out WorldLink clients by name patterns
+          AND c.normalized_name NOT LIKE '%WorldLink%'
+          AND c.normalized_name NOT LIKE '%Worldlink%' 
+          AND c.normalized_name NOT LIKE 'Direct Donor%'
+          AND c.normalized_name NOT LIKE 'Marketing Architects%'
+          AND c.normalized_name NOT LIKE '%FinanceBuzz%'
+          AND c.normalized_name NOT LIKE '%Marketing Arch%'
+        ORDER BY c.normalized_name
+        """
+
+        cursor.execute(customer_query)
+        customer_rows = cursor.fetchall()
+        
+        # Get revenue data for all customers in one efficient query
+        revenue_query = """
+        SELECT 
+            audit.customer_id,
             ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
-            COUNT(s.spot_id) AS spot_count,
-            -- Add flag to distinguish resolved vs unresolved
-            CASE 
-                WHEN audit.customer_id IS NOT NULL THEN 'resolved'
-                ELSE 'unresolved'
-            END AS resolution_status
-        FROM spots s
-        LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
-        LEFT JOIN customers c ON audit.customer_id = c.customer_id
+            COUNT(s.spot_id) AS spot_count
+        FROM v_customer_normalization_audit audit
+        LEFT JOIN spots s ON audit.raw_text = s.bill_code
         LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
         WHERE s.revenue_type = 'Internal Ad Sales'
           AND (a.agency_name != 'WorldLink' OR a.agency_name IS NULL)
           AND s.gross_rate > 0
-          -- CRITICAL FIX: Remove this line that was excluding unresolved customers
-          -- AND COALESCE(audit.customer_id, 0) != 0  <-- This was the problem!
-          AND (COALESCE(c.is_active, 1) = 1 OR audit.customer_id IS NULL)  -- Include unresolved
-        GROUP BY 
-            COALESCE(audit.customer_id, 0),
-            COALESCE(audit.normalized_name, s.bill_code),
-            sect.sector_name,
-            c.updated_date
-        HAVING COUNT(s.spot_id) > 0
-        ORDER BY 
-            CASE WHEN audit.customer_id IS NULL THEN 0 ELSE 1 END,  -- Unresolved first
-            name
-        """
+          AND audit.customer_id IN ({})
+        GROUP BY audit.customer_id
+        """.format(','.join(['?'] * len(customer_rows)))
+        
+        customer_ids = [row[0] for row in customer_rows]
+        if customer_ids:  # Only run revenue query if we have customers
+            cursor.execute(revenue_query, customer_ids)
+            revenue_rows = cursor.fetchall()
+        else:
+            revenue_rows = []
+        
+        # Create revenue lookup dict
+        revenue_lookup = {}
+        for rev_row in revenue_rows:
+            revenue_lookup[rev_row[0]] = {
+                'total_revenue': float(rev_row[1]) if rev_row[1] else 0.0,
+                'spot_count': rev_row[2] if rev_row[2] else 0
+            }
 
-        conn = db.connect()
-        cursor = conn.cursor()
-        cursor.execute(query)
-        rows = cursor.fetchall()
-
+        # Build final customer list - include all customers (even $0 revenue)
         customers = []
-        for row in rows:
-            customers.append(
-                {
-                    "id": row[0],
-                    "name": row[1],
-                    "sector": row[2] if row[2] != "Unassigned" else None,
-                    "lastUpdated": str(row[3])[:10] if row[3] else "2025-01-01",
-                    "totalRevenue": float(row[4]) if row[4] else 0.0,
-                    "spotCount": row[5] if row[5] else 0,
-                    "resolutionStatus": row[6],  
-                    "isUnresolved": row[6] == 'unresolved'  
-                }
-            )
+        for row in customer_rows:
+            customer_id = row[0]
+            revenue_data = revenue_lookup.get(customer_id, {'total_revenue': 0.0, 'spot_count': 0})
+            
+            customers.append({
+                "id": customer_id,
+                "name": row[1],
+                "sector": row[2] if row[2] != "Unassigned" else None,
+                "lastUpdated": str(row[3])[:10] if row[3] else "2025-01-01",
+                "totalRevenue": revenue_data['total_revenue'],
+                "spotCount": revenue_data['spot_count'],
+                "resolutionStatus": "resolved",  
+                "isUnresolved": False
+            })
 
         conn.close()
         
-        resolved_count = len([c for c in customers if not c['isUnresolved']])
-        unresolved_count = len([c for c in customers if c['isUnresolved']])
-        
-        logger.info(
-            f"Fetched {len(customers)} total customers: "
-            f"{resolved_count} resolved, {unresolved_count} unresolved"
-        )
+        logger.info(f"Fetched {len(customers)} customers (filtered WorldLink clients)")
         return jsonify({"success": True, "data": customers})
 
     except Exception as e:
         logger.error(f"Error fetching customers: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ADD this endpoint to debug California Black Media's revenue issue
+
+@customer_sector_bp.route("/debug/revenue-issue/<customer_name>", methods=["GET"])
+def debug_revenue_issue(customer_name):
+    """Debug why a customer isn't getting revenue calculated"""
+    try:
+        container = get_container()
+        db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
+        
+        # Step 1: Find the customer record
+        cursor.execute(
+            "SELECT customer_id, normalized_name FROM customers WHERE normalized_name LIKE ?",
+            (f"%{customer_name}%",)
+        )
+        customer_record = cursor.fetchone()
+        customer_data = list(customer_record) if customer_record else None
+        
+        if not customer_record:
+            return jsonify({"error": f"Customer '{customer_name}' not found"})
+            
+        customer_id = customer_record[0]
+        
+        # Step 2: Check spots with matching bill_code
+        cursor.execute(
+            """
+            SELECT 
+                bill_code,
+                COUNT(*) as spot_count,
+                SUM(gross_rate) as total_revenue,
+                revenue_type,
+                MIN(air_date) as earliest_date,
+                MAX(air_date) as latest_date
+            FROM spots 
+            WHERE bill_code LIKE ?
+              AND revenue_type = 'Internal Ad Sales'
+              AND gross_rate > 0
+            GROUP BY bill_code, revenue_type
+            ORDER BY total_revenue DESC
+            """,
+            (f"%{customer_name}%",)
+        )
+        spots_data = [list(row) for row in cursor.fetchall()]
+        
+        # Step 3: Check normalization audit entries
+        cursor.execute(
+            """
+            SELECT 
+                raw_text,
+                normalized_name,
+                customer_id as audit_customer_id,
+                exists_in_customers
+            FROM v_customer_normalization_audit 
+            WHERE normalized_name LIKE ? OR raw_text LIKE ?
+            """,
+            (f"%{customer_name}%", f"%{customer_name}%")
+        )
+        audit_entries = [list(row) for row in cursor.fetchall()]
+        
+        # Step 4: Check if bill_codes match between spots and audit
+        if spots_data:
+            bill_codes = [spot[0] for spot in spots_data]
+            placeholders = ','.join(['?'] * len(bill_codes))
+            
+            cursor.execute(
+                f"""
+                SELECT 
+                    raw_text,
+                    normalized_name,
+                    customer_id,
+                    exists_in_customers
+                FROM v_customer_normalization_audit 
+                WHERE raw_text IN ({placeholders})
+                """,
+                bill_codes
+            )
+            matching_audit_entries = [list(row) for row in cursor.fetchall()]
+        else:
+            matching_audit_entries = []
+        
+        # Step 5: Test the exact revenue query being used
+        cursor.execute(
+            """
+            SELECT 
+                audit.customer_id,
+                audit.raw_text,
+                audit.normalized_name,
+                s.bill_code,
+                s.gross_rate,
+                s.revenue_type,
+                a.agency_name
+            FROM v_customer_normalization_audit audit
+            LEFT JOIN spots s ON audit.raw_text = s.bill_code
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.revenue_type = 'Internal Ad Sales'
+              AND (a.agency_name != 'WorldLink' OR a.agency_name IS NULL)
+              AND s.gross_rate > 0
+              AND audit.customer_id = ?
+            LIMIT 10
+            """,
+            (customer_id,)
+        )
+        revenue_query_results = [list(row) for row in cursor.fetchall()]
+        
+        # Step 6: Check if customer_id is properly set in audit
+        cursor.execute(
+            """
+            SELECT COUNT(*) as total_entries,
+                   COUNT(customer_id) as entries_with_customer_id,
+                   COUNT(CASE WHEN customer_id = ? THEN 1 END) as entries_for_this_customer
+            FROM v_customer_normalization_audit 
+            WHERE raw_text LIKE ?
+            """,
+            (customer_id, f"%{customer_name}%")
+        )
+        audit_stats = list(cursor.fetchone())
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "customer_searched": customer_name,
+            "diagnostics": {
+                "customer_record": customer_data,
+                "spots_with_revenue": spots_data,
+                "normalization_audit_entries": audit_entries,
+                "matching_audit_entries": matching_audit_entries,
+                "revenue_query_results": revenue_query_results,
+                "audit_statistics": {
+                    "total_entries": audit_stats[0],
+                    "entries_with_customer_id": audit_stats[1],
+                    "entries_for_this_customer": audit_stats[2]
+                },
+                "analysis": {
+                    "customer_exists": customer_data is not None,
+                    "has_spots_with_revenue": len(spots_data) > 0,
+                    "has_audit_entries": len(audit_entries) > 0,
+                    "audit_properly_linked": len(matching_audit_entries) > 0,
+                    "revenue_query_returns_data": len(revenue_query_results) > 0
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error debugging revenue issue: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ADD this endpoint to your customer_sector_api.py file (in the DEBUG ENDPOINTS section)
+
+@customer_sector_bp.route("/debug/normalization-view/<customer_name>", methods=["GET"])
+def debug_normalization_view(customer_name):
+    """Debug why a customer doesn't appear in v_customer_normalization_audit"""
+    try:
+        container = get_container()
+        db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
+        
+        # Step 1: Check what feeds the normalization view
+        # Based on your schema, it uses raw_customer_inputs and spots data
+        
+        # Check raw_customer_inputs
+        cursor.execute(
+            "SELECT raw_text, created_at FROM raw_customer_inputs WHERE raw_text LIKE ?",
+            (f"%{customer_name}%",)
+        )
+        raw_inputs = [list(row) for row in cursor.fetchall()]
+        
+        # Check customer_canonical_map  
+        cursor.execute(
+            "SELECT alias_name, canonical_name, updated_date FROM customer_canonical_map WHERE alias_name LIKE ? OR canonical_name LIKE ?",
+            (f"%{customer_name}%", f"%{customer_name}%")
+        )
+        canonical_map = [list(row) for row in cursor.fetchall()]
+        
+        # Check spots with this bill_code
+        cursor.execute(
+            """
+            SELECT DISTINCT bill_code, revenue_type, COUNT(*) as count, SUM(gross_rate) as revenue
+            FROM spots 
+            WHERE bill_code LIKE ?
+            GROUP BY bill_code, revenue_type
+            ORDER BY revenue DESC
+            """,
+            (f"%{customer_name}%",)
+        )
+        spots_data = [list(row) for row in cursor.fetchall()]
+        
+        # Check text_strips (things that get cleaned from names)
+        cursor.execute("SELECT needle FROM text_strips")
+        text_strips = [row[0] for row in cursor.fetchall()]
+        
+        # Test the v_raw_clean view logic manually
+        test_name = customer_name
+        for needle in text_strips:
+            if needle in test_name:
+                test_name = test_name.replace(needle, '')
+        cleaned_name = ' '.join(test_name.split())  # Collapse spaces
+        
+        # Check if the cleaned name would match anything
+        cursor.execute(
+            "SELECT * FROM v_raw_clean WHERE raw_text LIKE ?",
+            (f"%{customer_name}%",)
+        )
+        raw_clean_entries = [list(row) for row in cursor.fetchall()]
+        
+        # Check v_normalized_candidates
+        cursor.execute(
+            "SELECT * FROM v_normalized_candidates WHERE raw_text LIKE ? OR customer LIKE ?",
+            (f"%{customer_name}%", f"%{customer_name}%")
+        )
+        normalized_candidates = [list(row) for row in cursor.fetchall()]
+        
+        # The key insight: Check what SHOULD trigger the view to include this customer
+        # The view likely starts from raw_customer_inputs or spots
+        cursor.execute(
+            """
+            SELECT DISTINCT bill_code 
+            FROM spots 
+            WHERE bill_code LIKE ?
+              AND revenue_type != 'Trade'
+            """,
+            (f"%{customer_name}%",)
+        )
+        qualifying_bill_codes = [row[0] for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "customer_searched": customer_name,
+            "normalization_system_check": {
+                "raw_customer_inputs": raw_inputs,
+                "customer_canonical_map": canonical_map,
+                "spots_data": spots_data,
+                "text_strips_applied": {
+                    "original": customer_name,
+                    "cleaned": cleaned_name,
+                    "strips_found": [needle for needle in text_strips if needle in customer_name]
+                },
+                "raw_clean_entries": raw_clean_entries,
+                "normalized_candidates": normalized_candidates,
+                "qualifying_bill_codes": qualifying_bill_codes
+            },
+            "analysis": {
+                "in_raw_inputs": len(raw_inputs) > 0,
+                "in_canonical_map": len(canonical_map) > 0,
+                "has_qualifying_spots": len(qualifying_bill_codes) > 0,
+                "in_raw_clean": len(raw_clean_entries) > 0,
+                "in_candidates": len(normalized_candidates) > 0
+            },
+            "recommendation": "Customer needs to be added to raw_customer_inputs table to appear in normalization view"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error debugging normalization view: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ADD this endpoint to analyze how customers should enter normalization pipeline
+
+@customer_sector_bp.route("/debug/analyze-normalization-gaps", methods=["GET"])
+def analyze_normalization_gaps():
+    """Analyze gaps in the normalization pipeline to understand missing customers"""
+    try:
+        container = get_container()
+        db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
+        
+        # 1. Find all customers that exist but aren't in normalization audit
+        cursor.execute(
+            """
+            SELECT 
+                c.customer_id,
+                c.normalized_name,
+                c.created_date,
+                CASE WHEN audit.customer_id IS NOT NULL THEN 1 ELSE 0 END as in_audit
+            FROM customers c
+            LEFT JOIN v_customer_normalization_audit audit ON c.customer_id = audit.customer_id
+            WHERE c.is_active = 1
+            ORDER BY c.created_date DESC
+            """
+        )
+        customer_audit_status = cursor.fetchall()
+        
+        customers_missing_from_audit = []
+        customers_in_audit = []
+        
+        for row in customer_audit_status:
+            customer_data = {
+                "customer_id": row[0],
+                "normalized_name": row[1],
+                "created_date": row[2],
+                "in_audit": bool(row[3])
+            }
+            
+            if row[3]:  # in audit
+                customers_in_audit.append(customer_data)
+            else:  # missing from audit
+                customers_missing_from_audit.append(customer_data)
+        
+        # 2. For missing customers, check if they have spots with revenue
+        missing_with_revenue = []
+        for customer in customers_missing_from_audit[:20]:  # Limit to avoid timeout
+            cursor.execute(
+                """
+                SELECT 
+                    COUNT(*) as spot_count,
+                    SUM(CASE WHEN revenue_type = 'Internal Ad Sales' AND gross_rate > 0 THEN gross_rate ELSE 0 END) as ias_revenue,
+                    SUM(CASE WHEN revenue_type != 'Trade' AND gross_rate > 0 THEN gross_rate ELSE 0 END) as total_revenue,
+                    GROUP_CONCAT(DISTINCT bill_code) as bill_codes_used
+                FROM spots s
+                WHERE s.bill_code LIKE ?
+                """,
+                (f"%{customer['normalized_name']}%",)
+            )
+            revenue_row = cursor.fetchone()
+            
+            if revenue_row and revenue_row[0] > 0:  # Has spots
+                customer_with_revenue = customer.copy()
+                customer_with_revenue.update({
+                    "spot_count": revenue_row[0],
+                    "ias_revenue": float(revenue_row[1]) if revenue_row[1] else 0.0,
+                    "total_revenue": float(revenue_row[2]) if revenue_row[2] else 0.0,
+                    "bill_codes_used": revenue_row[3]
+                })
+                missing_with_revenue.append(customer_with_revenue)
+        
+        # 3. Check what's in raw_customer_inputs vs what should be
+        cursor.execute("SELECT COUNT(*) FROM raw_customer_inputs")
+        total_raw_inputs = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT raw_text FROM raw_customer_inputs ORDER BY created_at DESC LIMIT 10")
+        recent_raw_inputs = [row[0] for row in cursor.fetchall()]
+        
+        # 4. Check recent spots data that might be missing from normalization
+        cursor.execute(
+            """
+            SELECT DISTINCT 
+                bill_code,
+                COUNT(*) as spots,
+                SUM(gross_rate) as revenue,
+                MIN(air_date) as first_date,
+                MAX(air_date) as last_date
+            FROM spots 
+            WHERE revenue_type = 'Internal Ad Sales' 
+              AND gross_rate > 0
+              AND air_date >= date('now', '-30 days')  -- Recent spots
+            GROUP BY bill_code
+            HAVING revenue > 1000  -- Significant revenue
+            ORDER BY revenue DESC
+            LIMIT 20
+            """
+        )
+        recent_significant_spots = []
+        for row in cursor.fetchall():
+            # Check if this bill_code is in normalization audit
+            cursor.execute(
+                "SELECT COUNT(*) FROM v_customer_normalization_audit WHERE raw_text = ?",
+                (row[0],)
+            )
+            in_audit = cursor.fetchone()[0] > 0
+            
+            recent_significant_spots.append({
+                "bill_code": row[0],
+                "spots": row[1],
+                "revenue": float(row[2]),
+                "first_date": row[3],
+                "last_date": row[4],
+                "in_normalization_audit": in_audit
+            })
+        
+        # 5. Check import batch history to understand data flow
+        cursor.execute(
+            """
+            SELECT 
+                import_mode,
+                COUNT(*) as batch_count,
+                MAX(import_date) as most_recent,
+                SUM(records_imported) as total_records
+            FROM import_batches 
+            WHERE status = 'COMPLETED'
+            GROUP BY import_mode
+            ORDER BY most_recent DESC
+            """
+        )
+        import_history = [list(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "analysis": {
+                "customers_summary": {
+                    "total_customers": len(customers_in_audit) + len(customers_missing_from_audit),
+                    "in_normalization_audit": len(customers_in_audit),
+                    "missing_from_audit": len(customers_missing_from_audit),
+                    "missing_with_revenue": len(missing_with_revenue)
+                },
+                "raw_inputs_summary": {
+                    "total_raw_inputs": total_raw_inputs,
+                    "recent_examples": recent_raw_inputs
+                },
+                "missing_customers_with_revenue": missing_with_revenue,
+                "recent_spots_not_in_audit": [spot for spot in recent_significant_spots if not spot["in_normalization_audit"]],
+                "import_batch_history": import_history
+            },
+            "recommendations": {
+                "immediate_action": f"Add {len(missing_with_revenue)} high-revenue customers to raw_customer_inputs",
+                "process_fix": "Review data import process to ensure new bill_codes are added to raw_customer_inputs automatically",
+                "monitoring": "Set up alerts when customers exist but aren't in normalization audit"
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error analyzing normalization gaps: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@customer_sector_bp.route("/debug/check-agencies/<customer_name>", methods=["GET"])
+def check_agency_filtering(customer_name):
+    """Check agency connections and filtering for a customer"""
+    try:
+        container = get_container()
+        db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
+        
+        # Check all agency connections for this customer
+        cursor.execute(
+            """
+            SELECT DISTINCT 
+                s.bill_code,
+                s.agency_id,
+                a.agency_name,
+                s.revenue_type,
+                COUNT(*) as spot_count,
+                SUM(s.gross_rate) as total_revenue,
+                -- Show what the filter condition evaluates to
+                CASE 
+                    WHEN a.agency_name = 'WorldLink' THEN 'FILTERED OUT (WorldLink)'
+                    WHEN a.agency_name IS NULL THEN 'NO AGENCY (INCLUDED)'
+                    ELSE 'INCLUDED (Not WorldLink)'
+                END as filter_status
+            FROM spots s
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE s.bill_code LIKE ?
+              AND s.revenue_type = 'Internal Ad Sales'
+              AND s.gross_rate > 0
+            GROUP BY s.bill_code, s.agency_id, a.agency_name, s.revenue_type
+            ORDER BY total_revenue DESC
+            """,
+            (f"%{customer_name}%",)
+        )
+        agency_data = cursor.fetchall()
+        
+        agency_connections = []
+        for row in agency_data:
+            agency_connections.append({
+                "bill_code": row[0],
+                "agency_id": row[1],
+                "agency_name": row[2],
+                "revenue_type": row[3],
+                "spot_count": row[4],
+                "total_revenue": float(row[5]) if row[5] else 0.0,
+                "filter_status": row[6]
+            })
+        
+        # Check if this customer appears in normalization audit
+        cursor.execute(
+            """
+            SELECT 
+                raw_text,
+                normalized_name, 
+                customer_id,
+                exists_in_customers
+            FROM v_customer_normalization_audit 
+            WHERE raw_text LIKE ? OR normalized_name LIKE ?
+            """,
+            (f"%{customer_name}%", f"%{customer_name}%")
+        )
+        audit_data = [list(row) for row in cursor.fetchall()]
+        
+        # Show current WorldLink filtering logic result
+        test_revenue_query = """
+        SELECT 
+            audit.customer_id,
+            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
+            COUNT(s.spot_id) AS spot_count,
+            GROUP_CONCAT(DISTINCT a.agency_name) as agencies_involved
+        FROM v_customer_normalization_audit audit
+        LEFT JOIN spots s ON audit.raw_text = s.bill_code
+        LEFT JOIN agencies a ON s.agency_id = a.agency_id
+        WHERE s.revenue_type = 'Internal Ad Sales'
+          AND (a.agency_name != 'WorldLink' OR a.agency_name IS NULL)  -- Current filter
+          AND s.gross_rate > 0
+          AND (audit.raw_text LIKE ? OR audit.normalized_name LIKE ?)
+        GROUP BY audit.customer_id
+        """
+        
+        cursor.execute(test_revenue_query, (f"%{customer_name}%", f"%{customer_name}%"))
+        current_filter_result = cursor.fetchall()
+        
+        filter_results = []
+        for row in current_filter_result:
+            filter_results.append({
+                "customer_id": row[0],
+                "total_revenue": float(row[1]) if row[1] else 0.0,
+                "spot_count": row[2],
+                "agencies_involved": row[3]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "customer_searched": customer_name,
+            "diagnostics": {
+                "agency_connections": agency_connections,
+                "normalization_audit": audit_data,
+                "current_filter_results": filter_results,
+                "summary": {
+                    "has_worldlink_connection": any(conn.get("agency_name") == "WorldLink" for conn in agency_connections),
+                    "should_be_filtered": any(conn.get("agency_name") == "WorldLink" for conn in agency_connections),
+                    "appears_in_current_results": len(filter_results) > 0
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error checking agency filtering: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @customer_sector_bp.route("/sectors", methods=["GET"])
 def get_sectors():
@@ -464,6 +1017,104 @@ def bulk_update_sectors():
         logger.error(f"Error bulk updating sectors: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ADD this test endpoint to your customer_sector_api.py file
+
+@customer_sector_bp.route("/debug/test-customer/<customer_name>", methods=["GET"])
+def test_specific_customer(customer_name):
+    """Test a specific customer to see why they might not appear"""
+    try:
+        container = get_container()
+        db = container.get("database_connection")
+        conn = db.connect()
+        cursor = conn.cursor()
+        
+        logger.info(f"=== TESTING CUSTOMER: {customer_name} ===")
+        
+        # Test 1: Check if customer exists in customers table
+        cursor.execute(
+            "SELECT customer_id, normalized_name, sector_id, is_active FROM customers WHERE normalized_name LIKE ? OR normalized_name LIKE ?",
+            (f"%{customer_name}%", f"%{customer_name.upper()}%")
+        )
+        customer_matches = cursor.fetchall()
+        customer_data = [list(row) for row in customer_matches]
+        
+        # Test 2: Check if customer appears in normalization audit
+        cursor.execute(
+            "SELECT raw_text, normalized_name, customer_id, exists_in_customers FROM v_customer_normalization_audit WHERE normalized_name LIKE ? OR raw_text LIKE ?",
+            (f"%{customer_name}%", f"%{customer_name}%")
+        )
+        audit_matches = cursor.fetchall()
+        audit_data = [list(row) for row in audit_matches]
+        
+        # Test 3: Check raw spots data
+        cursor.execute(
+            "SELECT DISTINCT bill_code FROM spots WHERE bill_code LIKE ? AND revenue_type = 'Internal Ad Sales' LIMIT 10",
+            (f"%{customer_name}%",)
+        )
+        bill_code_matches = cursor.fetchall()
+        bill_code_data = [row[0] for row in bill_code_matches]
+        
+        # Test 4: Check revenue data if customer exists
+        revenue_data = []
+        if customer_matches:
+            customer_id = customer_matches[0][0]
+            cursor.execute(
+                """
+                SELECT 
+                    SUM(COALESCE(s.gross_rate, 0)) AS total_revenue,
+                    COUNT(s.spot_id) AS spot_count,
+                    COUNT(DISTINCT s.bill_code) AS unique_bill_codes
+                FROM v_customer_normalization_audit audit
+                LEFT JOIN spots s ON audit.raw_text = s.bill_code
+                LEFT JOIN agencies a ON s.agency_id = a.agency_id
+                WHERE s.revenue_type = 'Internal Ad Sales'
+                  AND (a.agency_name != 'WorldLink' OR a.agency_name IS NULL)
+                  AND s.gross_rate > 0
+                  AND audit.customer_id = ?
+                """,
+                (customer_id,)
+            )
+            revenue_row = cursor.fetchone()
+            if revenue_row:
+                revenue_data = {
+                    "total_revenue": float(revenue_row[0]) if revenue_row[0] else 0.0,
+                    "spot_count": revenue_row[1] if revenue_row[1] else 0,
+                    "unique_bill_codes": revenue_row[2] if revenue_row[2] else 0
+                }
+        
+        # Test 5: Check if similar names exist
+        cursor.execute(
+            "SELECT DISTINCT bill_code FROM spots WHERE bill_code LIKE '%BLACK%' OR bill_code LIKE '%MEDIA%' LIMIT 10"
+        )
+        similar_matches = cursor.fetchall()
+        similar_data = [row[0] for row in similar_matches]
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "customer_searched": customer_name,
+            "diagnostics": {
+                "customers_table_matches": customer_data,
+                "normalization_audit_matches": audit_data,
+                "bill_code_matches": bill_code_data,
+                "revenue_data": revenue_data,
+                "similar_names": similar_data,
+                "summary": {
+                    "exists_in_customers": len(customer_data) > 0,
+                    "exists_in_audit": len(audit_data) > 0,
+                    "exists_in_spots": len(bill_code_data) > 0,
+                    "has_revenue": revenue_data and revenue_data.get('total_revenue', 0) > 0
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error testing customer: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @customer_sector_bp.route("/sectors", methods=["POST"])
 def add_sector():

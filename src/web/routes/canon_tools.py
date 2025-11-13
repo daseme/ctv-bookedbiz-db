@@ -342,3 +342,252 @@ def suggest_normalized():
             (f"%{q}%",),
         ).fetchall()
     return jsonify([r[0] for r in rows])
+
+@canon_bp.post("/consolidate-customer")
+def consolidate_customer():
+    """
+    Consolidate duplicate customer records that normalize to the same target.
+    Body: { "source_customer_id": 366, "target_customer_id": 443, "dry_run": true }
+    """
+    d = request.get_json(force=True)
+    source_id = d.get("source_customer_id")
+    target_id = d.get("target_customer_id")
+    dry_run = bool(d.get("dry_run", True))
+    
+    if not source_id or not target_id or source_id == target_id:
+        return jsonify({"success": False, "error": "Valid source and target customer IDs required"}), 400
+
+    conn = _open_rw(current_app.config["DB_PATH"])
+    try:
+        conn.execute("BEGIN IMMEDIATE;")
+        
+        # Verify both customers exist and get their details
+        source_customer = conn.execute(
+            "SELECT customer_id, normalized_name FROM customers WHERE customer_id = ?", 
+            (source_id,)
+        ).fetchone()
+        target_customer = conn.execute(
+            "SELECT customer_id, normalized_name FROM customers WHERE customer_id = ?", 
+            (target_id,)
+        ).fetchone()
+        
+        if not source_customer:
+            conn.execute("ROLLBACK;")
+            return jsonify({"success": False, "error": f"Source customer {source_id} not found"}), 404
+        if not target_customer:
+            conn.execute("ROLLBACK;")
+            return jsonify({"success": False, "error": f"Target customer {target_id} not found"}), 404
+        
+        # Get consolidation stats
+        spots_count = conn.execute(
+            "SELECT COUNT(*) as cnt FROM spots WHERE customer_id = ?", (source_id,)
+        ).fetchone()["cnt"]
+        
+        total_revenue = conn.execute(
+            "SELECT COALESCE(SUM(gross_rate), 0) as total FROM spots WHERE customer_id = ?", (source_id,)
+        ).fetchone()["total"]
+        
+        # Check for any entity_aliases that point to source customer
+        alias_count = conn.execute(
+            "SELECT COUNT(*) as cnt FROM entity_aliases WHERE target_entity_id = ? AND entity_type = 'customer'", 
+            (source_id,)
+        ).fetchone()["cnt"]
+        
+        # Get month breakdown for audit
+        monthly_spots = conn.execute(
+            """SELECT broadcast_month, COUNT(*) as spots, SUM(gross_rate) as revenue 
+               FROM spots WHERE customer_id = ? 
+               GROUP BY broadcast_month ORDER BY broadcast_month""", 
+            (source_id,)
+        ).fetchall()
+        
+        consolidation_summary = {
+            "source_customer": {
+                "id": source_id,
+                "normalized_name": source_customer["normalized_name"]
+            },
+            "target_customer": {
+                "id": target_id, 
+                "normalized_name": target_customer["normalized_name"]
+            },
+            "impact": {
+                "spots_affected": spots_count,
+                "total_revenue": float(total_revenue),
+                "aliases_affected": alias_count,
+                "monthly_breakdown": [
+                    {
+                        "month": row["broadcast_month"],
+                        "spots": row["spots"],
+                        "revenue": float(row["revenue"])
+                    } for row in monthly_spots
+                ]
+            }
+        }
+        
+        if dry_run:
+            conn.execute("ROLLBACK;")
+            return jsonify({
+                "success": True,
+                "dry_run": True,
+                "consolidation_summary": consolidation_summary
+            })
+        
+        # Perform actual consolidation
+        # 1. Update all spots to point to target customer
+        conn.execute("UPDATE spots SET customer_id = ? WHERE customer_id = ?", (target_id, source_id))
+        
+        # 2. Update any entity_aliases to point to target customer
+        conn.execute(
+            "UPDATE entity_aliases SET target_entity_id = ? WHERE target_entity_id = ? AND entity_type = 'customer'", 
+            (target_id, source_id)
+        )
+        
+        # 3. Delete the source customer record
+        conn.execute("DELETE FROM customers WHERE customer_id = ?", (source_id,))
+        
+        conn.execute("COMMIT;")
+        
+        # Audit log
+        _audit(
+            conn,
+            request.remote_addr or "",
+            "customer_consolidation",
+            f"source_{source_id}_to_{target_id}",
+            f"{source_customer['normalized_name']} -> {target_customer['normalized_name']}",
+            f"spots:{spots_count},revenue:{total_revenue:.2f},aliases:{alias_count}"
+        )
+        
+        return jsonify({
+            "success": True,
+            "dry_run": False,
+            "consolidation_summary": consolidation_summary,
+            "message": f"Successfully consolidated customer {source_id} into {target_id}"
+        })
+        
+    except Exception as e:
+        conn.execute("ROLLBACK;")
+        current_app.logger.exception("consolidate_customer failed")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@canon_bp.get("/duplicate-customers")
+def find_duplicate_customers():
+    """
+    Find customer records that should be consolidated based on normalization rules.
+    Finds customers where multiple actual normalized_names should map to the same target.
+    """
+    try:
+        with _open_rw(current_app.config["DB_PATH"]) as conn:
+            # Strategy: Find customers whose tails (after colon) would normalize to same target
+            # via customer_canonical_map, but exist as separate customer records
+            duplicates_sql = """
+            WITH customer_tails AS (
+                SELECT 
+                    customer_id,
+                    normalized_name,
+                    created_date,
+                    -- Extract tail (part after last colon)
+                    CASE 
+                        WHEN INSTR(normalized_name, ':') > 0 THEN
+                            TRIM(SUBSTR(normalized_name, INSTR(normalized_name, ':') + 1))
+                        ELSE normalized_name
+                    END as customer_tail,
+                    -- Extract prefix (part before colon)  
+                    CASE
+                        WHEN INSTR(normalized_name, ':') > 0 THEN
+                            TRIM(SUBSTR(normalized_name, 1, INSTR(normalized_name, ':') - 1))
+                        ELSE ''
+                    END as customer_prefix
+                FROM customers
+            ),
+            normalized_tails AS (
+                SELECT 
+                    ct.*,
+                    -- Apply canonical mapping to tail
+                    COALESCE(ccm.canonical_name, ct.customer_tail) as canonical_tail,
+                    -- Reconstruct full canonical name
+                    CASE
+                        WHEN ct.customer_prefix != '' THEN ct.customer_prefix || ':' || COALESCE(ccm.canonical_name, ct.customer_tail)
+                        ELSE COALESCE(ccm.canonical_name, ct.customer_tail)  
+                    END as canonical_full_name
+                FROM customer_tails ct
+                LEFT JOIN customer_canonical_map ccm ON ct.customer_tail = ccm.alias_name
+            ),
+            duplicate_groups AS (
+                SELECT 
+                    canonical_full_name,
+                    COUNT(*) as customer_count,
+                    GROUP_CONCAT(customer_id) as customer_ids,
+                    GROUP_CONCAT(normalized_name) as actual_names,
+                    -- Get stats for each group
+                    SUM((SELECT COUNT(*) FROM spots WHERE customer_id = nt.customer_id)) as total_spots,
+                    SUM((SELECT COALESCE(SUM(gross_rate), 0) FROM spots WHERE customer_id = nt.customer_id)) as total_revenue
+                FROM normalized_tails nt
+                GROUP BY canonical_full_name
+                HAVING customer_count > 1
+            )
+            SELECT 
+                dg.*,
+                -- Get the customer with most revenue as suggested target
+                (SELECT customer_id FROM normalized_tails nt2 
+                 WHERE nt2.canonical_full_name = dg.canonical_full_name 
+                 ORDER BY (SELECT COALESCE(SUM(gross_rate), 0) FROM spots WHERE customer_id = nt2.customer_id) DESC 
+                 LIMIT 1) as suggested_target_id
+            FROM duplicate_groups dg
+            ORDER BY total_revenue DESC;
+            """
+            
+            rows = conn.execute(duplicates_sql).fetchall()
+            
+            duplicates = []
+            for row in rows:
+                # Parse customer IDs and get detailed info for each
+                customer_ids = [int(x.strip()) for x in row["customer_ids"].split(",")]
+                actual_names = row["actual_names"].split(",")
+                
+                # Get detailed info for each customer
+                customer_details = []
+                for cid in customer_ids:
+                    cust_info = conn.execute("""
+                        SELECT 
+                            customer_id, 
+                            normalized_name, 
+                            created_date,
+                            (SELECT COUNT(*) FROM spots WHERE customer_id = ?) as spot_count,
+                            (SELECT COALESCE(SUM(gross_rate), 0) FROM spots WHERE customer_id = ?) as total_revenue
+                        FROM customers WHERE customer_id = ?
+                    """, (cid, cid, cid)).fetchone()
+                    
+                    if cust_info:
+                        customer_details.append({
+                            "customer_id": cust_info["customer_id"],
+                            "normalized_name": cust_info["normalized_name"], 
+                            "created_date": cust_info["created_date"],
+                            "spot_count": cust_info["spot_count"],
+                            "total_revenue": float(cust_info["total_revenue"])
+                        })
+                
+                # Sort customers by revenue (largest first) to suggest merge direction
+                customer_details.sort(key=lambda x: x["total_revenue"], reverse=True)
+                
+                duplicates.append({
+                    "canonical_target": row["canonical_full_name"],
+                    "customer_count": row["customer_count"],
+                    "actual_names": actual_names,
+                    "customers": customer_details,
+                    "suggested_target": customer_details[0]["customer_id"] if customer_details else None,
+                    "total_revenue": float(row["total_revenue"]),
+                    "total_spots": row["total_spots"]
+                })
+            
+            return jsonify({
+                "success": True,
+                "duplicates_found": len(duplicates),
+                "duplicates": duplicates
+            })
+            
+    except Exception as e:
+        current_app.logger.exception("find_duplicate_customers failed")
+        return jsonify({"success": False, "error": str(e)}), 500
