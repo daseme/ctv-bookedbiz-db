@@ -322,23 +322,40 @@ class CustomerSectorManager {
     }
 
     /**
-     * Handle customer sector update
+     * Handle customer sector update - ENHANCED DEBUG VERSION
      * @param {number} customerId - Customer ID
      * @param {string} newSector - New sector name
      */
     async handleCustomerSectorUpdate(customerId, newSector) {
+        console.log("=== MANAGER UPDATE DEBUG START ===");
+        console.log(`Manager handling update: Customer ${customerId} -> ${newSector}`);
+        
         // Show loading state
         this.ui.setSectorSelectLoading(customerId, true);
         
         try {
+            // Get customer state before API call
+            const customerBefore = this.state.customers.find(c => c.id === customerId);
+            console.log("Customer state before API call:", customerBefore);
+            
             // Call API
+            console.log("Making API call...");
             const response = await this.api.updateCustomerSector(customerId, newSector);
+            console.log("API response received:", response);
             
             if (response.success) {
+                console.log("API call successful, updating state...");
+                
                 // Update state
-                this.state.updateCustomerSector(customerId, newSector);
+                const stateUpdated = this.state.updateCustomerSector(customerId, newSector);
+                console.log("State update result:", stateUpdated);
+                
+                // Get customer state after update
+                const customerAfter = this.state.customers.find(c => c.id === customerId);
+                console.log("Customer state after update:", customerAfter);
                 
                 // Refresh UI
+                console.log("Applying filters and refreshing UI...");
                 this.state.applyFilters();
                 this.ui.updateStats();
                 this.ui.renderTable();
@@ -350,10 +367,12 @@ class CustomerSectorManager {
                 this.ui.highlightCustomerRow(customerId);
                 
             } else {
+                console.error("API call failed:", response.error);
                 throw new Error(response.error);
             }
             
         } catch (error) {
+            console.error('=== MANAGER UPDATE ERROR ===');
             console.error('Error updating customer sector:', error);
             this.ui.showNotification('Failed to update sector: ' + error.message, 'error');
             
@@ -361,11 +380,13 @@ class CustomerSectorManager {
             const selectElement = document.getElementById(`sector-select-${customerId}`);
             const customer = this.state.customers.find(c => c.id === customerId);
             if (selectElement && customer) {
+                console.log(`Reverting select to: ${customer.sector || ''}`);
                 selectElement.value = customer.sector || '';
             }
         } finally {
             // Remove loading state
             this.ui.setSectorSelectLoading(customerId, false);
+            console.log("=== MANAGER UPDATE DEBUG END ===");
         }
     }
 

@@ -114,11 +114,127 @@ class RevenueRepository:
             
             return customers
     
+    def get_ae_new_vs_returning_customers(self, ae_name: str) -> Tuple[List[Customer], List[Customer]]:
+        """Get new vs returning customers for 2025 (comparing to 2024)"""
+        with sqlite3.connect(self._db_path) as conn:
+            # First, let's get all 2025 data aggregated by TRUE normalized name
+            cursor_2025 = conn.execute("""
+                WITH normalized_customers_2025 AS (
+                    SELECT 
+                        COALESCE(c.normalized_name, s.bill_code) as normalized_name,
+                        COALESCE(sec.sector_name, 'Unknown') as sector,
+                        SUM(COALESCE(s.gross_rate, 0)) as total_revenue,
+                        COUNT(*) as spot_count,
+                        -- Get the first customer_id for this normalized name
+                        MIN(COALESCE(s.customer_id, -1)) as customer_id,
+                        -- Get the most common display name for this normalized name
+                        MAX(COALESCE(c.normalized_name, s.bill_code)) as display_name
+                    FROM spots s
+                    LEFT JOIN customers c ON s.customer_id = c.customer_id
+                    LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
+                    WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))
+                        AND s.broadcast_month LIKE '%-25'
+                        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                        AND COALESCE(s.gross_rate, 0) > 0
+                    GROUP BY 
+                        COALESCE(c.normalized_name, s.bill_code),
+                        COALESCE(sec.sector_name, 'Unknown')
+                )
+                SELECT 
+                    customer_id,
+                    display_name,
+                    normalized_name,
+                    sector,
+                    total_revenue,
+                    spot_count
+                FROM normalized_customers_2025
+                ORDER BY total_revenue DESC
+            """, (ae_name,))
+            
+            customers_2025 = {}
+            for row in cursor_2025.fetchall():
+                normalized_key = row[2].strip().upper() if row[2] else 'UNKNOWN'
+                customers_2025[normalized_key] = Customer(
+                    customer_id=row[0],
+                    name=row[1],  # Use display name for reports
+                    sector=row[3],
+                    ae_name=ae_name,
+                    revenue_2025=Decimal(str(row[4])),
+                    spot_count=row[5]
+                )
+            
+            # Get 2024 customers aggregated by normalized name
+            cursor_2024 = conn.execute("""
+                SELECT DISTINCT
+                    COALESCE(c.normalized_name, s.bill_code) as normalized_name
+                FROM spots s
+                LEFT JOIN customers c ON s.customer_id = c.customer_id
+                WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))
+                    AND s.broadcast_month LIKE '%-24'
+                    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                    AND COALESCE(s.gross_rate, 0) > 0
+            """, (ae_name,))
+            
+            customers_2024 = set()
+            for row in cursor_2024.fetchall():
+                normalized_key = row[0].strip().upper() if row[0] else 'UNKNOWN'
+                customers_2024.add(normalized_key)
+            
+            logger.info(f"   📊 Found {len(customers_2024)} unique normalized customers in 2024")
+            logger.info(f"   📊 Found {len(customers_2025)} unique normalized customers in 2025")
+            
+            # Debug: Show sample customer names for verification
+            if logger.level <= logging.DEBUG:
+                sample_2024 = list(customers_2024)[:3] if customers_2024 else []
+                sample_2025 = [(k, v.name) for k, v in list(customers_2025.items())[:3]]
+                logger.debug(f"Sample 2024 normalized: {sample_2024}")
+                logger.debug(f"Sample 2025 (norm_key, display): {sample_2025}")
+            
+            # Classify customers as new or returning based on normalized names
+            new_customers = []
+            returning_customers = []
+            
+            for normalized_key, customer in customers_2025.items():
+                if normalized_key in customers_2024:
+                    returning_customers.append(customer)
+                    logger.debug(f"RETURNING: '{customer.name}' -> normalized: '{normalized_key}'")
+                else:
+                    new_customers.append(customer)
+                    logger.debug(f"NEW: '{customer.name}' -> normalized: '{normalized_key}'")
+            
+            # Sort by revenue descending
+            new_customers.sort(key=lambda c: c.revenue_2025, reverse=True)
+            returning_customers.sort(key=lambda c: c.revenue_2025, reverse=True)
+            
+            logger.info(f"   👥 Customer analysis: {len(new_customers)} new, {len(returning_customers)} returning")
+            
+            # Additional debug: Show which customers are being classified where
+            if new_customers:
+                logger.info(f"   🆕 Top new customers: {[c.name for c in new_customers[:3]]}")
+            if returning_customers:
+                logger.info(f"   🔄 Top returning customers: {[c.name for c in returning_customers[:3]]}")
+            
+            return new_customers, returning_customers
+    
     def get_ae_sector_trends(self, ae_name: str, years: List[int]) -> List[SectorSummary]:
         """Get sector performance trends for multiple years"""
         year_conditions = " OR ".join([f"s.broadcast_month LIKE '%-{str(year)[-2:]}'" for year in years])
         
         with sqlite3.connect(self._db_path) as conn:
+            # Debug: Check what broadcast months exist for this AE
+            debug_cursor = conn.execute("""
+                SELECT DISTINCT s.broadcast_month, COUNT(*) as spots
+                FROM spots s
+                WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))
+                    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                    AND COALESCE(s.gross_rate, 0) > 0
+                GROUP BY s.broadcast_month
+                ORDER BY s.broadcast_month
+            """, (ae_name,))
+            
+            available_months = debug_cursor.fetchall()
+            logger.debug(f"Available months for {ae_name}: {available_months}")
+            
             cursor = conn.execute(f"""
                 SELECT 
                     COALESCE(sec.sector_name, 'Unknown') as sector,
@@ -140,6 +256,8 @@ class RevenueRepository:
             
             # Group by sector and aggregate customer counts properly
             sector_data = {}
+            years_found = set()
+            
             for row in cursor.fetchall():
                 sector = row[0]
                 month = row[1]
@@ -155,13 +273,23 @@ class RevenueRepository:
                 # Extract year from broadcast_month (format: "Jan-25")
                 if month and '-' in month:
                     year_suffix = month.split('-')[1]
-                    year = 2000 + int(year_suffix) if int(year_suffix) < 50 else 1900 + int(year_suffix)
+                    # Handle both 2-digit and 4-digit years properly
+                    if len(year_suffix) == 2:
+                        year_int = int(year_suffix)
+                        # Assume 00-49 = 2000-2049, 50-99 = 1950-1999
+                        year = 2000 + year_int if year_int <= 49 else 1900 + year_int
+                    else:
+                        year = int(year_suffix)  # 4-digit year
+                    
+                    years_found.add(year)
                     
                     if year not in sector_data[sector]['revenue_by_year']:
                         sector_data[sector]['revenue_by_year'][year] = Decimal('0')
                     
                     sector_data[sector]['revenue_by_year'][year] += revenue
                     sector_data[sector]['total_revenue'] += revenue
+            
+            logger.info(f"   📅 Years found in data: {sorted(years_found)} (requested: {years})")
             
             # Now get the actual distinct customer count per sector for this AE
             cursor = conn.execute(f"""
@@ -403,6 +531,10 @@ class RevenueService:
     def get_raw_data_2025(self, ae_name: str) -> List[Dict]:
         """Get raw spot data for AE in 2025"""
         return self._revenue_repo.get_ae_raw_data_2025(ae_name)
+    
+    def get_new_vs_returning_customers(self, ae_name: str) -> Tuple[List[Customer], List[Customer]]:
+        """Get new vs returning customers for 2025 (comparing to 2024)"""
+        return self._revenue_repo.get_ae_new_vs_returning_customers(ae_name)
 
 # File Transfer Service
 class TailscaleFileTransfer:
@@ -490,6 +622,8 @@ class ExcelReportGenerator:
         sector_analysis: List[SectorSummary],
         monthly_breakdown: List[MonthlyRevenue],
         language_analysis: List[LanguageRevenue],
+        new_customers: List[Customer],
+        returning_customers: List[Customer],
         raw_data_2025: List[Dict],
         output_dir: Path
     ) -> str:
@@ -517,6 +651,9 @@ class ExcelReportGenerator:
             
             # Language analysis sheet (with numeric values)
             self._create_language_sheet(writer, language_analysis)
+            
+            # New vs Returning Customers sheet (with numeric values)
+            self._create_new_vs_returning_sheet(writer, new_customers, returning_customers)
             
             # Budget planning template
             self._create_budget_planning_template(writer, ae_performance)
@@ -806,6 +943,94 @@ class ExcelReportGenerator:
         
         logger.info(f"   📊 Language Analysis sheet: {len(language_analysis)} languages analyzed")
     
+    def _create_new_vs_returning_sheet(self, writer: pd.ExcelWriter, new_customers: List[Customer], returning_customers: List[Customer]) -> None:
+        """Create new vs returning customers analysis sheet with numeric values"""
+        
+        # Calculate summary metrics
+        total_customers = len(new_customers) + len(returning_customers)
+        new_revenue = sum(c.revenue_2025 for c in new_customers)
+        returning_revenue = sum(c.revenue_2025 for c in returning_customers)
+        total_revenue = new_revenue + returning_revenue
+        
+        new_spots = sum(c.spot_count for c in new_customers)
+        returning_spots = sum(c.spot_count for c in returning_customers)
+        
+        # Calculate percentages
+        new_customer_pct = (len(new_customers) / max(total_customers, 1)) * 100
+        returning_customer_pct = (len(returning_customers) / max(total_customers, 1)) * 100
+        new_revenue_pct = (new_revenue / max(total_revenue, 1)) * 100
+        returning_revenue_pct = (returning_revenue / max(total_revenue, 1)) * 100
+        
+        # Create summary data at the top
+        summary_data = [
+            ['NEW vs RETURNING CUSTOMERS ANALYSIS (2025)', '', '', '', '', ''],
+            ['Comparison Base: 2024 vs 2025', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            ['SUMMARY METRICS', '', '', '', '', ''],
+            ['', 'Count', '% of Total', 'Revenue', '% of Revenue', 'Avg per Customer'],
+            ['New Customers (2025)', len(new_customers), f'{new_customer_pct:.1f}%', 
+             float(new_revenue), f'{new_revenue_pct:.1f}%', 
+             float(new_revenue / max(len(new_customers), 1))],
+            ['Returning Customers', len(returning_customers), f'{returning_customer_pct:.1f}%', 
+             float(returning_revenue), f'{returning_revenue_pct:.1f}%', 
+             float(returning_revenue / max(len(returning_customers), 1))],
+            ['TOTAL', total_customers, '100.0%', 
+             float(total_revenue), '100.0%', 
+             float(total_revenue / max(total_customers, 1))],
+            ['', '', '', '', '', ''],
+            ['KEY INSIGHTS', '', '', '', '', ''],
+            [f'• Customer Acquisition: {len(new_customers)} new customers in 2025', '', '', '', '', ''],
+            [f'• Customer Retention: {len(returning_customers)} customers continued from 2024', '', '', '', '', ''],
+            [f'• New customer revenue contribution: {new_revenue_pct:.1f}%', '', '', '', '', ''],
+            [f'• Average new customer value: ${new_revenue / max(len(new_customers), 1):,.0f}', '', '', '', '', ''],
+            [f'• Average returning customer value: ${returning_revenue / max(len(returning_customers), 1):,.0f}', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+        ]
+        
+        # Add NEW CUSTOMERS section
+        summary_data.extend([
+            ['NEW CUSTOMERS (First-Time in 2025)', '', '', '', '', ''],
+            ['Customer', 'Sector', '2025 Revenue', 'Spots', 'Avg per Spot', 'Revenue Rank']
+        ])
+        
+        for idx, customer in enumerate(new_customers, 1):
+            avg_per_spot = customer.revenue_2025 / max(customer.spot_count, 1)
+            summary_data.append([
+                customer.name,
+                customer.sector, 
+                float(customer.revenue_2025),  # Keep as numeric
+                customer.spot_count,
+                float(avg_per_spot),  # Keep as numeric
+                f'#{idx}'
+            ])
+        
+        # Add spacing and RETURNING CUSTOMERS section
+        summary_data.extend([
+            ['', '', '', '', '', ''],
+            ['RETURNING CUSTOMERS (Active in Both 2024 & 2025)', '', '', '', '', ''],
+            ['Customer', 'Sector', '2025 Revenue', 'Spots', 'Avg per Spot', 'Revenue Rank']
+        ])
+        
+        for idx, customer in enumerate(returning_customers, 1):
+            avg_per_spot = customer.revenue_2025 / max(customer.spot_count, 1)
+            summary_data.append([
+                customer.name,
+                customer.sector,
+                float(customer.revenue_2025),  # Keep as numeric
+                customer.spot_count,
+                float(avg_per_spot),  # Keep as numeric
+                f'#{idx}'
+            ])
+        
+        # Create DataFrame and write to Excel
+        analysis_df = pd.DataFrame(summary_data, columns=[
+            'Customer/Metric', 'Sector/Count', 'Revenue/Value', 'Spots', 'Extra1', 'Extra2'
+        ])
+        
+        analysis_df.to_excel(writer, sheet_name='New vs Returning', index=False, header=False)
+        
+        logger.info(f"   👥 New vs Returning sheet: {len(new_customers)} new, {len(returning_customers)} returning customers")
+    
     def _create_budget_planning_template(self, writer: pd.ExcelWriter, ae_performance: AEPerformance) -> None:
         """Create budget planning template"""
         template_data = [
@@ -975,6 +1200,7 @@ def main() -> int:
                 sector_analysis = revenue_service.get_sector_analysis(ae_name, [2021, 2022, 2023, 2024, 2025])
                 monthly_breakdown = revenue_service.get_monthly_performance(ae_name)
                 language_analysis = revenue_service.get_language_analysis(ae_name)
+                new_customers, returning_customers = revenue_service.get_new_vs_returning_customers(ae_name)
                 raw_data_2025 = revenue_service.get_raw_data_2025(ae_name)
                 
                 # Generate report
@@ -983,6 +1209,8 @@ def main() -> int:
                     sector_analysis, 
                     monthly_breakdown,
                     language_analysis,
+                    new_customers,
+                    returning_customers,
                     raw_data_2025,
                     output_dir
                 )

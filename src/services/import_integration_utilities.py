@@ -1,288 +1,481 @@
 #!/usr/bin/env python3
 """
-Integration utilities for import processes.
-Handles conversion between Excel data and month closure system formats.
+Import integration utilities for Excel file processing.
+Enhanced to support both daily commercial log format (Commercials sheet) 
+and monthly import format (Data sheet).
+
+FIXED: Now handles flexible sheet detection instead of hardcoded "Data" sheet.
 """
 
 import sys
+import logging
 from pathlib import Path
-from typing import Set, List, Dict, Any
 from datetime import datetime, date
+from typing import List, Set, Dict, Any, Optional, Generator
+from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.utils.broadcast_month_utils import (
-    extract_broadcast_months_from_excel,
-    BroadcastMonthParser,
-)
-from src.services.month_closure_service import MonthClosureService, ValidationResult
-from src.database.connection import DatabaseConnection
+
+@dataclass
+class ValidationResult:
+    """Result of Excel import validation"""
+    is_valid: bool
+    error_message: str = ""
+    suggested_action: str = ""
+    closed_months_found: List[str] = None
+    open_months_found: List[str] = None
+
+    def __post_init__(self):
+        if self.closed_months_found is None:
+            self.closed_months_found = []
+        if self.open_months_found is None:
+            self.open_months_found = []
 
 
-def extract_display_months_from_excel(
-    excel_file_path: str, limit: int = None
-) -> Set[str]:
+def get_excel_worksheet_flexible(excel_file_path: str):
     """
-    Extract broadcast months from Excel file in display format ('Nov-24').
-    This is the format used by the month closure system.
-
-    Args:
-        excel_file_path: Path to Excel file
-        limit: Optional limit for testing
-
+    ENHANCED: Flexible worksheet detection for both daily and monthly imports.
+    
+    Tries multiple sheet names in order of preference:
+    1. "Data" (monthly import format)
+    2. "Commercials" (daily commercial log format)  
+    3. "Commercial Lines" (alternate daily format)
+    4. "Sheet1" (generic fallback)
+    5. Active sheet (final fallback)
+    
     Returns:
-        Set of broadcast months in display format
+        tuple: (worksheet, sheet_name_used)
     """
-    return extract_broadcast_months_from_excel(
-        excel_file_path, month_column="Month", limit=limit, return_display_format=True
-    )
-
-
-def validate_excel_for_import(
-    excel_file_path: str, import_mode: str, db_path: str, limit: int = None
-) -> ValidationResult:
-    """
-    Validate an Excel file for import against closed months.
-
-    Args:
-        excel_file_path: Path to Excel file
-        import_mode: 'WEEKLY_UPDATE', 'HISTORICAL', or 'MANUAL'
-        db_path: Database path for month closure checking
-        limit: Optional limit for testing
-
-    Returns:
-        ValidationResult indicating if import is allowed
-    """
-    # Extract months from Excel in display format
-    display_months = list(extract_display_months_from_excel(excel_file_path, limit))
-
-    # Validate against closed months
-    db_connection = DatabaseConnection(db_path)
+    from openpyxl import load_workbook
+    
+    # Sheet names to try in order of preference
+    sheet_candidates = [
+        "Data",              # Monthly import format (existing)
+        "Commercials",       # Daily commercial log format (new)
+        "Commercial Lines",  # Alternate daily format
+        "Commercial",        # Short form
+        "Sheet1",            # Generic Excel default
+    ]
+    
     try:
-        closure_service = MonthClosureService(db_connection)
-        return closure_service.validate_months_for_import(display_months, import_mode)
-    finally:
-        db_connection.close()
+        workbook = load_workbook(excel_file_path, read_only=True, data_only=True)
+        available_sheets = workbook.sheetnames
+        
+        logger.debug(f"Available sheets in {excel_file_path}: {available_sheets}")
+        
+        # Try each candidate sheet name
+        for sheet_name in sheet_candidates:
+            if sheet_name in available_sheets:
+                worksheet = workbook[sheet_name]
+                logger.info(f"Using sheet '{sheet_name}' from {Path(excel_file_path).name}")
+                return worksheet, sheet_name, workbook
+        
+        # Final fallback: use active sheet
+        if available_sheets:
+            worksheet = workbook.active
+            sheet_name = worksheet.title if hasattr(worksheet, 'title') else available_sheets[0]
+            logger.info(f"Using active sheet '{sheet_name}' from {Path(excel_file_path).name}")
+            return worksheet, sheet_name, workbook
+        
+        # No sheets available
+        workbook.close()
+        raise ValueError(f"No readable sheets found in {excel_file_path}")
+        
+    except Exception as e:
+        logger.error(f"Failed to open Excel file {excel_file_path}: {e}")
+        raise Exception(f"Failed to process Excel file: {str(e)}")
 
 
-def get_excel_import_summary(
-    excel_file_path: str, db_path: str, limit: int = None
-) -> Dict[str, Any]:
+def extract_display_months_from_excel(excel_file: str) -> Generator[str, None, None]:
     """
-    Get comprehensive summary of what an Excel import would affect.
-
+    ENHANCED: Extract broadcast months from Excel file with flexible sheet detection.
+    
+    Now supports both:
+    - Daily commercial log format (Commercials sheet)
+    - Monthly import format (Data sheet)
+    
     Args:
-        excel_file_path: Path to Excel file
-        db_path: Database path
-        limit: Optional limit for testing
-
-    Returns:
-        Dictionary with import summary information
+        excel_file: Path to Excel file
+        
+    Yields:
+        str: Broadcast months in display format (e.g., 'Nov-24')
     """
-    display_months = list(extract_display_months_from_excel(excel_file_path, limit))
-
-    db_connection = DatabaseConnection(db_path)
     try:
-        closure_service = MonthClosureService(db_connection)
+        worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
+        
+        # Find broadcast_month column (try different possible column names)
+        month_column_names = [
+            'broadcast_month', 
+            'Month', 
+            'month', 
+            'Broadcast Month',
+            'Broadcast_Month'
+        ]
+        
+        month_column_index = None
+        header_row = None
+        
+        # Get header row
+        try:
+            header_row = next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))
+            logger.debug(f"Header row: {header_row[:10] if header_row else 'None'}...")  # Show first 10 columns
+        except Exception as e:
+            logger.warning(f"Could not read header row: {e}")
+        
+        # Find month column by header name
+        if header_row:
+            for i, header in enumerate(header_row):
+                if header and str(header).strip() in month_column_names:
+                    month_column_index = i
+                    logger.debug(f"Found month column '{header}' at index {i}")
+                    break
+        
+        # Fallback: use known column position (column 18 based on EXCEL_COLUMN_POSITIONS)
+        if month_column_index is None:
+            month_column_index = 18  # broadcast_month position from schema
+            logger.debug(f"Using fallback month column index: {month_column_index}")
+        
+        # Extract unique months
+        months = set()
+        row_count = 0
+        
+        for row in worksheet.iter_rows(min_row=2, values_only=True):
+            row_count += 1
+            
+            if not row or len(row) <= month_column_index:
+                continue
+                
+            month_value = row[month_column_index]
+            if not month_value:
+                continue
+            
+            try:
+                # Handle different month value formats
+                if hasattr(month_value, 'strftime'):
+                    # datetime object
+                    month_str = month_value.strftime('%b-%y')
+                elif isinstance(month_value, str) and '-' in month_value:
+                    # Already in format like 'Nov-24'
+                    month_str = month_value.strip()
+                elif isinstance(month_value, str):
+                    # Try parsing as date string
+                    try:
+                        date_obj = datetime.strptime(month_value.strip(), '%Y-%m-%d').date()
+                        month_str = date_obj.strftime('%b-%y')
+                    except ValueError:
+                        try:
+                            date_obj = datetime.strptime(month_value.strip(), '%m/%d/%Y').date()
+                            month_str = date_obj.strftime('%b-%y')
+                        except ValueError:
+                            continue
+                else:
+                    # Try converting to date
+                    try:
+                        if hasattr(month_value, 'date'):
+                            date_obj = month_value.date()
+                        else:
+                            date_obj = datetime.strptime(str(month_value), '%Y-%m-%d').date()
+                        month_str = date_obj.strftime('%b-%y')
+                    except:
+                        continue
+                
+                if month_str:
+                    months.add(month_str)
+                    
+            except Exception as e:
+                logger.debug(f"Could not parse month value '{month_value}': {e}")
+                continue
+        
+        workbook.close()
+        
+        logger.info(f"Extracted {len(months)} unique months from {row_count:,} rows in sheet '{sheet_name}'")
+        logger.debug(f"Months found: {sorted(months)}")
+        
+        # Yield months in sorted order
+        for month in sorted(months):
+            yield month
+            
+    except Exception as e:
+        logger.error(f"Failed to extract months from {excel_file}: {e}")
+        raise Exception(f"Failed to process Excel file: {str(e)}")
 
-        # Get closure status for each month
-        month_details = []
-        total_spots_affected = 0
 
-        for month in sorted(display_months):
-            stats = closure_service.get_month_statistics(month)
-            month_details.append(
-                {
-                    "month": month,
-                    "is_closed": stats.get("is_closed", False),
-                    "existing_spots": stats.get("total_spots", 0),
-                    "existing_revenue": stats.get("total_revenue", 0.0),
-                }
+def validate_excel_for_import(excel_file: str, import_mode: str, db_path: str) -> ValidationResult:
+    """
+    ENHANCED: Validate Excel file for import with flexible sheet detection.
+    
+    Args:
+        excel_file: Path to Excel file
+        import_mode: 'HISTORICAL', 'WEEKLY_UPDATE', or 'MANUAL'
+        db_path: Path to database file
+        
+    Returns:
+        ValidationResult: Detailed validation result
+    """
+    try:
+        # Use enhanced month extraction
+        display_months = list(extract_display_months_from_excel(excel_file))
+        
+        if not display_months:
+            return ValidationResult(
+                is_valid=False,
+                error_message="No broadcast months found in Excel file",
+                suggested_action="Check if the Excel file contains valid month data in the broadcast_month column"
             )
-            total_spots_affected += stats.get("total_spots", 0)
+        
+        logger.info(f"Found {len(display_months)} months for validation: {display_months}")
+        
+        # Import and use existing validation logic
+        from src.services.month_closure_service import MonthClosureService
+        from src.database.connection import DatabaseConnection
+        
+        db = DatabaseConnection(db_path)
+        try:
+            closure_service = MonthClosureService(db)
+            validation_result = closure_service.validate_months_for_import(display_months, import_mode)
+            
+            # Enhance result with month details
+            if hasattr(validation_result, 'closed_months_found'):
+                validation_result.closed_months_found = validation_result.closed_months_found or []
+            if hasattr(validation_result, 'open_months_found'):
+                validation_result.open_months_found = validation_result.open_months_found or []
+                
+            return validation_result
+            
+        finally:
+            db.close()
+        
+    except Exception as e:
+        logger.error(f"Validation failed for {excel_file}: {e}")
+        return ValidationResult(
+            is_valid=False,
+            error_message=f"Failed to validate Excel file: {str(e)}",
+            suggested_action="Check if the Excel file is properly formatted and accessible"
+        )
 
-        closed_months = closure_service.get_closed_months(display_months)
-        open_months = [m for m in display_months if m not in closed_months]
 
+def get_excel_import_summary(excel_file: str, db_path: str) -> Dict[str, Any]:
+    """
+    ENHANCED: Get comprehensive import summary with flexible sheet detection.
+    
+    Returns summary of what would be imported including month breakdown,
+    existing data analysis, and validation status.
+    """
+    try:
+        # Use enhanced month extraction  
+        months_in_excel = list(extract_display_months_from_excel(excel_file))
+        
+        if not months_in_excel:
+            return {
+                "months_in_excel": [],
+                "total_existing_spots_affected": 0,
+                "open_months": [],
+                "closed_months": [],
+                "validation_status": "failed",
+                "error": "No months found in Excel file"
+            }
+        
+        # Get database info
+        from src.database.connection import DatabaseConnection
+        from src.services.month_closure_service import MonthClosureService
+        
+        db = DatabaseConnection(db_path)
+        try:
+            # Check closed months
+            closure_service = MonthClosureService(db)
+            closed_months = closure_service.get_closed_months(months_in_excel)
+            open_months = [m for m in months_in_excel if m not in closed_months]
+            
+            # Count existing spots that would be affected
+            with db.transaction() as conn:
+                placeholders = ','.join('?' * len(months_in_excel))
+                cursor = conn.execute(f"""
+                    SELECT COUNT(*) 
+                    FROM spots 
+                    WHERE broadcast_month IN ({placeholders})
+                """, months_in_excel)
+                
+                total_existing_spots = cursor.fetchone()[0]
+            
+            # Get sheet info
+            worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
+            total_rows_in_excel = worksheet.max_row - 1  # Exclude header
+            workbook.close()
+            
+            return {
+                "months_in_excel": sorted(months_in_excel),
+                "total_existing_spots_affected": total_existing_spots,
+                "total_rows_in_excel": total_rows_in_excel,
+                "open_months": sorted(open_months),
+                "closed_months": sorted(closed_months),
+                "sheet_used": sheet_name,
+                "validation_status": "success" if len(months_in_excel) > 0 else "failed"
+            }
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Failed to generate import summary for {excel_file}: {e}")
         return {
-            "excel_file": excel_file_path,
-            "months_in_excel": display_months,
-            "closed_months": closed_months,
-            "open_months": open_months,
-            "month_details": month_details,
-            "total_existing_spots_affected": total_spots_affected,
-            "can_weekly_update": len(closed_months) == 0,
-            "can_historical_import": True,  # Always allowed
-            "can_manual_import": True,  # Always allowed with warnings
+            "months_in_excel": [],
+            "total_existing_spots_affected": 0,
+            "open_months": [],
+            "closed_months": [],
+            "validation_status": "failed",
+            "error": str(e)
         }
 
-    finally:
-        db_connection.close()
 
-
-def preview_import_impact(
-    excel_file_path: str, import_mode: str, db_path: str, limit: int = None
-) -> Dict[str, Any]:
+def analyze_excel_structure(excel_file: str) -> Dict[str, Any]:
     """
-    Preview what an import would do without executing it.
-
-    Args:
-        excel_file_path: Path to Excel file
-        import_mode: Import mode to simulate
-        db_path: Database path
-        limit: Optional limit for testing
-
-    Returns:
-        Dictionary with detailed preview information
+    Analyze Excel file structure for debugging purposes.
+    
+    Returns detailed information about sheets, columns, and data structure.
     """
-    summary = get_excel_import_summary(excel_file_path, db_path, limit)
-    validation = validate_excel_for_import(excel_file_path, import_mode, db_path, limit)
-
-    # Count records in Excel (estimated)
     try:
         from openpyxl import load_workbook
-
-        workbook = load_workbook(excel_file_path, read_only=True)
-        worksheet = workbook.active
-        excel_rows = worksheet.max_row - 1  # Subtract header row
-        if limit:
-            excel_rows = min(excel_rows, limit)
+        
+        workbook = load_workbook(excel_file, read_only=True, data_only=True)
+        
+        analysis = {
+            "file_path": excel_file,
+            "file_name": Path(excel_file).name,
+            "total_sheets": len(workbook.sheetnames),
+            "sheet_names": workbook.sheetnames,
+            "sheets_analysis": {}
+        }
+        
+        # Analyze each sheet
+        for sheet_name in workbook.sheetnames:
+            try:
+                worksheet = workbook[sheet_name]
+                
+                # Get header row
+                header_row = next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))
+                headers = [str(h) if h else f"Column_{i}" for i, h in enumerate(header_row)] if header_row else []
+                
+                # Find potential month column
+                month_column_candidates = []
+                if header_row:
+                    for i, header in enumerate(header_row):
+                        if header and any(keyword in str(header).lower() for keyword in ['month', 'broadcast']):
+                            month_column_candidates.append((i, str(header)))
+                
+                analysis["sheets_analysis"][sheet_name] = {
+                    "total_rows": worksheet.max_row,
+                    "total_columns": worksheet.max_column,
+                    "data_rows": max(0, worksheet.max_row - 1),
+                    "headers": headers[:20],  # First 20 headers
+                    "month_column_candidates": month_column_candidates,
+                    "is_active_sheet": worksheet == workbook.active
+                }
+                
+            except Exception as e:
+                analysis["sheets_analysis"][sheet_name] = {
+                    "error": str(e)
+                }
+        
         workbook.close()
-    except Exception:
-        excel_rows = 0
-
-    return {
-        "import_mode": import_mode,
-        "validation": {
-            "is_valid": validation.is_valid,
-            "error_message": validation.error_message,
-            "suggested_action": validation.suggested_action,
-        },
-        "excel_summary": summary,
-        "estimated_new_records": excel_rows,
-        "impact_summary": {
-            "months_affected": len(summary["months_in_excel"]),
-            "existing_spots_replaced": summary["total_existing_spots_affected"],
-            "new_spots_imported": excel_rows,
-            "net_change": excel_rows - summary["total_existing_spots_affected"],
-        },
-    }
-
-
-# Convenience functions for CLI usage
-def quick_validate_excel(excel_file_path: str, import_mode: str, db_path: str) -> bool:
-    """
-    Quick validation - returns True if import is allowed, False otherwise.
-    Prints user-friendly messages.
-    """
-    try:
-        validation = validate_excel_for_import(excel_file_path, import_mode, db_path)
-
-        if validation.is_valid:
-            print(f"✅ Excel file validated for {import_mode} import")
-            if validation.closed_months_found:
-                print(
-                    f"⚠️  Warning: Includes closed months {validation.closed_months_found}"
-                )
-            return True
-        else:
-            print(f"❌ Excel file cannot be imported in {import_mode} mode")
-            print(f"Error: {validation.error_message}")
-            print(f"Solution: {validation.suggested_action}")
-            return False
-
+        return analysis
+        
     except Exception as e:
-        print(f"❌ Validation failed: {e}")
-        return False
+        return {
+            "file_path": excel_file,
+            "error": f"Failed to analyze Excel structure: {str(e)}"
+        }
 
 
-def display_import_preview(excel_file_path: str, import_mode: str, db_path: str):
-    """Display a comprehensive import preview."""
+# Convenience function for testing
+def test_excel_processing(excel_file: str, db_path: str = None):
+    """
+    Test function to validate Excel processing with enhanced utilities.
+    """
+    print(f"Testing Excel processing for: {excel_file}")
+    print("=" * 60)
+    
+    # Test structure analysis
+    print("1. EXCEL STRUCTURE ANALYSIS:")
+    structure = analyze_excel_structure(excel_file)
+    
+    if "error" in structure:
+        print(f"   ERROR: {structure['error']}")
+        return
+        
+    print(f"   File: {structure['file_name']}")
+    print(f"   Sheets: {structure['total_sheets']} ({', '.join(structure['sheet_names'])})")
+    
+    for sheet_name, sheet_info in structure["sheets_analysis"].items():
+        if "error" not in sheet_info:
+            print(f"   {sheet_name}: {sheet_info['data_rows']:,} data rows, {sheet_info['total_columns']} columns")
+            if sheet_info["month_column_candidates"]:
+                print(f"      Month columns: {sheet_info['month_column_candidates']}")
+    
+    # Test month extraction
+    print(f"\n2. MONTH EXTRACTION:")
     try:
-        preview = preview_import_impact(excel_file_path, import_mode, db_path)
-
-        print(f"Import Preview: {excel_file_path}")
-        print(f"Mode: {import_mode}")
-        print("=" * 60)
-
-        # Validation status
-        if preview["validation"]["is_valid"]:
-            print(f"✅ Import allowed")
-        else:
-            print(f"❌ Import blocked: {preview['validation']['error_message']}")
-            print(f"Solution: {preview['validation']['suggested_action']}")
-            return
-
-        # Impact summary
-        impact = preview["impact_summary"]
-        print(f"\nImpact Summary:")
-        print(f"  Months affected: {impact['months_affected']}")
-        print(f"  Existing spots to replace: {impact['existing_spots_replaced']:,}")
-        print(f"  New spots to import: {impact['new_spots_imported']:,}")
-        print(f"  Net change: {impact['net_change']:+,}")
-
-        # Month details
-        excel_summary = preview["excel_summary"]
-        print(f"\nMonth Details:")
-        for month_info in excel_summary["month_details"]:
-            status = "CLOSED" if month_info["is_closed"] else "OPEN"
-            print(
-                f"  {month_info['month']}: {status} - {month_info['existing_spots']:,} existing spots"
-            )
-
-        if excel_summary["closed_months"]:
-            print(f"\n⚠️  Closed months: {excel_summary['closed_months']}")
-
+        months = list(extract_display_months_from_excel(excel_file))
+        print(f"   Found {len(months)} months: {', '.join(months) if len(months) <= 10 else f'{len(months)} months'}")
+        if len(months) > 10:
+            print(f"   Sample: {', '.join(months[:10])}, ...")
     except Exception as e:
-        print(f"❌ Preview failed: {e}")
+        print(f"   ERROR: {e}")
+        return
+    
+    # Test validation (if database provided)
+    if db_path:
+        print(f"\n3. VALIDATION TEST:")
+        try:
+            validation = validate_excel_for_import(excel_file, "WEEKLY_UPDATE", db_path)
+            print(f"   Valid: {validation.is_valid}")
+            if not validation.is_valid:
+                print(f"   Error: {validation.error_message}")
+                print(f"   Solution: {validation.suggested_action}")
+            else:
+                print(f"   Open months: {len(validation.open_months_found)}")
+                print(f"   Closed months: {len(validation.closed_months_found)}")
+        except Exception as e:
+            print(f"   ERROR: {e}")
+    
+    # Test import summary (if database provided)
+    if db_path:
+        print(f"\n4. IMPORT SUMMARY:")
+        try:
+            summary = get_excel_import_summary(excel_file, db_path)
+            print(f"   Status: {summary.get('validation_status', 'unknown')}")
+            print(f"   Months in Excel: {len(summary.get('months_in_excel', []))}")
+            print(f"   Existing spots affected: {summary.get('total_existing_spots_affected', 0):,}")
+            print(f"   Sheet used: {summary.get('sheet_used', 'unknown')}")
+        except Exception as e:
+            print(f"   ERROR: {e}")
+    
+    print(f"\n✅ Excel processing test completed")
 
 
-# Test and example usage
 if __name__ == "__main__":
     import argparse
-
-    parser = argparse.ArgumentParser(description="Test import integration utilities")
-    parser.add_argument("excel_file", help="Excel file to analyze")
-    parser.add_argument(
-        "--db-path", default="data/database/production.db", help="Database path"
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["WEEKLY_UPDATE", "HISTORICAL", "MANUAL"],
-        default="WEEKLY_UPDATE",
-        help="Import mode to test",
-    )
-    parser.add_argument("--limit", type=int, help="Limit rows processed (for testing)")
-    parser.add_argument(
-        "--quick-validate", action="store_true", help="Quick validation only"
-    )
-    parser.add_argument("--preview", action="store_true", help="Show detailed preview")
-    parser.add_argument("--summary", action="store_true", help="Show Excel summary")
-
+    
+    parser = argparse.ArgumentParser(description="Test enhanced Excel import utilities")
+    parser.add_argument("excel_file", help="Excel file to test")
+    parser.add_argument("--db-path", help="Database path for validation tests")
+    parser.add_argument("--analyze-only", action="store_true", help="Only analyze structure")
+    
     args = parser.parse_args()
-
-    if args.quick_validate:
-        success = quick_validate_excel(args.excel_file, args.mode, args.db_path)
-        sys.exit(0 if success else 1)
-
-    elif args.preview:
-        display_import_preview(args.excel_file, args.mode, args.db_path)
-
-    elif args.summary:
-        summary = get_excel_import_summary(args.excel_file, args.db_path, args.limit)
-        print(f"Excel Import Summary:")
-        print(f"  File: {summary['excel_file']}")
-        print(f"  Months: {summary['months_in_excel']}")
-        print(f"  Closed months: {summary['closed_months']}")
-        print(f"  Open months: {summary['open_months']}")
-        print(
-            f"  Total existing spots affected: {summary['total_existing_spots_affected']:,}"
-        )
-        print(f"  Can weekly update: {'Yes' if summary['can_weekly_update'] else 'No'}")
-
+    
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    
+    if not Path(args.excel_file).exists():
+        print(f"Excel file not found: {args.excel_file}")
+        sys.exit(1)
+    
+    if args.analyze_only:
+        structure = analyze_excel_structure(args.excel_file)
+        print(f"Excel Structure Analysis:")
+        import json
+        print(json.dumps(structure, indent=2, default=str))
     else:
-        print("Use --quick-validate, --preview, or --summary")
-        print(
-            "Example: python import_integration_utilities.py data/test.xlsx --preview --mode WEEKLY_UPDATE"
-        )
+        test_excel_processing(args.excel_file, args.db_path)

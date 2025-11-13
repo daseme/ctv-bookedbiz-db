@@ -30,13 +30,16 @@ class CustomerSectorAPI {
     }
 
     /**
-     * Update customer sector assignment - FIXED VERSION
+     * Update customer sector assignment - ENHANCED DEBUG VERSION
      * @param {number} customerId - Customer ID (can be 0 for unresolved customers)
      * @param {string} sectorName - New sector name
      * @returns {Promise<Object>} API response
      */
     async updateCustomerSector(customerId, sectorName) {
         try {
+            console.log("=== FRONTEND API CALL DEBUG START ===");
+            console.log(`Customer ID: ${customerId}, Sector: ${sectorName}`);
+            
             // CRITICAL FIX: For unresolved customers, we need to get the customer name
             let customerName = null;
             
@@ -46,10 +49,12 @@ class CustomerSectorAPI {
                     const customer = window.customerSectorManager.state.customers.find(c => c.id === 0);
                     if (customer) {
                         customerName = customer.name;
+                        console.log(`Found unresolved customer name: ${customerName}`);
                     }
                 }
                 
                 if (!customerName) {
+                    console.error('Customer name is required for unresolved customers');
                     throw new Error('Customer name is required for unresolved customers');
                 }
             }
@@ -63,6 +68,9 @@ class CustomerSectorAPI {
                 payload.customer_name = customerName;
             }
 
+            console.log("Payload being sent:", payload);
+            console.log("URL:", `${this.baseUrl}/customers/${customerId}/sector`);
+
             const response = await fetch(`${this.baseUrl}/customers/${customerId}/sector`, {
                 method: 'PUT',
                 headers: {
@@ -71,20 +79,32 @@ class CustomerSectorAPI {
                 body: JSON.stringify(payload)
             });
 
+            console.log("Response status:", response.status);
+            console.log("Response headers:", [...response.headers.entries()]);
+
             const result = await response.json();
+            console.log("Response body:", result);
             
             // IMPORTANT: If a customer was created, update the customer ID in the state
             if (result.success && result.customer_id && customerId === 0) {
+                console.log(`Customer created with new ID: ${result.customer_id}`);
                 if (window.customerSectorManager && window.customerSectorManager.state) {
-                    window.customerSectorManager.state.updateCustomerId(customerName, result.customer_id);
+                    const updated = window.customerSectorManager.state.updateCustomerId(customerName, result.customer_id);
+                    console.log(`State updated: ${updated}`);
                 }
-                console.log(`Customer "${customerName}" now has ID ${result.customer_id}`);
             }
             
+            console.log("=== FRONTEND API CALL DEBUG END ===");
             return result;
             
         } catch (error) {
+            console.error('=== FRONTEND API ERROR ===');
             console.error('Error updating customer sector:', error);
+            console.error('Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
             return { success: false, error: error.message };
         }
     }

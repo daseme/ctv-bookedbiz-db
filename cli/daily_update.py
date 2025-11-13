@@ -797,7 +797,7 @@ class MarketSetupService:
 
 
 class ImportService:
-    """Enhanced service for handling multi-sheet data imports"""
+    """Enhanced service for handling multi-sheet data imports with normalization repair"""
 
     def __init__(
         self,
@@ -809,18 +809,111 @@ class ImportService:
         self.spot_repository = spot_repository
         self.progress_reporter = progress_reporter
 
+    def ensure_bill_codes_in_raw_inputs(self, excel_file: Path) -> None:
+        """
+        Ensure all bill_code values from Excel are added to raw_customer_inputs
+        This prevents normalization gaps from occurring.
+        """
+        try:
+            import pandas as pd
+            
+            # Try to read the main data sheet - handle multiple possible sheet names
+            sheet_names_to_try = ["Commercials", "Commercial Lines", "Sheet1", 0]  # 0 = first sheet
+            df = None
+            sheet_used = None
+            
+            for sheet_name in sheet_names_to_try:
+                try:
+                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    sheet_used = sheet_name
+                    self.progress_reporter.write(f"📄 Reading bill codes from sheet: {sheet_name}")
+                    break
+                except Exception:
+                    continue
+            
+            if df is None:
+                self.progress_reporter.write("⚠️ Warning: Could not read any sheet from Excel file")
+                return
+
+            # Get unique bill codes - try multiple possible column names
+            bill_code_columns = ['bill_code', 'Bill Code', 'Customer', 'Client', 'Advertiser', 'customer']
+            bill_codes = []
+            column_used = None
+            
+            for col in bill_code_columns:
+                if col in df.columns:
+                    bill_codes = df[col].dropna().unique().tolist()
+                    column_used = col
+                    break
+            
+            if not bill_codes:
+                self.progress_reporter.write("⚠️ Warning: No bill code column found in Excel file")
+                available_columns = list(df.columns)[:10]  # Show first 10 columns
+                self.progress_reporter.write(f"Available columns: {available_columns}")
+                return
+            
+            # Clean and filter bill codes
+            clean_bill_codes = []
+            for bill_code in bill_codes:
+                if bill_code and str(bill_code).strip() and str(bill_code).strip().upper() != 'NAN':
+                    clean_bill_codes.append(str(bill_code).strip())
+            
+            if clean_bill_codes:
+                # Add to raw_customer_inputs
+                current_time = datetime.now().isoformat()
+                added_count = 0
+                
+                with self.broadcast_service.db_connection.transaction() as conn:
+                    for bill_code in clean_bill_codes:
+                        try:
+                            cursor = conn.execute("""
+                                INSERT OR IGNORE INTO raw_customer_inputs (raw_text, created_at)
+                                VALUES (?, ?)
+                            """, (bill_code, current_time))
+                            
+                            if cursor.rowcount > 0:
+                                added_count += 1
+                                
+                        except Exception as e:
+                            # Continue with other bill codes if one fails
+                            continue
+                
+                self.progress_reporter.write(f"✅ Normalization system updated:")
+                self.progress_reporter.write(f"   Sheet: {sheet_used}, Column: {column_used}")
+                self.progress_reporter.write(f"   Total bill codes found: {len(clean_bill_codes)}")
+                self.progress_reporter.write(f"   New bill codes added: {added_count}")
+                
+                if added_count == 0:
+                    self.progress_reporter.write(f"   (All bill codes were already in system)")
+            else:
+                self.progress_reporter.write("⚠️ Warning: No valid bill codes found after cleaning")
+        
+        except Exception as e:
+            self.progress_reporter.write(f"⚠️ Warning: Could not update raw_customer_inputs: {e}")
+            # Don't fail the entire import if this step fails
+
     def execute_import_with_progress(
         self, excel_file: Path, batch_id: str
     ) -> ImportResult:
-        """Execute import with enhanced multi-sheet progress tracking"""
+        """Execute import with enhanced multi-sheet progress tracking + normalization repair"""
         start_time = datetime.now()
 
+        # CRITICAL FIX: Ensure bill codes are in raw_customer_inputs BEFORE import
+        self.progress_reporter.write("🔧 Step 1: Updating normalization system with new bill codes...")
+        self.ensure_bill_codes_in_raw_inputs(excel_file)
+
         # Get summary first for progress setup
-        summary = get_excel_import_summary(
-            str(excel_file), self.broadcast_service.db_connection.db_path
-        )
+        self.progress_reporter.write("🔍 Step 2: Analyzing Excel file for import...")
+        try:
+            summary = get_excel_import_summary(
+                str(excel_file), self.broadcast_service.db_connection.db_path
+            )
+        except Exception as e:
+            self.progress_reporter.write(f"⚠️ Warning: Could not get import summary: {e}")
+            summary = {"months_in_excel": [], "total_existing_spots_affected": 0}
 
         # Create a progress bar for the overall import
+        self.progress_reporter.write("📦 Step 3: Executing data import...")
         with self.progress_reporter.create_progress(
             "Importing multi-sheet data", 100
         ) as pbar:
@@ -831,12 +924,25 @@ class ImportService:
             pbar.update(20)
 
             # Execute actual import
-            import_result = self.broadcast_service.execute_month_replacement(
-                str(excel_file),
-                "WEEKLY_UPDATE",  # Use WEEKLY_UPDATE mode for daily operations
-                closed_by=None,
-                dry_run=False,
-            )
+            try:
+                import_result = self.broadcast_service.execute_month_replacement(
+                    str(excel_file),
+                    "WEEKLY_UPDATE",  # Use WEEKLY_UPDATE mode for daily operations
+                    closed_by=None,
+                    dry_run=False,
+                )
+            except Exception as e:
+                self.progress_reporter.write(f"❌ Import failed: {e}")
+                return ImportResult(
+                    success=False,
+                    records_imported=0,
+                    records_deleted=0,
+                    batch_id=batch_id,
+                    duration_seconds=(datetime.now() - start_time).total_seconds(),
+                    error_message=f"Import failed: {e}",
+                    months_processed=[],
+                    sheet_breakdown={},
+                )
 
             pbar.set_description("Importing combined data")
             pbar.update(50)
@@ -848,7 +954,11 @@ class ImportService:
             pbar.update(100)
 
         # Enhanced: Get sheet source breakdown from database
-        sheet_breakdown = self.spot_repository.get_sheet_source_breakdown(batch_id)
+        try:
+            sheet_breakdown = self.spot_repository.get_sheet_source_breakdown(batch_id)
+        except Exception as e:
+            self.progress_reporter.write(f"⚠️ Warning: Could not get sheet breakdown: {e}")
+            sheet_breakdown = {}
 
         # Convert to our domain model
         result = ImportResult(
@@ -862,17 +972,127 @@ class ImportService:
         )
 
         if result.success:
-            self.progress_reporter.write(
-                f"Import: {result.records_imported:,} imported, {result.records_deleted:,} deleted (net: {result.net_change:+,})"
-            )
-
+            self.progress_reporter.write(f"✅ Import completed successfully:")
+            self.progress_reporter.write(f"   Records imported: {result.records_imported:,}")
+            self.progress_reporter.write(f"   Records deleted: {result.records_deleted:,}")
+            self.progress_reporter.write(f"   Net change: {result.net_change:+,}")
+            self.progress_reporter.write(f"   Duration: {result.duration_seconds:.1f} seconds")
+            
             # Enhanced: Show multi-sheet breakdown
             if result.has_multisheet_data:
-                self.progress_reporter.write(f"Multi-sheet breakdown:")
+                self.progress_reporter.write(f"📊 Multi-sheet breakdown:")
                 for sheet_source, count in result.sheet_breakdown.items():
                     self.progress_reporter.write(f"   {sheet_source}: {count:,} spots")
+            
+            # Show months processed
+            if result.months_processed:
+                self.progress_reporter.write(f"📅 Months processed: {', '.join(result.months_processed)}")
+                
+        else:
+            self.progress_reporter.write(f"❌ Import failed!")
+            if hasattr(import_result, 'error_message') and import_result.error_message:
+                self.progress_reporter.write(f"   Error: {import_result.error_message}")
 
         return result
+
+    def simulate_import(self, excel_file: Path) -> ImportResult:
+        """Simulate import for dry run with multi-sheet preview"""
+        try:
+            summary = get_excel_import_summary(
+                str(excel_file), self.broadcast_service.db_connection.db_path
+            )
+        except Exception as e:
+            self.progress_reporter.write(f"⚠️ Warning: Could not get import summary: {e}")
+            summary = {"months_in_excel": [], "total_existing_spots_affected": 0}
+
+        # Try to get sheet breakdown for dry run
+        sheet_breakdown = {}
+        try:
+            import pandas as pd
+
+            # Try multiple sheet names
+            sheet_names_to_try = ["Commercials", "Commercial Lines", "Sheet1", 0]
+            for sheet_name in sheet_names_to_try:
+                try:
+                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    sheet_breakdown[str(sheet_name)] = len(df)
+                    break
+                except Exception:
+                    continue
+                    
+            # If we found data, also try to simulate the normalization update
+            if sheet_breakdown:
+                self.progress_reporter.write(f"🔍 DRY RUN: Would update normalization system")
+                
+                # Show what bill codes would be added
+                df = None
+                for sheet_name in sheet_names_to_try:
+                    try:
+                        df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                        break
+                    except Exception:
+                        continue
+                
+                if df is not None:
+                    bill_code_columns = ['bill_code', 'Bill Code', 'Customer', 'Client', 'Advertiser']
+                    for col in bill_code_columns:
+                        if col in df.columns:
+                            unique_codes = df[col].dropna().nunique()
+                            self.progress_reporter.write(f"   Found {unique_codes} unique bill codes in column '{col}'")
+                            break
+                    
+        except Exception as e:
+            self.progress_reporter.write(f"⚠️ Warning: Could not analyze Excel for dry run: {e}")
+
+        return ImportResult(
+            success=True,
+            records_imported=summary.get("total_existing_spots_affected", 0),
+            records_deleted=summary.get("total_existing_spots_affected", 0),
+            batch_id="dry_run",
+            duration_seconds=0.0,
+            months_processed=summary.get("months_in_excel", []),
+            sheet_breakdown=sheet_breakdown,
+        )
+
+    def ensure_bill_codes_in_raw_inputs(self, excel_file: Path) -> None:
+        """
+        Ensure all bill_code values from Excel are added to raw_customer_inputs
+        This prevents normalization gaps from occurring.
+        """
+        try:
+            import pandas as pd
+            
+            # Read the main sheet (adjust sheet name as needed)
+            df = pd.read_excel(excel_file, sheet_name="Commercials")  # or your main sheet
+            
+            # Get unique bill codes
+            if 'bill_code' in df.columns:
+                bill_codes = df['bill_code'].dropna().unique().tolist()
+            else:
+                # Try alternative column names
+                bill_code_columns = ['Bill Code', 'Customer', 'Client', 'Advertiser']
+                bill_codes = []
+                for col in bill_code_columns:
+                    if col in df.columns:
+                        bill_codes = df[col].dropna().unique().tolist()
+                        break
+            
+            if bill_codes:
+                # Add to raw_customer_inputs
+                current_time = datetime.now().isoformat()
+                
+                with self.broadcast_service.db_connection.transaction() as conn:
+                    for bill_code in bill_codes:
+                        conn.execute("""
+                            INSERT OR IGNORE INTO raw_customer_inputs (raw_text, created_at)
+                            VALUES (?, ?)
+                        """, (str(bill_code).strip(), current_time))
+                
+                self.progress_reporter.write(f"Added {len(bill_codes)} bill codes to normalization system")
+            
+        except Exception as e:
+            self.progress_reporter.write(f"Warning: Could not update raw_customer_inputs: {e}")
+
 
     def simulate_import(self, excel_file: Path) -> ImportResult:
         """Simulate import for dry run with multi-sheet preview"""
