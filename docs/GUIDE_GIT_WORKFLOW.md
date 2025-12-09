@@ -36,7 +36,7 @@ git push origin dev
 systemctl --user restart ctv-dev.service
 
 # Check if it's working
-curl -sf http://100.81.73.46:5100/health/ && echo "DEV_OK"
+curl -sf http://pi-ctv:5100/health/ && echo "DEV_OK"
 ```
 
 ### 5. When ready for production
