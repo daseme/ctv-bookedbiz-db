@@ -60,8 +60,8 @@ def get_customers():
         
         customer_ids = [row[0] for row in customer_rows]
         if customer_ids:  # Only run revenue query if we have customers
-            cursor.execute(revenue_query, customer_ids)
-            revenue_rows = cursor.fetchall()
+            # cursor.execute(revenue_query, customer_ids)  # TEMP: Disabled for performance
+            revenue_rows = []  # TEMP: Return empty revenue data
         else:
             revenue_rows = []
         
