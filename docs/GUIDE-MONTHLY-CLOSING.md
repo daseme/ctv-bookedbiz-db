@@ -32,7 +32,7 @@ source .venv/bin/activate
 ### 3. Import Closed Data
 ```bash
 # Process the updated annual recap into database
-uv run python import_closed_data.py data/raw/2025.xlsx --year 2025 --closed-by "Kurt" --skip-closed
+uv run python ./cli/import_closed_data.py data/raw/2025.xlsx --year 2025 --closed-by "Kurt" --skip-closed
 
 # Verify import completed successfully
 echo "Import completed. Check logs for any errors."
