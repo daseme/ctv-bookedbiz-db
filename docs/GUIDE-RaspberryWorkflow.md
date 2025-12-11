@@ -1,3 +1,14 @@
+Yes, I can certainly provide a drop-in ready replacement for your entire Markdown file, incorporating the new, correct, and stable VS Code Remote Tunnel setup we just implemented.
+
+I have made the following changes:
+
+1.  **Updated Section 5.1** to reflect the use of the stable **`systemd` user service** running with the correct `--name raspberrypi`. I removed the confusing `code tunnel user login` and `code tunnel service install` commands.
+2.  **Updated the Quick Reference** section with the new `systemctl --user` commands for managing the tunnel.
+3.  **Removed the previous proposed additions** to keep the document clean and focused on the functional setup.
+
+Here is the complete, updated Markdown file:
+
+```markdown
 # Raspberry Pi Development Workflow
 
 ## Overview
@@ -12,24 +23,26 @@ This document outlines the collaborative development workflow for the CTV Booked
 - **Network**: Tailscale VPN for secure remote access
 - **Code Repository**: GitHub (`daseme/ctv-bookedbiz-db`)
 - **Database**: SQLite (production.db) synced via Dropbox
-- **Development Environment**: VS Code Remote-SSH
+- **Development Environment**: VS Code Remote-SSH / **VS Code Remote Tunnels**
 - **Service Management**: systemd service for Flask app
 
 ### Directory Structure
 ```
+
 /opt/apps/ctv-bookedbiz-db/
-├── .venv/                    # Python virtual environment
-├── .env                      # Environment variables (DO NOT COMMIT)
+├── .venv/                    \# Python virtual environment
+├── .env                      \# Environment variables (DO NOT COMMIT)
 ├── data/
-│   └── database/
-│       └── production.db     # Local copy of database
-├── cli_db_sync.py           # Database sync utility
+│   └── database/
+│       └── production.db     \# Local copy of database
+├── cli\_db\_sync.py           \# Database sync utility
 ├── bin/
-│   └── db_sync.sh           # Wrapper script for automated backups
-├── requirements.txt         # Python dependencies
-├── runserver.sh             # Flask app startup script
+│   └── db\_sync.sh           \# Wrapper script for automated backups
+├── requirements.txt         \# Python dependencies
+├── runserver.sh             \# Flask app startup script
 └── [your Flask app files]
-```
+
+````
 
 ## Move files from your local computer to the raspberry pi
 scp "C:\Users\Kurt\Crossings TV Dropbox\kurt olmstead\Financial\Sales\WeeklyReports\ctv-bookedbiz-db\data\raw\2021.xlsx" daseme@raspberrypi:/opt/apps/ctv-bookedbiz-db/data/raw/2021.xlsx
@@ -69,9 +82,10 @@ python cli_db_sync.py info
 
 # 6. Check if Flask app service is running
 sudo systemctl status flaskapp
-```
+````
 
 #### During Development
+
 ```bash
 # Create backup before major changes
 python cli_db_sync.py backup
@@ -87,6 +101,7 @@ sudo journalctl -u flaskapp -f
 ```
 
 #### Ending Work Session
+
 ```bash
 # 1. Optional: Upload database changes immediately if significant
 python cli_db_sync.py upload
@@ -103,11 +118,12 @@ sudo systemctl restart flaskapp
 exit
 ```
 
-### 2. Flask App Service Management
+### 2\. Flask App Service Management
 
 The Flask application runs as a systemd service that automatically starts on boot and restarts if it crashes.
 
 #### Service Commands
+
 ```bash
 # Check service status
 sudo systemctl status flaskapp
@@ -135,60 +151,59 @@ sudo systemctl disable flaskapp
 ```
 
 #### Service Management Workflow
-1. **After code changes**: Always restart the service with `sudo systemctl restart flaskapp`
-2. **Debugging issues**: Check logs with `sudo journalctl -u flaskapp -n 50`
-3. **Service runs automatically**: No need to manually start after Pi reboots
-4. **Service auto-restarts**: If the app crashes, systemd will restart it automatically
 
-### 3. Database Management — Server‑First with Nightly Dropbox Backup
+1.  **After code changes**: Always restart the service with `sudo systemctl restart flaskapp`
+2.  **Debugging issues**: Check logs with `sudo journalctl -u flaskapp -n 50`
+3.  **Service runs automatically**: No need to manually start after Pi reboots
+4.  **Service auto-restarts**: If the app crashes, systemd will restart it automatically
+
+### 3\. Database Management — Server‑First with Nightly Dropbox Backup
 
 **Principle:** We work on the **server copy** of the database and **do not** auto‑download from Dropbox. A nightly **systemd timer** creates timestamped backups in Dropbox as an off‑site backup store. Manual download is **only for recovery**.
 
 #### Components
 
-* **Primary DB (authoritative)**
-   * `/opt/apps/ctv-bookedbiz-db/data/database/production.db`
-* **Python entrypoint**
-   * `cli_db_sync.py` (supports `upload | backup | list-backups | info`)
-* **Virtualenv (for systemd)**
-   * `/opt/apps/ctv-bookedbiz-db/.venv` with `dropbox`, `python-dotenv`
-* **Wrapper executable**
-   * `/opt/apps/ctv-bookedbiz-db/bin/db_sync.sh`
-      * Runs inside venv using `cli_db_sync.py backup`
-      * Uses `flock` lockfile: `/tmp/ctv-db-sync.lock`
-      * Implements retention (keeps 7 backups, deletes older)
-      * Performs integrity checks (latest backup vs local hash)
-      * Logs to syslog with optional ntfy/Slack notifications
-* **Secrets (root-only)**
-   * `/etc/ctv-db-sync.env`
-      * `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
-      * Permissions: `root:root`, `600`
-* **systemd units**
-   * `/etc/systemd/system/ctv-db-sync.service` (runs wrapper once, 3600s timeout)
-   * `/etc/systemd/system/ctv-db-sync.timer` (daily at 02:05 + random 5m delay)
-* **Logs**
-   * `/var/log/ctv-db-sync/sync.log`
-   * Logrotate: weekly, keep 8, compressed
+  * **Primary DB (authoritative)**
+       \* `/opt/apps/ctv-bookedbiz-db/data/database/production.db`
+  * **Python entrypoint**
+       \* `cli_db_sync.py` (supports `upload | backup | list-backups | info`)
+  * **Virtualenv (for systemd)**
+       \* `/opt/apps/ctv-bookedbiz-db/.venv` with `dropbox`, `python-dotenv`
+  * **Wrapper executable**
+       \* `/opt/apps/ctv-bookedbiz-db/bin/db_sync.sh`
+          \* Runs inside venv using `cli_db_sync.py backup`
+          \* Uses `flock` lockfile: `/tmp/ctv-db-sync.lock`
+          \* Implements retention (keeps 7 backups, deletes older)
+          \* Performs integrity checks (latest backup vs local hash)
+          \* Logs to syslog with optional ntfy/Slack notifications
+  * **Secrets (root-only)**
+       \* `/etc/ctv-db-sync.env`
+          \* `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
+          \* Permissions: `root:root`, `600`
+  * **systemd units**
+       \* `/etc/systemd/system/ctv-db-sync.service` (runs wrapper once, 3600s timeout)
+       \* `/etc/systemd/system/ctv-db-sync.timer` (daily at 02:05 + random 5m delay)
+  * **Logs**
+       \* `/var/log/ctv-db-sync/sync.log`
+       \* Logrotate: weekly, keep 8, compressed
 
 #### Dropbox App Root Structure
 
-* `database.db` (legacy single-file upload)
-* `backups/` (timestamped nightly copies: `database_backup_YYYYMMDD_HHMMSS.db`)
-* **Note:** No nested `Apps/` folder (removed)
+  * `database.db` (legacy single-file upload)
+  * `backups/` (timestamped nightly copies: `database_backup_YYYYMMDD_HHMMSS.db`)
+  * **Note:** No nested `Apps/` folder (removed)
 
 #### Daily Backup Flow (Automated)
 
-* **Timer fires daily** (02:05 + random delay) → runs `db_sync.sh`
-* Wrapper executes:
-  ```bash
-  python cli_db_sync.py backup
-  ```
-* Process:
-  1. Creates timestamped backup in `/backups/database_backup_YYYYMMDD_HHMMSS.db`
-  2. Retains last 7 backups, deletes older ones
-  3. Compares latest backup with local DB using Dropbox content_hash
-  4. Logs integrity check results (✓/✗)
-  5. Results written to `/var/log/ctv-db-sync/sync.log`
+  * **Timer fires daily** (02:05 + random delay) → runs `db_sync.sh`
+  * Wrapper executes:
+      ` bash   python cli_db_sync.py backup    `
+  * Process:
+      1. Creates timestamped backup in `/backups/database_backup_YYYYMMDD_HHMMSS.db`
+      2. Retains last 7 backups, deletes older ones
+      3. Compares latest backup with local DB using Dropbox content\_hash
+      4. Logs integrity check results (✓/✗)
+      5. Results written to `/var/log/ctv-db-sync/sync.log`
 
 #### Service/Timer Control
 
@@ -209,8 +224,8 @@ tail -n 200 /var/log/ctv-db-sync/sync.log
 ```bash
 # List backups in Dropbox
 sudo sh -c 'set -a; . /etc/ctv-db-sync.env; set +a; \
-  /opt/apps/ctv-bookedbiz-db/.venv/bin/python \
-  /opt/apps/ctv-bookedbiz-db/cli_db_sync.py list-backups'
+  /opt/apps/ctv-bookedbiz-db/.venv/bin/python \
+  /opt/apps/ctv-bookedbiz-db/cli_db_sync.py list-backups'
 
 # Create immediate backup (e.g., before major changes)
 python cli_db_sync.py backup
@@ -224,34 +239,36 @@ python cli_db_sync.py info
 
 #### Key Changes from Previous Version
 
-* **Backup strategy:** Nightly backups now create timestamped files in `/backups/` folder instead of overwriting a single file
-* **Retention:** Automatically keeps only the last 7 backups
-* **Integrity verification:** Each backup is validated against local DB hash
-* **Simplified structure:** Removed nested `Apps/` directory from Dropbox path
-* **Enhanced logging:** Better structured logs with integrity check results
+  * **Backup strategy:** Nightly backups now create timestamped files in `/backups/` folder instead of overwriting a single file
+  * **Retention:** Automatically keeps only the last 7 backups
+  * **Integrity verification:** Each backup is validated against local DB hash
+  * **Simplified structure:** Removed nested `Apps/` directory from Dropbox path
+  * **Enhanced logging:** Better structured logs with integrity check results
 
 #### Notes
 
-* Local DB is always authoritative; Dropbox serves as off-site backup only
-* Integrity failures can trigger notifications via ntfy/Slack if configured
-* Recovery procedures should stop dependent services, replace local DB, then restart services
+  * Local DB is always authoritative; Dropbox serves as off-site backup only
+  * Integrity failures can trigger notifications via ntfy/Slack if configured
+  * Recovery procedures should stop dependent services, replace local DB, then restart services
 
-### 4. Docker Development (Pi2 - Control Station Alpha)
+### 4\. Docker Development (Pi2 - Control Station Alpha)
 
 **IMPORTANT: All Docker operations are performed on Pi2 (100.96.96.109), NOT on pi-ctv**
 
 Pi2 serves as the Docker development and testing environment, providing containerized deployment capabilities for both local testing and cloud deployment preparation.
 
 #### Docker Architecture
-- **Pi2 Docker Host**: Container build and test environment (100.96.96.109)
-- **Multi-stage Builds**: Optimized production images with uvicorn ASGI server
-- **Volume Mounts**: Database persistence via Docker volumes
-- **Health Checks**: Automatic container health monitoring
-- **Railway Ready**: Containers configured for cloud deployment
+
+  - **Pi2 Docker Host**: Container build and test environment (100.96.96.109)
+  - **Multi-stage Builds**: Optimized production images with uvicorn ASGI server
+  - **Volume Mounts**: Database persistence via Docker volumes
+  - **Health Checks**: Automatic container health monitoring
+  - **Railway Ready**: Containers configured for cloud deployment
 
 #### Container Management
 
 **Build and Test Cycle:**
+
 ```bash
 # Connect to pi2 (Docker host) - NOT pi-ctv
 ssh daseme@100.96.96.109
@@ -265,9 +282,9 @@ docker build -t ctv-flask .
 
 # Test container locally
 docker run -d --name ctv-test \
-  -p 8000:8000 \
-  -v ./data/database:/app/data/database \
-  ctv-flask
+  -p 8000:8000 \
+  -v ./data/database:/app/data/database \
+  ctv-flask
 
 # Health check
 curl http://localhost:8000/api/system-stats
@@ -278,6 +295,7 @@ docker stop ctv-test && docker rm ctv-test
 ```
 
 **Docker Service Integration:**
+
 ```bash
 # Run with Docker Compose (full environment)
 docker-compose up -d
@@ -296,20 +314,22 @@ docker-compose down
 ```
 
 #### Docker File Structure
+
 ```
 /opt/apps/ctv-bookedbiz-db/ (on pi2)
-├── Dockerfile                   # Production container image
-├── .dockerignore               # Build optimization
-├── docker-compose.yml          # Multi-environment orchestration
-├── railway.json               # Railway deployment config (optional)
-└── docker/                    # Docker variants (optional)
-    ├── Dockerfile.dev         # Development with hot reload
-    └── Dockerfile.railway     # Railway-optimized version
+├── Dockerfile                   # Production container image
+├── .dockerignore               # Build optimization
+├── docker-compose.yml          # Multi-environment orchestration
+├── railway.json               # Railway deployment config (optional)
+└── docker/                    # Docker variants (optional)
+    ├── Dockerfile.dev         # Development with hot reload
+    └── Dockerfile.railway     # Railway-optimized version
 ```
 
 #### Container Development Workflow
 
 **Daily Container Testing (on pi2):**
+
 ```bash
 # After code changes on pi-ctv, test in container on pi2
 ssh daseme@100.96.96.109
@@ -319,8 +339,8 @@ git pull origin main
 # Quick container test
 docker build -t ctv-flask . && \
 docker run --rm -p 8000:8000 \
-  -v ./data/database:/app/data/database \
-  ctv-flask &
+  -v ./data/database:/app/data/database \
+  ctv-flask &
 
 # Test API endpoint
 curl http://localhost:8000/api/system-stats
@@ -330,14 +350,15 @@ docker ps -q --filter ancestor=ctv-flask | xargs docker kill
 ```
 
 **Production Simulation (on pi2):**
+
 ```bash
 # Test with production-like environment
 docker run -d --name ctv-production-test \
-  -p 8000:8000 \
-  -v ./data/database:/app/data/database \
-  -e FLASK_ENV=production \
-  --restart unless-stopped \
-  ctv-flask
+  -p 8000:8000 \
+  -v ./data/database:/app/data/database \
+  -e FLASK_ENV=production \
+  --restart unless-stopped \
+  ctv-flask
 
 # Monitor for extended period
 docker stats ctv-production-test
@@ -349,6 +370,7 @@ docker exec ctv-production-test curl -f http://localhost:8000/api/system-stats
 #### Failover Integration
 
 **Docker Failover Testing (pi2 as backup):**
+
 ```bash
 # Test containerized failover scenario
 # 1. Stop pi-ctv service (simulate failure)
@@ -358,16 +380,16 @@ sudo systemctl stop flaskapp
 # 2. Start container backup on pi2
 ssh daseme@100.96.96.109
 cd /opt/apps/ctv-bookedbiz-db
-python cli_db_sync.py download  # Get latest database
+python cli_db_sync.py download  # Get latest database
 
 # 3. Start containerized backup
 docker run -d --name ctv-failover \
-  -p 8000:8000 \
-  -v ./data/database:/app/data/database \
-  ctv-flask
+  -p 8000:8000 \
+  -v ./data/database:/app/data/database \
+  ctv-flask
 
 # 4. Verify failover works
-curl http://100.96.96.109:8000/api/system-stats
+curl [http://100.96.96.109:8000/api/system-stats](http://100.96.96.109:8000/api/system-stats)
 
 # 5. Clean up after test
 docker stop ctv-failover && docker rm ctv-failover
@@ -376,17 +398,18 @@ docker stop ctv-failover && docker rm ctv-failover
 #### Cloud Deployment Preparation (on pi2)
 
 **Railway Deployment Testing:**
+
 ```bash
 # Test Railway-compatible configuration on pi2
 docker build -f docker/Dockerfile.railway -t ctv-railway . 
 
 # Test with Railway-style environment variables
 docker run -d --name ctv-railway-test \
-  -p 8000:8000 \
-  -e PORT=8000 \
-  -e RAILWAY_ENVIRONMENT=production \
-  -v ./data/database:/app/data/database \
-  ctv-railway
+  -p 8000:8000 \
+  -e PORT=8000 \
+  -e RAILWAY_ENVIRONMENT=production \
+  -v ./data/database:/app/data/database \
+  ctv-railway
 
 # Validate Railway compatibility
 curl http://localhost:8000/api/system-stats
@@ -396,6 +419,7 @@ docker logs ctv-railway-test
 #### Docker Maintenance (on pi2)
 
 **Container Cleanup:**
+
 ```bash
 # Remove unused containers
 docker container prune -f
@@ -411,6 +435,7 @@ docker system prune -af
 ```
 
 **Image Management:**
+
 ```bash
 # List local images
 docker images
@@ -428,118 +453,111 @@ docker push daseme/ctv-flask:latest
 #### Integration with Existing Workflow
 
 **Docker on pi2 fits into the existing workflow as:**
-1. **Development Testing**: Validate changes in containerized environment
-2. **Failover Capability**: Alternative deployment method for pi2
-3. **Cloud Preparation**: Ready-to-deploy containers for Railway/cloud
-4. **Production Consistency**: Same uvicorn ASGI server across all environments
-5. **Monitoring Enhancement**: Container metrics integrate with Control Station Alpha
+
+1.  **Development Testing**: Validate changes in containerized environment
+2.  **Failover Capability**: Alternative deployment method for pi2
+3.  **Cloud Preparation**: Ready-to-deploy containers for Railway/cloud
+4.  **Production Consistency**: Same uvicorn ASGI server across all environments
+5.  **Monitoring Enhancement**: Container metrics integrate with Control Station Alpha
 
 **When to Use Docker (on pi2):**
-- **Testing new features** in isolated environment
-- **Preparing cloud deployments** 
-- **Simulating production** conditions locally
-- **Emergency failover** with consistent environment
-- **Debugging environment** issues
 
-### 5. VS Code Remote Development
+  - **Testing new features** in isolated environment
+  - **Preparing cloud deployments** - **Simulating production** conditions locally
+  - **Emergency failover** with consistent environment
+  - **Debugging environment** issues
+
+### 5\. VS Code Remote Development
 
 #### Initial Setup (One-time per developer)
-1. Install VS Code extensions:
-   - Remote - SSH
-   - Remote Development (extension pack)
-   - Python
-   - Python Debugger
 
-2. Set up SSH config (`~/.ssh/config`):
-   ```
-   Host pi-ctv
-       HostName 100.81.73.46
-       User your-username
-       Port 22
-       IdentityFile ~/.ssh/id_ed25519
-       ServerAliveInterval 60
-       ServerAliveCountMax 3
-   ```
+1.  Install VS Code extensions:
+       - Remote - SSH
+       - Remote Development (extension pack)
+       - Python
+       - Python Debugger
+
+2.  Set up SSH config (`~/.ssh/config`):
+       `     Host pi-ctv        HostName 100.81.73.46        User your-username        Port 22        IdentityFile ~/.ssh/id_ed25519        ServerAliveInterval 60        ServerAliveCountMax 3     `
 
 #### Daily VS Code Usage
-1. **Connect**: Ctrl+Shift+P → "Remote-SSH: Connect to Host" → `pi-ctv`
-2. **Open Project**: File → Open Folder → `/opt/apps/ctv-bookedbiz-db`
-3. **Select Python Interpreter**: Ctrl+Shift+P → "Python: Select Interpreter" → `.venv/bin/python`
-4. **Develop** with full VS Code features (IntelliSense, debugging, etc.)
 
-Yes — add a new **“VS Code Remote-Tunnel Access”** section right after section 5 (“VS Code Remote Development”).
-
-Example insert:
-
----
+1.  **Connect**: Ctrl+Shift+P → "Remote-SSH: Connect to Host" → `pi-ctv`
+2.  **Open Project**: File → Open Folder → `/opt/apps/ctv-bookedbiz-db`
+3.  **Select Python Interpreter**: Ctrl+Shift+P → "Python: Select Interpreter" → `.venv/bin/python`
+4.  **Develop** with full VS Code features (IntelliSense, debugging, etc.)
 
 ### 5.1 VS Code Remote-Tunnel Access (pi-ctv)
 
-Use when you don’t want to rely on SSH or when VS Code tunnel auto-connect is needed from anywhere.
+Use when you prefer seamless remote access without managing SSH keys on every device, or when VS Code tunnel auto-connect is needed from anywhere.
 
-#### Setup (on Pi)
+#### Setup (on Pi - Completed)
+
+The tunnel service is configured to run automatically on boot under the machine name **`raspberrypi`** using a custom `systemd` user service.
+
+| Component | Status | Path / Action |
+| :--- | :--- | :--- |
+| **Tunnel Name** | **Fixed** | `raspberrypi` |
+| **Service File** | **Created** | `~/.config/systemd/user/code-tunnel.service` |
+| **Auto-Start** | **Enabled** | Service starts automatically on boot |
+| **Login** | **Completed** | Credentials saved under user `daseme` |
+
+*To modify the service or check configuration:*
 
 ```bash
-# one-time
-code tunnel user login                     # authenticate via GitHub or MS
-code tunnel service install --name raspberrypi --accept-server-license-terms
-sudo loginctl enable-linger $USER          # keep tunnel alive after logout
+# View the service file content
+cat ~/.config/systemd/user/code-tunnel.service
+
+# Restart the service (if needed after a manual change)
+systemctl --user restart code-tunnel.service
 ```
 
-*DNS fallback* (for NetworkManager Wi-Fi):
+#### Status / Logs
 
 ```bash
-sudo nmcli con mod "NETGEAR42" ipv4.dns "1.1.1.1 9.9.9.9" ipv4.ignore-auto-dns yes
-sudo nmcli con up "NETGEAR42"
-```
+# Check the service status
+systemctl --user status code-tunnel.service
 
-*Status / logs*
-
-```bash
-code tunnel status
-journalctl --user -u code-tunnel -f
+# View recent logs
+journalctl --user -u code-tunnel.service -n 50 -f
 ```
 
 #### Use (on Desktop)
 
-1. Open local window → `Ctrl + Shift + P` → **Remote Tunnels: Connect to Tunnel…** → `raspberrypi`
-2. Ensure same GitHub/MS account as used on Pi.
-3. After connecting, open `/opt/apps/ctv-bookedbiz-db`.
+1.  Open local VS Code window.
+2.  Open the Remote Explorer (the monitor icon on the sidebar).
+3.  Under the **Tunnels** section, click **Connect** next to the machine named **`raspberrypi`**.
+4.  Ensure you are logged into VS Code with the **same Microsoft/GitHub account** used during the initial Pi registration.
+5.  After connecting, select to open the project folder: `/opt/apps/ctv-bookedbiz-db`.
 
 **Tips**
 
-* Tunnel auto-starts on boot via `code-tunnel.service`.
-* Use `systemctl --user restart code-tunnel.service` after network/DNS changes.
-* For troubleshooting, rely on `journalctl` not the `--lines/--follow` options (arm64 stable build).
+  * The tunnel auto-starts on boot and automatically registers as `raspberrypi`.
+  * If the connection fails, first check the logs on the Pi: `journalctl --user -u code-tunnel.service -n 50`.
+  * Connection stability relies on the Pi's network connection via Tailscale to the public internet.
 
----
-
-No other sections need edits; section 5 continues to cover SSH development, while 5.1 documents the tunnel workflow you just stabilized.
-
-
-### 6. Collaboration Guidelines
+### 6\. Collaboration Guidelines
 
 #### Code Collaboration
-- **Use descriptive commit messages**
-- **Pull before push** to avoid conflicts
-- **Restart Flask service** after pushing changes: `sudo systemctl restart flaskapp`
-- **Communicate major changes** in advance
-- **Use feature branches** for larger changes:
-  ```bash
-  git checkout -b feature/new-feature
-  # Make changes
-  git push -u origin feature/new-feature
-  # Create pull request on GitHub
-  ```
+
+  - **Use descriptive commit messages**
+  - **Pull before push** to avoid conflicts
+  - **Restart Flask service** after pushing changes: `sudo systemctl restart flaskapp`
+  - **Communicate major changes** in advance
+  - **Use feature branches** for larger changes:
+      ` bash   git checkout -b feature/new-feature   # Make changes   git push -u origin feature/new-feature   # Create pull request on GitHub    `
 
 #### Database Collaboration
-- **Communicate database changes** before making them
-- **Create backups** before schema modifications: `python cli_db_sync.py backup`
-- **Use sequential workflow** - avoid simultaneous database modifications
-- **Test changes locally** before relying on nightly backup
+
+  - **Communicate database changes** before making them
+  - **Create backups** before schema modifications: `python cli_db_sync.py backup`
+  - **Use sequential workflow** - avoid simultaneous database modifications
+  - **Test changes locally** before relying on nightly backup
 
 #### File Permissions
+
 Both developers are in the `ctv-dev` group with read/write access to all project files:
+
 ```bash
 # Check group membership
 groups
@@ -549,9 +567,10 @@ sudo chgrp -R ctv-dev /opt/apps/ctv-bookedbiz-db
 sudo chmod -R g+rw /opt/apps/ctv-bookedbiz-db
 ```
 
-### 7. Environment Configuration
+### 7\. Environment Configuration
 
 #### Environment Variables (.env)
+
 ```env
 DROPBOX_ACCESS_TOKEN=your_dropbox_token
 DATABASE_PATH=/opt/apps/ctv-bookedbiz-db/data/database/production.db
@@ -562,15 +581,17 @@ FLASK_ENV=development
 **⚠️ IMPORTANT**: Never commit `.env` file to Git (it's in `.gitignore`)
 
 #### Python Dependencies
-- **Add new packages**: `uv pip install package-name`
-- **Update requirements**: `uv pip freeze > requirements.txt`
-- **Install from requirements**: `uv pip install -r requirements.txt`
 
-### 8. Troubleshooting
+  - **Add new packages**: `uv pip install package-name`
+  - **Update requirements**: `uv pip freeze > requirements.txt`
+  - **Install from requirements**: `uv pip install -r requirements.txt`
+
+### 8\. Troubleshooting
 
 #### Common Issues
 
 **Flask App Service Issues**:
+
 ```bash
 # Check service status
 sudo systemctl status flaskapp
@@ -586,6 +607,7 @@ curl http://localhost:8000
 ```
 
 **VS Code Remote-SSH Connection Issues**:
+
 ```bash
 # Kill existing VS Code server
 # In VS Code: Ctrl+Shift+P → "Remote-SSH: Kill VS Code Server on Host"
@@ -597,7 +619,16 @@ ssh pi-ctv
 # View → Output → Select "Remote-SSH"
 ```
 
+**VS Code Remote-Tunnel Connection Issues**:
+
+```bash
+# Check service status and logs on the Pi
+systemctl --user status code-tunnel.service
+journalctl --user -u code-tunnel.service -f
+```
+
 **Database Sync Issues**:
+
 ```bash
 # Check Dropbox connection
 python cli_db_sync.py info
@@ -613,6 +644,7 @@ systemctl list-timers | grep ctv-db-sync
 ```
 
 **Permission Issues**:
+
 ```bash
 # Check group membership
 groups
@@ -623,6 +655,7 @@ sudo chmod -R g+rw /opt/apps/ctv-bookedbiz-db
 ```
 
 **Python Environment Issues**:
+
 ```bash
 # Verify uv is in PATH
 uv --version
@@ -635,20 +668,21 @@ which python
 python --version
 ```
 
-### 9. Security Notes
+### 9\. Security Notes
 
-- **Tailscale VPN**: All connections are encrypted and authenticated
-- **SSH Keys**: Use SSH keys for authentication (no passwords)
-- **Environment Variables**: Keep sensitive data in `.env` (never commit)
-- **Regular Backups**: Database is automatically backed up nightly with timestamps
-- **Access Control**: Only team members have Pi access via SSH keys
-- **Service Security**: Flask service runs as `daseme` user with minimal privileges
+  - **Tailscale VPN**: All connections are encrypted and authenticated
+  - **SSH Keys**: Use SSH keys for authentication (no passwords)
+  - **Environment Variables**: Keep sensitive data in `.env` (never commit)
+  - **Regular Backups**: Database is automatically backed up nightly with timestamps
+  - **Access Control**: Only team members have Pi access via SSH keys
+  - **Service Security**: Flask service runs as `daseme` user with minimal privileges
 
-### 10. Datasette for Database Exploration
+### 10\. Datasette for Database Exploration
 
 Datasette provides a web interface for exploring and querying your SQLite database with support for long-running queries.
 
 #### Quick Start (Get it running now)
+
 ```bash
 # Navigate to project on pi-ctv
 cd /opt/apps/ctv-bookedbiz-db
@@ -656,23 +690,26 @@ source .venv/bin/activate
 
 # Start Datasette with long-running query support
 datasette data/database/production.db \
-  --host 0.0.0.0 \
-  --port 8001 \
-  --setting sql_time_limit_ms 300000 \
-  --setting max_returned_rows 10000 \
-  --reload
+  --host 0.0.0.0 \
+  --port 8001 \
+  --setting sql_time_limit_ms 300000 \
+  --setting max_returned_rows 10000 \
+  --reload
 
-# Access via: http://100.81.73.46:8001 (Tailscale IP)
+# Access via: [http://100.81.73.46:8001](http://100.81.73.46:8001) (Tailscale IP)
 # Stop with Ctrl+C
 ```
 
 #### Persistent Background Service
+
 **Create systemd service:**
+
 ```bash
 sudo nano /etc/systemd/system/datasette.service
 ```
 
 **Service file content:**
+
 ```ini
 [Unit]
 Description=Datasette Service
@@ -693,6 +730,7 @@ WantedBy=multi-user.target
 ```
 
 **Enable and start:**
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable datasette
@@ -701,82 +739,101 @@ sudo systemctl status datasette
 ```
 
 #### Daily Usage
-- **After significant database changes**: `sudo systemctl restart datasette`
-- **Check logs**: `sudo journalctl -u datasette -n 50`
-- **Access**: `http://100.81.73.46:8001`
 
-### 11. Mount network drives
-- sudo mkdir -p /mnt/k-drive
-- sudo mount -t cifs "//100.102.206.113/K Drive" /mnt/k-drive -o username=usrjp,password='PASSWORDNEEDED',domain=CTVETERE,vers=2.0,sec=ntlmv2
+  - **After significant database changes**: `sudo systemctl restart datasette`
+  - **Check logs**: `sudo journalctl -u datasette -n 50`
+  - **Access**: `http://100.81.73.46:8001`
 
-### 12. Maintenance
+### 11\. Mount network drives
+
+  - sudo mkdir -p /mnt/k-drive
+  - sudo mount -t cifs "//100.102.206.113/K Drive" /mnt/k-drive -o username=usrjp,password='PASSWORDNEEDED',domain=CTVETERE,vers=2.0,sec=ntlmv2
+
+### 12\. Maintenance
 
 #### Regular Tasks
-- **Weekly**: Review database backup logs: `tail -n 100 /var/log/ctv-db-sync/sync.log`
-- **Monthly**: Update system packages: `sudo apt update && sudo apt upgrade`
-- **As Needed**: Update Python dependencies: `uv pip install --upgrade package-name`
-- **Service Health**: Monitor Flask app and Datasette service logs periodically
-- **Database Analysis**: Use Datasette to monitor data quality and trends
+
+  - **Weekly**: Review database backup logs: `tail -n 100 /var/log/ctv-db-sync/sync.log`
+  - **Monthly**: Update system packages: `sudo apt update && sudo apt upgrade`
+  - **As Needed**: Update Python dependencies: `uv pip install --upgrade package-name`
+  - **Service Health**: Monitor Flask app and Datasette service logs periodically
+  - **Database Analysis**: Use Datasette to monitor data quality and trends
 
 #### Monitoring
-- **Database Size**: Check `python cli_db_sync.py info` for database growth
-- **Disk Space**: Monitor Pi storage with `df -h`
-- **Dropbox Usage**: Monitor Dropbox storage limits and backup retention
-- **Service Status**: Check Flask app health with `sudo systemctl status flaskapp`
-- **Datasette Health**: Check Datasette service with `sudo systemctl status datasette`
-- **Backup Integrity**: Review backup integrity checks in sync logs
 
----
+  - **Database Size**: Check `python cli_db_sync.py info` for database growth
+  - **Disk Space**: Monitor Pi storage with `df -h`
+  - **Dropbox Usage**: Monitor Dropbox storage limits and backup retention
+  - **Service Status**: Check Flask app health with `sudo systemctl status flaskapp`
+  - **Datasette Health**: Check Datasette service with `sudo systemctl status datasette`
+  - **Backup Integrity**: Review backup integrity checks in sync logs
+
+-----
 
 ## Quick Reference
 
 ### Essential Commands
+
 ```bash
 # Project navigation (pi-ctv)
 cd /opt/apps/ctv-bookedbiz-db
 source .venv/bin/activate
 
 # Database operations
-python cli_db_sync.py info          # Check database status
-python cli_db_sync.py backup        # Create immediate backup
-python cli_db_sync.py upload        # Legacy upload method
-python cli_db_sync.py list-backups  # List all backups
+python cli_db_sync.py info          # Check database status
+python cli_db_sync.py backup        # Create immediate backup
+python cli_db_sync.py upload        # Legacy upload method
+python cli_db_sync.py list-backups  # List all backups
 
 # Git workflow
-git pull                      # Get latest code
-git add .                     # Stage changes
-git commit -m "message"       # Commit changes
-git push                      # Push to GitHub
+git pull                      # Get latest code
+git add .                     # Stage changes
+git commit -m "message"       # Commit changes
+git push                      # Push to GitHub
 
 # Flask service management (pi-ctv)
-sudo systemctl status flaskapp    # Check status
-sudo systemctl restart flaskapp   # Restart after changes
+sudo systemctl status flaskapp    # Check status
+sudo systemctl restart flaskapp   # Restart after changes
 sudo journalctl -u flaskapp -n 50 # View logs
 
+# VS Code Tunnel service management (pi-ctv)
+systemctl --user status code-tunnel.service # Check status
+systemctl --user restart code-tunnel.service # Restart if needed
+journalctl --user -u code-tunnel.service -f # View logs in real-time
+
 # Docker operations (pi2 only)
-ssh daseme@100.96.96.109      # Connect to pi2
-docker build -t ctv-flask .   # Build container
-docker ps                     # List containers
+ssh daseme@100.96.96.109      # Connect to pi2
+docker build -t ctv-flask .   # Build container
+docker ps                     # List containers
 
 # VS Code connection
-ssh pi-ctv                    # Terminal connection
+ssh pi-ctv                    # Terminal connection
 # VS Code: Ctrl+Shift+P → "Remote-SSH: Connect to Host"
+# VS Code: Ctrl+Shift+P → "Remote Tunnels: Connect to Tunnel..." → raspberrypi
 ```
 
 ### Important Paths
-- **Project Root**: `/opt/apps/ctv-bookedbiz-db/`
-- **Database**: `data/database/production.db`
-- **Python Environment**: `.venv/bin/python`
-- **Backup Logs**: `/var/log/ctv-db-sync/sync.log`
-- **Dropbox Structure**: 
-  - Legacy: `/database.db`
-  - Backups: `/backups/database_backup_YYYYMMDD_HHMMSS.db`
+
+  - **Project Root**: `/opt/apps/ctv-bookedbiz-db/`
+  - **Database**: `data/database/production.db`
+  - **Python Environment**: `.venv/bin/python`
+  - **Backup Logs**: `/var/log/ctv-db-sync/sync.log`
+  - **Dropbox Structure**:
+      - Legacy: `/database.db`
+      - Backups: `/backups/database_backup_YYYYMMDD_HHMMSS.db`
 
 ### Important URLs
-- **Flask App**: `http://100.81.73.46:8000` (pi-ctv via Tailscale)
-- **Datasette**: `http://100.81.73.46:8001` (pi-ctv via Tailscale)
-- **Docker Testing**: `http://100.96.96.109:8000` (pi2 via Tailscale)
+
+  - **Flask App**: `http://100.81.73.46:8000` (pi-ctv via Tailscale)
+  - **Datasette**: `http://100.81.73.46:8001` (pi-ctv via Tailscale)
+  - **Docker Testing**: `http://100.96.96.109:8000` (pi2 via Tailscale)
 
 ### Key System Differences
-- **pi-ctv (100.81.73.46)**: Primary development, Flask app, database authority
-- **pi2 (100.96.96.109)**: Docker host, containerized testing, failover capability
+
+  - **pi-ctv (100.81.73.46)**: Primary development, Flask app, database authority
+  - **pi2 (100.96.96.109)**: Docker host, containerized testing, failover capability
+
+<!-- end list -->
+
+```
+```

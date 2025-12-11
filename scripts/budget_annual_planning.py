@@ -396,7 +396,7 @@ class RevenueRepository:
             return results
 
     def get_ae_raw_data_2025(self, ae_name: str) -> List[Dict]:
-        """Get detailed raw spot data for AE in 2025 - matches RevenueDB format"""
+        """Get detailed raw spot data for AE in 2025 - matches RevenueDB format with CONSISTENT filtering"""
         with sqlite3.connect(self._db_path) as conn:
             cursor = conn.execute("""
                 SELECT 
@@ -439,6 +439,7 @@ class RevenueRepository:
                 WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))
                     AND s.broadcast_month LIKE '%-25'
                     AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                    AND COALESCE(s.gross_rate, 0) > 0
                 ORDER BY 
                     s.broadcast_month,
                     COALESCE(c.normalized_name, s.bill_code),
@@ -627,71 +628,143 @@ class ExcelReportGenerator:
         raw_data_2025: List[Dict],
         output_dir: Path
     ) -> str:
-        """Create individual AE budget worksheet"""
+        """Create individual AE budget worksheet with professional formatting"""
         ae_name = ae_performance.ae_name
         output_file = output_dir / f"{ae_name}_Budget_Planning_2026.xlsx"
         
         logger.info(f"Creating worksheet for {ae_name}")
         
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
-            # Summary sheet
-            self._create_summary_sheet(writer, ae_performance)
-            
-            # Customer detail sheet (with numeric values)
+            # Customer detail sheet (with numeric values and totals)
             self._create_customer_detail_sheet(writer, ae_performance)
             
-            # Raw Data 2025 sheet (numeric values)
+            # Raw Data 2025 sheet (numeric values with totals)
             self._create_raw_data_sheet(writer, raw_data_2025, ae_name)
             
-            # Monthly breakdown sheet (with numeric values)
+            # Monthly breakdown sheet (with numeric values and totals)
             self._create_monthly_breakdown_sheet(writer, monthly_breakdown)
             
-            # Sector trends sheet (with numeric values)
+            # Sector trends sheet (with numeric values and totals)
             self._create_sector_trends_sheet(writer, sector_analysis)
             
-            # Language analysis sheet (with numeric values)
+            # Language analysis sheet (with numeric values and totals)
             self._create_language_sheet(writer, language_analysis)
             
-            # New vs Returning Customers sheet (with numeric values)
+            # New vs Returning Customers sheet (with numeric values and totals)
             self._create_new_vs_returning_sheet(writer, new_customers, returning_customers)
             
-            # Budget planning template
-            self._create_budget_planning_template(writer, ae_performance)
+            # Apply professional formatting to all sheets
+            self._apply_professional_formatting(writer.book)
         
         logger.info(f"Created: {output_file}")
         return str(output_file)
     
-    def _create_summary_sheet(self, writer: pd.ExcelWriter, ae_performance: AEPerformance) -> None:
-        """Create summary sheet"""
-        summary_data = [
-            ['AE Budget Planning Worksheet - 2026', ''],
-            ['Account Executive:', ae_performance.ae_name],
-            ['Planning Date:', datetime.now().strftime('%B %d, %Y')],
-            ['Data Source:', 'CTV BookedBiz Database'],
-            ['', ''],
-            ['2025 ACTUAL PERFORMANCE', ''],
-            ['Total Revenue:', f"${ae_performance.total_revenue:,.2f}"],
-            ['Total Customers:', str(ae_performance.customer_count)],
-            ['Total Spots:', str(ae_performance.spot_count)],
-            ['Average per Customer:', f"${ae_performance.total_revenue / max(ae_performance.customer_count, 1):,.2f}"],
-            ['Average per Spot:', f"${ae_performance.total_revenue / max(ae_performance.spot_count, 1):,.2f}"],
-            ['', ''],
-            ['TOP CUSTOMERS (2025)', 'Revenue', 'Spots'],
-        ]
+    def _apply_professional_formatting(self, workbook) -> None:
+        """Apply professional Excel formatting to all sheets"""
+        from openpyxl.styles import NamedStyle, Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
         
-        # Add top customers
-        for customer in ae_performance.top_customers():
-            summary_data.append([
-                customer.name, 
-                f"${customer.revenue_2025:,.2f}",
-                str(customer.spot_count)
-            ])
+        # Create currency style
+        currency_style = NamedStyle(name="currency")
+        currency_style.number_format = '$#,##0.00'
         
-        summary_df = pd.DataFrame(summary_data, columns=['Metric', 'Value', 'Extra'])
-        summary_df.to_excel(writer, sheet_name='Summary', index=False, header=False)
+        # Create header style
+        header_style = NamedStyle(name="header")
+        header_style.font = Font(bold=True, size=11)
+        header_style.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        header_style.alignment = Alignment(horizontal="center", vertical="center")
+        header_style.border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        
+        # Create total row style
+        total_style = NamedStyle(name="total")
+        total_style.font = Font(bold=True, size=11)
+        total_style.fill = PatternFill(start_color="E6E6E6", end_color="E6E6E6", fill_type="solid")
+        total_style.border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='double'), bottom=Side(style='thin')
+        )
+        
+        # Register styles with workbook
+        try:
+            workbook.add_named_style(currency_style)
+            workbook.add_named_style(header_style)
+            workbook.add_named_style(total_style)
+        except ValueError:
+            # Styles already exist
+            pass
+        
+        # Apply formatting to each worksheet
+        for sheet_name in workbook.sheetnames:
+            ws = workbook[sheet_name]
+            
+            # Auto-size columns
+            for column in ws.columns:
+                max_length = 0
+                column_letter = get_column_letter(column[0].column)
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+                ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # Format header row (row 1)
+            if ws.max_row > 0:
+                for cell in ws[1]:
+                    if cell.value:
+                        cell.style = header_style
+            
+            # Apply currency formatting to revenue columns
+            self._format_currency_columns(ws)
+            
+            # Format total rows (look for rows containing "TOTAL")
+            self._format_total_rows(ws, total_style)
+    
+    def _format_currency_columns(self, worksheet) -> None:
+        """Apply currency formatting to columns containing dollar amounts"""
+        from openpyxl.utils import get_column_letter
+        
+        currency_keywords = ['revenue', 'total', 'avg', 'rate', 'gross', 'net']
+        
+        # Check header row for currency columns
+        if worksheet.max_row == 0:
+            return
+            
+        header_row = list(worksheet[1])
+        currency_columns = []
+        
+        for col_idx, cell in enumerate(header_row, 1):
+            if cell.value and any(keyword in str(cell.value).lower() for keyword in currency_keywords):
+                currency_columns.append(col_idx)
+        
+        # Apply currency formatting to identified columns
+        for col_idx in currency_columns:
+            column_letter = get_column_letter(col_idx)
+            for row_idx in range(2, worksheet.max_row + 1):
+                cell = worksheet[f"{column_letter}{row_idx}"]
+                if cell.value and isinstance(cell.value, (int, float)):
+                    cell.style = "currency"
+    
+    def _format_total_rows(self, worksheet, total_style) -> None:
+        """Apply total row formatting to rows containing 'TOTAL'"""
+        for row_idx in range(1, worksheet.max_row + 1):
+            row = list(worksheet[row_idx])
+            if any(cell.value and 'TOTAL' in str(cell.value).upper() for cell in row):
+                for cell in row:
+                    if cell.value is not None:
+                        current_style = cell.style
+                        cell.style = total_style
+                        # Preserve currency formatting for total rows
+                        if hasattr(current_style, 'number_format') and '$' in current_style.number_format:
+                            cell.number_format = '$#,##0.00'
     
     def _create_customer_detail_sheet(self, writer: pd.ExcelWriter, ae_performance: AEPerformance) -> None:
-        """Create customer detail sheet with numeric values"""
+        """Create customer detail sheet with numeric values and totals"""
         if not ae_performance.customers:
             return
         
@@ -701,16 +774,29 @@ class ExcelReportGenerator:
                 'Customer ID': customer.customer_id if customer.customer_id > 0 else 'Unmatched',
                 'Customer': customer.name,
                 'Sector': customer.sector,
-                '2025 Revenue': float(customer.revenue_2025),  # Keep as numeric
+                '2025 Revenue': float(customer.revenue_2025),  # Numeric for Excel formatting
                 'Spots': customer.spot_count,
-                'Avg per Spot': float(customer.revenue_2025 / max(customer.spot_count, 1))  # Keep as numeric
+                'Avg per Spot': float(customer.revenue_2025 / max(customer.spot_count, 1))  # Numeric for Excel formatting
             })
+        
+        # Add totals row
+        total_revenue = sum(c.revenue_2025 for c in ae_performance.customers)
+        total_spots = sum(c.spot_count for c in ae_performance.customers)
+        
+        customer_data.append({
+            'Customer ID': '',
+            'Customer': 'TOTAL',
+            'Sector': '',
+            '2025 Revenue': float(total_revenue),
+            'Spots': total_spots,
+            'Avg per Spot': float(total_revenue / max(total_spots, 1))
+        })
         
         customer_df = pd.DataFrame(customer_data)
         customer_df.to_excel(writer, sheet_name='Customer Detail', index=False)
     
     def _create_raw_data_sheet(self, writer: pd.ExcelWriter, raw_data: List[Dict], ae_name: str) -> None:
-        """Create raw data sheet matching RevenueDB format with numeric values"""
+        """Create raw data sheet matching RevenueDB format with numeric values and totals"""
         if not raw_data:
             # Create empty sheet with message
             empty_df = pd.DataFrame({'Message': [f'No raw data available for {ae_name}']})
@@ -797,10 +883,25 @@ class ExcelReportGenerator:
             for col in numeric_columns:
                 pivot_df[col] = pd.to_numeric(pivot_df[col], errors='coerce').fillna(0)
             
+            # Add TOTALS row at the bottom
+            totals_row = {
+                'AE': '',
+                'Sector': '',
+                'Customer': 'TOTAL'
+            }
+            
+            for col in numeric_columns:
+                if col in pivot_df.columns:
+                    totals_row[col] = pivot_df[col].sum()
+            
+            # Convert totals row to DataFrame and append
+            totals_df = pd.DataFrame([totals_row])
+            pivot_df = pd.concat([pivot_df, totals_df], ignore_index=True)
+            
             # Write to Excel with proper numeric formatting
             pivot_df.to_excel(writer, sheet_name='Raw Data 2025', index=False)
             
-            logger.info(f"   📊 Raw Data 2025 sheet: {len(pivot_df)} customer records with {len(month_columns)} months")
+            logger.info(f"   📊 Raw Data 2025 sheet: {len(pivot_df)-1} customer records with {len(month_columns)} months + totals")
             
         else:
             # Fallback: create detailed spot-level data if no months available
@@ -839,7 +940,7 @@ class ExcelReportGenerator:
             logger.info(f"   📊 Raw Data 2025 sheet: {len(detail_df)} spot records")
     
     def _create_monthly_breakdown_sheet(self, writer: pd.ExcelWriter, monthly: List[MonthlyRevenue]) -> None:
-        """Create monthly breakdown sheet with numeric values"""
+        """Create monthly breakdown sheet with numeric values and totals"""
         if not monthly:
             return
         
@@ -848,10 +949,21 @@ class ExcelReportGenerator:
             avg_per_spot = month_data.revenue / max(month_data.spot_count, 1)
             monthly_data.append({
                 'Month': month_data.broadcast_month,
-                'Revenue': float(month_data.revenue),  # Keep as numeric
+                'Revenue': float(month_data.revenue),  # Numeric for Excel formatting
                 'Spots': month_data.spot_count,
-                'Avg per Spot': float(avg_per_spot)  # Keep as numeric
+                'Avg per Spot': float(avg_per_spot)  # Numeric for Excel formatting
             })
+        
+        # Add totals row
+        total_revenue = sum(m.revenue for m in monthly)
+        total_spots = sum(m.spot_count for m in monthly)
+        
+        monthly_data.append({
+            'Month': 'TOTAL',
+            'Revenue': float(total_revenue),
+            'Spots': total_spots,
+            'Avg per Spot': float(total_revenue / max(total_spots, 1))
+        })
         
         monthly_df = pd.DataFrame(monthly_data)
         monthly_df.to_excel(writer, sheet_name='Monthly Breakdown', index=False)
@@ -875,9 +987,9 @@ class ExcelReportGenerator:
             
             for year in years:
                 revenue = sector.revenue_by_year.get(year, Decimal('0'))
-                row[str(year)] = float(revenue)  # Keep as numeric
+                row[str(year)] = float(revenue)  # Numeric for Excel formatting
             
-            row['Total'] = float(sector.total_revenue)  # Keep as numeric
+            row['Total'] = float(sector.total_revenue)  # Numeric for Excel formatting
             row['Customers'] = sector.customer_count
             sector_data.append(row)
         
@@ -888,10 +1000,10 @@ class ExcelReportGenerator:
         
         for year in years:
             year_total = sum(s.revenue_by_year.get(year, Decimal('0')) for s in sector_analysis)
-            totals_row[str(year)] = float(year_total)  # Keep as numeric
+            totals_row[str(year)] = float(year_total)  # Numeric for Excel formatting
             grand_total += year_total
         
-        totals_row['Total'] = float(grand_total)  # Keep as numeric
+        totals_row['Total'] = float(grand_total)  # Numeric for Excel formatting
         totals_row['Customers'] = sum(s.customer_count for s in sector_analysis)
         sector_data.append(totals_row)
         
@@ -899,7 +1011,7 @@ class ExcelReportGenerator:
         sector_df.to_excel(writer, sheet_name='Sector Trends', index=False)
     
     def _create_language_sheet(self, writer: pd.ExcelWriter, language_analysis: List[LanguageRevenue]) -> None:
-        """Create language revenue analysis sheet with numeric values"""
+        """Create language revenue analysis sheet with numeric values and totals"""
         if not language_analysis:
             # Create empty sheet with message
             empty_df = pd.DataFrame({'Message': ['No language data available for analysis']})
@@ -916,11 +1028,11 @@ class ExcelReportGenerator:
             language_data.append({
                 'Language Code': item.language_code,
                 'Language Name': item.language_name,
-                'Revenue': float(item.revenue),  # Keep as numeric
+                'Revenue': float(item.revenue),  # Numeric for Excel formatting
                 'Spots': item.spot_count,
                 'Customers': item.customer_count,
-                'Avg per Spot': float(avg_per_spot),  # Keep as numeric
-                'Avg per Customer': float(avg_per_customer)  # Keep as numeric
+                'Avg per Spot': float(avg_per_spot),  # Numeric for Excel formatting
+                'Avg per Customer': float(avg_per_customer)  # Numeric for Excel formatting
             })
         
         # Add totals row
@@ -929,13 +1041,13 @@ class ExcelReportGenerator:
         total_customers = sum(item.customer_count for item in language_analysis)
         
         language_data.append({
-            'Language Code': 'TOTAL',
-            'Language Name': '',
-            'Revenue': float(total_revenue),  # Keep as numeric
+            'Language Code': '',
+            'Language Name': 'TOTAL',
+            'Revenue': float(total_revenue),  # Numeric for Excel formatting
             'Spots': total_spots,
             'Customers': total_customers,
-            'Avg per Spot': float(total_revenue / max(total_spots, 1)),  # Keep as numeric
-            'Avg per Customer': float(total_revenue / max(total_customers, 1))  # Keep as numeric
+            'Avg per Spot': float(total_revenue / max(total_spots, 1)),  # Numeric for Excel formatting
+            'Avg per Customer': float(total_revenue / max(total_customers, 1))  # Numeric for Excel formatting
         })
         
         language_df = pd.DataFrame(language_data)
@@ -944,7 +1056,7 @@ class ExcelReportGenerator:
         logger.info(f"   📊 Language Analysis sheet: {len(language_analysis)} languages analyzed")
     
     def _create_new_vs_returning_sheet(self, writer: pd.ExcelWriter, new_customers: List[Customer], returning_customers: List[Customer]) -> None:
-        """Create new vs returning customers analysis sheet with numeric values"""
+        """Create new vs returning customers analysis sheet with numeric values and proper totals"""
         
         # Calculate summary metrics
         total_customers = len(new_customers) + len(returning_customers)
@@ -954,6 +1066,7 @@ class ExcelReportGenerator:
         
         new_spots = sum(c.spot_count for c in new_customers)
         returning_spots = sum(c.spot_count for c in returning_customers)
+        total_spots = new_spots + returning_spots
         
         # Calculate percentages
         new_customer_pct = (len(new_customers) / max(total_customers, 1)) * 100
@@ -978,49 +1091,84 @@ class ExcelReportGenerator:
              float(total_revenue), '100.0%', 
              float(total_revenue / max(total_customers, 1))],
             ['', '', '', '', '', ''],
-            ['KEY INSIGHTS', '', '', '', '', ''],
-            [f'• Customer Acquisition: {len(new_customers)} new customers in 2025', '', '', '', '', ''],
-            [f'• Customer Retention: {len(returning_customers)} customers continued from 2024', '', '', '', '', ''],
-            [f'• New customer revenue contribution: {new_revenue_pct:.1f}%', '', '', '', '', ''],
-            [f'• Average new customer value: ${new_revenue / max(len(new_customers), 1):,.0f}', '', '', '', '', ''],
-            [f'• Average returning customer value: ${returning_revenue / max(len(returning_customers), 1):,.0f}', '', '', '', '', ''],
-            ['', '', '', '', '', ''],
         ]
         
         # Add NEW CUSTOMERS section
         summary_data.extend([
             ['NEW CUSTOMERS (First-Time in 2025)', '', '', '', '', ''],
-            ['Customer', 'Sector', '2025 Revenue', 'Spots', 'Avg per Spot', 'Revenue Rank']
+            ['Customer', 'Sector', '2025 Revenue', 'Spots', 'Avg per Spot', '']
         ])
         
-        for idx, customer in enumerate(new_customers, 1):
+        new_total_revenue = Decimal('0')
+        new_total_spots = 0
+        
+        for customer in new_customers:
             avg_per_spot = customer.revenue_2025 / max(customer.spot_count, 1)
             summary_data.append([
                 customer.name,
                 customer.sector, 
-                float(customer.revenue_2025),  # Keep as numeric
+                float(customer.revenue_2025),  # Numeric for Excel formatting
                 customer.spot_count,
-                float(avg_per_spot),  # Keep as numeric
-                f'#{idx}'
+                float(avg_per_spot),  # Numeric for Excel formatting
+                ''
             ])
+            new_total_revenue += customer.revenue_2025
+            new_total_spots += customer.spot_count
+        
+        # Add new customers subtotal
+        summary_data.append([
+            'NEW CUSTOMERS TOTAL',
+            '',
+            float(new_total_revenue),
+            new_total_spots,
+            float(new_total_revenue / max(new_total_spots, 1)),
+            ''
+        ])
         
         # Add spacing and RETURNING CUSTOMERS section
         summary_data.extend([
             ['', '', '', '', '', ''],
             ['RETURNING CUSTOMERS (Active in Both 2024 & 2025)', '', '', '', '', ''],
-            ['Customer', 'Sector', '2025 Revenue', 'Spots', 'Avg per Spot', 'Revenue Rank']
+            ['Customer', 'Sector', '2025 Revenue', 'Spots', 'Avg per Spot', '']
         ])
         
-        for idx, customer in enumerate(returning_customers, 1):
+        returning_total_revenue = Decimal('0')
+        returning_total_spots = 0
+        
+        for customer in returning_customers:
             avg_per_spot = customer.revenue_2025 / max(customer.spot_count, 1)
             summary_data.append([
                 customer.name,
                 customer.sector,
-                float(customer.revenue_2025),  # Keep as numeric
+                float(customer.revenue_2025),  # Numeric for Excel formatting
                 customer.spot_count,
-                float(avg_per_spot),  # Keep as numeric
-                f'#{idx}'
+                float(avg_per_spot),  # Numeric for Excel formatting
+                ''
             ])
+            returning_total_revenue += customer.revenue_2025
+            returning_total_spots += customer.spot_count
+        
+        # Add returning customers subtotal
+        summary_data.append([
+            'RETURNING CUSTOMERS TOTAL',
+            '',
+            float(returning_total_revenue),
+            returning_total_spots,
+            float(returning_total_revenue / max(returning_total_spots, 1)),
+            ''
+        ])
+        
+        # Add grand total
+        summary_data.extend([
+            ['', '', '', '', '', ''],
+            ['GRAND TOTAL',
+             '',
+             float(new_total_revenue + returning_total_revenue),
+             new_total_spots + returning_total_spots,
+             float((new_total_revenue + returning_total_revenue) / max(new_total_spots + returning_total_spots, 1)),
+             ''
+            ]
+        ])
         
         # Create DataFrame and write to Excel
         analysis_df = pd.DataFrame(summary_data, columns=[
@@ -1030,37 +1178,7 @@ class ExcelReportGenerator:
         analysis_df.to_excel(writer, sheet_name='New vs Returning', index=False, header=False)
         
         logger.info(f"   👥 New vs Returning sheet: {len(new_customers)} new, {len(returning_customers)} returning customers")
-    
-    def _create_budget_planning_template(self, writer: pd.ExcelWriter, ae_performance: AEPerformance) -> None:
-        """Create budget planning template"""
-        template_data = [
-            ['2026 BUDGET PLANNING TEMPLATE', '', '', ''],
-            ['AE:', ae_performance.ae_name, '', ''],
-            ['', '', '', ''],
-            ['2025 BASELINE PERFORMANCE', '', '', ''],
-            ['Total 2025 Revenue:', f"${ae_performance.total_revenue:,.2f}", '', ''],
-            ['Total Customers:', str(ae_performance.customer_count), '', ''],
-            ['Total Spots:', str(ae_performance.spot_count), '', ''],
-            ['', '', '', ''],
-            ['2026 BUDGET TARGETS', '', '', ''],
-            ['Quarter', 'Target Revenue', 'Notes', 'Confidence'],
-            ['Q1 2026', '', '', ''],
-            ['Q2 2026', '', '', ''],
-            ['Q3 2026', '', '', ''],
-            ['Q4 2026', '', '', ''],
-            ['', '', '', ''],
-            ['TOTAL 2026 TARGET:', '', '', ''],
-            ['', '', '', ''],
-            ['GROWTH CALCULATION', '', '', ''],
-            ['2025 Baseline:', f"${ae_performance.total_revenue:,.2f}", '', ''],
-            ['2026 Target:', '[Enter Above]', '', ''],
-            ['Growth $:', '[Calculated]', '', ''],
-            ['Growth %:', '[Calculated]', '', ''],
-        ]
-        
-        template_df = pd.DataFrame(template_data, columns=['Item', 'Value', 'Notes', 'Extra'])
-        template_df.to_excel(writer, sheet_name='Budget Planning', index=False, header=False)
-    
+
     def create_summary_report(self, ae_performances: List[AEPerformance], output_dir: Path) -> str:
         """Create summary report for sales manager"""
         output_file = output_dir / "Sales_Manager_Summary_2026_Planning.xlsx"
