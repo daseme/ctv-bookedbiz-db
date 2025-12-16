@@ -59,6 +59,248 @@ def debug_container_registration(container):
 
     print("=" * 60 + "\n")
 
+# Add these functions to src/services/factory.py
+
+def create_ae_dashboard_service():
+    """Create AEDashboardService with enhanced error handling."""
+    try:
+        # Try to import AEDashboardService
+        try:
+            from .ae_dashboard_service import AEDashboardService
+        except ImportError:
+            logger.warning("AEDashboardService not available - using mock")
+
+            # Return a mock for testing
+            class MockAEDashboardService:
+                def __init__(self, db_connection=None):
+                    self.db_connection = db_connection
+
+                def get_dashboard_data(self, year, ae_filter=None):
+                    return {
+                        "mock": True,
+                        "selected_year": year,
+                        "selected_ae": ae_filter,
+                        "customers": [],
+                        "sectors": [],
+                        "total_ytd_2024": 0,
+                        "total_ytd_2023": 0,
+                        "ae_list": [],
+                        "sector_list": []
+                    }
+
+            return MockAEDashboardService()
+
+        container = get_container()
+        
+        # Get database connection
+        try:
+            db_connection = container.get("database_connection")
+            logger.debug("Creating AEDashboardService with database connection")
+        except Exception as e:
+            logger.warning(f"Database connection issue for AE dashboard service: {e}")
+            db_connection = None
+
+        # Create service
+        service = AEDashboardService(db_connection)
+
+        # Validate AE dashboard service health
+        _validate_ae_dashboard_service_health(service)
+
+        return service
+
+    except ImportError as e:
+        logger.error(f"Failed to import AEDashboardService: {e}")
+        raise ServiceCreationError(f"Could not import AEDashboardService: {e}") from e
+    except Exception as e:
+        logger.error(f"Failed to create AE dashboard service: {e}")
+        raise ServiceCreationError(f"AE dashboard service creation failed: {e}") from e
+
+
+def _validate_ae_dashboard_service_health(service) -> None:
+    """
+    Validate that the AE dashboard service is healthy and properly configured.
+
+    Args:
+        service: AEDashboardService instance to validate
+
+    Raises:
+        ServiceCreationError: If service health validation fails
+    """
+    try:
+        # Test database connection
+        container = get_container()
+
+        # Try to get database connection
+        try:
+            db_connection = container.get("database_connection")
+            if not db_connection:
+                logger.warning("AE dashboard service has no database connection")
+        except Exception as e:
+            logger.warning(f"Database connection issue for AE dashboard service: {e}")
+            # In development, this might be OK with mock data
+            environment = container.get_config("ENVIRONMENT", "development")
+            if environment.lower() == "production":
+                raise ServiceCreationError(
+                    "AE dashboard service requires database connection in production"
+                )
+
+        logger.info("AE dashboard service health validation passed")
+
+    except Exception as e:
+        logger.error(f"AE dashboard service health validation failed: {e}")
+        raise ServiceCreationError(f"AE dashboard service health check failed: {e}") from e
+
+
+def configure_container_from_environment():
+    """Configure container with environment-specific settings and enhanced validation."""
+    container = get_container()
+
+    # Determine project root
+    project_root = os.environ.get("PROJECT_ROOT")
+    if project_root is None:
+        # Default to two levels up from this file
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+
+    # Validate project root exists
+    if not os.path.exists(project_root):
+        logger.warning(f"Project root does not exist: {project_root}")
+        # Try to create it or find alternative
+        try:
+            os.makedirs(project_root, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Cannot create project root: {e}")
+
+    # Build configuration with validation
+    config = {
+        "PROJECT_ROOT": project_root,
+        "DB_PATH": os.environ.get(
+            "DB_PATH", os.path.join(project_root, "data/database/production.db")
+        ),
+        "DATA_PATH": os.environ.get(
+            "DATA_PATH", os.path.join(project_root, "data/processed")
+        ),
+        "ENVIRONMENT": os.environ.get("FLASK_ENV", "development"),
+        "DEBUG": os.environ.get("DEBUG", "false").lower() == "true",
+        "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO"),
+        "CACHE_ENABLED": os.environ.get("CACHE_ENABLED", "true").lower() == "true",
+        "CACHE_TTL": int(os.environ.get("CACHE_TTL", "300")),
+        # Enhanced configuration for critical fixes
+        "CONCURRENCY_ENABLED": os.environ.get("CONCURRENCY_ENABLED", "true").lower()
+        == "true",
+        "CONSISTENCY_CHECK_ENABLED": os.environ.get(
+            "CONSISTENCY_CHECK_ENABLED", "true"
+        ).lower()
+        == "true",
+        "AUTO_REPAIR_ENABLED": os.environ.get("AUTO_REPAIR_ENABLED", "true").lower()
+        == "true",
+        "EMERGENCY_MODE": os.environ.get("EMERGENCY_MODE", "false").lower() == "true",
+    }
+
+    # Validate critical paths
+    data_path = config["DATA_PATH"]
+    if not os.path.exists(data_path):
+        logger.info(f"Creating data directory: {data_path}")
+        try:
+            os.makedirs(data_path, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Cannot create data directory: {e}")
+            # Use temp directory as fallback
+            import tempfile
+
+            config["DATA_PATH"] = tempfile.mkdtemp()
+            logger.warning(f"Using temporary data directory: {config['DATA_PATH']}")
+
+    # Validate database path directory
+    db_path = config["DB_PATH"]
+    db_dir = os.path.dirname(db_path)
+    if not os.path.exists(db_dir):
+        logger.info(f"Creating database directory: {db_dir}")
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Cannot create database directory: {e}")
+
+    container.set_config(config)
+    logger.info(f"Configured container for environment: {config['ENVIRONMENT']}")
+    logger.debug(f"Container configuration: {config}")
+
+
+def initialize_services():
+    """Initialize services using real service factory functions with debugging"""
+    print("🏭 FACTORY: Starting service initialization...")
+
+    try:
+        # Configure container from environment first
+        print("📋 Configuring container from environment...")
+        configure_container_from_environment()
+
+        # Get container
+        container = get_container()
+        print(f"📦 Using container: {type(container).__name__}")
+
+        # Register all required services
+        print("🔧 Registering database_connection...")
+        container.register_singleton("database_connection", create_database_connection)
+        print("✅ database_connection registered")
+
+        print("🔧 Registering report_data_service...")
+        container.register_singleton("report_data_service", create_report_data_service)
+        print("✅ report_data_service registered")
+
+        print("🔧 Registering pipeline_service...")
+        container.register_singleton("pipeline_service", create_pipeline_service)
+        print("✅ pipeline_service registered")
+
+        print("🔧 Registering budget_service...")
+        container.register_singleton("budget_service", create_budget_service)
+        print("✅ budget_service registered")
+
+        # ADD THIS:
+        print("🔧 Registering ae_dashboard_service...")
+        container.register_singleton("ae_dashboard_service", create_ae_dashboard_service)
+        print("✅ ae_dashboard_service registered")
+
+        # List what got registered
+        services = container.list_services()
+        print(f"📋 Final registered services: {services}")
+
+        return container
+
+    except Exception as e:
+        print(f"💥 Service initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+def register_default_services():
+    """Register all default services with the container with enhanced error handling."""
+    container = get_container()
+
+    try:
+        # Core infrastructure services
+        container.register_singleton("database_connection", create_database_connection)
+        logger.debug("Registered database_connection service")
+
+        # Enhanced business services with critical fixes
+        container.register_singleton("pipeline_service", create_pipeline_service)
+        logger.debug("Registered enhanced pipeline_service")
+
+        container.register_singleton("budget_service", create_budget_service)
+        logger.debug("Registered budget_service")
+
+        # Report services
+        container.register_singleton("report_data_service", create_report_data_service)
+        logger.debug("Registered report_data_service")
+
+        # ADD THIS LINE:
+        container.register_singleton("ae_dashboard_service", create_ae_dashboard_service)
+        logger.debug("Registered ae_dashboard_service")
+
+        logger.info("Registered all default services with container")
+
+    except Exception as e:
+        logger.error(f"Failed to register services: {e}")
+        raise ServiceCreationError(f"Service registration failed: {e}") from e
 
 def emergency_register_report_service(container):
     """Emergency registration of report_data_service for Railway"""
@@ -573,152 +815,6 @@ def _validate_report_service_health(service) -> None:
     except Exception as e:
         logger.error(f"Report service health validation failed: {e}")
         raise ServiceCreationError(f"Report service health check failed: {e}") from e
-
-
-def register_default_services():
-    """Register all default services with the container with enhanced error handling."""
-    container = get_container()
-
-    try:
-        # Core infrastructure services
-        container.register_singleton("database_connection", create_database_connection)
-        logger.debug("Registered database_connection service")
-
-        # Enhanced business services with critical fixes
-        container.register_singleton("pipeline_service", create_pipeline_service)
-        logger.debug("Registered enhanced pipeline_service")
-
-        container.register_singleton("budget_service", create_budget_service)
-        logger.debug("Registered budget_service")
-
-        # Report services
-        container.register_singleton("report_data_service", create_report_data_service)
-        logger.debug("Registered report_data_service")
-
-        logger.info("Registered all default services with container")
-
-    except Exception as e:
-        logger.error(f"Failed to register services: {e}")
-        raise ServiceCreationError(f"Service registration failed: {e}") from e
-
-
-def configure_container_from_environment():
-    """Configure container with environment-specific settings and enhanced validation."""
-    container = get_container()
-
-    # Determine project root
-    project_root = os.environ.get("PROJECT_ROOT")
-    if project_root is None:
-        # Default to two levels up from this file
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-
-    # Validate project root exists
-    if not os.path.exists(project_root):
-        logger.warning(f"Project root does not exist: {project_root}")
-        # Try to create it or find alternative
-        try:
-            os.makedirs(project_root, exist_ok=True)
-        except Exception as e:
-            logger.error(f"Cannot create project root: {e}")
-
-    # Build configuration with validation
-    config = {
-        "PROJECT_ROOT": project_root,
-        "DB_PATH": os.environ.get(
-            "DB_PATH", os.path.join(project_root, "data/database/production.db")
-        ),
-        "DATA_PATH": os.environ.get(
-            "DATA_PATH", os.path.join(project_root, "data/processed")
-        ),
-        "ENVIRONMENT": os.environ.get("FLASK_ENV", "development"),
-        "DEBUG": os.environ.get("DEBUG", "false").lower() == "true",
-        "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO"),
-        "CACHE_ENABLED": os.environ.get("CACHE_ENABLED", "true").lower() == "true",
-        "CACHE_TTL": int(os.environ.get("CACHE_TTL", "300")),
-        # Enhanced configuration for critical fixes
-        "CONCURRENCY_ENABLED": os.environ.get("CONCURRENCY_ENABLED", "true").lower()
-        == "true",
-        "CONSISTENCY_CHECK_ENABLED": os.environ.get(
-            "CONSISTENCY_CHECK_ENABLED", "true"
-        ).lower()
-        == "true",
-        "AUTO_REPAIR_ENABLED": os.environ.get("AUTO_REPAIR_ENABLED", "true").lower()
-        == "true",
-        "EMERGENCY_MODE": os.environ.get("EMERGENCY_MODE", "false").lower() == "true",
-    }
-
-    # Validate critical paths
-    data_path = config["DATA_PATH"]
-    if not os.path.exists(data_path):
-        logger.info(f"Creating data directory: {data_path}")
-        try:
-            os.makedirs(data_path, exist_ok=True)
-        except Exception as e:
-            logger.error(f"Cannot create data directory: {e}")
-            # Use temp directory as fallback
-            import tempfile
-
-            config["DATA_PATH"] = tempfile.mkdtemp()
-            logger.warning(f"Using temporary data directory: {config['DATA_PATH']}")
-
-    # Validate database path directory
-    db_path = config["DB_PATH"]
-    db_dir = os.path.dirname(db_path)
-    if not os.path.exists(db_dir):
-        logger.info(f"Creating database directory: {db_dir}")
-        try:
-            os.makedirs(db_dir, exist_ok=True)
-        except Exception as e:
-            logger.error(f"Cannot create database directory: {e}")
-
-    container.set_config(config)
-    logger.info(f"Configured container for environment: {config['ENVIRONMENT']}")
-    logger.debug(f"Container configuration: {config}")
-
-
-def initialize_services():
-    """Initialize services using real service factory functions with debugging"""
-    print("🏭 FACTORY: Starting service initialization...")
-
-    try:
-        # Configure container from environment first
-        print("📋 Configuring container from environment...")
-        configure_container_from_environment()
-
-        # Get container
-        container = get_container()
-        print(f"📦 Using container: {type(container).__name__}")
-
-        # Register all required services
-        print("🔧 Registering database_connection...")
-        container.register_singleton("database_connection", create_database_connection)
-        print("✅ database_connection registered")
-
-        print("🔧 Registering report_data_service...")
-        container.register_singleton("report_data_service", create_report_data_service)
-        print("✅ report_data_service registered")
-
-        print("🔧 Registering pipeline_service...")
-        container.register_singleton("pipeline_service", create_pipeline_service)
-        print("✅ pipeline_service registered")
-
-        print("🔧 Registering budget_service...")
-        container.register_singleton("budget_service", create_budget_service)
-        print("✅ budget_service registered")
-
-        # List what got registered
-        services = container.list_services()
-        print(f"📋 Final registered services: {services}")
-
-        return container
-
-    except Exception as e:
-        print(f"💥 Service initialization failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        raise
-
 
 def create_emergency_container():
     """Create a minimal container when normal initialization fails"""
