@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+
+{% block header_title %}{{ title }}{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-link">Sales</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Account Management</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+/* Dashboard Controls */
+.dashboard-controls {
+  background:#f7fafc; border:1px solid #e2e8f0; border-radius:4px;
+  padding:16px; margin:24px 0; display:flex; flex-wrap:wrap; gap:16px; align-items:end;
+}
+.control-group { display:flex; flex-direction:column; min-width:150px; }
+.control-group label { font-size:12px; font-weight:600; margin-bottom:4px; color:#4a5568; }
+.control-group select { padding:6px 8px; font-size:12px; border:1px solid #e2e8f0; border-radius:3px; background:white; }
+
+/* Stats Cards */
+.stats-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin:24px 0; }
+.stat-card { background:#fafafa; border-left:3px solid #e2e8f0; padding:12px 16px; }
+.stat-number { font-size:24px; font-weight:600; color:#2d3748; margin-bottom:4px; }
+.stat-label { font-size:11px; color:#718096; text-transform:uppercase; letter-spacing:.5px; }
+.stat-sublabel { font-size:10px; color:#a0aec0; margin-top:4px; }
+
+/* Secondary Stats */
+.secondary-stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; margin:24px 0; }
+.secondary-card { border-radius:4px; padding:16px; border:1px solid; }
+.secondary-card.new { background:#ebf8ff; border-color:#90cdf4; }
+.secondary-card.concentration { background:#f0fff4; border-color:#9ae6b4; }
+.secondary-card.concentration.medium { background:#fffaf0; border-color:#fbd38d; }
+.secondary-card.concentration.high { background:#fff5f5; border-color:#fc8181; }
+
+/* Alert Boxes */
+.alert-box { border-radius:4px; padding:16px; margin:24px 0; border:1px solid; }
+.alert-box.lost { background:#fff5f5; border-color:#fc8181; }
+.alert-box.seasonal { background:#fffaf0; border-color:#fbd38d; }
+.alert-title { font-weight:600; margin-bottom:8px; font-size:14px; }
+.alert-description { font-size:12px; margin-bottom:12px; }
+.alert-list { list-style:none; padding:0; margin:0; }
+.alert-list li { font-size:12px; margin-bottom:4px; }
+
+/* Section */
+.section { background:white; border:1px solid #e2e8f0; border-radius:4px; padding:20px; margin:24px 0; }
+.section-title { font-size:16px; font-weight:600; color:#2d3748; margin-bottom:16px; }
+
+/* Table */
+.table-container { max-height:500px; overflow:auto; border:1px solid #e2e8f0; border-radius:4px; }
+.data-table { width:100%; border-collapse:collapse; font-size:11px; }
+.data-table th {
+  text-align:left; padding:8px 4px; border-bottom:2px solid #2d3748; font-weight:600; color:#2d3748; font-size:10px;
+  position:sticky; top:0; background:white; z-index:10; cursor:pointer; user-select:none;
+}
+.data-table th:hover { background:#f7fafc; }
+.data-table th.numeric { text-align:right; }
+.data-table td { padding:6px 4px; border-bottom:1px solid #e2e8f0; font-size:11px; }
+.data-table td.numeric { text-align:right; font-feature-settings:"tnum"; }
+.data-table tbody tr:hover { background:#f7fafc; }
+
+/* Status Badges */
+.status-badge { padding:2px 8px; border-radius:12px; font-size:10px; font-weight:500; }
+.status-risk { background:#fff5f5; color:#c53030; border:1px solid #fc8181; }
+.status-growth { background:#f0fff4; color:#2f855a; border:1px solid #9ae6b4; }
+.status-new { background:#ebf8ff; color:#2c5282; border:1px solid #90cdf4; }
+.status-stable { background:#f7fafc; color:#4a5568; border:1px solid #cbd5e0; }
+.status-lost { background:#fff5f5; color:#c53030; border:1px solid #fc8181; }
+
+/* Status Icons */
+.status-icon { display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px; }
+
+/* Color Coding */
+.positive { color:#2f855a; font-weight:500; }
+.negative { color:#c53030; font-weight:500; }
+.neutral { color:#718096; }
+
+/* Buttons */
+.btn { padding:6px 12px; border-radius:3px; font-size:12px; font-weight:500; border:none; cursor:pointer; transition:all 0.2s; }
+.btn-primary { background:#4299e1; color:white; }
+.btn-primary:hover { background:#3182ce; }
+
+/* AE Badge */
+.ae-badge { background:#edf2f7; padding:2px 8px; border-radius:8px; font-size:10px; color:#4a5568; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .stats-grid { grid-template-columns:repeat(2, 1fr); }
+  .secondary-stats { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Controls -->
+<div class="dashboard-controls">
+  <div class="control-group">
+    <label for="yearSelect">Year</label>
+    <select id="yearSelect">
+      <option value="2024" {% if data.selected_year == 2024 %}selected{% endif %}>2024</option>
+      <option value="2023" {% if data.selected_year == 2023 %}selected{% endif %}>2023</option>
+      <option value="2022" {% if data.selected_year == 2022 %}selected{% endif %}>2022</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="aeFilter">Account Executive</label>
+    <select id="aeFilter">
+      <option value="everyone" {% if not data.selected_ae %}selected{% endif %}>📊 Everyone (All AEs)</option>
+      <option disabled>─────────────</option>
+      {% for ae in data.ae_list %}
+      <option value="{{ ae }}" {% if data.selected_ae == ae %}selected{% endif %}>{{ ae }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="sectorFilter">Sector</label>
+    <select id="sectorFilter">
+      <option value="all">All Sectors</option>
+      {% for sector in data.sector_list %}
+      <option value="{{ sector }}">{{ sector }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="statusFilter">Status</label>
+    <select id="statusFilter">
+      <option value="all">All Status</option>
+      <option value="risk">At Risk</option>
+      <option value="growth">Growing</option>
+      <option value="new">New</option>
+      <option value="stable">Stable</option>
+      <option value="lost">Lost</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label>&nbsp;</label>
+    <button id="exportBtn" class="btn btn-primary">Export CSV</button>
+  </div>
+</div>
+
+<!-- Primary Stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-number" id="stat-ytd-2024">${{ "{:,.0f}".format(data.total_ytd_2024) }}</div>
+    <div class="stat-label">{{ data.selected_year }} YTD Revenue</div>
+    <div class="stat-sublabel">{{ data.active_customers_2024 }} active customers</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-number {% if data.total_variance_pct >= 0 %}positive{% else %}negative{% endif %}" id="stat-variance-pct">
+      {% if data.total_variance_pct >= 0 %}+{% endif %}{{ "{:.1f}".format(data.total_variance_pct) }}%
+    </div>
+    <div class="stat-label">vs {{ data.selected_year - 1 }} YTD</div>
+    <div class="stat-sublabel">
+      {% if data.total_variance_dollars >= 0 %}+{% endif %}${{ "{:,.0f}".format(data.total_variance_dollars) }}
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-number {% if data.retention_rate >= 85 %}positive{% elif data.retention_rate >= 70 %}neutral{% else %}negative{% endif %}" id="stat-retention">
+      {{ "{:.0f}".format(data.retention_rate) }}%
+    </div>
+    <div class="stat-label">Retention Rate</div>
+    <div class="stat-sublabel">{{ data.lost_customers|length }} customer{% if data.lost_customers|length != 1 %}s{% endif %} lost</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-number" id="stat-avg">${{ "{:,.0f}".format(data.avg_per_customer) }}</div>
+    <div class="stat-label">Avg per Customer</div>
+    <div class="stat-sublabel">per active account</div>
+  </div>
+</div>
+
+<!-- Secondary Stats -->
+<div class="secondary-stats">
+  <div class="secondary-card new">
+    <div class="stat-number positive">✨ ${{ "{:,.0f}".format(data.new_customer_revenue) }}</div>
+    <div class="stat-label" style="color:#2c5282;">New Customer Contribution</div>
+    <div class="stat-sublabel" style="color:#2c5282;">
+      {{ "{:.1f}".format(data.new_customer_pct) }}% of total • {{ data.new_customers|length }} new customer{% if data.new_customers|length != 1 %}s{% endif %}
+    </div>
+  </div>
+
+  <div class="secondary-card concentration {% if data.top5_concentration_pct > 70 %}high{% elif data.top5_concentration_pct > 50 %}medium{% endif %}">
+    <div class="stat-number {% if data.top5_concentration_pct > 70 %}negative{% elif data.top5_concentration_pct > 50 %}neutral{% else %}positive{% endif %}">
+      {{ "{:.1f}".format(data.top5_concentration_pct) }}%
+    </div>
+    <div class="stat-label" style="color:{% if data.top5_concentration_pct > 70 %}#c53030{% elif data.top5_concentration_pct > 50 %}#d69e2e{% else %}#2f855a{% endif %};">
+      Top 5 Customer Concentration
+    </div>
+    <div class="stat-sublabel" style="color:{% if data.top5_concentration_pct > 70 %}#c53030{% elif data.top5_concentration_pct > 50 %}#d69e2e{% else %}#2f855a{% endif %};">
+      Risk: {% if data.top5_concentration_pct > 70 %}High{% elif data.top5_concentration_pct > 50 %}Medium{% else %}Low{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Lost Customers Alert -->
+{% if data.lost_customers %}
+<div class="alert-box lost">
+  <div class="alert-title" style="color:#c53030;">
+    🚨 Lost Customers ({{ data.lost_customers|length }} customers, -${{ "{:,.0f}".format(data.lost_revenue) }} revenue)
+  </div>
+  <div class="alert-description" style="color:#742a2a;">
+    These customers were active in {{ data.selected_year - 1 }} but have $0 revenue in {{ data.selected_year }}. Immediate outreach recommended.
+  </div>
+  <ul class="alert-list">
+    {% for customer in data.lost_customers[:5] %}
+    <li style="color:#742a2a;">
+      • <strong>{{ customer.customer }}</strong> ({{ customer.sector }}) - ${{ "{:,.0f}".format(customer.ytd2023) }} in {{ data.selected_year - 1 }}
+    </li>
+    {% endfor %}
+    {% if data.lost_customers|length > 5 %}
+    <li style="color:#742a2a; font-style:italic;">...and {{ data.lost_customers|length - 5 }} more</li>
+    {% endif %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- Sector Performance -->
+<div class="section">
+  <div class="section-title">Sector Performance</div>
+  <div class="table-container">
+    <table class="data-table" id="sectorTable">
+      <thead>
+        <tr>
+          <th>Sector</th>
+          <th class="numeric">{{ data.selected_year }} YTD</th>
+          <th class="numeric">{{ data.selected_year - 1 }} YTD</th>
+          <th class="numeric">$ Change</th>
+          <th class="numeric">% Change</th>
+          <th class="numeric">Customers</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sector in data.sectors %}
+        <tr>
+          <td><strong>{{ sector.sector }}</strong></td>
+          <td class="numeric">${{ "{:,.0f}".format(sector.ytd2024) }}</td>
+          <td class="numeric">${{ "{:,.0f}".format(sector.ytd2023) }}</td>
+          <td class="numeric {% if sector.variance >= 0 %}positive{% else %}negative{% endif %}">
+            {% if sector.variance >= 0 %}+{% endif %}${{ "{:,.0f}".format(sector.variance) }}
+          </td>
+          <td class="numeric {% if sector.pct >= 0 %}positive{% else %}negative{% endif %}">
+            {% if sector.pct >= 0 %}+{% endif %}{{ "{:.1f}".format(sector.pct) }}%
+          </td>
+          <td class="numeric">{{ sector.customers }}</td>
+          <td>
+            {% if sector.status == 'declining' %}
+            <span style="color:#c53030;">↓ Declining</span>
+            {% elif sector.status == 'growing' %}
+            <span style="color:#2f855a;">↑ Growing</span>
+            {% else %}
+            <span style="color:#718096;">→ Stable</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Customer Details -->
+<div class="section">
+  <div class="section-title">
+    {% if data.selected_ae %}{{ data.selected_ae }}'s Customers{% else %}All Customers{% endif %}
+  </div>
+  <div class="table-container">
+    <table class="data-table" id="customerTable">
+      <thead>
+        <tr>
+          <th data-sort="customer">Customer</th>
+          {% if not data.selected_ae %}
+          <th data-sort="ae">AE</th>
+          {% endif %}
+          <th data-sort="sector">Sector</th>
+          <th class="numeric" data-sort="ytd2024">{{ data.selected_year }} YTD</th>
+          <th class="numeric" data-sort="ytd2023">{{ data.selected_year - 1 }} YTD</th>
+          <th class="numeric" data-sort="variance">$ Change</th>
+          <th class="numeric" data-sort="pct">% Change</th>
+          <th data-sort="status">Status</th>
+          <th data-sort="pattern">Pattern</th>
+        </tr>
+      </thead>
+      <tbody id="customerTableBody">
+        {% for customer in data.customers %}
+        <tr data-status="{{ customer.status }}" data-sector="{{ customer.sector }}">
+          <td>
+            <strong>{{ customer.customer }}</strong>
+            {% if customer.q4Behind %}<span style="color:#d69e2e; font-size:10px;">⚠️ Q4</span>{% endif %}
+          </td>
+          {% if not data.selected_ae %}
+          <td><span class="ae-badge">{{ customer.ae }}</span></td>
+          {% endif %}
+          <td>{{ customer.sector }}</td>
+          <td class="numeric">${{ "{:,.0f}".format(customer.ytd2024) }}</td>
+          <td class="numeric">${{ "{:,.0f}".format(customer.ytd2023) }}</td>
+          <td class="numeric {% if customer.variance >= 0 %}positive{% else %}negative{% endif %}">
+            {% if customer.variance >= 0 %}+{% endif %}${{ "{:,.0f}".format(customer.variance) }}
+          </td>
+          <td class="numeric {% if customer.pct >= 0 %}positive{% else %}negative{% endif %}">
+            {% if customer.pct >= 0 %}+{% endif %}{{ "{:.1f}".format(customer.pct) }}%
+          </td>
+          <td>
+            <span class="status-badge status-{{ customer.status }}">
+              {% if customer.status == 'risk' %}At Risk
+              {% elif customer.status == 'growth' %}Growing
+              {% elif customer.status == 'new' %}New {{ data.selected_year }}
+              {% elif customer.status == 'lost' %}Lost
+              {% else %}Stable{% endif %}
+            </span>
+          </td>
+          <td style="font-size:10px; color:#718096;">{{ customer.pattern }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:12px; font-size:11px; color:#718096;">
+    Showing <span id="displayCount">{{ data.customers|length }}</span> customers
+  </div>
+</div>
+
+<script>
+// Client-side filtering and sorting
+const allCustomers = {{ data.customers | tojson | safe }};
+const selectedAE = {{ data.selected_ae | tojson | safe }};
+
+function filterTable() {
+  const sectorFilter = document.getElementById('sectorFilter').value;
+  const statusFilter = document.getElementById('statusFilter').value;
+  
+  const rows = document.querySelectorAll('#customerTableBody tr');
+  let visibleCount = 0;
+  
+  rows.forEach(row => {
+    const sector = row.dataset.sector;
+    const status = row.dataset.status;
+    
+    const sectorMatch = sectorFilter === 'all' || sector === sectorFilter;
+    const statusMatch = statusFilter === 'all' || status === statusFilter;
+    
+    if (sectorMatch && statusMatch) {
+      row.style.display = '';
+      visibleCount++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+  
+  document.getElementById('displayCount').textContent = visibleCount;
+}
+
+// Filter event listeners
+document.getElementById('sectorFilter').addEventListener('change', filterTable);
+document.getElementById('statusFilter').addEventListener('change', filterTable);
+
+// Year/AE filter - reload page
+document.getElementById('yearSelect').addEventListener('change', (e) => {
+  const url = new URL(window.location);
+  url.searchParams.set('year', e.target.value);
+  window.location.href = url.toString();
+});
+
+document.getElementById('aeFilter').addEventListener('change', (e) => {
+  const url = new URL(window.location);
+  url.searchParams.set('ae_filter', e.target.value);
+  window.location.href = url.toString();
+});
+
+// Export CSV
+document.getElementById('exportBtn').addEventListener('click', () => {
+  // Get visible rows
+  const rows = Array.from(document.querySelectorAll('#customerTableBody tr'))
+    .filter(row => row.style.display !== 'none');
+  
+  const headers = ['Customer', ...(selectedAE ? [] : ['AE']), 'Sector', '{{ data.selected_year }} YTD', '{{ data.selected_year - 1 }} YTD', '$ Change', '% Change', 'Status', 'Pattern'];
+  
+  const csvData = [headers];
+  rows.forEach(row => {
+    const cells = row.querySelectorAll('td');
+    const rowData = Array.from(cells).map(cell => {
+      const text = cell.textContent.trim().replace(/"/g, '""');
+      return `"${text}"`;
+    });
+    csvData.push(rowData);
+  });
+  
+  const csv = csvData.map(row => row.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ae-dashboard-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+
+{% endblock %}

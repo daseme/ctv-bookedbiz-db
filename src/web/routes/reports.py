@@ -9,7 +9,8 @@ from flask import Blueprint, render_template, request, jsonify
 from datetime import date
 from src.services.container import get_container
 from src.models.report_data import ReportFilters
-from src.services.report_data_service import YearRange  # FIXED: Import at top level
+from src.services.report_data_service import YearRange
+from src.services.ae_dashboard_service import AEDashboardService
 from src.web.utils.request_helpers import (
     extract_report_filters,
     get_year_parameter,
@@ -202,6 +203,50 @@ def customer_sector_manager():
     except Exception as e:
         logger.error(f"Error rendering customer sector manager: {e}")
         return render_template("error_500.html"), 500
+
+# Add this to src/web/routes/reports.py
+
+@reports_bp.route("/ae-dashboard")
+@log_requests
+@handle_request_errors
+def ae_dashboard():
+    """AE Account Management Dashboard - YoY Performance Analysis."""
+    try:
+        # Get services
+        container = get_container()
+        ae_service = safe_get_service(container, "ae_dashboard_service")
+        
+        # Extract parameters
+        year = get_year_parameter(default_year=date.today().year)
+        ae_filter = request.args.get("ae_filter", "").strip()
+        
+        # Convert "everyone" to None for service
+        if ae_filter == "everyone" or not ae_filter:
+            ae_filter = None
+        
+        # Get dashboard data
+        logger.info(f"Generating AE dashboard for year {year}, AE filter: {ae_filter or 'Everyone'}")
+        dashboard_data = ae_service.get_dashboard_data(year, ae_filter)
+        
+        # Prepare template context
+        template_data = {
+            "title": "Account Management Dashboard",
+            "data": dashboard_data.to_dict(),
+        }
+        
+        logger.info(
+            f"AE Dashboard generated: {len(dashboard_data.customers)} customers, "
+            f"${dashboard_data.total_ytd_2024:,.0f} total revenue"
+        )
+        
+        return render_template("ae-dashboard.html", **template_data)
+        
+    except Exception as e:
+        logger.error(f"Error generating AE dashboard: {e}", exc_info=True)
+        return render_template(
+            "error_500.html",
+            message=f"Error generating AE dashboard: {str(e)}",
+        ), 500
 
 
 @reports_bp.route("/report1")
