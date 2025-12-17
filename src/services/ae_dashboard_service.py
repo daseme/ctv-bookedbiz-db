@@ -107,6 +107,7 @@ class AEDashboardData:
     new_customer_pct: float
     
     top5_concentration_pct: float
+    available_years: List[int]
     
     # Filter lists
     ae_list: List[str]
@@ -133,7 +134,8 @@ class AEDashboardData:
             'new_customer_pct': self.new_customer_pct,
             'top5_concentration_pct': self.top5_concentration_pct,
             'ae_list': self.ae_list,
-            'sector_list': self.sector_list
+            'sector_list': self.sector_list,
+            'available_years': self.available_years,
         }
 
 
@@ -168,6 +170,7 @@ class AEDashboardService(BaseService):
             # Get filter lists
             ae_list = self._get_ae_list(conn)
             sector_list = self._get_sector_list(conn)
+            available_years = self._get_available_years(conn)
             
             return AEDashboardData(
                 selected_ae=ae_filter,
@@ -176,6 +179,7 @@ class AEDashboardService(BaseService):
                 sectors=sectors,
                 ae_list=ae_list,
                 sector_list=sector_list,
+                available_years=available_years,
                 **metrics
             )
     
@@ -200,47 +204,42 @@ class AEDashboardService(BaseService):
         if ae_filter:
             ae_condition = "AND COALESCE(s.sales_person, 'Unknown') = ?"
             params.append(ae_filter)
-        
+
         query = f"""
         WITH customer_revenue AS (
-            SELECT 
-                COALESCE(s.customer_id, 0) as customer_id,
-                COALESCE(c.normalized_name, s.bill_code, 'Unknown') as customer_name,
+            SELECT
+                COALESCE(audit.customer_id, s.customer_id, 0) as customer_id,
+                COALESCE(audit.normalized_name, c.normalized_name, s.bill_code, 'Unknown') as customer_name,
                 COALESCE(sec.sector_name, 'Unknown') as sector,
                 COALESCE(s.sales_person, 'Unknown') as ae,
-                
-                -- 2024 revenue (broadcast_month format is 'mmm-yy' like 'Nov-24')
-                SUM(CASE WHEN SUBSTR(s.broadcast_month, -2) = SUBSTR(?, -2)
-                    THEN COALESCE(s.station_net, 0) ELSE 0 END) as ytd_2024,
-                    
-                -- 2023 revenue
-                SUM(CASE WHEN SUBSTR(s.broadcast_month, -2) = SUBSTR(?, -2)
-                    THEN COALESCE(s.station_net, 0) ELSE 0 END) as ytd_2023,
-                    
-                -- Q4 2024 (Oct, Nov, Dec) - months 10, 11, 12
-                SUM(CASE WHEN SUBSTR(s.broadcast_month, -2) = SUBSTR(?, -2)
+                -- Selected year revenue (broadcast_month format is 'mmm-yy' like 'Nov-24')
+                SUM(CASE WHEN SUBSTR(s.broadcast_month, -2) = ?
+                    THEN COALESCE(s.gross_rate, 0) ELSE 0 END) as ytd_2024,
+                -- Prior year revenue
+                SUM(CASE WHEN SUBSTR(s.broadcast_month, -2) = ?
+                    THEN COALESCE(s.gross_rate, 0) ELSE 0 END) as ytd_2023,
+                -- Q4 current year (Oct, Nov, Dec)
+                SUM(CASE WHEN SUBSTR(s.broadcast_month, -2) = ?
                     AND SUBSTR(s.broadcast_month, 1, 3) IN ('Oct', 'Nov', 'Dec')
-                    THEN COALESCE(s.station_net, 0) ELSE 0 END) as q4_2024,
-                    
-                -- Q4 2023
-                SUM(CASE WHEN SUBSTR(s.broadcast_month, -2) = SUBSTR(?, -2)
+                    THEN COALESCE(s.gross_rate, 0) ELSE 0 END) as q4_2024,
+                -- Q4 prior year
+                SUM(CASE WHEN SUBSTR(s.broadcast_month, -2) = ?
                     AND SUBSTR(s.broadcast_month, 1, 3) IN ('Oct', 'Nov', 'Dec')
-                    THEN COALESCE(s.station_net, 0) ELSE 0 END) as q4_2023,
-                    
-                -- Check if new in 2024 - find first year with revenue
-                MIN(CASE WHEN COALESCE(s.station_net, 0) > 0 
+                    THEN COALESCE(s.gross_rate, 0) ELSE 0 END) as q4_2023,
+                -- Check if new - find first year with revenue
+                MIN(CASE WHEN COALESCE(s.gross_rate, 0) > 0
                     THEN '20' || SUBSTR(s.broadcast_month, -2) END) as first_year
-                    
             FROM spots s
-            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            LEFT JOIN customers c ON COALESCE(audit.customer_id, s.customer_id) = c.customer_id
             LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
             WHERE SUBSTR(s.broadcast_month, -2) IN (?, ?)
                 AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
                 {ae_condition}
-            GROUP BY s.customer_id, customer_name, sec.sector_name, s.sales_person
+            GROUP BY COALESCE(audit.customer_id, s.customer_id, 0), customer_name, sec.sector_name, s.sales_person
             HAVING ytd_2024 > 0 OR ytd_2023 > 0
         )
-        SELECT 
+        SELECT
             customer_id,
             customer_name,
             sector,
@@ -442,4 +441,13 @@ class AEDashboardService(BaseService):
             ORDER BY sector_name
         """)
         
+        return [row[0] for row in cursor.fetchall()]
+    
+    def _get_available_years(self, conn) -> List[int]:
+        """Get list of years that have data, sorted descending"""
+        cursor = conn.execute("""
+            SELECT DISTINCT CAST('20' || SUBSTR(broadcast_month, -2) AS INTEGER) as year
+            FROM spots
+            ORDER BY year DESC
+        """)
         return [row[0] for row in cursor.fetchall()]
