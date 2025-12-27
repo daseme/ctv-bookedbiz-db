@@ -15,7 +15,7 @@ cd "$APP_DIR"
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then logger -t ctv-db-sync "Another sync is running; exiting."; exit 0; fi
 
-if "$PY" cli_db_sync.py backup; then
+if "$PY" cli_db_sync.py upload && "$PY" cli_db_sync.py backup; then
   logger -t ctv-db-sync "Upload OK"
 else
   rc=$?
