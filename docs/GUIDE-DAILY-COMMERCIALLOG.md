@@ -43,45 +43,85 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 - **Update Service**: `ctv-daily-update.service`
 - **Update Timer**: `ctv-daily-update.timer` (daily at 1:30 AM)
 
-## System Setup and Configuration
+## Business Logic
 
-### Network Share Setup
-1. **Create credentials file**:
-   ```bash
-   sudo nano /etc/cifs-credentials
-   ```
-   Add content:
-   ```
-   username=usrjp
-   password=Cro88ings
-   domain=CTVETERE
-   ```
-   
-2. **Secure credentials**:
-   ```bash
-   sudo chmod 600 /etc/cifs-credentials
-   ```
+### Import Mode: WEEKLY_UPDATE (Daily Operations)
 
-3. **Configure fstab for automatic mounting**:
-   ```bash
-   sudo nano /etc/fstab
-   ```
-   Add line:
-   ```
-   //100.102.206.113/K\040Drive /mnt/k-drive cifs credentials=/etc/cifs-credentials,uid=daseme,gid=ctvapps,iocharset=utf8,file_mode=0755,dir_mode=0755,noauto,x-systemd.automount,x-systemd.device-timeout=30 0 0
-   ```
+The daily update uses `WEEKLY_UPDATE` mode which implements the following business rules:
 
-4. **Create mount point**:
-   ```bash
-   sudo mkdir -p /mnt/k-drive
-   ```
+#### Month Classification
+1. **Closed Months**: Months that have been officially closed (finalized for reporting). These are **never modified** by daily updates.
+2. **Open Months**: Months that are still active and can receive updates.
 
-5. **Test mounting**:
-   ```bash
-   sudo mount -a
-   # Test access
-   ls -la "/mnt/k-drive/Traffic/Media library/"
-   ```
+#### Data Replacement Rules
+
+For each **open month** found in the Excel file:
+1. Delete all existing records for that month
+2. Import new records from Excel for that month
+
+**Critical Safeguard - Month Preservation:**
+
+If an open month exists in the database but has **NO data in the incoming Excel file**, the system will **preserve the existing data** rather than deleting it. This protects against data loss when:
+- The daily commercial log ages out previous month data
+- A month hasn't been closed yet but is no longer in the daily feed
+- There's a gap in the source data
+
+Example scenario:
+```
+Database has: Nov-24 (closed), Dec-24 (open, 8,500 records), Jan-25 (open, 2,100 records)
+Excel contains: Jan-25 (9,200 records) - December aged out of daily log
+
+Result:
+- Nov-24: SKIPPED (closed month, protected)
+- Dec-24: PRESERVED (open but no Excel data, existing 8,500 records kept)
+- Jan-25: REPLACED (deleted 2,100, imported 9,200)
+```
+
+#### Processing Flow
+
+```
+1. Analyze Excel file
+   ├── Extract all broadcast months present
+   ├── Count records per month
+   └── Identify sheet sources (Commercials, Worldlink Lines)
+
+2. Classify months
+   ├── Query closed_months table
+   ├── Separate into closed vs open months
+   └── Log status of each
+
+3. Preservation check (WEEKLY_UPDATE only)
+   ├── For each open month with 0 records in Excel:
+   │   ├── Check if database has existing records
+   │   ├── If yes: ADD to preservation list
+   │   └── Log preserved month with record count and revenue
+   └── Remove preserved months from processing list
+
+4. Execute import (for non-preserved open months only)
+   ├── Delete existing records for target months
+   ├── Import new records from Excel
+   ├── Validate customer alignment
+   └── Auto-correct any mismatches
+
+5. Post-import validation
+   ├── Verify customer_id alignment with normalization system
+   ├── Log any corrections made
+   └── Fail if alignment cannot be achieved
+```
+
+### Import Mode: HISTORICAL
+
+Used for bulk historical imports. Key differences from WEEKLY_UPDATE:
+- Processes ALL months in Excel (ignores closed status)
+- Closes all imported months after successful import
+- Requires `--closed-by` parameter to track who closed the months
+
+### Import Mode: MANUAL
+
+Used for targeted manual corrections:
+- Fails if Excel contains any closed months
+- No automatic month preservation (assumes intentional)
+- Requires explicit handling of closed month conflicts
 
 ## Data Processing
 
@@ -89,6 +129,14 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 - **Commercials Sheet**: Primary commercial log data (~10,197 records typical)
 - **Worldlink Lines Sheet**: Additional WorldLink data (~42 records typical)
 - **Source Tracking**: Each record tagged with `filename:sheet_name` format
+
+### Customer Normalization
+
+The import system integrates with the customer normalization system:
+1. **Pre-import**: Bill codes are added to `raw_customer_inputs` table
+2. **During import**: Customer IDs resolved via `v_customer_normalization_audit` view
+3. **Post-import validation**: Verifies all spots align with normalization system
+4. **Auto-correction**: Fixes any customer_id mismatches automatically
 
 ### File Retention
 - **Recent Files**: Keep 7 days of individual Excel files
@@ -115,11 +163,14 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 ### Stage 2: Daily Update Processing (1:30 AM)
 1. Timer triggers daily at 1:30 AM (+10 min random delay)
 2. Read combined commercial log file with sheet source awareness
-3. Automatically detect and create new markets
-4. Process all sheets while maintaining source tracking
-5. Apply business rules for language assignment
-6. Commit changes with source tracking in database
-7. Generate processing statistics and logs
+3. **Analyze months in Excel and compare against database**
+4. **Preserve open months that have no Excel data** (safeguard)
+5. Automatically detect and create new markets
+6. Process non-preserved open months (delete + reimport)
+7. Apply business rules for language assignment
+8. Validate and correct customer alignment
+9. Commit changes with source tracking in database
+10. Generate processing statistics and logs
 
 ## Critical Environment Configuration
 
@@ -140,6 +191,7 @@ DAILY_UPDATE_EXTRA_ARGS="--verbose"
    - Creates: `Commercial Log YYMMDD.xlsx` (28+ months historical data)
 2. **Stage 2 (01:30 AM)**: Local combined storage → Database with source tracking
    - Processes: Full historical dataset including all Worldlink data
+   - **Preserves**: Open months with no Excel data
 3. **Database Backup (02:05 AM)**: Database → Dropbox backup
 
 **CRITICAL**: Stage 2 must use local files from Stage 1, NOT direct K drive access
@@ -236,7 +288,7 @@ sudo systemctl start ctv-commercial-import.service
 # Run daily update processing immediately
 sudo systemctl start ctv-daily-update.service
 
-# Test daily update with preview
+# Test daily update with preview (shows preservation logic)
 uv run python cli/daily_update.py data/raw/daily/Commercial\ Log\ $(date +%y%m%d).xlsx --auto-setup --dry-run --verbose
 
 # Run actual daily update
@@ -282,6 +334,24 @@ FROM spots
 WHERE load_date >= date('now', '-7 days')
 GROUP BY 1, 2
 ORDER BY import_date DESC, spots DESC;
+
+-- Check preserved months (open months with data but not in recent imports)
+SELECT 
+    broadcast_month,
+    COUNT(*) as spots,
+    SUM(gross_rate) as gross_revenue,
+    MAX(load_date) as last_updated
+FROM spots
+WHERE broadcast_month NOT IN (
+    SELECT DISTINCT broadcast_month 
+    FROM spots 
+    WHERE DATE(load_date) = DATE('now')
+)
+AND broadcast_month NOT IN (
+    SELECT broadcast_month FROM closed_months
+)
+GROUP BY broadcast_month
+ORDER BY broadcast_month DESC;
 ```
 
 ## Troubleshooting
@@ -331,6 +401,25 @@ tail -10 /var/log/ctv-commercial-import/import.log
 
 # Should show successful import with file creation
 ```
+
+### Month Preservation Issues
+
+**Symptom**: Open month data unexpectedly deleted
+
+**Check preservation logic**:
+```bash
+# Run dry-run to see preservation decisions
+uv run python cli/daily_update.py data/raw/daily/Commercial\ Log\ $(date +%y%m%d).xlsx --auto-setup --dry-run --verbose
+
+# Look for output like:
+# "⚠️ PRESERVATION: Protecting 1 open month(s) with no Excel data:"
+# "   Dec-24: 8,500 existing records, $234,567.00 revenue - PRESERVED"
+```
+
+**If preservation didn't trigger when expected**:
+1. Verify the month is NOT in `closed_months` table
+2. Verify the Excel file truly has 0 records for that month
+3. Check logs for any errors in `_get_months_with_data_in_excel`
 
 ### Path and Case Sensitivity Issues
 **Symptoms**:
@@ -519,6 +608,38 @@ grep "spots across" /var/log/ctv-daily-update/update.log | tail -1
 # Should match (both showing 28+ months, 260k+ spots)
 ```
 
+### Verify Month Preservation Logic
+```bash
+# Check preservation decisions in recent logs
+grep -E "PRESERVATION|PRESERVED|NO DATA in Excel" /var/log/ctv-daily-update/update.log | tail -20
+
+# Query for potentially preserved months
+uv run python -c "
+import sqlite3
+conn = sqlite3.connect('data/database/production.db')
+
+# Get open months not updated today
+cursor = conn.execute('''
+    SELECT 
+        s.broadcast_month,
+        COUNT(*) as spots,
+        ROUND(SUM(s.gross_rate), 2) as revenue,
+        MAX(DATE(s.load_date)) as last_updated
+    FROM spots s
+    LEFT JOIN closed_months cm ON s.broadcast_month = cm.broadcast_month
+    WHERE cm.broadcast_month IS NULL
+    GROUP BY s.broadcast_month
+    ORDER BY s.broadcast_month DESC
+''')
+
+print('Open months in database:')
+for row in cursor.fetchall():
+    status = '(updated today)' if row[3] == str(__import__('datetime').date.today()) else '(preserved)'
+    print(f'  {row[0]}: {row[1]:,} spots, \${row[2]:,.2f} {status}')
+conn.close()
+"
+```
+
 ### Verify Network Dependencies
 ```bash
 # Check automount trigger
@@ -544,6 +665,9 @@ grep "SUCCESS\|ERROR" /var/log/ctv-daily-update/wrapper.log | tail -5
 
 # Verify correct data source processing
 grep -E "File:|Processing.*file" /var/log/ctv-daily-update/update.log | tail -10
+
+# Check for preservation activity
+grep -E "PRESERVATION|PRESERVED" /var/log/ctv-daily-update/update.log | tail -5
 
 # Check for data source configuration issues
 if grep -q "Commercial Log.xlsx" /var/log/ctv-daily-update/update.log; then
@@ -601,18 +725,19 @@ conn.close()
 - **Processing Time**: ~20-25 seconds
 
 ### Daily Update Processing (Stage 2)
-- **Records Imported**: ~10,239 database records
+- **Records Imported**: ~10,239 database records (varies by month content)
 - **Sheet Breakdown**: Commercials: 10,197, WorldLink: 42
 - **Processing Time**: ~30-35 seconds
 - **New Markets**: 0-3 markets automatically created as needed
 - **Language Assignment**: ~10,200+ spots categorized
 - **Trade Records**: ~44 records filtered per business rules
+- **Month Preservation**: Open months without Excel data protected
 
 ## Integration with Workflow
 
 ### Complete Daily Schedule
 - **1:00 AM**: Multi-sheet commercial log import from network share
-- **1:30 AM**: Database processing with multi-sheet awareness, automatic market setup, and language assignment
+- **1:30 AM**: Database processing with multi-sheet awareness, automatic market setup, month preservation, and language assignment
 - **2:05 AM**: Database backup to Dropbox (existing system)
 - **2:30 AM (Sundays)**: File archival and cleanup ⚠️ Currently failing
 
@@ -653,6 +778,7 @@ conn.close()
 - **Health Checks**: Prerequisites validated before each run
 - **Performance Tracking**: Processing times and record counts logged
 - **Network Monitoring**: Automatic mount triggers and connectivity validation
+- **Preservation Logging**: Clear indication when months are preserved
 
 ### Optional Notification Systems
 Configure in respective environment files:
