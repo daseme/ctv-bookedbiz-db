@@ -13,7 +13,7 @@ import uuid
 import contextlib
 import io
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Set, Optional, Dict, Any, Callable
 from dataclasses import dataclass
 
@@ -370,6 +370,23 @@ class BroadcastMonthImportService(BaseService):
 # ============================================================================
     # Month Preservation Safeguard Methods
     # ============================================================================
+# ============================================================================
+    # Month Preservation & Filtering Safeguard Methods
+    # ============================================================================
+
+    def _get_previous_calendar_month(self, reference_date: date = None) -> str:
+        """
+        Get the previous calendar month in display format (e.g., 'Dec-24').
+        Used to filter out stray previous-month data from daily imports.
+        """
+        if reference_date is None:
+            reference_date = date.today()
+        
+        # Go to first of current month, then subtract one day to get last day of previous month
+        first_of_month = reference_date.replace(day=1)
+        last_of_previous = first_of_month - timedelta(days=1)
+        
+        return last_of_previous.strftime("%b-%y")
 
     def _get_months_with_data_in_excel(self, excel_file: str) -> Dict[str, int]:
         """
@@ -482,8 +499,10 @@ class BroadcastMonthImportService(BaseService):
     ) -> ImportResult:
         """
         Execute complete month replacement workflow with progress tracking.
-        Enhanced with month preservation safeguard for unclosed months 
-        without Excel data.
+        
+        Enhanced with:
+        - Month preservation safeguard for unclosed months without Excel data
+        - Previous month filtering to skip stray MC operational data
         """
         start_time = datetime.now()
         batch_id = f"{import_mode.lower()}_{int(start_time.timestamp())}"
@@ -550,7 +569,7 @@ class BroadcastMonthImportService(BaseService):
                     result.success = True
                     return result
 
-                # Step 3.5: Check for months to preserve
+                # Step 3.5: Check for months to preserve (no Excel data)
                 tqdm.write(
                     "Analyzing Excel data by month for preservation check..."
                 )
@@ -566,7 +585,7 @@ class BroadcastMonthImportService(BaseService):
                     else:
                         tqdm.write(f"   {month}: NO DATA in Excel")
                 
-                # Identify months to preserve
+                # Identify months to preserve (have DB data, no Excel data)
                 with self.safe_connection() as check_conn:
                     months_to_preserve = self._identify_months_to_preserve(
                         open_months, excel_month_counts, check_conn
@@ -589,19 +608,58 @@ class BroadcastMonthImportService(BaseService):
                     open_months = [
                         m for m in open_months if m not in months_to_preserve
                     ]
+
+                # Step 3.6: Skip previous month (stray MC operational data)
+                previous_month = self._get_previous_calendar_month()
+                current_month = date.today().strftime("%b-%y")
+                
+                if previous_month in open_months:
+                    prev_month_excel_count = excel_month_counts.get(
+                        previous_month, 0
+                    )
                     
-                    if not open_months:
-                        tqdm.write(
-                            "✅ No months to update after preservation check "
-                            "- existing data protected"
-                        )
-                        result.success = True
-                        return result
+                    # Check what we have in DB for context
+                    with self.safe_connection() as check_conn:
+                        cursor = check_conn.execute("""
+                            SELECT COUNT(*), COALESCE(SUM(gross_rate), 0)
+                            FROM spots 
+                            WHERE broadcast_month = ?
+                        """, (previous_month,))
+                        existing_count, existing_revenue = cursor.fetchone()
                     
                     tqdm.write(
-                        f"Proceeding with {len(open_months)} month(s): "
-                        f"{', '.join(sorted(open_months))}"
+                        f"⚠️  SKIPPING PREVIOUS MONTH: {previous_month}"
                     )
+                    tqdm.write(
+                        f"   Excel has {prev_month_excel_count:,} records "
+                        f"(likely stray MC operational data)"
+                    )
+                    tqdm.write(
+                        f"   Preserving {existing_count:,} existing records, "
+                        f"${existing_revenue:,.2f} revenue"
+                    )
+                    tqdm.write(
+                        f"   Reason: Once in {current_month}, previous month "
+                        f"data is not authoritative"
+                    )
+                    
+                    open_months = [
+                        m for m in open_months if m != previous_month
+                    ]
+                
+                # Final check - any months left to process?
+                if not open_months:
+                    tqdm.write(
+                        "✅ No months to update after filtering "
+                        "- existing data protected"
+                    )
+                    result.success = True
+                    return result
+                
+                tqdm.write(
+                    f"Proceeding with {len(open_months)} month(s): "
+                    f"{', '.join(sorted(open_months))}"
+                )
 
                 result.broadcast_months_affected = open_months
 
