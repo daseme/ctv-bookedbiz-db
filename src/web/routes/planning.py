@@ -2,7 +2,7 @@
 Planning session routes - Forecast management UI and API.
 
 Provides:
-- Planning session main page
+- Planning session main page (full year view with active window)
 - API endpoints for forecast updates
 - Real-time data refresh
 """
@@ -29,6 +29,92 @@ planning_bp = Blueprint("planning", __name__, url_prefix="/planning")
 
 
 # ============================================================================
+# Template Helper Classes
+# ============================================================================
+
+class CompanySummaryWrapper:
+    """Wrapper to make company summary dict accessible with dot notation in templates."""
+    
+    def __init__(self, data: dict):
+        self._data = data
+        self._periods_by_key = {}
+        for p in data.get("periods", []):
+            period = p["period"]
+            self._periods_by_key[period.key] = PeriodDataWrapper(p)
+    
+    @property
+    def total_budget(self):
+        return self._data["total_budget"]
+    
+    @property
+    def total_forecast(self):
+        return self._data["total_forecast"]
+    
+    @property
+    def total_booked(self):
+        return self._data["total_booked"]
+    
+    @property
+    def total_pipeline(self):
+        return self._data["total_pipeline"]
+    
+    @property
+    def total_variance(self):
+        return self._data["total_variance"]
+    
+    @property
+    def periods(self):
+        return [PeriodDataWrapper(p) for p in self._data.get("periods", [])]
+    
+    @property
+    def periods_by_key(self):
+        return self._periods_by_key
+
+
+class PeriodDataWrapper:
+    """Wrapper for period data to support dot notation in templates."""
+    
+    def __init__(self, data: dict):
+        self._data = data
+    
+    @property
+    def period(self):
+        return self._data["period"]
+    
+    @property
+    def budget(self):
+        return self._data["budget"]
+    
+    @property
+    def forecast(self):
+        return self._data["forecast"]
+    
+    @property
+    def booked(self):
+        return self._data["booked"]
+    
+    @property
+    def pipeline(self):
+        return self._data["pipeline"]
+    
+    @property
+    def variance(self):
+        return self._data["variance"]
+    
+    @property
+    def pct_booked(self):
+        return self._data.get("pct_booked", 0)
+    
+    @property
+    def is_active(self):
+        return self._data.get("is_active", False)
+    
+    @property
+    def is_past(self):
+        return self._data.get("is_past", False)
+
+
+# ============================================================================
 # Main UI Routes
 # ============================================================================
 
@@ -36,22 +122,50 @@ planning_bp = Blueprint("planning", __name__, url_prefix="/planning")
 @log_requests
 @handle_request_errors
 def planning_session():
-    """Planning session main page."""
+    """
+    Planning session main page.
+    
+    Now displays full 12-month view with active planning window highlighted.
+    """
     try:
+        # Get planning year from query param or default to current year
+        planning_year = request.args.get("year", date.today().year, type=int)
+        months_ahead = request.args.get("months_ahead", 2, type=int)
+        
         container = get_container()
         planning_service = safe_get_service(container, "planning_service")
         
-        # Get planning summary for current window (current month + 2)
-        summary = planning_service.get_planning_summary(months_ahead=2)
-        company = planning_service.get_company_summary(months_ahead=2)
+        # Get planning summary with full year data
+        summary = planning_service.get_planning_summary(
+            months_ahead=months_ahead,
+            planning_year=planning_year
+        )
+        company = planning_service.get_company_summary(
+            months_ahead=months_ahead,
+            planning_year=planning_year
+        )
         
         # Format for template
         template_data = {
             "title": "Planning Session",
-            "periods": summary.periods,
+            
+            # Year context
+            "planning_year": planning_year,
+            "current_date": date.today().strftime("%B %d, %Y"),
+            
+            # Period collections for full year view
+            "all_periods": summary.all_periods,
+            "active_periods": summary.active_periods,
+            "past_periods": summary.past_periods,
+            
+            # Legacy support - 'periods' points to active window
+            "periods": summary.active_periods,
+            
+            # Entity data with rows_by_period for efficient lookups
             "entity_data": summary.entity_data,
-            "company": company,
-            "current_date": date.today().isoformat(),
+            
+            # Company totals wrapped for dot notation access
+            "company": CompanySummaryWrapper(company),
         }
         
         return render_template("planning_session.html", **template_data)
@@ -103,15 +217,37 @@ def api_get_summary():
         container = get_container()
         planning_service = safe_get_service(container, "planning_service")
         
+        planning_year = request.args.get("year", date.today().year, type=int)
         months_ahead = request.args.get("months_ahead", 2, type=int)
-        summary = planning_service.get_planning_summary(months_ahead=months_ahead)
-        company = planning_service.get_company_summary(months_ahead=months_ahead)
+        
+        summary = planning_service.get_planning_summary(
+            months_ahead=months_ahead,
+            planning_year=planning_year
+        )
+        company = planning_service.get_company_summary(
+            months_ahead=months_ahead,
+            planning_year=planning_year
+        )
         
         # Serialize for JSON
         data = {
+            "planning_year": planning_year,
+            "all_periods": [
+                {"year": p.year, "month": p.month, "display": p.display, "key": p.key}
+                for p in summary.all_periods
+            ],
+            "active_periods": [
+                {"year": p.year, "month": p.month, "display": p.display, "key": p.key}
+                for p in summary.active_periods
+            ],
+            "past_periods": [
+                {"year": p.year, "month": p.month, "display": p.display, "key": p.key}
+                for p in summary.past_periods
+            ],
+            # Legacy support
             "periods": [
                 {"year": p.year, "month": p.month, "display": p.display}
-                for p in summary.periods
+                for p in summary.active_periods
             ],
             "entities": [
                 {
@@ -122,7 +258,7 @@ def api_get_summary():
                     },
                     "rows": [
                         {
-                            "period": {"year": r.period.year, "month": r.period.month},
+                            "period": {"year": r.period.year, "month": r.period.month, "key": r.period.key},
                             "budget": float(r.budget.amount),
                             "forecast": float(r.forecast.amount),
                             "booked": float(r.booked.amount),
@@ -133,6 +269,17 @@ def api_get_summary():
                         }
                         for r in ed.rows
                     ],
+                    "rows_by_period": {
+                        r.period.key: {
+                            "budget": float(r.budget.amount),
+                            "forecast": float(r.forecast.amount),
+                            "booked": float(r.booked.amount),
+                            "pipeline": float(r.pipeline.amount),
+                            "variance": float(r.variance_to_budget.amount),
+                            "is_overridden": r.is_forecast_overridden
+                        }
+                        for r in ed.rows
+                    },
                     "totals": {
                         "budget": float(ed.total_budget.amount),
                         "forecast": float(ed.total_forecast.amount),
@@ -151,16 +298,30 @@ def api_get_summary():
                 "total_variance": float(company["total_variance"].amount),
                 "periods": [
                     {
-                        "period": {"year": p["period"].year, "month": p["period"].month},
+                        "period": {"year": p["period"].year, "month": p["period"].month, "key": p["period"].key},
                         "budget": float(p["budget"].amount),
                         "forecast": float(p["forecast"].amount),
                         "booked": float(p["booked"].amount),
                         "pipeline": float(p["pipeline"].amount),
                         "variance": float(p["variance"].amount),
-                        "pct_booked": p["pct_booked"]
+                        "pct_booked": p["pct_booked"],
+                        "is_active": p.get("is_active", False),
+                        "is_past": p.get("is_past", False)
                     }
                     for p in company["periods"]
-                ]
+                ],
+                "periods_by_key": {
+                    p["period"].key: {
+                        "budget": float(p["budget"].amount),
+                        "forecast": float(p["forecast"].amount),
+                        "booked": float(p["booked"].amount),
+                        "pipeline": float(p["pipeline"].amount),
+                        "variance": float(p["variance"].amount),
+                        "is_active": p.get("is_active", False),
+                        "is_past": p.get("is_past", False)
+                    }
+                    for p in company["periods"]
+                }
             }
         }
         
@@ -244,6 +405,7 @@ def api_bulk_update_forecasts():
         logger.info(f"Bulk forecast update: {len(changes)} changes saved")
         
         return create_success_response({
+            "success": True,
             "message": f"{len(changes)} forecasts updated successfully",
             "changes_count": len(changes)
         })
@@ -287,6 +449,8 @@ def api_reset_forecast():
                 "ae_name": data["ae_name"]
             })
     
+    except ValueError as e:
+        return create_error_response(str(e), 400)
     except Exception as e:
         logger.error(f"Error resetting forecast: {e}", exc_info=True)
         return create_error_response(str(e), 500)

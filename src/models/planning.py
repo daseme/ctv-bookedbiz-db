@@ -85,6 +85,11 @@ class PlanningPeriod:
             raise ValueError(f"Month must be between 1 and 12: {self.month}")
     
     @property
+    def key(self) -> str:
+        """Unique key for dictionary lookups (e.g., '2025-1')"""
+        return f"{self.year}-{self.month}"
+    
+    @property
     def broadcast_month(self) -> str:
         """Format as 'Jan-25' for spots table compatibility"""
         m = Month.from_number(self.month)
@@ -100,6 +105,54 @@ class PlanningPeriod:
     def sort_key(self) -> int:
         """For sorting periods chronologically"""
         return self.year * 100 + self.month
+    
+    @property
+    def is_past(self) -> bool:
+        """Check if this period is in the past (before current month)"""
+        today = date.today()
+        if self.year < today.year:
+            return True
+        if self.year == today.year and self.month < today.month:
+            return True
+        return False
+    
+    @property
+    def is_current(self) -> bool:
+        """Check if this is the current month"""
+        today = date.today()
+        return self.year == today.year and self.month == today.month
+    
+    @property
+    def is_future(self) -> bool:
+        """Check if this period is in the future"""
+        return not self.is_past and not self.is_current
+    
+    @property
+    def quarter(self) -> int:
+        """Get the quarter (1-4) for this period"""
+        return (self.month - 1) // 3 + 1
+    
+    @property
+    def is_quarter_end(self) -> bool:
+        """Check if this month is end of a quarter (Mar, Jun, Sep, Dec)"""
+        return self.month in [3, 6, 9, 12]
+    
+    def __lt__(self, other: "PlanningPeriod") -> bool:
+        if self.year != other.year:
+            return self.year < other.year
+        return self.month < other.month
+    
+    def __le__(self, other: "PlanningPeriod") -> bool:
+        return self == other or self < other
+    
+    def __gt__(self, other: "PlanningPeriod") -> bool:
+        return not self <= other
+    
+    def __ge__(self, other: "PlanningPeriod") -> bool:
+        return not self < other
+    
+    def __hash__(self) -> int:
+        return hash((self.year, self.month))
     
     @classmethod
     def from_broadcast_month(cls, bm: str) -> "PlanningPeriod":
@@ -129,6 +182,31 @@ class PlanningPeriod:
         """Get current month plus N months ahead"""
         current = cls.current()
         return [current.next(i) for i in range(months_ahead + 1)]
+    
+    @classmethod
+    def full_year(cls, year: int) -> List["PlanningPeriod"]:
+        """Get all 12 periods for a year"""
+        return [cls(year=year, month=m) for m in range(1, 13)]
+    
+    @classmethod
+    def past_periods(cls, year: int) -> List["PlanningPeriod"]:
+        """Get all past periods for a given year (before current month)"""
+        periods = []
+        for month in range(1, 13):
+            period = cls(year=year, month=month)
+            if period.is_past:
+                periods.append(period)
+        return periods
+    
+    @classmethod
+    def future_periods(cls, year: int) -> List["PlanningPeriod"]:
+        """Get all future periods for a given year (after current month)"""
+        periods = []
+        for month in range(1, 13):
+            period = cls(year=year, month=month)
+            if period.is_future:
+                periods.append(period)
+        return periods
 
 
 @dataclass(frozen=True)
@@ -230,6 +308,11 @@ class EntityPlanningData:
     rows: List[PlanningRow] = field(default_factory=list)
     
     @property
+    def rows_by_period(self) -> Dict[str, PlanningRow]:
+        """Get rows indexed by period key for efficient template lookups"""
+        return {row.period.key: row for row in self.rows}
+    
+    @property
     def total_budget(self) -> Money:
         return Money(sum(r.budget.amount for r in self.rows))
     
@@ -259,9 +342,34 @@ class EntityPlanningData:
 
 @dataclass
 class PlanningSummary:
-    """Aggregate summary across all entities"""
-    periods: List[PlanningPeriod]
+    """Aggregate summary across all entities for full year view"""
     entity_data: List[EntityPlanningData] = field(default_factory=list)
+    planning_year: int = field(default_factory=lambda: date.today().year)
+    all_periods: List[PlanningPeriod] = field(default_factory=list)
+    active_periods: List[PlanningPeriod] = field(default_factory=list)
+    past_periods: List[PlanningPeriod] = field(default_factory=list)
+    
+    # Legacy support - 'periods' maps to active_periods
+    @property
+    def periods(self) -> List[PlanningPeriod]:
+        """Legacy: returns active_periods for backward compatibility"""
+        return self.active_periods if self.active_periods else self.all_periods
+    
+    def __post_init__(self):
+        """Initialize periods if not provided"""
+        if not self.all_periods:
+            self.all_periods = PlanningPeriod.full_year(self.planning_year)
+        if not self.active_periods:
+            self.active_periods = PlanningPeriod.planning_window(2)
+        if not self.past_periods:
+            self.past_periods = PlanningPeriod.past_periods(self.planning_year)
+    
+    @property
+    def future_periods(self) -> List[PlanningPeriod]:
+        """Periods that are not past and not in active window"""
+        active_set = set(self.active_periods)
+        past_set = set(self.past_periods)
+        return [p for p in self.all_periods if p not in past_set and p not in active_set]
     
     @property
     def total_budget(self) -> Money:

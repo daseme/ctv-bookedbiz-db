@@ -2,7 +2,7 @@
 Planning Service - Business logic for forecast planning sessions.
 
 Orchestrates planning operations:
-- Loading planning data for sessions
+- Loading planning data for sessions (full year + active window)
 - Updating forecasts
 - Calculating summaries and variances
 - Validating business rules
@@ -45,7 +45,8 @@ class PlanningService(BaseService):
     def get_planning_summary(
         self, 
         months_ahead: int = 2,
-        include_inactive: bool = False
+        include_inactive: bool = False,
+        planning_year: Optional[int] = None
     ) -> PlanningSummary:
         """
         Get complete planning summary for all entities.
@@ -53,27 +54,59 @@ class PlanningService(BaseService):
         Args:
             months_ahead: Number of months beyond current to include (default 2)
             include_inactive: Include inactive revenue entities
+            planning_year: Year to plan for (default: current year)
             
         Returns:
             PlanningSummary with all entities and periods
         """
-        periods = PlanningPeriod.planning_window(months_ahead)
+        if planning_year is None:
+            planning_year = date.today().year
+        
+        # Get all periods for the full year and active window
+        all_periods = PlanningPeriod.full_year(planning_year)
+        active_periods = PlanningPeriod.planning_window(months_ahead)
+        past_periods = PlanningPeriod.past_periods(planning_year)
+        
         entities = self.repository.get_active_revenue_entities()
         
         entity_data_list = []
         for entity in entities:
-            entity_data = self._build_entity_planning_data(entity, periods)
+            entity_data = self._build_entity_planning_data(entity, all_periods)
             entity_data_list.append(entity_data)
         
         return PlanningSummary(
-            periods=periods,
+            planning_year=planning_year,
+            all_periods=all_periods,
+            active_periods=active_periods,
+            past_periods=past_periods,
             entity_data=entity_data_list
+        )
+
+    def get_full_year_planning_summary(
+        self,
+        year: int,
+        active_window_months: int = 2
+    ) -> PlanningSummary:
+        """
+        Get planning summary showing all 12 months with active window highlighted.
+        
+        Args:
+            year: Planning year
+            active_window_months: Number of months in active planning window
+            
+        Returns:
+            PlanningSummary with full year data
+        """
+        return self.get_planning_summary(
+            months_ahead=active_window_months,
+            planning_year=year
         )
 
     def get_entity_planning_data(
         self, 
         entity_name: str,
-        months_ahead: int = 2
+        months_ahead: int = 2,
+        planning_year: Optional[int] = None
     ) -> Optional[EntityPlanningData]:
         """Get planning data for a single entity."""
         entity = self.repository.get_revenue_entity_by_name(entity_name)
@@ -81,8 +114,11 @@ class PlanningService(BaseService):
             logger.warning(f"Revenue entity not found: {entity_name}")
             return None
         
-        periods = PlanningPeriod.planning_window(months_ahead)
-        return self._build_entity_planning_data(entity, periods)
+        if planning_year is None:
+            planning_year = date.today().year
+        
+        all_periods = PlanningPeriod.full_year(planning_year)
+        return self._build_entity_planning_data(entity, all_periods)
 
     def get_planning_row(
         self, 
@@ -143,8 +179,12 @@ class PlanningService(BaseService):
         if not entity:
             raise ValueError(f"Unknown revenue entity: {ae_name}")
         
-        # Validate period
+        # Validate period is not in the past (closed months)
         period = PlanningPeriod(year=year, month=month)
+        if period.is_past:
+            raise ValueError(
+                f"Cannot update forecast for closed period: {period.display}"
+            )
         
         # Create and save update
         update = ForecastUpdate(
@@ -176,6 +216,8 @@ class PlanningService(BaseService):
             List of ForecastChange records
         """
         changes = []
+        errors = []
+        
         for u in updates:
             try:
                 change = self.update_forecast(
@@ -187,9 +229,16 @@ class PlanningService(BaseService):
                     notes=session_notes
                 )
                 changes.append(change)
+            except ValueError as e:
+                # Skip past periods but log them
+                logger.warning(f"Skipped forecast update: {e}")
+                errors.append({"update": u, "error": str(e)})
             except Exception as e:
                 logger.error(f"Failed to update forecast for {u}: {e}")
                 raise
+        
+        if errors:
+            logger.info(f"Bulk update completed with {len(errors)} skipped updates")
         
         return changes
 
@@ -200,6 +249,11 @@ class PlanningService(BaseService):
         month: int
     ) -> bool:
         """Reset forecast to budget by removing the override."""
+        period = PlanningPeriod(year=year, month=month)
+        if period.is_past:
+            raise ValueError(
+                f"Cannot reset forecast for closed period: {period.display}"
+            )
         return self.repository.delete_forecast(ae_name, year, month)
 
     # =========================================================================
@@ -233,40 +287,63 @@ class PlanningService(BaseService):
 
     def get_company_summary(
         self, 
-        months_ahead: int = 2
+        months_ahead: int = 2,
+        planning_year: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Get high-level company summary for planning window."""
-        periods = PlanningPeriod.planning_window(months_ahead)
+        """
+        Get high-level company summary for planning window.
+        
+        Now returns full year data with active window indicated.
+        """
+        if planning_year is None:
+            planning_year = date.today().year
+        
+        all_periods = PlanningPeriod.full_year(planning_year)
+        active_periods = PlanningPeriod.planning_window(months_ahead)
+        past_periods = PlanningPeriod.past_periods(planning_year)
         
         total_budget = Money.zero()
         total_forecast = Money.zero()
         total_booked = Money.zero()
         
         period_details = []
-        for period in periods:
+        periods_by_key = {}
+        
+        for period in all_periods:
             totals = self.get_period_totals(period)
             total_budget = total_budget + totals["budget"]
             total_forecast = total_forecast + totals["forecast"]
             total_booked = total_booked + totals["booked"]
             
-            period_details.append({
+            period_data = {
                 "period": period,
                 "budget": totals["budget"],
                 "forecast": totals["forecast"],
                 "booked": totals["booked"],
                 "pipeline": totals["pipeline"],
                 "variance": totals["variance"],
-                "pct_booked": float(totals["booked"].amount / totals["forecast"].amount * 100) 
+                "pct_booked": (
+                    float(totals["booked"].amount / totals["forecast"].amount * 100) 
                     if totals["forecast"].amount > 0 else 0
-            })
+                ),
+                "is_active": period in active_periods,
+                "is_past": period in past_periods
+            }
+            period_details.append(period_data)
+            periods_by_key[period.key] = period_data
         
         return {
+            "planning_year": planning_year,
             "total_budget": total_budget,
             "total_forecast": total_forecast,
             "total_booked": total_booked,
             "total_pipeline": total_forecast - total_booked,
             "total_variance": total_forecast - total_budget,
-            "periods": period_details
+            "periods": period_details,
+            "periods_by_key": periods_by_key,
+            "all_periods": all_periods,
+            "active_periods": active_periods,
+            "past_periods": past_periods
         }
 
     def get_forecast_history(
@@ -343,13 +420,10 @@ class PlanningService(BaseService):
         warnings = []
         
         entities = self.repository.get_active_revenue_entities()
-        periods = PlanningPeriod.planning_window(2)
+        all_periods = PlanningPeriod.full_year(year)
         
         for entity in entities:
-            for period in periods:
-                if period.year != year:
-                    continue
-                
+            for period in all_periods:
                 budget = self.repository.get_budget(
                     entity.entity_name, period.year, period.month
                 )
@@ -373,5 +447,5 @@ class PlanningService(BaseService):
             "issues": issues,
             "warnings": warnings,
             "entities_checked": len(entities),
-            "periods_checked": len([p for p in periods if p.year == year])
+            "periods_checked": len(all_periods)
         }

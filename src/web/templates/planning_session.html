@@ -87,38 +87,80 @@
         background: white;
         border-radius: 8px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        overflow: hidden;
+        overflow-x: auto;
     }
     
     .planning-table {
         width: 100%;
         border-collapse: collapse;
         font-size: 13px;
+        min-width: 1400px;
     }
     
     .planning-table th {
         background: var(--nord0);
         color: var(--nord6);
-        padding: 12px 16px;
+        padding: 12px 10px;
         text-align: left;
         font-weight: 500;
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
     }
     
     .planning-table th.number {
         text-align: right;
     }
     
+    .planning-table th.month-header {
+        min-width: 85px;
+    }
+    
+    .planning-table th.total-header {
+        min-width: 100px;
+        background: var(--nord1);
+    }
+    
+    .planning-table th.entity-header-col {
+        min-width: 180px;
+        position: sticky;
+        left: 0;
+        z-index: 11;
+    }
+    
     .planning-table td {
-        padding: 10px 16px;
+        padding: 8px 10px;
         border-bottom: 1px solid #e2e8f0;
     }
     
     .planning-table td.number {
         text-align: right;
         font-variant-numeric: tabular-nums;
+    }
+    
+    .planning-table td.entity-name-cell {
+        position: sticky;
+        left: 0;
+        background: inherit;
+        z-index: 5;
+    }
+    
+    /* Quarter separators */
+    .planning-table th.q-end,
+    .planning-table td.q-end {
+        border-right: 2px solid var(--nord3);
+    }
+    
+    /* Active planning window highlight */
+    .planning-table th.active-period {
+        background: var(--nord10);
+    }
+    
+    .planning-table td.active-period {
+        background: rgba(136, 192, 208, 0.08);
     }
     
     /* Entity group styling */
@@ -128,7 +170,11 @@
     }
     
     .entity-header td {
-        padding: 14px 16px;
+        padding: 14px 10px;
+    }
+    
+    .entity-header td.entity-name-cell {
+        background: var(--nord5);
     }
     
     .entity-badge {
@@ -157,16 +203,21 @@
     
     /* Row types */
     .row-label {
-        padding-left: 32px !important;
+        padding-left: 24px !important;
         color: #718096;
         font-size: 12px;
     }
     
     .row-budget { background: #fafafa; }
+    .row-budget td.entity-name-cell { background: #fafafa; }
     .row-booked { background: white; }
+    .row-booked td.entity-name-cell { background: white; }
     .row-forecast { background: #f0f9ff; }
+    .row-forecast td.entity-name-cell { background: #f0f9ff; }
     .row-pipeline { background: white; }
+    .row-pipeline td.entity-name-cell { background: white; }
     .row-variance { background: #f7fafc; }
+    .row-variance td.entity-name-cell { background: #f7fafc; }
     
     /* Editable forecast cells */
     .forecast-cell {
@@ -175,10 +226,10 @@
     
     .forecast-input {
         width: 100%;
-        padding: 6px 8px;
+        padding: 4px 6px;
         border: 2px solid var(--nord8);
         border-radius: 4px;
-        font-size: 13px;
+        font-size: 12px;
         font-variant-numeric: tabular-nums;
         text-align: right;
         background: white;
@@ -199,6 +250,13 @@
     .forecast-input.saved {
         background: #d1fae5;
         border-color: var(--nord14);
+    }
+    
+    /* Past months - read only styling */
+    .forecast-input.past-month {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #64748b;
     }
     
     /* Override indicator */
@@ -238,7 +296,17 @@
     
     .totals-row td {
         border-bottom: none;
-        padding: 14px 16px;
+        padding: 14px 10px;
+    }
+    
+    .totals-row td.entity-name-cell {
+        background: var(--nord0);
+    }
+    
+    /* Total column styling */
+    .total-col {
+        background: rgba(46, 52, 64, 0.05);
+        font-weight: 600;
     }
     
     /* Actions */
@@ -323,6 +391,34 @@
         color: var(--nord0);
     }
     
+    /* Legend for active window */
+    .period-legend {
+        display: flex;
+        gap: 24px;
+        margin-bottom: 16px;
+        font-size: 12px;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .legend-swatch {
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+    }
+    
+    .legend-swatch.active {
+        background: var(--nord10);
+    }
+    
+    .legend-swatch.past {
+        background: #cbd5e1;
+    }
+    
     /* Responsive */
     @media (max-width: 1200px) {
         .summary-cards {
@@ -348,9 +444,13 @@
 <div class="planning-controls">
     <div class="control-group">
         <div>
-            <label>Planning Window</label>
+            <label>Planning Year</label>
+            <div class="value">{{ planning_year }}</div>
+        </div>
+        <div>
+            <label>Active Planning Window</label>
             <div class="value">
-                {{ periods[0].display }} – {{ periods[-1].display }}
+                {{ active_periods[0].display }} – {{ active_periods[-1].display }}
             </div>
         </div>
     </div>
@@ -362,6 +462,18 @@
         <button class="btn btn-secondary" onclick="exportCSV()">
             Export CSV
         </button>
+    </div>
+</div>
+
+<!-- Period Legend -->
+<div class="period-legend">
+    <div class="legend-item">
+        <div class="legend-swatch active"></div>
+        <span>Active Planning Window</span>
+    </div>
+    <div class="legend-item">
+        <div class="legend-swatch past"></div>
+        <span>Closed/Historical Months</span>
     </div>
 </div>
 
@@ -394,18 +506,20 @@
     <table class="planning-table" id="planningTable">
         <thead>
             <tr>
-                <th style="width: 200px;">AE / Metric</th>
-                {% for period in periods %}
-                <th class="number">{{ period.display }}</th>
+                <th class="entity-header-col">AE / Metric</th>
+                {% for period in all_periods %}
+                <th class="number month-header {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
+                    {{ period.display }}
+                </th>
                 {% endfor %}
-                <th class="number">Total</th>
+                <th class="number total-header">Total</th>
             </tr>
         </thead>
         <tbody>
             {% for ed in entity_data %}
             <!-- Entity Header -->
             <tr class="entity-header" data-entity="{{ ed.entity.entity_name }}">
-                <td colspan="{{ periods|length + 2 }}">
+                <td class="entity-name-cell" colspan="{{ all_periods|length + 2 }}">
                     {{ ed.entity.entity_name }}
                     <span class="entity-badge {{ ed.entity.entity_type.value|lower }}">
                         {{ ed.entity.entity_type.value }}
@@ -415,64 +529,80 @@
             
             <!-- Budget Row -->
             <tr class="row-budget">
-                <td class="row-label">Budget</td>
-                {% for row in ed.rows %}
-                <td class="number">${{ "{:,.0f}".format(row.budget.amount) }}</td>
+                <td class="row-label entity-name-cell">Budget</td>
+                {% for period in all_periods %}
+                {% set row = ed.rows_by_period.get(period.key) %}
+                <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
+                    ${{ "{:,.0f}".format(row.budget.amount if row else 0) }}
+                </td>
                 {% endfor %}
-                <td class="number">${{ "{:,.0f}".format(ed.total_budget.amount) }}</td>
+                <td class="number total-col">${{ "{:,.0f}".format(ed.total_budget.amount) }}</td>
             </tr>
             
             <!-- Booked Row -->
             <tr class="row-booked">
-                <td class="row-label">Booked</td>
-                {% for row in ed.rows %}
-                <td class="number">${{ "{:,.0f}".format(row.booked.amount) }}</td>
+                <td class="row-label entity-name-cell">Booked</td>
+                {% for period in all_periods %}
+                {% set row = ed.rows_by_period.get(period.key) %}
+                <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
+                    ${{ "{:,.0f}".format(row.booked.amount if row else 0) }}
+                </td>
                 {% endfor %}
-                <td class="number">${{ "{:,.0f}".format(ed.total_booked.amount) }}</td>
+                <td class="number total-col">${{ "{:,.0f}".format(ed.total_booked.amount) }}</td>
             </tr>
             
             <!-- Forecast Row (Editable) -->
             <tr class="row-forecast">
-                <td class="row-label">Forecast</td>
-                {% for row in ed.rows %}
-                <td class="number forecast-cell">
+                <td class="row-label entity-name-cell">Forecast</td>
+                {% for period in all_periods %}
+                {% set row = ed.rows_by_period.get(period.key) %}
+                {% set is_active = period in active_periods %}
+                {% set is_past = period in past_periods %}
+                <td class="number forecast-cell {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if is_active %}active-period{% endif %}">
                     <input type="text" 
-                           class="forecast-input {% if row.is_forecast_overridden %}modified{% endif %}"
+                           class="forecast-input {% if row and row.is_forecast_overridden %}modified{% endif %} {% if is_past %}past-month{% endif %}"
                            data-ae="{{ ed.entity.entity_name }}"
-                           data-year="{{ row.period.year }}"
-                           data-month="{{ row.period.month }}"
-                           data-original="{{ row.forecast.amount }}"
-                           value="{{ "{:,.0f}".format(row.forecast.amount) }}"
+                           data-year="{{ period.year }}"
+                           data-month="{{ period.month }}"
+                           data-original="{{ row.forecast.amount if row else 0 }}"
+                           data-is-past="{{ 'true' if is_past else 'false' }}"
+                           value="{{ "{:,.0f}".format(row.forecast.amount if row else 0) }}"
+                           {% if is_past %}readonly title="Past month - read only"{% endif %}
                            onchange="markModified(this)"
                            onkeydown="handleKeydown(event, this)">
-                    {% if row.is_forecast_overridden %}
+                    {% if row and row.is_forecast_overridden %}
                     <span class="override-indicator" title="Modified from budget"></span>
                     {% endif %}
                 </td>
                 {% endfor %}
-                <td class="number" id="total-forecast-{{ ed.entity.entity_name|replace(' ', '-') }}">
+                <td class="number total-col" id="total-forecast-{{ ed.entity.entity_name|replace(' ', '-') }}">
                     ${{ "{:,.0f}".format(ed.total_forecast.amount) }}
                 </td>
             </tr>
             
             <!-- Pipeline Row -->
             <tr class="row-pipeline">
-                <td class="row-label">Pipeline</td>
-                {% for row in ed.rows %}
-                <td class="number pipeline-value">${{ "{:,.0f}".format(row.pipeline.amount) }}</td>
+                <td class="row-label entity-name-cell">Pipeline</td>
+                {% for period in all_periods %}
+                {% set row = ed.rows_by_period.get(period.key) %}
+                <td class="number pipeline-value {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
+                    ${{ "{:,.0f}".format(row.pipeline.amount if row else 0) }}
+                </td>
                 {% endfor %}
-                <td class="number pipeline-value">${{ "{:,.0f}".format(ed.total_pipeline.amount) }}</td>
+                <td class="number total-col pipeline-value">${{ "{:,.0f}".format(ed.total_pipeline.amount) }}</td>
             </tr>
             
             <!-- Variance Row -->
             <tr class="row-variance">
-                <td class="row-label">vs Budget</td>
-                {% for row in ed.rows %}
-                <td class="number {% if row.variance_to_budget.amount >= 0 %}variance-positive{% else %}variance-negative{% endif %}">
-                    {{ row.variance_to_budget.formatted_with_sign }}
+                <td class="row-label entity-name-cell">vs Budget</td>
+                {% for period in all_periods %}
+                {% set row = ed.rows_by_period.get(period.key) %}
+                {% set variance = row.variance_to_budget.amount if row else 0 %}
+                <td class="number {% if variance >= 0 %}variance-positive{% else %}variance-negative{% endif %} {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
+                    {{ row.variance_to_budget.formatted_with_sign if row else '$0' }}
                 </td>
                 {% endfor %}
-                <td class="number {% if ed.total_variance.amount >= 0 %}variance-positive{% else %}variance-negative{% endif %}">
+                <td class="number total-col {% if ed.total_variance.amount >= 0 %}variance-positive{% else %}variance-negative{% endif %}">
                     {{ ed.total_variance.formatted_with_sign }}
                 </td>
             </tr>
@@ -480,11 +610,14 @@
             
             <!-- Company Totals -->
             <tr class="totals-row">
-                <td>TOTAL</td>
-                {% for p in company.periods %}
-                <td class="number">${{ "{:,.0f}".format(p.forecast.amount) }}</td>
+                <td class="entity-name-cell">TOTAL</td>
+                {% for period in all_periods %}
+                {% set p = company.periods_by_key.get(period.key) %}
+                <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %}">
+                    ${{ "{:,.0f}".format(p.forecast.amount if p else 0) }}
+                </td>
                 {% endfor %}
-                <td class="number">${{ "{:,.0f}".format(company.total_forecast.amount) }}</td>
+                <td class="number total-col">${{ "{:,.0f}".format(company.total_forecast.amount) }}</td>
             </tr>
         </tbody>
     </table>
@@ -513,7 +646,8 @@
     Pipeline = Forecast minus Booked. 
     Forecast defaults to Budget until adjusted.
     Yellow highlight indicates modified forecasts.
-    Click any Forecast cell to edit.
+    Blue highlighted columns are the active planning window.
+    Grey inputs are closed months (read-only).
 </div>
 
 {% endblock %}
@@ -545,6 +679,11 @@ function formatNumber(num) {
 }
 
 function markModified(input) {
+    // Don't allow changes to past months
+    if (input.dataset.isPast === 'true') {
+        return;
+    }
+    
     const key = getKey(input);
     const newValue = parseNumber(input.value);
     const original = originalValues.get(key);
@@ -571,12 +710,17 @@ function markModified(input) {
 }
 
 function handleKeydown(event, input) {
+    // Don't allow changes to past months
+    if (input.dataset.isPast === 'true') {
+        return;
+    }
+    
     if (event.key === 'Enter') {
         event.preventDefault();
         markModified(input);
         
-        // Move to next input
-        const inputs = Array.from(document.querySelectorAll('.forecast-input'));
+        // Move to next editable input
+        const inputs = Array.from(document.querySelectorAll('.forecast-input:not([readonly])'));
         const currentIndex = inputs.indexOf(input);
         if (currentIndex < inputs.length - 1) {
             inputs[currentIndex + 1].focus();
@@ -588,6 +732,8 @@ function handleKeydown(event, input) {
         input.classList.remove('modified');
         changes.delete(key);
         updateChangeCount();
+    } else if (event.key === 'Tab') {
+        // Allow natural tab behavior but skip readonly inputs
     }
 }
 
@@ -610,7 +756,6 @@ function updateChangeCount() {
 
 function recalculateTotals() {
     // Recalculate entity totals when forecast changes
-    // This is a simplified version - full implementation would update all derived values
     document.querySelectorAll('.entity-header').forEach(header => {
         const entityName = header.dataset.entity;
         const inputs = document.querySelectorAll(`.forecast-input[data-ae="${entityName}"]`);
@@ -621,7 +766,7 @@ function recalculateTotals() {
         
         const totalEl = document.getElementById(`total-forecast-${entityName.replace(/ /g, '-')}`);
         if (totalEl) {
-            totalEl.textContent = ' + formatNumber(total);
+            totalEl.textContent = '$' + formatNumber(total);
         }
     });
 }
@@ -714,10 +859,35 @@ function showStatus(message, type) {
 
 function exportCSV() {
     // Build CSV from current table state
-    const rows = [['AE', 'Metric', ...document.querySelectorAll('thead th').length]];
+    const table = document.getElementById('planningTable');
+    const rows = table.querySelectorAll('tr');
+    let csv = [];
     
-    // Simplified export - in production would build full CSV
-    alert('Export functionality - would download CSV of current planning data');
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('th, td');
+        const rowData = [];
+        cells.forEach(cell => {
+            let text = cell.textContent.trim();
+            // Handle inputs
+            const input = cell.querySelector('input');
+            if (input) {
+                text = input.value;
+            }
+            // Escape quotes and wrap in quotes if contains comma
+            if (text.includes(',') || text.includes('"')) {
+                text = '"' + text.replace(/"/g, '""') + '"';
+            }
+            rowData.push(text);
+        });
+        csv.push(rowData.join(','));
+    });
+    
+    const csvContent = csv.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `planning_session_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
 }
 
 // Warn before leaving with unsaved changes
