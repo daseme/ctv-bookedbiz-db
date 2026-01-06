@@ -302,13 +302,66 @@ class PlanningRepository(BaseService):
             
             row = cursor.fetchone()
             return Decimal(str(row["booked"]))
+# =========================================================================
+    # Booked Revenue (from spots) - Updated for WorldLink handling
+    # =========================================================================
+
+    def get_booked_revenue(
+        self, 
+        ae_name: str, 
+        year: int, 
+        month: int
+    ) -> Decimal:
+        """Get booked revenue for an AE/year/month from spots.
+        
+        Special handling:
+        - WorldLink: Match on bill_code LIKE 'WorldLink:%'
+        - House: Exclude WorldLink bill_codes (they belong to WorldLink entity)
+        """
+        with self.safe_connection() as conn:
+            period = PlanningPeriod(year=year, month=month)
+            
+            if ae_name == "WorldLink":
+                # WorldLink revenue is identified by bill_code prefix, not sales_person
+                cursor = conn.execute("""
+                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE bill_code LIKE 'WorldLink:%'
+                      AND broadcast_month = ?
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                """, (period.broadcast_month,))
+            elif ae_name == "House":
+                # House revenue excludes WorldLink bill_codes
+                cursor = conn.execute("""
+                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE sales_person = ?
+                      AND broadcast_month = ?
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                      AND bill_code NOT LIKE 'WorldLink:%'
+                """, (ae_name, period.broadcast_month))
+            else:
+                # Standard AE lookup by sales_person
+                cursor = conn.execute("""
+                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE sales_person = ?
+                      AND broadcast_month = ?
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                """, (ae_name, period.broadcast_month))
+            
+            row = cursor.fetchone()
+            return Decimal(str(row["booked"]))
 
     def get_booked_revenue_for_periods(
         self, 
         ae_name: str, 
         periods: List[PlanningPeriod]
     ) -> Dict[PlanningPeriod, Decimal]:
-        """Get booked revenue for multiple periods."""
+        """Get booked revenue for multiple periods.
+        
+        Special handling for WorldLink and House entities.
+        """
         if not periods:
             return {}
         
@@ -316,14 +369,34 @@ class PlanningRepository(BaseService):
             broadcast_months = [p.broadcast_month for p in periods]
             placeholders = ",".join(["?" for _ in broadcast_months])
             
-            cursor = conn.execute(f"""
-                SELECT broadcast_month, COALESCE(SUM(gross_rate), 0) AS booked
-                FROM spots
-                WHERE sales_person = ?
-                  AND broadcast_month IN ({placeholders})
-                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                GROUP BY broadcast_month
-            """, [ae_name] + broadcast_months)
+            if ae_name == "WorldLink":
+                cursor = conn.execute(f"""
+                    SELECT broadcast_month, COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE bill_code LIKE 'WorldLink:%'
+                      AND broadcast_month IN ({placeholders})
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                    GROUP BY broadcast_month
+                """, broadcast_months)
+            elif ae_name == "House":
+                cursor = conn.execute(f"""
+                    SELECT broadcast_month, COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE sales_person = ?
+                      AND broadcast_month IN ({placeholders})
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                      AND bill_code NOT LIKE 'WorldLink:%'
+                    GROUP BY broadcast_month
+                """, [ae_name] + broadcast_months)
+            else:
+                cursor = conn.execute(f"""
+                    SELECT broadcast_month, COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE sales_person = ?
+                      AND broadcast_month IN ({placeholders})
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                    GROUP BY broadcast_month
+                """, [ae_name] + broadcast_months)
             
             result = {}
             for row in cursor.fetchall():
@@ -341,7 +414,13 @@ class PlanningRepository(BaseService):
         self, 
         periods: List[PlanningPeriod]
     ) -> Dict[str, Dict[PlanningPeriod, Decimal]]:
-        """Get booked revenue for all AEs across periods."""
+        """Get booked revenue for all AEs across periods.
+        
+        This method handles the special cases:
+        - WorldLink: Aggregated from bill_code LIKE 'WorldLink:%'
+        - House: Excludes WorldLink bill_codes
+        - All others: Standard sales_person matching
+        """
         if not periods:
             return {}
         
@@ -349,6 +428,9 @@ class PlanningRepository(BaseService):
             broadcast_months = [p.broadcast_month for p in periods]
             placeholders = ",".join(["?" for _ in broadcast_months])
             
+            result: Dict[str, Dict[PlanningPeriod, Decimal]] = {}
+            
+            # 1. Get standard AE revenue (excluding House for now)
             cursor = conn.execute(f"""
                 SELECT 
                     sales_person,
@@ -358,10 +440,10 @@ class PlanningRepository(BaseService):
                 WHERE broadcast_month IN ({placeholders})
                   AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                   AND sales_person IS NOT NULL
+                  AND sales_person != 'House'
                 GROUP BY sales_person, broadcast_month
             """, broadcast_months)
             
-            result: Dict[str, Dict[PlanningPeriod, Decimal]] = {}
             for row in cursor.fetchall():
                 ae_name = row["sales_person"]
                 period = PlanningPeriod.from_broadcast_month(row["broadcast_month"])
@@ -369,6 +451,43 @@ class PlanningRepository(BaseService):
                 if ae_name not in result:
                     result[ae_name] = {}
                 result[ae_name][period] = Decimal(str(row["booked"]))
+            
+            # 2. Get House revenue (excluding WorldLink bill_codes)
+            cursor = conn.execute(f"""
+                SELECT 
+                    broadcast_month, 
+                    COALESCE(SUM(gross_rate), 0) AS booked
+                FROM spots
+                WHERE broadcast_month IN ({placeholders})
+                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                  AND sales_person = 'House'
+                  AND bill_code NOT LIKE 'WorldLink:%'
+                GROUP BY broadcast_month
+            """, broadcast_months)
+            
+            for row in cursor.fetchall():
+                period = PlanningPeriod.from_broadcast_month(row["broadcast_month"])
+                if "House" not in result:
+                    result["House"] = {}
+                result["House"][period] = Decimal(str(row["booked"]))
+            
+            # 3. Get WorldLink revenue (from bill_code prefix)
+            cursor = conn.execute(f"""
+                SELECT 
+                    broadcast_month, 
+                    COALESCE(SUM(gross_rate), 0) AS booked
+                FROM spots
+                WHERE broadcast_month IN ({placeholders})
+                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                  AND bill_code LIKE 'WorldLink:%'
+                GROUP BY broadcast_month
+            """, broadcast_months)
+            
+            for row in cursor.fetchall():
+                period = PlanningPeriod.from_broadcast_month(row["broadcast_month"])
+                if "WorldLink" not in result:
+                    result["WorldLink"] = {}
+                result["WorldLink"][period] = Decimal(str(row["booked"]))
             
             return result
 

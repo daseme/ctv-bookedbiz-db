@@ -3,7 +3,6 @@
 <head>
     <title>CTV Business Intelligence Suite</title>
     <style>
-        /* Nord Color Palette */
         :root {
             --nord0: #2e3440;
             --nord1: #3b4252;
@@ -23,11 +22,7 @@
             --nord15: #b48ead;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body { 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -86,20 +81,14 @@
         .header::before {
             content: "";
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: 
                 radial-gradient(circle at 20% 30%, rgba(143, 188, 187, 0.1) 0%, transparent 50%),
                 radial-gradient(circle at 80% 70%, rgba(129, 161, 193, 0.1) 0%, transparent 50%);
             pointer-events: none;
         }
 
-        .header-content {
-            position: relative;
-            z-index: 1;
-        }
+        .header-content { position: relative; z-index: 1; }
 
         .header h1 {
             font-size: 48px;
@@ -116,9 +105,7 @@
             font-weight: 300;
         }
 
-        .content {
-            padding: 60px 40px;
-        }
+        .content { padding: 60px 40px; }
 
         .category-header {
             font-size: 32px;
@@ -129,9 +116,7 @@
             position: relative;
         }
 
-        .category-header:first-of-type {
-            margin-top: 0;
-        }
+        .category-header:first-of-type { margin-top: 0; }
 
         .category-header::after {
             content: "";
@@ -166,9 +151,7 @@
         .report-card::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
+            top: 0; left: 0; right: 0;
             height: 6px;
             background: linear-gradient(90deg, var(--nord8), var(--nord9), var(--nord10));
             opacity: 0;
@@ -181,13 +164,9 @@
             border-color: var(--nord8);
         }
 
-        .report-card:hover::before {
-            opacity: 1;
-        }
+        .report-card:hover::before { opacity: 1; }
 
-        .card-content {
-            padding: 36px;
-        }
+        .card-content { padding: 36px; }
 
         .card-header {
             display: flex;
@@ -252,11 +231,8 @@
             transition: transform 0.3s ease;
         }
 
-        .report-card a:hover::after {
-            transform: translateX(4px);
-        }
+        .report-card a:hover::after { transform: translateX(4px); }
 
-        /* Special card variants */
         .budget-card {
             background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
             border-color: var(--nord14);
@@ -276,117 +252,92 @@
             box-shadow: 0 8px 24px rgba(163, 190, 140, 0.4);
         }
 
-        .system-card {
-            background: linear-gradient(135deg, #fef3c7 0%, #fefce8 100%);
-            border-color: var(--nord13);
-        }
-
-        .system-card .card-icon {
-            background: linear-gradient(135deg, var(--nord13), var(--nord12));
-        }
-
-        .system-card a {
-            background: linear-gradient(135deg, var(--nord13) 0%, var(--nord12) 100%);
-            box-shadow: 0 4px 12px rgba(235, 203, 139, 0.3);
-            color: var(--nord0);
-        }
-
-        .system-card a:hover {
-            background: linear-gradient(135deg, var(--nord12) 0%, var(--nord13) 100%);
-            box-shadow: 0 8px 24px rgba(235, 203, 139, 0.4);
-        }
-
-        .pipeline-card {
+        .data-card {
             background: linear-gradient(135deg, #f3e8ff 0%, #faf5ff 100%);
             border-color: var(--nord15);
         }
 
-        .pipeline-card .card-icon {
+        .data-card .card-icon {
             background: linear-gradient(135deg, var(--nord15), var(--nord10));
         }
 
-        .pipeline-card a {
+        .data-card a {
             background: linear-gradient(135deg, var(--nord15) 0%, var(--nord10) 100%);
             box-shadow: 0 4px 12px rgba(180, 142, 173, 0.3);
         }
 
-        .pipeline-card a:hover {
+        .data-card a:hover {
             background: linear-gradient(135deg, var(--nord10) 0%, var(--nord15) 100%);
             box-shadow: 0 8px 24px rgba(180, 142, 173, 0.4);
         }
 
-        /* Responsive Design */
+        /* Inactive section styling */
+        .inactive-section {
+            margin-top: 80px;
+            padding-top: 60px;
+            border-top: 2px dashed var(--nord4);
+        }
+
+        .inactive-section .category-header {
+            color: var(--nord3);
+        }
+
+        .inactive-section .category-header::after {
+            background: linear-gradient(90deg, var(--nord4), var(--nord3));
+        }
+
+        .inactive-card {
+            opacity: 0.6;
+            filter: grayscale(30%);
+        }
+
+        .inactive-card:hover {
+            opacity: 0.8;
+            transform: translateY(-4px);
+        }
+
+        .inactive-card .card-icon {
+            background: linear-gradient(135deg, var(--nord3), var(--nord2));
+        }
+
+        .inactive-card a {
+            background: linear-gradient(135deg, var(--nord3) 0%, var(--nord2) 100%);
+            box-shadow: 0 4px 12px rgba(76, 86, 106, 0.3);
+        }
+
+        .inactive-badge {
+            display: inline-block;
+            background: var(--nord3);
+            color: var(--nord6);
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-left: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            vertical-align: middle;
+        }
+
         @media (max-width: 768px) {
-            .header {
-                padding: 60px 20px;
-            }
-            
-            .header-logo {
-                top: 20px;
-                right: 20px;
-                width: 60px;
-                height: 60px;
-            }
-            
-            .header h1 {
-                font-size: 36px;
-            }
-            
-            .header p {
-                font-size: 18px;
-            }
-            
-            .content {
-                padding: 40px 20px;
-            }
-            
-            .category-header {
-                font-size: 28px;
-                margin: 40px 0 30px 0;
-            }
-            
-            .report-grid {
-                grid-template-columns: 1fr;
-                gap: 24px;
-            }
-            
-            .card-content {
-                padding: 28px;
-            }
-            
-            .card-header {
-                flex-direction: column;
-                text-align: center;
-                gap: 12px;
-            }
+            .header { padding: 60px 20px; }
+            .header-logo { top: 20px; right: 20px; width: 60px; height: 60px; }
+            .header h1 { font-size: 36px; }
+            .header p { font-size: 18px; }
+            .content { padding: 40px 20px; }
+            .category-header { font-size: 28px; margin: 40px 0 30px 0; }
+            .report-grid { grid-template-columns: 1fr; gap: 24px; }
+            .card-content { padding: 28px; }
+            .card-header { flex-direction: column; text-align: center; gap: 12px; }
         }
 
         @media (max-width: 480px) {
-            .header-logo {
-                width: 50px;
-                height: 50px;
-                top: 16px;
-                right: 16px;
-            }
-            
-            .header h1 {
-                font-size: 32px;
-            }
-            
-            .report-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .card-content {
-                padding: 24px;
-            }
+            .header-logo { width: 50px; height: 50px; top: 16px; right: 16px; }
+            .header h1 { font-size: 32px; }
+            .report-grid { grid-template-columns: 1fr; }
+            .card-content { padding: 24px; }
         }
 
-        /* Loading animation for cards */
-        .report-card {
-            animation: fadeInUp 0.6s ease-out;
-        }
-
+        .report-card { animation: fadeInUp 0.6s ease-out; }
         .report-card:nth-child(2) { animation-delay: 0.1s; }
         .report-card:nth-child(3) { animation-delay: 0.2s; }
         .report-card:nth-child(4) { animation-delay: 0.3s; }
@@ -394,29 +345,8 @@
         .report-card:nth-child(6) { animation-delay: 0.5s; }
 
         @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* Subtle background pattern */
-        .content::before {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-image: 
-                radial-gradient(circle at 25% 25%, rgba(136, 192, 208, 0.03) 0%, transparent 50%),
-                radial-gradient(circle at 75% 75%, rgba(129, 161, 193, 0.03) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: -1;
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
@@ -449,33 +379,11 @@
                 <div class="report-card">
                     <div class="card-content">
                         <div class="card-header">
-                            <div class="card-icon">📈</div>
-                            <h3>Monthly Revenue Summary</h3>
+                            <div class="card-icon">👤</div>
+                            <h3>AE Performance Dashboard</h3>
                         </div>
-                        <p>High-level monthly revenue overview showing trends, patterns, and key performance indicators across all business units.</p>
-                        <a href="/reports/report1">View Report</a>
-                    </div>
-                </div>
-                
-                <div class="report-card">
-                    <div class="card-content">
-                        <div class="card-header">
-                            <div class="card-icon">🎯</div>
-                            <h3>Management Expectation Tracking</h3>
-                        </div>
-                        <p>Track actual performance against management expectations with detailed variance analysis and actionable insights.</p>
-                        <a href="/reports/report2">View Analysis</a>
-                    </div>
-                </div>
-                
-                <div class="report-card">
-                    <div class="card-content">
-                        <div class="card-header">
-                            <div class="card-icon">📊</div>
-                            <h3>Quarterly Performance Story</h3>
-                        </div>
-                        <p>Comprehensive quarterly performance analysis with sector breakdowns, AE performance metrics, and strategic insights.</p>
-                        <a href="/reports/report3">View Performance</a>
+                        <p>Track account executive performance metrics, individual revenue contributions, and sales team analytics with detailed breakdowns.</p>
+                        <a href="/reports/ae-dashboard">View Dashboard</a>
                     </div>
                 </div>
                 
@@ -483,21 +391,24 @@
                     <div class="card-content">
                         <div class="card-header">
                             <div class="card-icon">🌐</div>
-                            <h3>Sector Analysis Report</h3>
+                            <h3>Customer Sector Manager</h3>
                         </div>
-                        <p>Enhanced quarterly performance with detailed sector analysis, market segmentation, and competitive positioning insights.</p>
-                        <a href="/reports/report4">View Sectors</a>
+                        <p>Manage and analyze customer sector assignments with detailed segmentation, market positioning, and sector-level performance insights.</p>
+                        <a href="/reports/customer-sector-manager">Manage Sectors</a>
                     </div>
                 </div>
-                
-                <div class="report-card pipeline-card">
+            </div>
+            
+            <div class="category-header">🔧 Data Management</div>
+            <div class="report-grid">
+                <div class="report-card data-card">
                     <div class="card-content">
                         <div class="card-header">
-                            <div class="card-icon">🔮</div>
-                            <h3>Pipeline Revenue Management</h3>
+                            <div class="card-icon">🔗</div>
+                            <h3>Customer Normalization</h3>
                         </div>
-                        <p>Advanced pipeline management with revenue forecasting, opportunity tracking, and predictive analytics for future growth.</p>
-                        <a href="/pipeline/revenue">Manage Pipeline</a>
+                        <p>Standardize and normalize customer names across the system. Manage aliases, resolve duplicates, and ensure data consistency.</p>
+                        <a href="/customer-normalization">Manage Customers</a>
                     </div>
                 </div>
             </div>
@@ -507,36 +418,94 @@
                 <div class="report-card budget-card">
                     <div class="card-content">
                         <div class="card-header">
+                            <div class="card-icon">📋</div>
+                            <h3>Planning Hub</h3>
+                        </div>
+                        <p>Central planning dashboard for forecasting, goal setting, and strategic business planning across all departments.</p>
+                        <a href="/planning/">Open Planning</a>
+                    </div>
+                </div>
+                
+                <div class="report-card budget-card">
+                    <div class="card-content">
+                        <div class="card-header">
                             <div class="card-icon">❄️</div>
                             <h3>Budget Management System</h3>
                         </div>
-                        <p>Comprehensive budget planning and management with version control, AE-level budgeting, quarterly tracking, and variance analysis with Nordic design excellence.</p>
-                        <a href="/budget/">Manage Budgets</a>
+                        <p>Comprehensive budget planning and management with version control, AE-level budgeting, quarterly tracking, and variance analysis.</p>
+                        <a href="/planning/budget">Manage Budgets</a>
                     </div>
                 </div>
             </div>
             
-            <div class="category-header">⚙️ System Administration</div>
-            <div class="report-grid">
-                <div class="report-card system-card">
-                    <div class="card-content">
-                        <div class="card-header">
-                            <div class="card-icon">🏥</div>
-                            <h3>System Health Check</h3>
+            <!-- Inactive/Future Reports Section -->
+            <div class="inactive-section">
+                <div class="category-header">📦 Planned Reports <span class="inactive-badge">Coming Soon</span></div>
+                <div class="report-grid">
+                    <div class="report-card inactive-card">
+                        <div class="card-content">
+                            <div class="card-header">
+                                <div class="card-icon">📈</div>
+                                <h3>Monthly Revenue Summary</h3>
+                            </div>
+                            <p>High-level monthly revenue overview showing trends, patterns, and key performance indicators across all business units.</p>
+                            <a href="/reports/report1">View Report</a>
                         </div>
-                        <p>Monitor system health, service status, database connectivity, and overall application performance metrics.</p>
-                        <a href="/health">Check Health</a>
                     </div>
-                </div>
-                
-                <div class="report-card system-card">
-                    <div class="card-content">
-                        <div class="card-header">
-                            <div class="card-icon">ℹ️</div>
-                            <h3>Application Information</h3>
+                    
+                    <div class="report-card inactive-card">
+                        <div class="card-content">
+                            <div class="card-header">
+                                <div class="card-icon">🎯</div>
+                                <h3>Management Expectation Tracking</h3>
+                            </div>
+                            <p>Track actual performance against management expectations with detailed variance analysis and actionable insights.</p>
+                            <a href="/reports/report2">View Analysis</a>
                         </div>
-                        <p>View application version, environment details, feature availability, and technical system information.</p>
-                        <a href="/info">View Info</a>
+                    </div>
+                    
+                    <div class="report-card inactive-card">
+                        <div class="card-content">
+                            <div class="card-header">
+                                <div class="card-icon">📊</div>
+                                <h3>Quarterly Performance Story</h3>
+                            </div>
+                            <p>Comprehensive quarterly performance analysis with sector breakdowns, AE performance metrics, and strategic insights.</p>
+                            <a href="/reports/report3">View Performance</a>
+                        </div>
+                    </div>
+                    
+                    <div class="report-card inactive-card">
+                        <div class="card-content">
+                            <div class="card-header">
+                                <div class="card-icon">🌐</div>
+                            <h3>Sector Analysis Report</h3>
+                            </div>
+                            <p>Enhanced quarterly performance with detailed sector analysis, market segmentation, and competitive positioning insights.</p>
+                            <a href="/reports/report4">View Sectors</a>
+                        </div>
+                    </div>
+                    
+                    <div class="report-card inactive-card">
+                        <div class="card-content">
+                            <div class="card-header">
+                                <div class="card-icon">🔮</div>
+                                <h3>Pipeline Revenue Management</h3>
+                            </div>
+                            <p>Advanced pipeline management with revenue forecasting, opportunity tracking, and predictive analytics for future growth.</p>
+                            <a href="/pipeline/revenue">Manage Pipeline</a>
+                        </div>
+                    </div>
+                    
+                    <div class="report-card inactive-card">
+                        <div class="card-content">
+                            <div class="card-header">
+                                <div class="card-icon">🏥</div>
+                                <h3>System Health Check</h3>
+                            </div>
+                            <p>Monitor system health, service status, database connectivity, and overall application performance metrics.</p>
+                            <a href="/health">Check Health</a>
+                        </div>
                     </div>
                 </div>
             </div>
