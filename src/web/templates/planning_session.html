@@ -1,0 +1,731 @@
+{% extends "base.html" %}
+
+{% block title %}Planning Session - CTV Booked Biz{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<a href="/planning">Planning</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Planning Session</span>
+{% endblock %}
+
+{% block header_title %}Planning Session{% endblock %}
+{% block header_subtitle %}Forecast Management and Pipeline Tracking{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* Planning-specific styles */
+    .planning-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 24px;
+        background: var(--nord6);
+        border-radius: 8px;
+        margin-bottom: 24px;
+    }
+    
+    .control-group {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    
+    .control-group label {
+        font-size: 12px;
+        color: #718096;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .control-group .value {
+        font-weight: 600;
+        color: var(--nord0);
+    }
+    
+    /* Summary cards */
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 16px;
+        margin-bottom: 32px;
+    }
+    
+    .summary-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border-left: 4px solid var(--nord8);
+    }
+    
+    .summary-card.variance-positive {
+        border-left-color: var(--nord14);
+    }
+    
+    .summary-card.variance-negative {
+        border-left-color: var(--nord11);
+    }
+    
+    .summary-card .value {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--nord0);
+        margin-bottom: 4px;
+    }
+    
+    .summary-card .label {
+        font-size: 11px;
+        color: #718096;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Planning table */
+    .planning-table-container {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .planning-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    
+    .planning-table th {
+        background: var(--nord0);
+        color: var(--nord6);
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 500;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .planning-table th.number {
+        text-align: right;
+    }
+    
+    .planning-table td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .planning-table td.number {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    /* Entity group styling */
+    .entity-header {
+        background: var(--nord5);
+        font-weight: 600;
+    }
+    
+    .entity-header td {
+        padding: 14px 16px;
+    }
+    
+    .entity-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+    
+    .entity-badge.ae {
+        background: var(--nord8);
+        color: white;
+    }
+    
+    .entity-badge.house {
+        background: var(--nord14);
+        color: white;
+    }
+    
+    .entity-badge.agency {
+        background: var(--nord15);
+        color: white;
+    }
+    
+    /* Row types */
+    .row-label {
+        padding-left: 32px !important;
+        color: #718096;
+        font-size: 12px;
+    }
+    
+    .row-budget { background: #fafafa; }
+    .row-booked { background: white; }
+    .row-forecast { background: #f0f9ff; }
+    .row-pipeline { background: white; }
+    .row-variance { background: #f7fafc; }
+    
+    /* Editable forecast cells */
+    .forecast-cell {
+        position: relative;
+    }
+    
+    .forecast-input {
+        width: 100%;
+        padding: 6px 8px;
+        border: 2px solid var(--nord8);
+        border-radius: 4px;
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        background: white;
+        transition: all 0.15s;
+    }
+    
+    .forecast-input:focus {
+        outline: none;
+        border-color: var(--nord10);
+        box-shadow: 0 0 0 3px rgba(136, 192, 208, 0.3);
+    }
+    
+    .forecast-input.modified {
+        background: #fef3c7;
+        border-color: var(--nord13);
+    }
+    
+    .forecast-input.saved {
+        background: #d1fae5;
+        border-color: var(--nord14);
+    }
+    
+    /* Override indicator */
+    .override-indicator {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 6px;
+        height: 6px;
+        background: var(--nord13);
+        border-radius: 50%;
+    }
+    
+    /* Variance styling */
+    .variance-positive {
+        color: var(--nord14);
+        font-weight: 600;
+    }
+    
+    .variance-negative {
+        color: var(--nord11);
+        font-weight: 600;
+    }
+    
+    /* Pipeline highlight */
+    .pipeline-value {
+        font-weight: 600;
+        color: var(--nord10);
+    }
+    
+    /* Totals row */
+    .totals-row {
+        background: var(--nord0) !important;
+        color: var(--nord6);
+        font-weight: 600;
+    }
+    
+    .totals-row td {
+        border-bottom: none;
+        padding: 14px 16px;
+    }
+    
+    /* Actions */
+    .action-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 24px;
+        background: var(--nord6);
+        border-top: 1px solid #e2e8f0;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.15s;
+        border: none;
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, var(--nord8) 0%, var(--nord7) 100%);
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(136, 192, 208, 0.4);
+    }
+    
+    .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .btn-secondary {
+        background: white;
+        color: var(--nord0);
+        border: 1px solid #e2e8f0;
+    }
+    
+    .btn-secondary:hover {
+        background: var(--nord5);
+    }
+    
+    /* Status messages */
+    .status-message {
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 13px;
+        display: none;
+    }
+    
+    .status-message.visible {
+        display: block;
+    }
+    
+    .status-message.success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+    
+    .status-message.error {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+    
+    /* Data notes */
+    .data-notes {
+        margin-top: 24px;
+        padding: 16px;
+        background: #f7fafc;
+        border-radius: 8px;
+        font-size: 12px;
+        color: #718096;
+    }
+    
+    .data-notes strong {
+        color: var(--nord0);
+    }
+    
+    /* Responsive */
+    @media (max-width: 1200px) {
+        .summary-cards {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .summary-cards {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .planning-controls {
+            flex-direction: column;
+            gap: 16px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Planning Controls -->
+<div class="planning-controls">
+    <div class="control-group">
+        <div>
+            <label>Planning Window</label>
+            <div class="value">
+                {{ periods[0].display }} – {{ periods[-1].display }}
+            </div>
+        </div>
+    </div>
+    <div class="control-group">
+        <div>
+            <label>Session Date</label>
+            <div class="value">{{ current_date }}</div>
+        </div>
+        <button class="btn btn-secondary" onclick="exportCSV()">
+            Export CSV
+        </button>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="summary-cards">
+    <div class="summary-card">
+        <div class="value">${{ "{:,.0f}".format(company.total_budget.amount) }}</div>
+        <div class="label">Total Budget</div>
+    </div>
+    <div class="summary-card">
+        <div class="value">${{ "{:,.0f}".format(company.total_booked.amount) }}</div>
+        <div class="label">Total Booked</div>
+    </div>
+    <div class="summary-card">
+        <div class="value">${{ "{:,.0f}".format(company.total_forecast.amount) }}</div>
+        <div class="label">Total Forecast</div>
+    </div>
+    <div class="summary-card">
+        <div class="value">${{ "{:,.0f}".format(company.total_pipeline.amount) }}</div>
+        <div class="label">Total Pipeline</div>
+    </div>
+    <div class="summary-card {% if company.total_variance.amount >= 0 %}variance-positive{% else %}variance-negative{% endif %}">
+        <div class="value">{{ company.total_variance.formatted_with_sign }}</div>
+        <div class="label">vs Budget</div>
+    </div>
+</div>
+
+<!-- Planning Table -->
+<div class="planning-table-container">
+    <table class="planning-table" id="planningTable">
+        <thead>
+            <tr>
+                <th style="width: 200px;">AE / Metric</th>
+                {% for period in periods %}
+                <th class="number">{{ period.display }}</th>
+                {% endfor %}
+                <th class="number">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ed in entity_data %}
+            <!-- Entity Header -->
+            <tr class="entity-header" data-entity="{{ ed.entity.entity_name }}">
+                <td colspan="{{ periods|length + 2 }}">
+                    {{ ed.entity.entity_name }}
+                    <span class="entity-badge {{ ed.entity.entity_type.value|lower }}">
+                        {{ ed.entity.entity_type.value }}
+                    </span>
+                </td>
+            </tr>
+            
+            <!-- Budget Row -->
+            <tr class="row-budget">
+                <td class="row-label">Budget</td>
+                {% for row in ed.rows %}
+                <td class="number">${{ "{:,.0f}".format(row.budget.amount) }}</td>
+                {% endfor %}
+                <td class="number">${{ "{:,.0f}".format(ed.total_budget.amount) }}</td>
+            </tr>
+            
+            <!-- Booked Row -->
+            <tr class="row-booked">
+                <td class="row-label">Booked</td>
+                {% for row in ed.rows %}
+                <td class="number">${{ "{:,.0f}".format(row.booked.amount) }}</td>
+                {% endfor %}
+                <td class="number">${{ "{:,.0f}".format(ed.total_booked.amount) }}</td>
+            </tr>
+            
+            <!-- Forecast Row (Editable) -->
+            <tr class="row-forecast">
+                <td class="row-label">Forecast</td>
+                {% for row in ed.rows %}
+                <td class="number forecast-cell">
+                    <input type="text" 
+                           class="forecast-input {% if row.is_forecast_overridden %}modified{% endif %}"
+                           data-ae="{{ ed.entity.entity_name }}"
+                           data-year="{{ row.period.year }}"
+                           data-month="{{ row.period.month }}"
+                           data-original="{{ row.forecast.amount }}"
+                           value="{{ "{:,.0f}".format(row.forecast.amount) }}"
+                           onchange="markModified(this)"
+                           onkeydown="handleKeydown(event, this)">
+                    {% if row.is_forecast_overridden %}
+                    <span class="override-indicator" title="Modified from budget"></span>
+                    {% endif %}
+                </td>
+                {% endfor %}
+                <td class="number" id="total-forecast-{{ ed.entity.entity_name|replace(' ', '-') }}">
+                    ${{ "{:,.0f}".format(ed.total_forecast.amount) }}
+                </td>
+            </tr>
+            
+            <!-- Pipeline Row -->
+            <tr class="row-pipeline">
+                <td class="row-label">Pipeline</td>
+                {% for row in ed.rows %}
+                <td class="number pipeline-value">${{ "{:,.0f}".format(row.pipeline.amount) }}</td>
+                {% endfor %}
+                <td class="number pipeline-value">${{ "{:,.0f}".format(ed.total_pipeline.amount) }}</td>
+            </tr>
+            
+            <!-- Variance Row -->
+            <tr class="row-variance">
+                <td class="row-label">vs Budget</td>
+                {% for row in ed.rows %}
+                <td class="number {% if row.variance_to_budget.amount >= 0 %}variance-positive{% else %}variance-negative{% endif %}">
+                    {{ row.variance_to_budget.formatted_with_sign }}
+                </td>
+                {% endfor %}
+                <td class="number {% if ed.total_variance.amount >= 0 %}variance-positive{% else %}variance-negative{% endif %}">
+                    {{ ed.total_variance.formatted_with_sign }}
+                </td>
+            </tr>
+            {% endfor %}
+            
+            <!-- Company Totals -->
+            <tr class="totals-row">
+                <td>TOTAL</td>
+                {% for p in company.periods %}
+                <td class="number">${{ "{:,.0f}".format(p.forecast.amount) }}</td>
+                {% endfor %}
+                <td class="number">${{ "{:,.0f}".format(company.total_forecast.amount) }}</td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <!-- Action Bar -->
+    <div class="action-bar">
+        <div>
+            <span class="status-message" id="statusMessage"></span>
+        </div>
+        <div class="control-group">
+            <span id="changeCount" style="color: #718096; font-size: 13px;"></span>
+            <button class="btn btn-secondary" onclick="resetChanges()" id="resetBtn" disabled>
+                Reset
+            </button>
+            <button class="btn btn-primary" onclick="saveChanges()" id="saveBtn" disabled>
+                Save All Changes
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Data Notes -->
+<div class="data-notes">
+    <strong>Data Notes:</strong> 
+    Booked = gross_rate from spots table. 
+    Pipeline = Forecast minus Booked. 
+    Forecast defaults to Budget until adjusted.
+    Yellow highlight indicates modified forecasts.
+    Click any Forecast cell to edit.
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Track changes
+const changes = new Map();
+const originalValues = new Map();
+
+// Initialize original values
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.forecast-input').forEach(input => {
+        const key = getKey(input);
+        originalValues.set(key, parseNumber(input.value));
+    });
+});
+
+function getKey(input) {
+    return `${input.dataset.ae}-${input.dataset.year}-${input.dataset.month}`;
+}
+
+function parseNumber(str) {
+    return parseFloat(str.replace(/[$,]/g, '')) || 0;
+}
+
+function formatNumber(num) {
+    return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
+function markModified(input) {
+    const key = getKey(input);
+    const newValue = parseNumber(input.value);
+    const original = originalValues.get(key);
+    
+    // Format the display
+    input.value = formatNumber(newValue);
+    
+    if (newValue !== original) {
+        input.classList.add('modified');
+        input.classList.remove('saved');
+        changes.set(key, {
+            ae_name: input.dataset.ae,
+            year: parseInt(input.dataset.year),
+            month: parseInt(input.dataset.month),
+            amount: newValue
+        });
+    } else {
+        input.classList.remove('modified');
+        changes.delete(key);
+    }
+    
+    updateChangeCount();
+    recalculateTotals();
+}
+
+function handleKeydown(event, input) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        markModified(input);
+        
+        // Move to next input
+        const inputs = Array.from(document.querySelectorAll('.forecast-input'));
+        const currentIndex = inputs.indexOf(input);
+        if (currentIndex < inputs.length - 1) {
+            inputs[currentIndex + 1].focus();
+            inputs[currentIndex + 1].select();
+        }
+    } else if (event.key === 'Escape') {
+        const key = getKey(input);
+        input.value = formatNumber(originalValues.get(key));
+        input.classList.remove('modified');
+        changes.delete(key);
+        updateChangeCount();
+    }
+}
+
+function updateChangeCount() {
+    const count = changes.size;
+    const countEl = document.getElementById('changeCount');
+    const saveBtn = document.getElementById('saveBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    
+    if (count > 0) {
+        countEl.textContent = `${count} unsaved change${count > 1 ? 's' : ''}`;
+        saveBtn.disabled = false;
+        resetBtn.disabled = false;
+    } else {
+        countEl.textContent = '';
+        saveBtn.disabled = true;
+        resetBtn.disabled = true;
+    }
+}
+
+function recalculateTotals() {
+    // Recalculate entity totals when forecast changes
+    // This is a simplified version - full implementation would update all derived values
+    document.querySelectorAll('.entity-header').forEach(header => {
+        const entityName = header.dataset.entity;
+        const inputs = document.querySelectorAll(`.forecast-input[data-ae="${entityName}"]`);
+        let total = 0;
+        inputs.forEach(input => {
+            total += parseNumber(input.value);
+        });
+        
+        const totalEl = document.getElementById(`total-forecast-${entityName.replace(/ /g, '-')}`);
+        if (totalEl) {
+            totalEl.textContent = ' + formatNumber(total);
+        }
+    });
+}
+
+function resetChanges() {
+    changes.forEach((value, key) => {
+        const [ae, year, month] = key.split('-');
+        const input = document.querySelector(
+            `.forecast-input[data-ae="${ae}"][data-year="${year}"][data-month="${month}"]`
+        );
+        if (input) {
+            input.value = formatNumber(originalValues.get(key));
+            input.classList.remove('modified');
+        }
+    });
+    
+    changes.clear();
+    updateChangeCount();
+    recalculateTotals();
+    showStatus('Changes reset', 'success');
+}
+
+async function saveChanges() {
+    if (changes.size === 0) return;
+    
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    
+    const updates = Array.from(changes.values());
+    
+    try {
+        const response = await fetch('/planning/api/forecast/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                updates: updates,
+                updated_by: 'Planning Session',
+                session_notes: `Planning session ${new Date().toISOString().split('T')[0]}`
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Mark all as saved
+            changes.forEach((value, key) => {
+                const [ae, year, month] = key.split('-');
+                const input = document.querySelector(
+                    `.forecast-input[data-ae="${ae}"][data-year="${year}"][data-month="${month}"]`
+                );
+                if (input) {
+                    input.classList.remove('modified');
+                    input.classList.add('saved');
+                    originalValues.set(key, value.amount);
+                }
+            });
+            
+            changes.clear();
+            updateChangeCount();
+            showStatus(`${updates.length} forecast${updates.length > 1 ? 's' : ''} saved successfully`, 'success');
+            
+            // Remove saved class after animation
+            setTimeout(() => {
+                document.querySelectorAll('.forecast-input.saved').forEach(input => {
+                    input.classList.remove('saved');
+                });
+            }, 2000);
+        } else {
+            showStatus(result.error || 'Failed to save changes', 'error');
+        }
+    } catch (error) {
+        console.error('Save error:', error);
+        showStatus('Network error - please try again', 'error');
+    } finally {
+        saveBtn.disabled = changes.size === 0;
+        saveBtn.textContent = 'Save All Changes';
+    }
+}
+
+function showStatus(message, type) {
+    const statusEl = document.getElementById('statusMessage');
+    statusEl.textContent = message;
+    statusEl.className = `status-message visible ${type}`;
+    
+    setTimeout(() => {
+        statusEl.classList.remove('visible');
+    }, 4000);
+}
+
+function exportCSV() {
+    // Build CSV from current table state
+    const rows = [['AE', 'Metric', ...document.querySelectorAll('thead th').length]];
+    
+    // Simplified export - in production would build full CSV
+    alert('Export functionality - would download CSV of current planning data');
+}
+
+// Warn before leaving with unsaved changes
+window.addEventListener('beforeunload', function(e) {
+    if (changes.size > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+</script>
+{% endblock %}
