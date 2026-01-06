@@ -10,7 +10,7 @@ from typing import Optional
 from enum import Enum
 
 from .container import get_container, ServiceCreationError
-from .pipeline_service import DataSourceType  # Import from our enhanced service
+from .pipeline_service import DataSourceType  # Import from pipeline service
 
 logger = logging.getLogger(__name__)
 
@@ -247,18 +247,17 @@ def initialize_services():
         container.register_singleton("report_data_service", create_report_data_service)
         print("✅ report_data_service registered")
 
-        print("🔧 Registering pipeline_service...")
-        container.register_singleton("pipeline_service", create_pipeline_service)
-        print("✅ pipeline_service registered")
-
         print("🔧 Registering budget_service...")
         container.register_singleton("budget_service", create_budget_service)
         print("✅ budget_service registered")
 
-        # ADD THIS:
         print("🔧 Registering ae_dashboard_service...")
         container.register_singleton("ae_dashboard_service", create_ae_dashboard_service)
         print("✅ ae_dashboard_service registered")
+
+        print("🔧 Registering planning_service...")
+        container.register_singleton("planning_service", create_planning_service)
+        print("✅ planning_service registered")
 
         # List what got registered
         services = container.list_services()
@@ -296,6 +295,9 @@ def register_default_services():
         container.register_singleton("ae_dashboard_service", create_ae_dashboard_service)
         logger.debug("Registered ae_dashboard_service")
 
+        container.register_singleton("planning_service", create_planning_service)
+        logger.debug("Registered planning_service")
+
         logger.info("Registered all default services with container")
 
     except Exception as e:
@@ -314,9 +316,11 @@ def emergency_register_report_service(container):
 
         # Try to get database connection
         try:
-            from src.database.connection import get_database_connection
-
-            db_connection = get_database_connection()
+            from src.database.connection import DatabaseConnection
+            
+            container = get_container()
+            db_path = container.get_config("DB_PATH", "data/database/production.db")
+            db_connection = DatabaseConnection(db_path)
             print("✅ Database connection successful")
         except Exception as e:
             print(f"⚠️ Database connection failed: {e}")
@@ -364,9 +368,9 @@ def create_emergency_container():
     print("🚨 Creating emergency container...")
 
     try:
-        from src.services.container import Container
+        from src.services.container import ServiceContainer
 
-        container = Container()
+        container = ServiceContainer()
     except:
         # Create ultra-minimal container
         class EmergencyContainer:
@@ -620,6 +624,35 @@ def _validate_pipeline_service_health(service) -> None:
                 f"Service health check failed and emergency repair failed: {repair_error}"
             ) from e
 
+def create_planning_service():
+    """Create PlanningService with database connection."""
+    try:
+        from src.services.planning_service import PlanningService
+        
+        container = get_container()
+        
+        # Get database connection
+        try:
+            db_connection = container.get("database_connection")
+            logger.debug("Creating PlanningService with database connection")
+        except Exception as e:
+            logger.error(f"Database connection required for planning service: {e}")
+            raise ServiceCreationError(
+                "PlanningService requires database connection"
+            ) from e
+        
+        # Create service
+        service = PlanningService(db_connection)
+        
+        logger.info("PlanningService created successfully")
+        return service
+        
+    except ImportError as e:
+        logger.error(f"Failed to import PlanningService: {e}")
+        raise ServiceCreationError(f"Could not import PlanningService: {e}") from e
+    except Exception as e:
+        logger.error(f"Failed to create planning service: {e}")
+        raise ServiceCreationError(f"Planning service creation failed: {e}") from e
 
 def create_budget_service():
     """Create BudgetService with enhanced error handling."""
@@ -816,36 +849,6 @@ def _validate_report_service_health(service) -> None:
         logger.error(f"Report service health validation failed: {e}")
         raise ServiceCreationError(f"Report service health check failed: {e}") from e
 
-def create_emergency_container():
-    """Create a minimal container when normal initialization fails"""
-
-    class EmergencyContainer:
-        def __init__(self):
-            self._services = {}
-
-        def register(self, name, factory):
-            self._services[name] = factory
-
-        def get(self, name):
-            if name not in self._services:
-                raise Exception(f"Service '{name}' not found in emergency container")
-            factory = self._services[name]
-            if callable(factory):
-                return factory()
-            return factory
-
-    print("🚨 Created emergency container")
-    container = EmergencyContainer()
-
-    # Register critical services manually
-    try:
-        register_critical_services(container)
-    except Exception as e:
-        print(f"⚠️ Could not register critical services: {e}")
-
-    return container
-
-
 def register_critical_services(container):
     """Register only the most critical services for Railway"""
 
@@ -905,6 +908,7 @@ def _validate_service_container_health() -> None:
             "pipeline_service",
             "budget_service",
             "report_data_service",
+            "planning_service",
         ]
 
         for service_name in critical_services:

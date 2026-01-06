@@ -16,6 +16,7 @@ from src.services.container import ServiceCreationError
 from src.services.factory import initialize_services
 from src.config.settings import get_settings
 from src.web.blueprints import initialize_blueprints
+from src.web.routes.planning import planning_bp
 
 logger = logging.getLogger(__name__)
 
@@ -54,17 +55,6 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.error(f"Failed to initialize blueprints: {e}")
         raise
 
-    # Register pipeline blueprint (as before)
-    try:
-        from src.web.routes.pipeline_routes import pipeline_bp
-
-        app.register_blueprint(pipeline_bp)
-        logger.info("Pipeline blueprint registered successfully")
-    except ImportError as e:
-        logger.warning(f"Pipeline blueprint not available: {e}")
-    except Exception as e:
-        logger.error(f"Failed to register pipeline blueprint: {e}")
-
     # ✅ Register the customer normalization blueprint *after* app exists
     try:
         from src.web.routes.customer_normalization import customer_norm_bp
@@ -84,7 +74,16 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.error(f"Failed to register customer canon blueprint: {e}")
 
     logger.info(f"Flask app created for environment: {settings.environment}")
-    return app
+
+    # ✅ Register the planning session blueprint
+    try:
+        from src.web.routes.planning import planning_bp
+
+        app.register_blueprint(planning_bp)
+        logger.info("Planning session blueprint registered successfully")
+    except Exception as e:
+        logger.error(f"Failed to register planning blueprint: {e}")
+
 
     # Initialize decay system check (non-blocking) - FIXED for newer Flask
     def check_decay_system():

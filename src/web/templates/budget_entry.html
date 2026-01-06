@@ -1,0 +1,674 @@
+{% extends "base.html" %}
+
+{% block title %}Budget Entry - CTV Booked Biz{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<a href="/planning">Planning</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Budget Entry</span>
+{% endblock %}
+
+{% block header_title %}Budget Entry{% endblock %}
+{% block header_subtitle %}Set annual budget targets by AE{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .budget-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 24px;
+        background: var(--nord6);
+        border-radius: 8px;
+        margin-bottom: 24px;
+    }
+    
+    .control-group {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    
+    .control-group label {
+        font-size: 12px;
+        color: #718096;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .control-group select {
+        padding: 8px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        font-size: 14px;
+        min-width: 120px;
+    }
+    
+    .budget-table-container {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+    
+    .budget-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    
+    .budget-table th {
+        background: var(--nord0);
+        color: var(--nord6);
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 500;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .budget-table th.number {
+        text-align: right;
+    }
+    
+    .budget-table td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .budget-table td.number {
+        text-align: right;
+    }
+    
+    .budget-table tr:hover {
+        background: #f7fafc;
+    }
+    
+    .ae-name {
+        font-weight: 600;
+        color: var(--nord0);
+    }
+    
+    .ae-type {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+    
+    .ae-type.ae { background: var(--nord8); color: white; }
+    .ae-type.house { background: var(--nord14); color: white; }
+    .ae-type.agency { background: var(--nord15); color: white; }
+    
+    .budget-input {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        font-size: 13px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    .budget-input:focus {
+        outline: none;
+        border-color: var(--nord8);
+        box-shadow: 0 0 0 3px rgba(136, 192, 208, 0.2);
+    }
+    
+    .budget-input.modified {
+        background: #fef3c7;
+        border-color: var(--nord13);
+    }
+    
+    .total-cell {
+        font-weight: 600;
+        color: var(--nord0);
+    }
+    
+    .totals-row {
+        background: var(--nord5) !important;
+        font-weight: 600;
+    }
+    
+    .totals-row td {
+        border-bottom: none;
+        padding: 14px 16px;
+    }
+    
+    /* Quick Fill Section */
+    .quick-fill {
+        background: #f7fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 24px;
+    }
+    
+    .quick-fill h3 {
+        margin: 0 0 12px 0;
+        font-size: 14px;
+        color: var(--nord0);
+    }
+    
+    .quick-fill-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .quick-fill-row label {
+        font-size: 12px;
+        color: #718096;
+    }
+    
+    .quick-fill-row input {
+        padding: 6px 10px;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        width: 120px;
+    }
+    
+    .quick-fill-row select {
+        padding: 6px 10px;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+    }
+    
+    /* Action Bar */
+    .action-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 24px;
+        background: var(--nord6);
+        border-radius: 8px;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.15s;
+        border: none;
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, var(--nord8) 0%, var(--nord7) 100%);
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(136, 192, 208, 0.4);
+    }
+    
+    .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .btn-secondary {
+        background: white;
+        color: var(--nord0);
+        border: 1px solid #e2e8f0;
+    }
+    
+    .btn-secondary:hover {
+        background: var(--nord5);
+    }
+    
+    .status-message {
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 13px;
+        display: none;
+    }
+    
+    .status-message.visible {
+        display: block;
+    }
+    
+    .status-message.success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+    
+    .status-message.error {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+    
+    /* Add AE Section */
+    .add-ae-section {
+        background: #f0f9ff;
+        border: 1px dashed var(--nord8);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 24px;
+    }
+    
+    .add-ae-section h3 {
+        margin: 0 0 12px 0;
+        font-size: 14px;
+        color: var(--nord0);
+    }
+    
+    .add-ae-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+    
+    .add-ae-row input {
+        padding: 8px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        flex: 1;
+    }
+    
+    .add-ae-row select {
+        padding: 8px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+    }
+    
+    /* Navigation tabs */
+    .page-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 24px;
+    }
+    
+    .page-tab {
+        padding: 10px 20px;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px 6px 0 0;
+        font-size: 14px;
+        color: #718096;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    
+    .page-tab:hover {
+        background: var(--nord6);
+    }
+    
+    .page-tab.active {
+        background: var(--nord8);
+        color: white;
+        border-color: var(--nord8);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Page Tabs -->
+<div class="page-tabs">
+    <a href="/planning" class="page-tab">Planning Session</a>
+    <a href="/planning/budget" class="page-tab active">Budget Entry</a>
+</div>
+
+<!-- Controls -->
+<div class="budget-controls">
+    <div class="control-group">
+        <div>
+            <label>Year</label>
+            <select id="yearSelect" onchange="loadBudgetData()">
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+                <option value="2027">2027</option>
+            </select>
+        </div>
+    </div>
+    <div class="control-group">
+        <a href="/planning" class="btn btn-secondary">← Back to Planning</a>
+    </div>
+</div>
+
+<!-- Quick Fill -->
+<div class="quick-fill">
+    <h3>Quick Fill</h3>
+    <div class="quick-fill-row">
+        <label>Apply to:</label>
+        <select id="quickFillAe">
+            <option value="__all__">All AEs</option>
+            {% for entity in entities %}
+            <option value="{{ entity.entity_name }}">{{ entity.entity_name }}</option>
+            {% endfor %}
+        </select>
+        <label>Amount:</label>
+        <input type="text" id="quickFillAmount" placeholder="e.g. 100000">
+        <label>Pattern:</label>
+        <select id="quickFillPattern">
+            <option value="flat">Same each month</option>
+            <option value="quarterly">Quarterly variance</option>
+        </select>
+        <button class="btn btn-secondary" onclick="applyQuickFill()">Apply</button>
+    </div>
+</div>
+
+<!-- Add New AE -->
+<div class="add-ae-section">
+    <h3>Add New Revenue Entity</h3>
+    <div class="add-ae-row">
+        <input type="text" id="newAeName" placeholder="Enter AE name...">
+        <select id="newAeType">
+            <option value="AE">AE</option>
+            <option value="House">House</option>
+            <option value="Agency">Agency</option>
+        </select>
+        <button class="btn btn-secondary" onclick="addNewAe()">+ Add</button>
+    </div>
+</div>
+
+<!-- Budget Table -->
+<div class="budget-table-container">
+    <table class="budget-table" id="budgetTable">
+        <thead>
+            <tr>
+                <th style="width: 200px;">AE</th>
+                <th class="number">Jan</th>
+                <th class="number">Feb</th>
+                <th class="number">Mar</th>
+                <th class="number">Apr</th>
+                <th class="number">May</th>
+                <th class="number">Jun</th>
+                <th class="number">Jul</th>
+                <th class="number">Aug</th>
+                <th class="number">Sep</th>
+                <th class="number">Oct</th>
+                <th class="number">Nov</th>
+                <th class="number">Dec</th>
+                <th class="number">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entity in entities %}
+            <tr data-ae="{{ entity.entity_name }}">
+                <td>
+                    <span class="ae-name">{{ entity.entity_name }}</span>
+                    <span class="ae-type {{ entity.entity_type.value|lower }}">{{ entity.entity_type.value }}</span>
+                </td>
+                {% for month in range(1, 13) %}
+                <td class="number">
+                    <input type="text" 
+                           class="budget-input"
+                           data-ae="{{ entity.entity_name }}"
+                           data-month="{{ month }}"
+                           value="{{ '{:,.0f}'.format(budgets.get(entity.entity_name, {}).get(month, 0) | float) }}"
+                           onchange="markModified(this)"
+                           onkeydown="handleKeydown(event, this)">
+                </td>
+                {% endfor %}
+                <td class="number total-cell" id="total-{{ entity.entity_name | replace(' ', '-') }}">
+                    $0
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="totals-row">
+                <td><strong>COMPANY TOTAL</strong></td>
+                {% for month in range(1, 13) %}
+                <td class="number" id="month-total-{{ month }}">$0</td>
+                {% endfor %}
+                <td class="number" id="grand-total">$0</td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+<!-- Action Bar -->
+<div class="action-bar">
+    <div>
+        <span class="status-message" id="statusMessage"></span>
+    </div>
+    <div class="control-group">
+        <span id="changeCount" style="color: #718096; font-size: 13px;"></span>
+        <button class="btn btn-secondary" onclick="resetChanges()" id="resetBtn" disabled>Reset</button>
+        <button class="btn btn-primary" onclick="saveBudgets()" id="saveBtn" disabled>Save All Budgets</button>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const changes = new Map();
+let currentYear = 2026;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    currentYear = parseInt(document.getElementById('yearSelect').value);
+    recalculateTotals();
+});
+
+function formatNumber(num) {
+    return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
+function parseNumber(str) {
+    return parseFloat(str.replace(/[$,]/g, '')) || 0;
+}
+
+function markModified(input) {
+    const ae = input.dataset.ae;
+    const month = parseInt(input.dataset.month);
+    const value = parseNumber(input.value);
+    
+    input.value = formatNumber(value);
+    input.classList.add('modified');
+    
+    const key = `${ae}-${month}`;
+    changes.set(key, { ae_name: ae, month: month, amount: value });
+    
+    updateChangeCount();
+    recalculateTotals();
+}
+
+function handleKeydown(event, input) {
+    if (event.key === 'Enter' || event.key === 'Tab') {
+        markModified(input);
+    }
+}
+
+function updateChangeCount() {
+    const count = changes.size;
+    const countEl = document.getElementById('changeCount');
+    const saveBtn = document.getElementById('saveBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    
+    if (count > 0) {
+        countEl.textContent = `${count} unsaved change${count > 1 ? 's' : ''}`;
+        saveBtn.disabled = false;
+        resetBtn.disabled = false;
+    } else {
+        countEl.textContent = '';
+        saveBtn.disabled = true;
+        resetBtn.disabled = true;
+    }
+}
+
+function recalculateTotals() {
+    const rows = document.querySelectorAll('#budgetTable tbody tr');
+    const monthTotals = {};
+    let grandTotal = 0;
+    
+    for (let m = 1; m <= 12; m++) {
+        monthTotals[m] = 0;
+    }
+    
+    rows.forEach(row => {
+        const ae = row.dataset.ae;
+        let rowTotal = 0;
+        
+        for (let m = 1; m <= 12; m++) {
+            const input = row.querySelector(`input[data-month="${m}"]`);
+            if (input) {
+                const value = parseNumber(input.value);
+                rowTotal += value;
+                monthTotals[m] += value;
+            }
+        }
+        
+        const totalCell = document.getElementById(`total-${ae.replace(/ /g, '-')}`);
+        if (totalCell) {
+            totalCell.textContent = '$' + formatNumber(rowTotal);
+        }
+        
+        grandTotal += rowTotal;
+    });
+    
+    // Update month totals
+    for (let m = 1; m <= 12; m++) {
+        const cell = document.getElementById(`month-total-${m}`);
+        if (cell) {
+            cell.textContent = '$' + formatNumber(monthTotals[m]);
+        }
+    }
+    
+    // Update grand total
+    const grandTotalCell = document.getElementById('grand-total');
+    if (grandTotalCell) {
+        grandTotalCell.textContent = '$' + formatNumber(grandTotal);
+    }
+}
+
+function applyQuickFill() {
+    const ae = document.getElementById('quickFillAe').value;
+    const amount = parseNumber(document.getElementById('quickFillAmount').value);
+    const pattern = document.getElementById('quickFillPattern').value;
+    
+    if (!amount) {
+        showStatus('Please enter an amount', 'error');
+        return;
+    }
+    
+    const rows = ae === '__all__' 
+        ? document.querySelectorAll('#budgetTable tbody tr')
+        : document.querySelectorAll(`#budgetTable tbody tr[data-ae="${ae}"]`);
+    
+    rows.forEach(row => {
+        for (let m = 1; m <= 12; m++) {
+            const input = row.querySelector(`input[data-month="${m}"]`);
+            if (input) {
+                let monthAmount = amount;
+                
+                if (pattern === 'quarterly') {
+                    // Slight variation by quarter
+                    if (m >= 1 && m <= 3) monthAmount = amount * 0.9;
+                    else if (m >= 4 && m <= 6) monthAmount = amount * 1.0;
+                    else if (m >= 7 && m <= 9) monthAmount = amount * 1.0;
+                    else monthAmount = amount * 1.1;
+                }
+                
+                input.value = formatNumber(Math.round(monthAmount));
+                markModified(input);
+            }
+        }
+    });
+    
+    showStatus(`Applied ${formatNumber(amount)}/month to ${ae === '__all__' ? 'all AEs' : ae}`, 'success');
+}
+
+async function addNewAe() {
+    const name = document.getElementById('newAeName').value.trim();
+    const type = document.getElementById('newAeType').value;
+    
+    if (!name) {
+        showStatus('Please enter an AE name', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/planning/api/entities/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, type: type })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showStatus(`Added ${name}`, 'success');
+            // Reload page to show new AE
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showStatus(result.error || 'Failed to add AE', 'error');
+        }
+    } catch (error) {
+        showStatus('Network error', 'error');
+    }
+}
+
+async function saveBudgets() {
+    if (changes.size === 0) return;
+    
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    
+    const year = parseInt(document.getElementById('yearSelect').value);
+    const updates = Array.from(changes.values()).map(c => ({
+        ae_name: c.ae_name,
+        year: year,
+        month: c.month,
+        amount: c.amount
+    }));
+    
+    try {
+        const response = await fetch('/planning/api/budget/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates: updates })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Clear modified state
+            document.querySelectorAll('.budget-input.modified').forEach(input => {
+                input.classList.remove('modified');
+            });
+            changes.clear();
+            updateChangeCount();
+            showStatus(`Saved ${updates.length} budget entries`, 'success');
+        } else {
+            showStatus(result.error || 'Failed to save', 'error');
+        }
+    } catch (error) {
+        showStatus('Network error', 'error');
+    } finally {
+        saveBtn.disabled = changes.size === 0;
+        saveBtn.textContent = 'Save All Budgets';
+    }
+}
+
+function resetChanges() {
+    location.reload();
+}
+
+function loadBudgetData() {
+    const year = document.getElementById('yearSelect').value;
+    window.location.href = `/planning/budget?year=${year}`;
+}
+
+function showStatus(message, type) {
+    const el = document.getElementById('statusMessage');
+    el.textContent = message;
+    el.className = `status-message visible ${type}`;
+    setTimeout(() => el.classList.remove('visible'), 4000);
+}
+</script>
+{% endblock %}
