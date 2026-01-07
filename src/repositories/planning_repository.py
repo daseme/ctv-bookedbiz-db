@@ -279,7 +279,7 @@ class PlanningRepository(BaseService):
             return deleted
 
     # =========================================================================
-    # Booked Revenue (from spots)
+    # Booked Revenue (from spots) - Updated for WorldLink handling
     # =========================================================================
 
     def get_booked_revenue(
@@ -288,17 +288,43 @@ class PlanningRepository(BaseService):
         year: int, 
         month: int
     ) -> Decimal:
-        """Get booked revenue for an AE/year/month from spots."""
+        """Get booked revenue for an AE/year/month from spots.
+        
+        Special handling:
+        - WorldLink: Match on bill_code LIKE 'WorldLink:%'
+        - House: Exclude WorldLink bill_codes (they belong to WorldLink entity)
+        """
         with self.safe_connection() as conn:
             period = PlanningPeriod(year=year, month=month)
             
-            cursor = conn.execute("""
-                SELECT COALESCE(SUM(gross_rate), 0) AS booked
-                FROM spots
-                WHERE sales_person = ?
-                  AND broadcast_month = ?
-                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-            """, (ae_name, period.broadcast_month))
+            if ae_name == "WorldLink":
+                # WorldLink revenue is identified by bill_code prefix, not sales_person
+                cursor = conn.execute("""
+                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE bill_code LIKE 'WorldLink:%'
+                      AND broadcast_month = ?
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                """, (period.broadcast_month,))
+            elif ae_name == "House":
+                # House revenue excludes WorldLink bill_codes
+                cursor = conn.execute("""
+                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE sales_person = ?
+                      AND broadcast_month = ?
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                      AND bill_code NOT LIKE 'WorldLink:%'
+                """, (ae_name, period.broadcast_month))
+            else:
+                # Standard AE lookup by sales_person
+                cursor = conn.execute("""
+                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
+                    FROM spots
+                    WHERE sales_person = ?
+                      AND broadcast_month = ?
+                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                """, (ae_name, period.broadcast_month))
             
             row = cursor.fetchone()
             return Decimal(str(row["booked"]))
@@ -495,6 +521,7 @@ class PlanningRepository(BaseService):
     # Combined Planning Data
     # =========================================================================
 
+
     def get_planning_row(
         self, 
         entity: RevenueEntity, 
@@ -523,7 +550,7 @@ class PlanningRepository(BaseService):
             entity=entity,
             period=period,
             budget=Money(budget or Decimal("0")),
-            forecast=Money(forecast_amount),
+            forecast_entered=Money(forecast_amount),  # ← CHANGED from forecast=
             booked=Money(booked),
             forecast_updated=forecast_updated,
             forecast_updated_by=forecast_updated_by
