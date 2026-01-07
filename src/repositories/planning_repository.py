@@ -279,30 +279,6 @@ class PlanningRepository(BaseService):
             return deleted
 
     # =========================================================================
-    # Booked Revenue (from spots)
-    # =========================================================================
-
-    def get_booked_revenue(
-        self, 
-        ae_name: str, 
-        year: int, 
-        month: int
-    ) -> Decimal:
-        """Get booked revenue for an AE/year/month from spots."""
-        with self.safe_connection() as conn:
-            period = PlanningPeriod(year=year, month=month)
-            
-            cursor = conn.execute("""
-                SELECT COALESCE(SUM(gross_rate), 0) AS booked
-                FROM spots
-                WHERE sales_person = ?
-                  AND broadcast_month = ?
-                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-            """, (ae_name, period.broadcast_month))
-            
-            row = cursor.fetchone()
-            return Decimal(str(row["booked"]))
-# =========================================================================
     # Booked Revenue (from spots) - Updated for WorldLink handling
     # =========================================================================
 
@@ -495,6 +471,7 @@ class PlanningRepository(BaseService):
     # Combined Planning Data
     # =========================================================================
 
+
     def get_planning_row(
         self, 
         entity: RevenueEntity, 
@@ -523,7 +500,7 @@ class PlanningRepository(BaseService):
             entity=entity,
             period=period,
             budget=Money(budget or Decimal("0")),
-            forecast=Money(forecast_amount),
+            forecast_entered=Money(forecast_amount),  # ← CHANGED from forecast=
             booked=Money(booked),
             forecast_updated=forecast_updated,
             forecast_updated_by=forecast_updated_by

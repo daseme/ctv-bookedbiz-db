@@ -269,19 +269,27 @@ class PlanningRow:
     entity: RevenueEntity
     period: PlanningPeriod
     budget: Money
-    forecast: Money
+    forecast_entered: Money  # What user entered (or defaulted from budget)
     booked: Money
     forecast_updated: Optional[datetime] = None
     forecast_updated_by: Optional[str] = None
     
     @property
+    def forecast(self) -> Money:
+        """
+        Effective forecast: max of entered forecast and booked.
+        You can't expect less than what you already have.
+        """
+        return Money(max(self.forecast_entered.amount, self.booked.amount))
+    
+    @property
     def pipeline(self) -> Money:
-        """Derived: what still needs to come in"""
+        """Derived: what still needs to come in to hit forecast"""
         return self.forecast - self.booked
     
     @property
     def variance_to_budget(self) -> Money:
-        """Derived: forecast vs original plan"""
+        """Derived: effective forecast vs original plan"""
         return self.forecast - self.budget
     
     @property
@@ -297,8 +305,13 @@ class PlanningRow:
     
     @property
     def is_forecast_overridden(self) -> bool:
-        """True if forecast differs from budget"""
-        return self.forecast.amount != self.budget.amount
+        """True if user-entered forecast differs from budget"""
+        return self.forecast_entered.amount != self.budget.amount
+    
+    @property
+    def is_booked_exceeds_forecast_entered(self) -> bool:
+        """True if booked has exceeded the user-entered forecast"""
+        return self.booked.amount > self.forecast_entered.amount
 
 
 @dataclass

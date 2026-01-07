@@ -436,6 +436,43 @@
             gap: 16px;
         }
     }
+
+
+/* Booked exceeds forecast entered - visual indicator */
+.forecast-input.booked-exceeds {
+    background: #ecfdf5;  /* Light green - good problem to have! */
+    border-color: var(--nord14);
+}
+
+.booked-exceeds-indicator {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 0;
+    height: 0;
+    border-left: 8px solid var(--nord14);
+    border-bottom: 8px solid transparent;
+}
+
+/* Tooltip styling for the indicator */
+.forecast-cell {
+    position: relative;
+}
+
+.forecast-input.booked-exceeds:hover + .booked-exceeds-indicator::after,
+.booked-exceeds-indicator:hover::after {
+    content: attr(title);
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--nord0);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 100;
+}
 </style>
 {% endblock %}
 
@@ -551,6 +588,7 @@
                 <td class="number total-col">${{ "{:,.0f}".format(ed.total_booked.amount) }}</td>
             </tr>
             
+
             <!-- Forecast Row (Editable) -->
             <tr class="row-forecast">
                 <td class="row-label entity-name-cell">Forecast</td>
@@ -558,20 +596,26 @@
                 {% set row = ed.rows_by_period.get(period.key) %}
                 {% set is_active = period in active_periods %}
                 {% set is_past = period in past_periods %}
+                {% set booked_exceeds = row and row.is_booked_exceeds_forecast_entered %}
                 <td class="number forecast-cell {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if is_active %}active-period{% endif %}">
                     <input type="text" 
-                           class="forecast-input {% if row and row.is_forecast_overridden %}modified{% endif %} {% if is_past %}past-month{% endif %}"
+                           class="forecast-input {% if row and row.is_forecast_overridden %}modified{% endif %} {% if is_past %}past-month{% endif %} {% if booked_exceeds %}booked-exceeds{% endif %}"
                            data-ae="{{ ed.entity.entity_name }}"
                            data-year="{{ period.year }}"
                            data-month="{{ period.month }}"
-                           data-original="{{ row.forecast.amount if row else 0 }}"
+                           data-original="{{ row.forecast_entered.amount if row else 0 }}"
+                           data-booked="{{ row.booked.amount if row else 0 }}"
                            data-is-past="{{ 'true' if is_past else 'false' }}"
                            value="{{ "{:,.0f}".format(row.forecast.amount if row else 0) }}"
                            {% if is_past %}readonly title="Past month - read only"{% endif %}
+                           {% if booked_exceeds %}title="Booked (${{ "{:,.0f}".format(row.booked.amount) }}) exceeds entered forecast. Consider updating."{% endif %}
                            onchange="markModified(this)"
                            onkeydown="handleKeydown(event, this)">
                     {% if row and row.is_forecast_overridden %}
                     <span class="override-indicator" title="Modified from budget"></span>
+                    {% endif %}
+                    {% if booked_exceeds %}
+                    <span class="booked-exceeds-indicator" title="Booked exceeds entered forecast"></span>
                     {% endif %}
                 </td>
                 {% endfor %}
@@ -579,6 +623,7 @@
                     ${{ "{:,.0f}".format(ed.total_forecast.amount) }}
                 </td>
             </tr>
+            
             
             <!-- Pipeline Row -->
             <tr class="row-pipeline">
@@ -662,7 +707,8 @@ const originalValues = new Map();
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.forecast-input').forEach(input => {
         const key = getKey(input);
-        originalValues.set(key, parseNumber(input.value));
+        // Store the entered value (from data-original), not the displayed effective value
+        originalValues.set(key, parseNumber(input.dataset.original));
     });
 });
 
@@ -671,7 +717,8 @@ function getKey(input) {
 }
 
 function parseNumber(str) {
-    return parseFloat(str.replace(/[$,]/g, '')) || 0;
+    if (str === null || str === undefined) return 0;
+    return parseFloat(String(str).replace(/[$,]/g, '')) || 0;
 }
 
 function formatNumber(num) {
@@ -685,20 +732,35 @@ function markModified(input) {
     }
     
     const key = getKey(input);
-    const newValue = parseNumber(input.value);
+    const enteredValue = parseNumber(input.value);
+    const bookedValue = parseNumber(input.dataset.booked || '0');
     const original = originalValues.get(key);
     
-    // Format the display
-    input.value = formatNumber(newValue);
+    // Effective forecast is max of entered and booked
+    // You can't expect less than what you already have
+    const effectiveValue = Math.max(enteredValue, bookedValue);
     
-    if (newValue !== original) {
+    // Display the effective value
+    input.value = formatNumber(effectiveValue);
+    
+    // Track whether booked exceeds what user entered
+    if (bookedValue > enteredValue) {
+        input.classList.add('booked-exceeds');
+        input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
+    } else {
+        input.classList.remove('booked-exceeds');
+        input.title = '';
+    }
+    
+    // Compare entered value (not effective) to original for change tracking
+    if (enteredValue !== original) {
         input.classList.add('modified');
         input.classList.remove('saved');
         changes.set(key, {
             ae_name: input.dataset.ae,
             year: parseInt(input.dataset.year),
             month: parseInt(input.dataset.month),
-            amount: newValue
+            amount: enteredValue  // Save the entered value, not effective
         });
     } else {
         input.classList.remove('modified');
@@ -728,12 +790,14 @@ function handleKeydown(event, input) {
         }
     } else if (event.key === 'Escape') {
         const key = getKey(input);
-        input.value = formatNumber(originalValues.get(key));
+        const original = originalValues.get(key);
+        const bookedValue = parseNumber(input.dataset.booked || '0');
+        // Display effective value (max of original entered and booked)
+        input.value = formatNumber(Math.max(original, bookedValue));
         input.classList.remove('modified');
         changes.delete(key);
         updateChangeCount();
-    } else if (event.key === 'Tab') {
-        // Allow natural tab behavior but skip readonly inputs
+        recalculateTotals();
     }
 }
 
@@ -755,13 +819,16 @@ function updateChangeCount() {
 }
 
 function recalculateTotals() {
-    // Recalculate entity totals when forecast changes
+    // Recalculate entity totals using effective forecast (max of entered and booked)
     document.querySelectorAll('.entity-header').forEach(header => {
         const entityName = header.dataset.entity;
         const inputs = document.querySelectorAll(`.forecast-input[data-ae="${entityName}"]`);
         let total = 0;
         inputs.forEach(input => {
-            total += parseNumber(input.value);
+            const displayedValue = parseNumber(input.value);
+            const bookedValue = parseNumber(input.dataset.booked || '0');
+            // Use effective forecast (auto-floored to booked)
+            total += Math.max(displayedValue, bookedValue);
         });
         
         const totalEl = document.getElementById(`total-forecast-${entityName.replace(/ /g, '-')}`);
@@ -769,6 +836,18 @@ function recalculateTotals() {
             totalEl.textContent = '$' + formatNumber(total);
         }
     });
+    
+    // Recalculate grand total
+    let grandTotal = 0;
+    document.querySelectorAll('.forecast-input').forEach(input => {
+        const displayedValue = parseNumber(input.value);
+        const bookedValue = parseNumber(input.dataset.booked || '0');
+        grandTotal += Math.max(displayedValue, bookedValue);
+    });
+    
+    // Update summary card if exists
+    const summaryForecast = document.querySelector('.summary-card .value');
+    // Note: Summary cards are static on page load; full refresh needed for accurate totals
 }
 
 function resetChanges() {
@@ -778,8 +857,20 @@ function resetChanges() {
             `.forecast-input[data-ae="${ae}"][data-year="${year}"][data-month="${month}"]`
         );
         if (input) {
-            input.value = formatNumber(originalValues.get(key));
+            const original = originalValues.get(key);
+            const bookedValue = parseNumber(input.dataset.booked || '0');
+            // Display effective value (max of original and booked)
+            input.value = formatNumber(Math.max(original, bookedValue));
             input.classList.remove('modified');
+            
+            // Re-check booked exceeds status
+            if (bookedValue > original) {
+                input.classList.add('booked-exceeds');
+                input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
+            } else {
+                input.classList.remove('booked-exceeds');
+                input.title = '';
+            }
         }
     });
     
@@ -812,7 +903,7 @@ async function saveChanges() {
         const result = await response.json();
         
         if (result.success) {
-            // Mark all as saved
+            // Mark all as saved and update original values
             changes.forEach((value, key) => {
                 const [ae, year, month] = key.split('-');
                 const input = document.querySelector(
@@ -821,7 +912,18 @@ async function saveChanges() {
                 if (input) {
                     input.classList.remove('modified');
                     input.classList.add('saved');
+                    // Update original to the new entered value
                     originalValues.set(key, value.amount);
+                    
+                    // Re-check booked exceeds with new value
+                    const bookedValue = parseNumber(input.dataset.booked || '0');
+                    if (bookedValue > value.amount) {
+                        input.classList.add('booked-exceeds');
+                        input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
+                    } else {
+                        input.classList.remove('booked-exceeds');
+                        input.title = '';
+                    }
                 }
             });
             
@@ -868,7 +970,7 @@ function exportCSV() {
         const rowData = [];
         cells.forEach(cell => {
             let text = cell.textContent.trim();
-            // Handle inputs
+            // Handle inputs - get the displayed (effective) value
             const input = cell.querySelector('input');
             if (input) {
                 text = input.value;
