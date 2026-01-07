@@ -1,8 +1,8 @@
 -- SQLite Database Schema Export
 -- Source Database: ./data/database/production.db
--- Generated on: 2025-11-10 16:37:23
+-- Generated on: 2026-01-07 10:25:59
 -- 
--- SQLite Version: 3.40.1
+-- SQLite Version: 3.46.1
 -- 
 
 -- DIAGNOSTIC: Column type verification
@@ -13,7 +13,7 @@
 
 PRAGMA foreign_keys = ON;
 
--- Tables (30)
+-- Tables (33)
 -- ============================================================
 
 -- Table: agencies
@@ -233,6 +233,46 @@ CREATE INDEX idx_entity_aliases_lookup ON entity_aliases(alias_name, entity_type
 CREATE INDEX idx_entity_aliases_target ON entity_aliases(target_entity_id, entity_type);
 CREATE INDEX ix_aliases_name_active ON entity_aliases(alias_name, entity_type, is_active);
 
+-- Table: forecast
+-- ----------------------------------------
+CREATE TABLE forecast (
+    forecast_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ae_name TEXT NOT NULL,
+    year INTEGER NOT NULL CHECK (year >= 2000 AND year <= 2100),
+    month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+    forecast_amount DECIMAL(12,2) NOT NULL,
+    updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_by TEXT,
+    notes TEXT,
+    UNIQUE(ae_name, year, month)
+);
+
+-- Indexes for table: forecast
+CREATE INDEX idx_forecast_ae_year_month 
+ON forecast(ae_name, year, month);
+CREATE INDEX idx_forecast_year_month 
+ON forecast(year, month);
+
+-- Table: forecast_history
+-- ----------------------------------------
+CREATE TABLE forecast_history (
+    history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ae_name TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    previous_amount DECIMAL(12,2),
+    new_amount DECIMAL(12,2) NOT NULL,
+    changed_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    changed_by TEXT,
+    session_notes TEXT
+);
+
+-- Indexes for table: forecast_history
+CREATE INDEX idx_forecast_history_ae 
+ON forecast_history(ae_name, year, month);
+CREATE INDEX idx_forecast_history_date 
+ON forecast_history(changed_date);
+
 -- Table: import_batches
 -- ----------------------------------------
 CREATE TABLE import_batches (
@@ -380,6 +420,23 @@ CREATE TABLE raw_customer_inputs (
   raw_text TEXT PRIMARY KEY,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Table: revenue_entities
+-- ----------------------------------------
+CREATE TABLE revenue_entities (
+    entity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_name TEXT NOT NULL UNIQUE,
+    entity_type TEXT NOT NULL DEFAULT 'AE' CHECK (entity_type IN ('AE', 'House', 'Agency')),
+    is_active BOOLEAN DEFAULT 1,
+    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT
+);
+
+-- Indexes for table: revenue_entities
+CREATE INDEX idx_revenue_entities_active 
+ON revenue_entities(is_active) WHERE is_active = 1;
+CREATE INDEX idx_revenue_entities_name 
+ON revenue_entities(entity_name);
 
 -- Table: schedule_collision_log
 -- ----------------------------------------
@@ -651,16 +708,20 @@ CREATE INDEX idx_spots_agency_performance ON spots(agency_id, air_date, gross_ra
     WHERE agency_id IS NOT NULL
     ;
 CREATE INDEX idx_spots_air_date ON spots(air_date);
+CREATE INDEX idx_spots_airdate ON spots(air_date);
+CREATE INDEX idx_spots_bill ON spots(bill_code);
 CREATE INDEX idx_spots_billcode_rev ON spots(bill_code, revenue_type);
 CREATE INDEX idx_spots_bm ON spots(broadcast_month);
 CREATE INDEX idx_spots_bm_ae ON spots(broadcast_month, sales_person);
 CREATE INDEX idx_spots_broadcast_month_historical ON spots(broadcast_month, is_historical);
 CREATE INDEX idx_spots_category ON spots(spot_category) WHERE spot_category IS NOT NULL;
+CREATE INDEX idx_spots_customer ON spots(customer_id);
 CREATE INDEX idx_spots_customer_broadcast ON spots(customer_id, broadcast_month, gross_rate, station_net) WHERE gross_rate > 0;
 CREATE INDEX idx_spots_customer_id ON spots(customer_id);
 CREATE INDEX idx_spots_customer_timeline ON spots(customer_id, air_date, revenue_type);
 CREATE INDEX idx_spots_historical ON spots(is_historical);
 CREATE INDEX idx_spots_import_batch ON spots(import_batch_id);
+CREATE INDEX idx_spots_market ON spots(market_id);
 CREATE INDEX idx_spots_monthly_rollup ON spots(broadcast_month, market_id, revenue_type) 
     WHERE revenue_type != 'Trade'
     ;
@@ -689,7 +750,7 @@ CREATE TABLE text_strips (
   needle TEXT PRIMARY KEY
 );
 
--- Views (14)
+-- Views (16)
 -- ============================================================
 
 CREATE VIEW business_rule_analytics AS
@@ -1192,6 +1253,52 @@ SELECT raw_text, cleaned AS cleaned_text, agency1, agency2, customer,
        END AS normalized_name
 FROM cust_canon;
 
+CREATE VIEW v_planning_data AS
+WITH booked AS (
+    SELECT 
+        sales_person AS ae_name,
+        CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) + 2000 AS year,
+        CASE SUBSTR(broadcast_month, 1, 3)
+            WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+            WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+            WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+            WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+        END AS month,
+        SUM(gross_rate) AS booked_amount
+    FROM spots
+    WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+      AND sales_person IS NOT NULL
+    GROUP BY sales_person, broadcast_month
+)
+SELECT 
+    re.entity_id,
+    re.entity_name,
+    re.entity_type,
+    b.year,
+    b.month,
+    COALESCE(b.budget_amount, 0) AS budget,
+    COALESCE(f.forecast_amount, b.budget_amount, 0) AS forecast,
+    COALESCE(bk.booked_amount, 0) AS booked,
+    COALESCE(f.forecast_amount, b.budget_amount, 0) - COALESCE(bk.booked_amount, 0) AS pipeline,
+    COALESCE(f.forecast_amount, b.budget_amount, 0) - COALESCE(b.budget_amount, 0) AS variance_to_budget,
+    f.updated_date AS forecast_updated,
+    f.updated_by AS forecast_updated_by
+FROM revenue_entities re
+CROSS JOIN (SELECT DISTINCT year, month FROM budget) ym
+LEFT JOIN budget b 
+    ON b.ae_name = re.entity_name 
+    AND b.year = ym.year 
+    AND b.month = ym.month
+LEFT JOIN forecast f 
+    ON f.ae_name = re.entity_name 
+    AND f.year = ym.year 
+    AND f.month = ym.month
+LEFT JOIN booked bk 
+    ON bk.ae_name = re.entity_name 
+    AND bk.year = ym.year 
+    AND bk.month = ym.month
+WHERE re.is_active = 1;
+
 CREATE VIEW v_raw_clean AS
 WITH stripped AS (
   SELECT
@@ -1221,6 +1328,21 @@ collapsed AS (
   FROM stripped
 )
 SELECT * FROM collapsed;
+
+CREATE VIEW v_unmatched_revenue AS
+SELECT 
+    s.sales_person,
+    s.broadcast_month,
+    COUNT(*) AS spot_count,
+    SUM(s.gross_rate) AS total_revenue
+FROM spots s
+LEFT JOIN revenue_entities re ON re.entity_name = s.sales_person
+WHERE re.entity_id IS NULL
+  AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+  AND s.sales_person IS NOT NULL 
+  AND s.sales_person != ''
+GROUP BY s.sales_person, s.broadcast_month
+ORDER BY total_revenue DESC;
 
 -- Triggers (3)
 -- ============================================================
@@ -1276,6 +1398,6 @@ BEGIN
 END;
 
 -- End of schema export
--- Total tables: 30
--- Total views: 14
+-- Total tables: 33
+-- Total views: 16
 -- Total triggers: 3
