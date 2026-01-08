@@ -239,6 +239,22 @@
 {% endblock %}
 
 {% block content %}
+<!-- Year Filter -->
+<div class="nord-section">
+    <form method="GET" style="display: flex; align-items: center; gap: 16px;">
+        <label for="year" style="font-weight: 600; color: var(--text-primary);">Select Year:</label>
+        <select name="year" id="year" onchange="this.form.submit()" 
+                style="padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-color); 
+                       background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
+            {% for yr in available_years %}
+            <option value="{{ yr }}" {% if yr == selected_year %}selected{% endif %}>{{ yr }}</option>
+            {% endfor %}
+        </select>
+        <span style="color: var(--text-secondary); font-size: 14px;">
+            Showing data for <strong>{{ selected_year }}</strong>
+        </span>
+    </form>
+</div>
 <div class="nord-section">
     <div class="nord-section-header">
         <h2 class="nord-section-title">
@@ -247,7 +263,7 @@
         </h2>
     </div>
     <div class="nord-alert info">
-        Enhanced two-tiered sector analysis showing revenue distribution across business categories: 
+        sector analysis showing revenue distribution across business categories: 
         <strong>Outreach</strong> (Public Service), <strong>Commercial</strong> (Business), and <strong>Political</strong> (Campaign) sectors.
     </div>
 </div>
