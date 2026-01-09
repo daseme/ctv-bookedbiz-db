@@ -1385,163 +1385,163 @@ class ReportDataService:
 
         return ReportFilters(year=year)
 
-        def _calculate_revenue_statistics(
-            self, revenue_data: List["CustomerMonthlyRow"], revenue_field: str
-        ) -> Dict[str, Any]:
-            """Calculate revenue statistics from processed data with new customer counts"""
-            from src.utils.template_formatters import calculate_statistics
+    def _calculate_revenue_statistics(
+        self, revenue_data: List["CustomerMonthlyRow"], revenue_field: str
+    ) -> Dict[str, Any]:
+        """Calculate revenue statistics from processed data with new customer counts"""
+        from src.utils.template_formatters import calculate_statistics
 
-            rows_for_stats = []
-            new_customer_count = 0
+        rows_for_stats = []
+        new_customer_count = 0
 
-            for row in revenue_data:
-                data = row.to_dict()
-                data["total"] = (
-                    float(row.total_net)
-                    if revenue_field.lower() == "net"
-                    else float(row.total_gross)
-                )
-                rows_for_stats.append(data)
-
-                if getattr(row, "is_new_customer", False):
-                    new_customer_count += 1
-
-            stats = calculate_statistics(rows_for_stats)
-            stats["new_customers"] = new_customer_count
-
-            return stats
-
-def _build_ae_performance_data(
-    self, raw_data: List[Dict[str, Any]]
-) -> List["AEPerformanceData"]:
-    """Build AE performance data objects from raw repository rows.
-
-    Robust to NULLs, ISO datetimes with/without time, and non-Decimal numerics.
-    """
-    from src.models.report_data import (
-        AEPerformanceData,
-    )  # local import avoids circulars
-
-    def _to_date(v: Optional[Any]) -> Optional[date]:
-        if v is None:
-            return None
-        if isinstance(v, date):
-            return v
-        s = str(v).strip()
-        if not s:
-            return None
-        # Prefer fromisoformat (handles YYYY-MM-DD and full ISO with time)
-        try:
-            return datetime.fromisoformat(s).date()
-        except Exception:
-            pass
-        # Fallback: slice first 10 chars as YYYY-MM-DD
-        try:
-            return datetime.strptime(s[:10], "%Y-%m-%d").date()
-        except Exception:
-            return None
-
-    def _to_decimal(v: Any, default: str = "0") -> Decimal:
-        if v is None:
-            return Decimal(default)
-        if isinstance(v, Decimal):
-            return v
-        try:
-            return Decimal(str(v))
-        except Exception:
-            return Decimal(default)
-
-    result: List[AEPerformanceData] = []
-    for row in raw_data:
-        result.append(
-            AEPerformanceData(
-                ae_name=(row.get("ae_name") or "").strip(),
-                spot_count=int(row.get("spot_count") or 0),
-                total_revenue=_to_decimal(row.get("total_revenue"), "0"),
-                avg_rate=_to_decimal(row.get("avg_rate"), "0"),
-                first_spot_date=_to_date(row.get("first_spot_date")),
-                last_spot_date=_to_date(row.get("last_spot_date")),
+        for row in revenue_data:
+            data = row.to_dict()
+            data["total"] = (
+                float(row.total_net)
+                if revenue_field.lower() == "net"
+                else float(row.total_gross)
             )
-        )
-    return result
+            rows_for_stats.append(data)
 
-def _create_metadata(
-    self,
-    report_type: str,
-    parameters: Dict[str, Any],
-    row_count: int,
-    processing_time: float,
-) -> "ReportMetadata":
-    """Create report metadata"""
-    from src.models.report_data import ReportMetadata
+            if getattr(row, "is_new_customer", False):
+                new_customer_count += 1
 
-    return ReportMetadata(
-        report_type=report_type,
-        parameters=parameters,
-        row_count=row_count,
-        processing_time_ms=processing_time,
-        data_last_updated=self._get_data_last_updated(),
-    )
+        stats = calculate_statistics(rows_for_stats)
+        stats["new_customers"] = new_customer_count
 
-def _get_revenue_types(self) -> List[str]:
-    """Get available revenue types"""
-    query = """
-        SELECT DISTINCT COALESCE(revenue_type, 'Regular') AS revenue_type
-        FROM spots
-        WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
-        ORDER BY revenue_type
-    """
-    conn = self.repository.db.connect()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(query)
-        return [row[0] for row in cursor.fetchall()]
-    finally:
-        conn.close()
+        return stats
 
-def _get_month_status(self, year: int) -> List["MonthStatus"]:
-    """Get month closure status with FIXED filtering"""
-    year_range = YearRange.from_year(year)
-    query = """
-        SELECT broadcast_month, closed_date, closed_by 
-        FROM month_closures 
-        WHERE broadcast_month LIKE ?
-    """
+    def _build_ae_performance_data(
+        self, raw_data: List[Dict[str, Any]]
+    ) -> List["AEPerformanceData"]:
+        """Build AE performance data objects from raw repository rows.
 
-    conn = self.repository.db.connect()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(query, (year_range.like_pattern,))
-        rows = cursor.fetchall()
-        closures = [
-            {"broadcast_month": row[0], "closed_date": row[1], "closed_by": row[2]}
-            for row in rows
-        ]
-        return create_month_status_from_closure_data(closures, year)
-    finally:
-        conn.close()
+        Robust to NULLs, ISO datetimes with/without time, and non-Decimal numerics.
+        """
+        from src.models.report_data import (
+            AEPerformanceData,
+        )  # local import avoids circulars
 
-def _get_data_last_updated(self) -> datetime:
-    """Get last data update timestamp"""
-    query = "SELECT MAX(load_date) AS last_update FROM spots WHERE load_date IS NOT NULL"
-    conn = self.repository.db.connect()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(query)
-        row = cursor.fetchone()
-        if row and row[0]:
+        def _to_date(v: Optional[Any]) -> Optional[date]:
+            if v is None:
+                return None
+            if isinstance(v, date):
+                return v
+            s = str(v).strip()
+            if not s:
+                return None
+            # Prefer fromisoformat (handles YYYY-MM-DD and full ISO with time)
             try:
-                return datetime.fromisoformat(row[0])
+                return datetime.fromisoformat(s).date()
             except Exception:
                 pass
-        return datetime.now()
-    finally:
-        conn.close()
+            # Fallback: slice first 10 chars as YYYY-MM-DD
+            try:
+                return datetime.strptime(s[:10], "%Y-%m-%d").date()
+            except Exception:
+                return None
+
+        def _to_decimal(v: Any, default: str = "0") -> Decimal:
+            if v is None:
+                return Decimal(default)
+            if isinstance(v, Decimal):
+                return v
+            try:
+                return Decimal(str(v))
+            except Exception:
+                return Decimal(default)
+
+        result: List[AEPerformanceData] = []
+        for row in raw_data:
+            result.append(
+                AEPerformanceData(
+                    ae_name=(row.get("ae_name") or "").strip(),
+                    spot_count=int(row.get("spot_count") or 0),
+                    total_revenue=_to_decimal(row.get("total_revenue"), "0"),
+                    avg_rate=_to_decimal(row.get("avg_rate"), "0"),
+                    first_spot_date=_to_date(row.get("first_spot_date")),
+                    last_spot_date=_to_date(row.get("last_spot_date")),
+                )
+            )
+        return result
+
+    def _create_metadata(
+        self,
+        report_type: str,
+        parameters: Dict[str, Any],
+        row_count: int,
+        processing_time: float,
+    ) -> "ReportMetadata":
+        """Create report metadata"""
+        from src.models.report_data import ReportMetadata
+
+        return ReportMetadata(
+            report_type=report_type,
+            parameters=parameters,
+            row_count=row_count,
+            processing_time_ms=processing_time,
+            data_last_updated=self._get_data_last_updated(),
+        )
+
+    def _get_revenue_types(self) -> List[str]:
+        """Get available revenue types"""
+        query = """
+            SELECT DISTINCT COALESCE(revenue_type, 'Regular') AS revenue_type
+            FROM spots
+            WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+            ORDER BY revenue_type
+        """
+        conn = self.repository.db.connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query)
+            return [row[0] for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def _get_month_status(self, year: int) -> List["MonthStatus"]:
+        """Get month closure status with FIXED filtering"""
+        year_range = YearRange.from_year(year)
+        query = """
+            SELECT broadcast_month, closed_date, closed_by 
+            FROM month_closures 
+            WHERE broadcast_month LIKE ?
+        """
+
+        conn = self.repository.db.connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, (year_range.like_pattern,))
+            rows = cursor.fetchall()
+            closures = [
+                {"broadcast_month": row[0], "closed_date": row[1], "closed_by": row[2]}
+                for row in rows
+            ]
+            return create_month_status_from_closure_data(closures, year)
+        finally:
+            conn.close()
+
+    def _get_data_last_updated(self) -> datetime:
+        """Get last data update timestamp"""
+        query = "SELECT MAX(load_date) AS last_update FROM spots WHERE load_date IS NOT NULL"
+        conn = self.repository.db.connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query)
+            row = cursor.fetchone()
+            if row and row[0]:
+                try:
+                    return datetime.fromisoformat(row[0])
+                except Exception:
+                    pass
+            return datetime.now()
+        finally:
+            conn.close()
 
 
-# ============================================================================
-# Factory Functions
-# ============================================================================
+    # ============================================================================
+    # Factory Functions
+    # ============================================================================
 
 
 def create_report_data_service():
