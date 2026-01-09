@@ -9,7 +9,7 @@ Examples:
   python unified_analysis.py --year 2024 --assignment-methods-only
   python unified_analysis.py --year 2024 --export-review review_2024.csv
   python unified_analysis.py --year 2024 --export-review review.csv --review-type undetermined
-  python src/unified_analysis.py --year 2024 --output reports/updated_unified_2024.md
+  python src/unified_analysis.py --year 2024 python unified_analysis.py --year 2024
 """
 
 from abc import ABC, abstractmethod

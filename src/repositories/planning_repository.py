@@ -11,7 +11,7 @@ Handles all database operations for:
 import sqlite3
 import logging
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 
 from src.database.connection import DatabaseConnection
@@ -589,6 +589,164 @@ class PlanningRepository(BaseService):
                 ))
             
             return result
+
+# ============================================================================
+# Add these methods to src/repositories/planning_repository.py
+# ============================================================================
+
+    # =========================================================================
+    # Sellable Days Adjustments
+    # =========================================================================
+
+    def get_sellable_days_adjustment(
+        self, 
+        year: int, 
+        month: int
+    ) -> Optional[tuple]:
+        """
+        Get sellable days adjustment for a month.
+        
+        Returns:
+            Tuple of (adjustment: int, reason: str|None) or None if no adjustment
+        """
+        with self.safe_connection() as conn:
+            cursor = conn.execute("""
+                SELECT adjustment, reason
+                FROM sellable_days_adjustments
+                WHERE year = ? AND month = ?
+            """, (year, month))
+            
+            row = cursor.fetchone()
+            if row:
+                return (row["adjustment"], row["reason"])
+            return None
+    
+    def get_all_sellable_days_adjustments(
+        self, 
+        year: int
+    ) -> Dict[int, tuple]:
+        """
+        Get all adjustments for a year.
+        
+        Returns:
+            Dict mapping month -> (adjustment, reason)
+        """
+        with self.safe_connection() as conn:
+            cursor = conn.execute("""
+                SELECT month, adjustment, reason
+                FROM sellable_days_adjustments
+                WHERE year = ?
+            """, (year,))
+            
+            return {
+                row["month"]: (row["adjustment"], row["reason"])
+                for row in cursor.fetchall()
+            }
+    
+    def save_sellable_days_adjustment(
+        self,
+        year: int,
+        month: int,
+        adjustment: int,
+        reason: Optional[str] = None,
+        updated_by: Optional[str] = None
+    ) -> None:
+        """Save or update a sellable days adjustment."""
+        with self.safe_transaction() as conn:
+            conn.execute("""
+                INSERT INTO sellable_days_adjustments 
+                    (year, month, adjustment, reason, updated_by, updated_date)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(year, month) DO UPDATE SET
+                    adjustment = excluded.adjustment,
+                    reason = excluded.reason,
+                    updated_by = excluded.updated_by,
+                    updated_date = CURRENT_TIMESTAMP
+            """, (year, month, adjustment, reason, updated_by))
+            
+            logger.info(f"Sellable days adjustment saved: {year}-{month:02d} = {adjustment}")
+
+    # =========================================================================
+    # Booked Revenue by Effective Date (for burn-down pace)
+    # =========================================================================
+
+    def get_booked_mtd_by_effective_date(
+        self,
+        broadcast_month: str,
+        as_of_date: date
+    ) -> Decimal:
+        """
+        Get booked revenue for spots in a broadcast month,
+        where effective_date <= as_of_date.
+        
+        This measures sales velocity: how fast we're filling the month.
+        
+        Args:
+            broadcast_month: e.g., "Jan-26"
+            as_of_date: Count spots loaded on or before this date
+            
+        Returns:
+            Total gross_rate for matching spots
+        """
+        with self.safe_connection() as conn:
+            cursor = conn.execute("""
+                SELECT COALESCE(SUM(gross_rate), 0) AS booked
+                FROM spots
+                WHERE broadcast_month = ?
+                  AND effective_date <= ?
+                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+            """, (broadcast_month, as_of_date.isoformat()))
+            
+            row = cursor.fetchone()
+            return Decimal(str(row["booked"]))
+    
+    def get_company_totals_for_period(
+        self,
+        period: 'PlanningPeriod'
+    ) -> Dict[str, Decimal]:
+        """
+        Get company-wide totals for a period.
+        
+        Returns:
+            Dict with 'budget', 'forecast', 'booked' totals
+        """
+        with self.safe_connection() as conn:
+            # Budget total
+            cursor = conn.execute("""
+                SELECT COALESCE(SUM(budget_amount), 0) AS total
+                FROM budget
+                WHERE year = ? AND month = ?
+            """, (period.year, period.month))
+            budget_total = Decimal(str(cursor.fetchone()["total"]))
+            
+            # Forecast total (with fallback to budget per AE)
+            cursor = conn.execute("""
+                SELECT COALESCE(SUM(
+                    COALESCE(f.forecast_amount, b.budget_amount)
+                ), 0) AS total
+                FROM budget b
+                LEFT JOIN forecast f 
+                    ON f.ae_name = b.ae_name 
+                    AND f.year = b.year 
+                    AND f.month = b.month
+                WHERE b.year = ? AND b.month = ?
+            """, (period.year, period.month))
+            forecast_total = Decimal(str(cursor.fetchone()["total"]))
+            
+            # Booked total (all revenue for the broadcast month)
+            cursor = conn.execute("""
+                SELECT COALESCE(SUM(gross_rate), 0) AS total
+                FROM spots
+                WHERE broadcast_month = ?
+                  AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+            """, (period.broadcast_month,))
+            booked_total = Decimal(str(cursor.fetchone()["total"]))
+            
+            return {
+                "budget": budget_total,
+                "forecast": forecast_total,
+                "booked": booked_total
+            }
 
     # =========================================================================
     # Helpers

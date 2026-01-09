@@ -5,7 +5,9 @@ Uses dependency injection and delegates to service layer.
 """
 
 import logging
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, Response
+import io
+import csv
 from datetime import date
 from src.services.container import get_container
 from src.models.report_data import ReportFilters
@@ -370,6 +372,73 @@ def quarterly_sectors_report():
     except Exception as e:
         logger.error(f"Error generating report4: {e}", exc_info=True)
         return render_template("error_500.html", message=f"Error generating report: {str(e)}"), 500
+
+@reports_bp.route("/market-analysis")
+@log_requests
+@handle_request_errors
+def market_analysis_report():
+    """Market Analysis Report - Language performance by market."""
+    try:
+        container = get_container()
+        service = safe_get_service(container, "market_analysis_service")
+
+        year = request.args.get("year", str(date.today().year))
+        
+        logger.info(f"Generating market analysis report for year {year}")
+        data = service.get_market_analysis_data(year)
+
+        return render_template(
+            "market-analysis.html",
+            title="Market Analysis",
+            data=data.to_dict(),
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating market analysis: {e}", exc_info=True)
+        return render_template(
+            "error_500.html",
+            message=f"Error generating market analysis: {str(e)}",
+        ), 500
+
+
+@reports_bp.route("/market-analysis/export/<report_type>")
+@log_requests
+@handle_request_errors
+def market_analysis_export(report_type: str):
+    """Export market analysis data to CSV."""
+    try:
+        container = get_container()
+        service = safe_get_service(container, "market_analysis_service")
+
+        year = request.args.get("year", str(date.today().year))
+        
+        logger.info(f"Exporting market analysis {report_type} for year {year}")
+        
+        data = service.get_csv_data(year, report_type)
+        
+        if not data:
+            return "No data available", 404
+
+        # Create CSV
+        output = io.StringIO()
+        if data:
+            writer = csv.DictWriter(output, fieldnames=data[0].keys())
+            writer.writeheader()
+            writer.writerows(data)
+
+        response = Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=market_analysis_{report_type}_{year}.csv"
+            }
+        )
+        return response
+
+    except Exception as e:
+        logger.error(f"Error exporting market analysis: {e}", exc_info=True)
+        return f"Export error: {str(e)}", 500
+
 
 @reports_bp.route("/language-blocks")
 @log_requests
