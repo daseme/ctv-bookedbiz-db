@@ -10,7 +10,7 @@ from typing import Optional
 from enum import Enum
 
 from .container import get_container, ServiceCreationError
-from .pipeline_service import DataSourceType  # Import from pipeline service
+
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +259,10 @@ def initialize_services():
         container.register_singleton("planning_service", create_planning_service)
         print("✅ planning_service registered")
 
+        print("🔧 Registering market_analysis_service...")
+        container.register_singleton("market_analysis_service", create_market_analysis_service)
+        print("✅ market_analysis_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -461,168 +465,6 @@ def create_database_connection(db_path: Optional[str] = None):
     except Exception as e:
         logger.error(f"Failed to create database connection: {e}")
         raise ServiceCreationError(f"Database connection creation failed: {e}") from e
-
-
-def create_pipeline_service():
-    """
-    Create enhanced PipelineService with critical fixes applied.
-
-    Returns:
-        Enhanced PipelineService with concurrency control and data consistency
-    """
-    try:
-        # Import our enhanced service
-        from .pipeline_service import PipelineService
-
-        container = get_container()
-
-        # Get configuration
-        project_root = container.get_config(
-            "PROJECT_ROOT",
-            os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")),
-        )
-        data_path = container.get_config(
-            "DATA_PATH", os.path.join(project_root, "data/processed")
-        )
-
-        # Determine deployment mode and data source strategy
-        environment = container.get_config("ENVIRONMENT", "development")
-        deployment_mode = (
-            DeploymentMode(environment.lower())
-            if environment.lower() in [e.value for e in DeploymentMode]
-            else DeploymentMode.DEVELOPMENT
-        )
-
-        # Choose data source based on environment
-        data_source = _get_data_source_for_environment(deployment_mode)
-
-        # Get database connection if needed
-        db_connection = None
-        if data_source in [
-            DataSourceType.DB_ONLY,
-            DataSourceType.DB_PRIMARY,
-            DataSourceType.JSON_PRIMARY,
-        ]:
-            try:
-                db_connection = container.get("database_connection")
-                logger.info("Database connection available for pipeline service")
-            except:
-                logger.warning(
-                    "Database connection not available, falling back to JSON_ONLY"
-                )
-                data_source = DataSourceType.JSON_ONLY
-
-        logger.info(
-            f"Creating PipelineService with data_source: {data_source.value}, data_path: {data_path}"
-        )
-
-        # Create enhanced service
-        service = PipelineService(
-            db_connection=db_connection, data_path=data_path, data_source=data_source
-        )
-
-        # Validate service health on creation
-        _validate_pipeline_service_health(service)
-
-        return service
-
-    except ImportError as e:
-        logger.error(f"Failed to import enhanced PipelineService: {e}")
-        raise ServiceCreationError(
-            f"Could not import enhanced PipelineService: {e}"
-        ) from e
-    except Exception as e:
-        logger.error(f"Failed to create pipeline service: {e}")
-        raise ServiceCreationError(f"Pipeline service creation failed: {e}") from e
-
-
-def _get_data_source_for_environment(deployment_mode: DeploymentMode) -> DataSourceType:
-    """
-    Determine the appropriate data source strategy based on deployment mode.
-
-    Args:
-        deployment_mode: Current deployment mode
-
-    Returns:
-        DataSourceType appropriate for the environment
-    """
-    data_source_mapping = {
-        DeploymentMode.DEVELOPMENT: DataSourceType.JSON_PRIMARY,  # Fast development with DB backup
-        DeploymentMode.TESTING: DataSourceType.JSON_ONLY,  # Simple testing without DB complexity
-        DeploymentMode.PRODUCTION: DataSourceType.DB_PRIMARY,  # Robust production with JSON cache
-        DeploymentMode.EMERGENCY: DataSourceType.JSON_ONLY,  # Emergency fallback, minimal dependencies
-    }
-
-    data_source = data_source_mapping.get(deployment_mode, DataSourceType.JSON_PRIMARY)
-    logger.info(
-        f"Selected data source {data_source.value} for deployment mode {deployment_mode.value}"
-    )
-
-    return data_source
-
-
-def _validate_pipeline_service_health(service) -> None:
-    """
-    Validate that the pipeline service is healthy and properly configured.
-
-    Args:
-        service: PipelineService instance to validate
-
-    Raises:
-        ServiceCreationError: If service health validation fails
-    """
-    try:
-        # Get data source info
-        info = service.get_data_source_info()
-
-        # Validate basic functionality
-        if not info:
-            raise ServiceCreationError(
-                "Service failed to provide data source information"
-            )
-
-        # Check consistency if dual source
-        consistency_status = info.get("consistency_status", {})
-        if not consistency_status.get("is_consistent", True):
-            conflicts = consistency_status.get("conflicts", 0)
-            if conflicts > 0:
-                logger.warning(
-                    f"Pipeline service has {conflicts} data consistency conflicts"
-                )
-
-                # In production, this might be critical
-                container = get_container()
-                environment = container.get_config("ENVIRONMENT", "development")
-                if environment.lower() == "production" and conflicts > 10:
-                    raise ServiceCreationError(
-                        f"Too many consistency conflicts ({conflicts}) for production"
-                    )
-
-        # Test basic operations
-        test_data = service.get_pipeline_data("HEALTH_CHECK_AE", "2025-01")
-        if test_data is None:
-            raise ServiceCreationError("Service failed basic data retrieval test")
-
-        logger.info("Pipeline service health validation passed")
-
-    except Exception as e:
-        logger.error(f"Pipeline service health validation failed: {e}")
-
-        # Try emergency repair
-        try:
-            repair_result = service.emergency_repair()
-            if repair_result.get("success"):
-                logger.info(
-                    "Emergency repair successful, service should be healthy now"
-                )
-            else:
-                raise ServiceCreationError(
-                    f"Service unhealthy and emergency repair failed: {repair_result.get('error')}"
-                )
-        except Exception as repair_error:
-            raise ServiceCreationError(
-                f"Service health check failed and emergency repair failed: {repair_error}"
-            ) from e
 
 def create_planning_service():
     """Create PlanningService with database connection."""
@@ -849,6 +691,23 @@ def _validate_report_service_health(service) -> None:
         logger.error(f"Report service health validation failed: {e}")
         raise ServiceCreationError(f"Report service health check failed: {e}") from e
 
+def create_market_analysis_service():
+    """Create MarketAnalysisService instance."""
+    from src.services.market_analysis_service import MarketAnalysisService
+    
+    try:
+        container = get_container()
+        db_connection = container.get("database_connection")
+        return MarketAnalysisService(db_connection)
+    except Exception as e:
+        logger.warning(f"Database connection issue for market analysis service: {e}")
+        # Fallback to direct connection
+        import sqlite3
+        db_path = "data/database/production.db"
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return MarketAnalysisService(conn)
+
 def register_critical_services(container):
     """Register only the most critical services for Railway"""
 
@@ -1065,6 +924,7 @@ def emergency_service_recovery():
                 "pipeline_service",
                 "budget_service",
                 "report_data_service",
+                "market_analysis_service",
             ]:
                 try:
                     service = container.get(service_name)

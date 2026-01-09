@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+{% block header_title %}{{ title }}{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-link">Analytics</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Market Analysis</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+:root {
+  --nord0: #2e3440; --nord1: #3b4252; --nord2: #434c5e; --nord3: #4c566a;
+  --nord4: #d8dee9; --nord5: #e5e9f0; --nord6: #eceff4;
+  --nord7: #8fbcbb; --nord8: #88c0d0; --nord9: #81a1c1; --nord10: #5e81ac;
+  --nord11: #bf616a; --nord12: #d08770; --nord13: #ebcb8b; --nord14: #a3be8c; --nord15: #b48ead;
+}
+
+/* Controls */
+.dashboard-controls {
+  background: var(--nord6); border: 1px solid var(--nord4); border-radius: 8px;
+  padding: 16px; margin: 24px 0; display: flex; flex-wrap: wrap; gap: 16px; align-items: end;
+}
+.control-group { display: flex; flex-direction: column; min-width: 150px; }
+.control-group label { font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--nord2); }
+.control-group select {
+  padding: 8px 12px; font-size: 13px; border: 1px solid var(--nord4); border-radius: 6px;
+  background: white; color: var(--nord0);
+}
+.export-btn {
+  padding: 8px 16px; background: linear-gradient(135deg, var(--nord8), var(--nord9));
+  color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
+  font-weight: 600; transition: all 0.2s;
+}
+.export-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(136,192,208,0.3); }
+
+/* Revenue Context Card */
+.context-card {
+  background: linear-gradient(135deg, var(--nord0) 0%, var(--nord1) 100%);
+  color: var(--nord6); border-radius: 12px; padding: 24px; margin: 24px 0;
+}
+.context-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+.context-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.context-item { background: rgba(255,255,255,0.1); border-radius: 8px; padding: 16px; }
+.context-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; }
+.context-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.context-value.highlight { color: var(--nord8); }
+.context-pct { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+
+/* Stats Grid */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 24px 0; }
+.stat-card {
+  background: var(--nord6); border: 1px solid var(--nord4); border-radius: 8px;
+  padding: 20px; text-align: center; transition: all 0.2s;
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(46,52,64,0.1); }
+.stat-icon { font-size: 28px; margin-bottom: 8px; }
+.stat-value { font-size: 28px; font-weight: 700; color: var(--nord0); }
+.stat-label { font-size: 12px; color: var(--nord3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+/* Section Headers */
+.section-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: 32px 0 16px 0; padding-bottom: 12px; border-bottom: 2px solid var(--nord4);
+}
+.section-title { font-size: 20px; font-weight: 700; color: var(--nord0); }
+
+/* Tables */
+.table-container { overflow-x: auto; border: 1px solid var(--nord4); border-radius: 8px; margin: 16px 0; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  background: var(--nord1); color: var(--nord6); padding: 12px 16px;
+  text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.5px; position: sticky; top: 0;
+}
+.data-table th.numeric { text-align: right; }
+.data-table td { padding: 12px 16px; border-bottom: 1px solid var(--nord5); }
+.data-table td.numeric { text-align: right; font-feature-settings: "tnum"; }
+.data-table tr:hover { background: var(--nord6); }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tfoot td { background: var(--nord5); font-weight: 600; }
+
+/* Language badges */
+.lang-badge {
+  display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px;
+  font-weight: 600; background: var(--nord9); color: white;
+}
+.lang-badge.chinese { background: var(--nord11); }
+.lang-badge.vietnamese { background: var(--nord14); }
+.lang-badge.filipino { background: var(--nord12); }
+.lang-badge.korean { background: var(--nord15); }
+.lang-badge.south-asian { background: var(--nord13); color: var(--nord0); }
+.lang-badge.hmong { background: var(--nord7); color: var(--nord0); }
+.lang-badge.japanese { background: var(--nord10); }
+.lang-badge.english { background: var(--nord3); }
+.lang-badge.portuguese { background: var(--nord8); color: var(--nord0); }
+
+/* Market badges */
+.market-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px;
+  font-weight: 600; background: var(--nord4); color: var(--nord1);
+}
+
+/* Progress bars */
+.progress-bar {
+  height: 8px; background: var(--nord5); border-radius: 4px; overflow: hidden; margin-top: 4px;
+}
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--nord8), var(--nord9)); border-radius: 4px; }
+
+/* Pivot table styles */
+.pivot-container { overflow-x: auto; }
+.pivot-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pivot-table th, .pivot-table td { padding: 8px 12px; border: 1px solid var(--nord4); }
+.pivot-table th { background: var(--nord1); color: var(--nord6); font-size: 10px; text-transform: uppercase; }
+.pivot-table td { text-align: right; }
+.pivot-table td:first-child { text-align: left; font-weight: 600; background: var(--nord6); }
+.pivot-table .total-row { background: var(--nord5); font-weight: 600; }
+.pivot-cell-zero { color: var(--nord4); }
+
+/* Excluded revenue section */
+.excluded-section { background: var(--nord6); border-radius: 8px; padding: 16px; margin: 16px 0; }
+.excluded-title { font-size: 14px; font-weight: 600; color: var(--nord3); margin-bottom: 12px; }
+.excluded-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.excluded-item { display: flex; justify-content: space-between; padding: 8px 12px; background: white; border-radius: 6px; }
+.excluded-type { font-size: 12px; color: var(--nord2); }
+.excluded-amount { font-size: 12px; font-weight: 600; color: var(--nord3); }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dashboard-controls { flex-direction: column; }
+  .control-group { min-width: 100%; }
+  .context-grid { grid-template-columns: 1fr 1fr; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Controls -->
+<div class="dashboard-controls">
+  <div class="control-group">
+    <label for="yearSelect">Year</label>
+    <select id="yearSelect" onchange="changeYear(this.value)">
+      {% for year in data.available_years %}
+      <option value="{{ year }}" {% if year == data.selected_year %}selected{% endif %}>{{ year }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  
+  <div class="control-group">
+    <label>&nbsp;</label>
+    <div style="display: flex; gap: 8px;">
+      <button class="export-btn" onclick="exportData('language_summary')">📊 Export Languages</button>
+      <button class="export-btn" onclick="exportData('market_summary')">🗺️ Export Markets</button>
+      <button class="export-btn" onclick="exportData('market_breakdown')">📈 Export Full Data</button>
+    </div>
+  </div>
+</div>
+
+<!-- Revenue Context -->
+<div class="context-card">
+  <div class="context-title">💰 Revenue Context ({{ data.selected_year }})</div>
+  <div class="context-grid">
+    <div class="context-item">
+      <div class="context-label">Total Gross Revenue</div>
+      <div class="context-value">${{ "{:,.0f}".format(data.revenue_context.total_gross) }}</div>
+      <div class="context-pct">All revenue types</div>
+    </div>
+    <div class="context-item">
+      <div class="context-label">Internal Ad Sales</div>
+      <div class="context-value">${{ "{:,.0f}".format(data.revenue_context.internal_ad_sales) }}</div>
+      <div class="context-pct">{{ "{:.1f}".format(data.revenue_context.internal_ad_sales / data.revenue_context.total_gross * 100 if data.revenue_context.total_gross > 0 else 0) }}% of total</div>
+    </div>
+    <div class="context-item">
+      <div class="context-label">This Report Analyzes</div>
+      <div class="context-value highlight">${{ "{:,.0f}".format(data.revenue_context.report_scope) }}</div>
+      <div class="context-pct">{{ "{:.1f}".format(data.revenue_context.report_percentage) }}% of total (Internal Ad Sales COM/BNS)</div>
+    </div>
+    <div class="context-item">
+      <div class="context-label">Not In This Report</div>
+      <div class="context-value">${{ "{:,.0f}".format(data.revenue_context.excluded_from_report) }}</div>
+      <div class="context-pct">Direct Response, Paid Programming, etc.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Excluded Revenue Breakdown -->
+{% if data.revenue_context.other_revenue_types %}
+<div class="excluded-section">
+  <div class="excluded-title">📋 Revenue Not Included in This Report</div>
+  <div class="excluded-grid">
+    {% for type, amount in data.revenue_context.other_revenue_types.items() %}
+    <div class="excluded-item">
+      <span class="excluded-type">{{ type }}</span>
+      <span class="excluded-amount">${{ "{:,.0f}".format(amount) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Summary Stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon">🌐</div>
+    <div class="stat-value">{{ data.language_summary|length }}</div>
+    <div class="stat-label">Language Groups</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">🗺️</div>
+    <div class="stat-value">{{ data.market_summary|length }}</div>
+    <div class="stat-label">Markets</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">📊</div>
+    <div class="stat-value">${{ "{:,.0f}".format(data.revenue_context.report_scope / 1000) }}K</div>
+    <div class="stat-label">Total Revenue</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">🎯</div>
+    <div class="stat-value">{{ "{:,.0f}".format(data.code_distribution.total_spots) }}</div>
+    <div class="stat-label">Total Spots</div>
+  </div>
+</div>
+
+<!-- Language Performance -->
+<div class="section-header">
+  <span class="section-title">🌐 Language Performance</span>
+</div>
+
+<div class="table-container">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Language</th>
+        <th class="numeric">Revenue</th>
+        <th class="numeric">% of Total</th>
+        <th class="numeric">Paid Spots</th>
+        <th class="numeric">BNS Spots</th>
+        <th class="numeric">Avg/Spot</th>
+        <th style="width: 150px;">Share</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lang in data.language_summary %}
+      <tr>
+        <td><span class="lang-badge {{ lang.language|lower|replace(' ', '-') }}">{{ lang.language }}</span></td>
+        <td class="numeric">${{ "{:,.0f}".format(lang.revenue) }}</td>
+        <td class="numeric">{{ "{:.1f}".format(lang.percentage) }}%</td>
+        <td class="numeric">{{ "{:,}".format(lang.paid_spots) }}</td>
+        <td class="numeric">{{ "{:,}".format(lang.bonus_spots) }}</td>
+        <td class="numeric">${{ "{:.2f}".format(lang.avg_per_spot) }}</td>
+        <td>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: {{ lang.percentage }}%"></div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td><strong>Total</strong></td>
+        <td class="numeric"><strong>${{ "{:,.0f}".format(data.language_summary|sum(attribute='revenue')) }}</strong></td>
+        <td class="numeric"><strong>100%</strong></td>
+        <td class="numeric"><strong>{{ "{:,}".format(data.language_summary|sum(attribute='paid_spots')) }}</strong></td>
+        <td class="numeric"><strong>{{ "{:,}".format(data.language_summary|sum(attribute='bonus_spots')) }}</strong></td>
+        <td class="numeric">-</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<!-- Market Performance -->
+<div class="section-header">
+  <span class="section-title">🗺️ Market Performance</span>
+</div>
+
+<div class="table-container">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Market</th>
+        <th class="numeric">Revenue</th>
+        <th class="numeric">% of Total</th>
+        <th>Top Language</th>
+        <th class="numeric">Top Lang %</th>
+        <th class="numeric">Languages</th>
+        <th style="width: 150px;">Share</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for market in data.market_summary %}
+      <tr>
+        <td><span class="market-badge">{{ market.market }}</span></td>
+        <td class="numeric">${{ "{:,.0f}".format(market.revenue) }}</td>
+        <td class="numeric">{{ "{:.1f}".format(market.pct_of_total) }}%</td>
+        <td><span class="lang-badge {{ market.top_language|lower|replace(' ', '-') }}">{{ market.top_language }}</span></td>
+        <td class="numeric">{{ "{:.1f}".format(market.top_language_pct) }}%</td>
+        <td class="numeric">{{ market.unique_languages }}</td>
+        <td>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: {{ market.pct_of_total }}%"></div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Language by Market Pivot -->
+<div class="section-header">
+  <span class="section-title">📊 Language × Market Matrix</span>
+</div>
+
+<div class="pivot-container">
+  <table class="pivot-table" id="pivotTable">
+    <thead>
+      <tr>
+        <th>Language</th>
+        {% for market in data.market_summary %}
+        <th>{{ market.market }}</th>
+        {% endfor %}
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody id="pivotBody">
+    </tbody>
+  </table>
+</div>
+
+<!-- Raw Code Distribution -->
+<div class="section-header">
+  <span class="section-title">🔤 Language Code Distribution</span>
+</div>
+
+<div class="table-container" style="max-height: 300px; overflow-y: auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Group</th>
+        <th class="numeric">Spots</th>
+        <th class="numeric">Revenue</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for code in data.code_distribution.codes %}
+      <tr>
+        <td><code style="background: var(--nord5); padding: 2px 6px; border-radius: 3px;">{{ code.code }}</code></td>
+        <td><span class="lang-badge {{ code.group|lower|replace(' ', '-') }}">{{ code.group }}</span></td>
+        <td class="numeric">{{ "{:,}".format(code.spots) }}</td>
+        <td class="numeric">${{ "{:,.2f}".format(code.revenue) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Methodology -->
+<details style="margin-top: 32px; padding: 16px; background: var(--nord6); border-radius: 8px;">
+  <summary style="cursor: pointer; font-weight: 600; color: var(--nord2);">📋 Methodology & Notes</summary>
+  <div style="margin-top: 16px; font-size: 13px; color: var(--nord3); line-height: 1.6;">
+    <p><strong>Data Source:</strong> spots.language_code (direct query, no dependency on spot_language_assignments)</p>
+    <p><strong>Filters:</strong> revenue_type = 'Internal Ad Sales', spot_type IN ('COM', 'BNS'), language_code IS NOT NULL</p>
+    <p><strong>Market Consolidation:</strong> CHI, CMP, MSP markets are combined into "CMP"</p>
+    <p><strong>Language Grouping:</strong> M, C, M/C → Chinese | V → Vietnamese | T → Filipino | K → Korean | J → Japanese | SA → South Asian | HM → Hmong | E, EN, ENG → English | P → Portuguese</p>
+  </div>
+</details>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Data from server
+const marketBreakdown = {{ data.market_breakdown | tojson | safe }};
+const marketSummary = {{ data.market_summary | tojson | safe }};
+const languageSummary = {{ data.language_summary | tojson | safe }};
+
+// Build pivot table
+function buildPivotTable() {
+  const markets = marketSummary.map(m => m.market);
+  const languages = [...new Set(languageSummary.map(l => l.language))];
+  
+  // Create lookup
+  const lookup = {};
+  marketBreakdown.forEach(item => {
+    const key = `${item.language}|${item.market}`;
+    lookup[key] = item.revenue;
+  });
+  
+  // Build rows
+  const tbody = document.getElementById('pivotBody');
+  let html = '';
+  
+  // Language totals for sorting
+  const langTotals = {};
+  languages.forEach(lang => {
+    langTotals[lang] = markets.reduce((sum, mkt) => sum + (lookup[`${lang}|${mkt}`] || 0), 0);
+  });
+  
+  // Sort languages by total
+  languages.sort((a, b) => langTotals[b] - langTotals[a]);
+  
+  languages.forEach(lang => {
+    html += `<tr><td>${lang}</td>`;
+    let rowTotal = 0;
+    markets.forEach(market => {
+      const val = lookup[`${lang}|${market}`] || 0;
+      rowTotal += val;
+      const cls = val === 0 ? 'pivot-cell-zero' : '';
+      html += `<td class="${cls}">${val > 0 ? '$' + val.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</td>`;
+    });
+    html += `<td><strong>$${rowTotal.toLocaleString(undefined, {maximumFractionDigits: 0})}</strong></td></tr>`;
+  });
+  
+  // Total row
+  html += '<tr class="total-row"><td><strong>Total</strong></td>';
+  let grandTotal = 0;
+  markets.forEach(market => {
+    const marketTotal = languages.reduce((sum, lang) => sum + (lookup[`${lang}|${market}`] || 0), 0);
+    grandTotal += marketTotal;
+    html += `<td><strong>$${marketTotal.toLocaleString(undefined, {maximumFractionDigits: 0})}</strong></td>`;
+  });
+  html += `<td><strong>$${grandTotal.toLocaleString(undefined, {maximumFractionDigits: 0})}</strong></td></tr>`;
+  
+  tbody.innerHTML = html;
+}
+
+function changeYear(year) {
+  const url = new URL(window.location);
+  url.searchParams.set('year', year);
+  window.location.href = url.toString();
+}
+
+function exportData(type) {
+  const year = document.getElementById('yearSelect').value;
+  window.location.href = `/reports/market-analysis/export/${type}?year=${year}`;
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  buildPivotTable();
+  console.log('📊 Market Analysis Dashboard loaded');
+});
+</script>
+{% endblock %}
