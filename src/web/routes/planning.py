@@ -11,6 +11,9 @@ import logging
 from flask import Blueprint, render_template, request, jsonify
 from datetime import date
 from decimal import Decimal
+from enum import Enum
+from dataclasses import dataclass
+from typing import Optional, Dict, List
 
 from src.services.container import get_container
 from src.web.utils.request_helpers import (
@@ -38,29 +41,29 @@ class CompanySummaryWrapper:
     def __init__(self, data: dict):
         self._data = data
         self._periods_by_key = {}
-        for p in data.get("periods", []):
+        for p in data.get("periods", []):  # Use dict access
             period = p["period"]
             self._periods_by_key[period.key] = PeriodDataWrapper(p)
     
     @property
     def total_budget(self):
-        return self._data["total_budget"]
+        return self._data.get("total_budget")
     
     @property
     def total_forecast(self):
-        return self._data["total_forecast"]
+        return self._data.get("total_forecast")
     
     @property
     def total_booked(self):
-        return self._data["total_booked"]
+        return self._data.get("total_booked")
     
     @property
     def total_pipeline(self):
-        return self._data["total_pipeline"]
+        return self._data.get("total_pipeline")
     
     @property
     def total_variance(self):
-        return self._data["total_variance"]
+        return self._data.get("total_variance")
     
     @property
     def periods(self):
@@ -118,64 +121,58 @@ class PeriodDataWrapper:
 # Main UI Routes
 # ============================================================================
 
+# ============================================================================
+# Update the planning_session route in src/web/routes/planning.py
+# Add burn_down_metrics to the template data
+# ============================================================================
+
 @planning_bp.route("/")
-@log_requests
-@handle_request_errors
 def planning_session():
-    """
-    Planning session main page.
-    
-    Now displays full 12-month view with active planning window highlighted.
-    """
+    """Main planning session view."""
     try:
+        container = get_container()
+        planning_service = container.get("planning_service")
+        
         # Get planning year from query param or default to current year
         planning_year = request.args.get("year", date.today().year, type=int)
         months_ahead = request.args.get("months_ahead", 2, type=int)
         
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        # Get planning summary with full year data
+        # Get planning summary (entity-level data)
         summary = planning_service.get_planning_summary(
             months_ahead=months_ahead,
             planning_year=planning_year
         )
-        company = planning_service.get_company_summary(
+        
+        # Get company summary (aggregated totals) - THIS WAS MISSING
+        company_summary = planning_service.get_company_summary(
             months_ahead=months_ahead,
             planning_year=planning_year
         )
         
-        # Format for template
+        # Get burn-down metrics for active periods only
+        burn_down_metrics = planning_service.get_burn_down_metrics(
+            periods=summary.active_periods
+        )
+        
+        # Build template data
         template_data = {
-            "title": "Planning Session",
-            
-            # Year context
             "planning_year": planning_year,
             "current_date": date.today().strftime("%B %d, %Y"),
-            
-            # Period collections for full year view
             "all_periods": summary.all_periods,
             "active_periods": summary.active_periods,
             "past_periods": summary.past_periods,
-            
-            # Legacy support - 'periods' points to active window
-            "periods": summary.active_periods,
-            
-            # Entity data with rows_by_period for efficient lookups
             "entity_data": summary.entity_data,
+            "company": CompanySummaryWrapper(company_summary),  # Pass company dict
             
-            # Company totals wrapped for dot notation access
-            "company": CompanySummaryWrapper(company),
+            # Burn-down metrics
+            "burn_down": burn_down_metrics,
         }
         
         return render_template("planning_session.html", **template_data)
-    
+        
     except Exception as e:
         logger.error(f"Error loading planning session: {e}", exc_info=True)
-        return render_template(
-            "error_500.html", 
-            message="Error loading planning session"
-        ), 500
+        return render_template("error.html", error=str(e)), 500
 
 
 @planning_bp.route("/history/<ae_name>/<int:year>/<int:month>")
@@ -713,3 +710,4 @@ def _get_budget_data_for_year(year: int) -> dict:
     except Exception as e:
         logger.error(f"Error getting budget data: {e}")
         return {}
+    

@@ -270,6 +270,22 @@
         border-radius: 50%;
     }
     
+    /* Booked exceeds forecast entered - visual indicator */
+    .forecast-input.booked-exceeds {
+        background: #ecfdf5;
+        border-color: var(--nord14);
+    }
+    
+    .booked-exceeds-indicator {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 0;
+        height: 0;
+        border-left: 8px solid var(--nord14);
+        border-bottom: 8px solid transparent;
+    }
+    
     /* Variance styling */
     .variance-positive {
         color: var(--nord14);
@@ -419,6 +435,128 @@
         background: #cbd5e1;
     }
     
+    /* =========================================================================
+       BURN-DOWN STRIP STYLES
+       ========================================================================= */
+    
+    .burn-down-row {
+        background: linear-gradient(180deg, var(--nord1) 0%, var(--nord0) 100%) !important;
+    }
+    
+    .burn-down-row th {
+        background: transparent !important;
+        padding: 10px 8px !important;
+        vertical-align: middle;
+        border-bottom: 2px solid var(--nord3);
+    }
+    
+    .burn-down-cell {
+        text-align: center !important;
+        color: var(--nord6);
+        font-size: 11px;
+    }
+    
+    .burn-down-cell.inactive {
+        opacity: 0.3;
+    }
+    
+    .burn-down-label {
+        font-weight: 600 !important;
+        color: var(--nord4) !important;
+        font-size: 10px !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        text-align: left !important;
+    }
+    
+    /* Days left */
+    .burn-down-days {
+        font-size: 10px;
+        color: var(--nord4);
+        margin-bottom: 2px;
+    }
+    
+    /* Required pace */
+    .burn-down-pace {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--nord6);
+        margin-bottom: 4px;
+    }
+    
+    /* Pace bar container */
+    .pace-bar-container {
+        height: 5px;
+        background: var(--nord3);
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 3px;
+    }
+    
+    .pace-bar {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s ease;
+        min-width: 2px;
+    }
+    
+    /* Pace status colors */
+    .pace-ahead .pace-bar {
+        background: linear-gradient(90deg, var(--nord14) 0%, #8fbf8b 100%);
+    }
+    
+    .pace-on-track .pace-bar {
+        background: linear-gradient(90deg, var(--nord13) 0%, #e9c46a 100%);
+    }
+    
+    .pace-behind .pace-bar {
+        background: linear-gradient(90deg, var(--nord11) 0%, #e07a5f 100%);
+    }
+    
+    .pace-complete .pace-bar {
+        background: var(--nord8);
+        width: 100% !important;
+    }
+    
+    /* Status label */
+    .pace-status-label {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .pace-ahead .pace-status-label { color: var(--nord14); }
+    .pace-on-track .pace-status-label { color: var(--nord13); }
+    .pace-behind .pace-status-label { color: var(--nord11); }
+    .pace-complete .pace-status-label { color: var(--nord8); }
+    
+    /* Tooltip on hover */
+    .burn-down-cell[data-tooltip] {
+        position: relative;
+        cursor: help;
+    }
+    
+    .burn-down-cell[data-tooltip]:hover::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--nord0);
+        color: var(--nord6);
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-size: 11px;
+        white-space: pre-line;
+        z-index: 1000;
+        min-width: 200px;
+        text-align: left;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        margin-top: 6px;
+        line-height: 1.5;
+    }
+    
     /* Responsive */
     @media (max-width: 1200px) {
         .summary-cards {
@@ -436,43 +574,6 @@
             gap: 16px;
         }
     }
-
-
-/* Booked exceeds forecast entered - visual indicator */
-.forecast-input.booked-exceeds {
-    background: #ecfdf5;  /* Light green - good problem to have! */
-    border-color: var(--nord14);
-}
-
-.booked-exceeds-indicator {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 0;
-    height: 0;
-    border-left: 8px solid var(--nord14);
-    border-bottom: 8px solid transparent;
-}
-
-/* Tooltip styling for the indicator */
-.forecast-cell {
-    position: relative;
-}
-
-.forecast-input.booked-exceeds:hover + .booked-exceeds-indicator::after,
-.booked-exceeds-indicator:hover::after {
-    content: attr(title);
-    position: absolute;
-    top: 100%;
-    left: 0;
-    background: var(--nord0);
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    white-space: nowrap;
-    z-index: 100;
-}
 </style>
 {% endblock %}
 
@@ -542,6 +643,41 @@
 <div class="planning-table-container">
     <table class="planning-table" id="planningTable">
         <thead>
+            <!-- Burn-Down Strip Row -->
+            <tr class="burn-down-row">
+                <th class="burn-down-label entity-header-col">Burn Rate</th>
+                {% for period in all_periods %}
+                {% set bd = burn_down.get(period) if burn_down else None %}
+                {% set is_active = period in active_periods %}
+                <th class="burn-down-cell {% if not is_active %}inactive{% endif %} {% if bd %}{{ bd.pace_status.css_class }}{% endif %} {% if period.month in [3, 6, 9, 12] %}q-end{% endif %}"
+                    {% if bd and is_active %}
+                    data-tooltip="Forecast: {{ bd.forecast_total.formatted }}
+Booked: {{ bd.booked_total.formatted }}
+Remaining: {{ bd.remaining_to_forecast.formatted }}
+
+Days elapsed: {{ bd.sellable_days_elapsed }}
+Days left: {{ bd.sellable_days_remaining }}
+{% if bd.adjustment != 0 %}Adjustment: {{ bd.adjustment }} ({{ bd.adjustment_reason or 'manual' }})
+{% endif %}
+Required: {{ bd.required_pace_formatted }}
+Actual: {{ bd.actual_pace_formatted }}"
+                    {% endif %}>
+                    {% if is_active and bd %}
+                    <div class="burn-down-days">{{ bd.days_left_text }}</div>
+                    <div class="burn-down-pace">{{ bd.required_pace_formatted }}</div>
+                    <div class="pace-bar-container">
+                        <div class="pace-bar" style="width: {{ bd.pace_bar_percent }}%;"></div>
+                    </div>
+                    <div class="pace-status-label">{{ bd.pace_status.label }}</div>
+                    {% else %}
+                    <div class="burn-down-days" style="opacity: 0.4;">—</div>
+                    {% endif %}
+                </th>
+                {% endfor %}
+                <th class="burn-down-cell total-header" style="opacity: 0.4;">—</th>
+            </tr>
+            
+            <!-- Month Headers Row -->
             <tr>
                 <th class="entity-header-col">AE / Metric</th>
                 {% for period in all_periods %}
@@ -588,7 +724,6 @@
                 <td class="number total-col">${{ "{:,.0f}".format(ed.total_booked.amount) }}</td>
             </tr>
             
-
             <!-- Forecast Row (Editable) -->
             <tr class="row-forecast">
                 <td class="row-label entity-name-cell">Forecast</td>
@@ -624,7 +759,6 @@
                 </td>
             </tr>
             
-            
             <!-- Pipeline Row -->
             <tr class="row-pipeline">
                 <td class="row-label entity-name-cell">Pipeline</td>
@@ -644,7 +778,7 @@
                 {% set row = ed.rows_by_period.get(period.key) %}
                 {% set variance = row.variance_to_budget.amount if row else 0 %}
                 <td class="number {% if variance >= 0 %}variance-positive{% else %}variance-negative{% endif %} {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
-                    {{ row.variance_to_budget.formatted_with_sign if row else '$0' }}
+                    {{ row.variance_to_budget.formatted_with_sign if row else '+$0' }}
                 </td>
                 {% endfor %}
                 <td class="number total-col {% if ed.total_variance.amount >= 0 %}variance-positive{% else %}variance-negative{% endif %}">
@@ -689,10 +823,12 @@
     <strong>Data Notes:</strong> 
     Booked = gross_rate from spots table. 
     Pipeline = Forecast minus Booked. 
-    Forecast defaults to Budget until adjusted.
+    Forecast defaults to Budget until adjusted; auto-floors to Booked if Booked exceeds entered value.
     Yellow highlight indicates modified forecasts.
+    Green highlight indicates Booked exceeds entered forecast.
     Blue highlighted columns are the active planning window.
     Grey inputs are closed months (read-only).
+    Burn Rate shows required daily pace to hit forecast for active months.
 </div>
 
 {% endblock %}
@@ -844,10 +980,6 @@ function recalculateTotals() {
         const bookedValue = parseNumber(input.dataset.booked || '0');
         grandTotal += Math.max(displayedValue, bookedValue);
     });
-    
-    // Update summary card if exists
-    const summaryForecast = document.querySelector('.summary-card .value');
-    // Note: Summary cards are static on page load; full refresh needed for accurate totals
 }
 
 function resetChanges() {
@@ -966,6 +1098,9 @@ function exportCSV() {
     let csv = [];
     
     rows.forEach(row => {
+        // Skip burn-down row in export
+        if (row.classList.contains('burn-down-row')) return;
+        
         const cells = row.querySelectorAll('th, td');
         const rowData = [];
         cells.forEach(cell => {

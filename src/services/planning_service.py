@@ -13,6 +13,10 @@ from typing import List, Optional, Dict, Any
 from decimal import Decimal
 from datetime import date
 
+
+from src.utils.calendar import SellableDaysCalendar, SellableDaysInfo
+from src.models.planning import BurnDownMetrics, PaceStatus
+
 from src.database.connection import DatabaseConnection
 from src.services.base_service import BaseService
 from src.repositories.planning_repository import PlanningRepository
@@ -402,6 +406,68 @@ class PlanningService(BaseService):
             "added_count": len(added),
             "added_entities": added
         }
+
+# ============================================================================
+# Add this method to PlanningService class
+# ============================================================================
+
+    def get_burn_down_metrics(
+        self,
+        periods: List[PlanningPeriod],
+        as_of: Optional[date] = None
+    ) -> Dict[PlanningPeriod, BurnDownMetrics]:
+        """
+        Calculate burn-down metrics for each period.
+        
+        These are company-wide totals showing the "physics" of hitting forecast.
+        
+        Args:
+            periods: List of planning periods (typically active window)
+            as_of: Calculate as of this date (default: today)
+            
+        Returns:
+            Dict mapping period -> BurnDownMetrics
+        """
+        if as_of is None:
+            as_of = date.today()
+        
+        # Create calendar with adjustment lookup from DB
+        def adjustment_lookup(year: int, month: int) -> Optional[tuple]:
+            return self.repository.get_sellable_days_adjustment(year, month)
+        
+        calendar = SellableDaysCalendar(adjustment_lookup)
+        
+        result = {}
+        
+        for period in periods:
+            # Get sellable days info
+            days_info = calendar.get_sellable_days(period.year, period.month, as_of)
+            
+            # Get company totals
+            totals = self.repository.get_company_totals_for_period(period)
+            
+            # Get booked MTD by effective_date (for pace calculation)
+            booked_mtd = self.repository.get_booked_mtd_by_effective_date(
+                period.broadcast_month,
+                as_of
+            )
+            
+            # Build metrics object
+            metrics = BurnDownMetrics(
+                period=period,
+                sellable_days_total=days_info.sellable_total,
+                sellable_days_elapsed=days_info.sellable_elapsed,
+                sellable_days_remaining=days_info.sellable_remaining,
+                adjustment=days_info.adjustment,
+                adjustment_reason=days_info.adjustment_reason,
+                forecast_total=Money(totals["forecast"]),
+                booked_total=Money(totals["booked"]),
+                booked_mtd=Money(booked_mtd)
+            )
+            
+            result[period] = metrics
+        
+        return result
 
     # =========================================================================
     # Validation
