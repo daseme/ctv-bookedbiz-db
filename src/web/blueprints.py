@@ -34,7 +34,6 @@ from src.web.routes.api import api_bp
 from src.web.routes.budget import budget_bp
 from src.web.routes.health import health_bp
 from src.web.routes.language_blocks import language_blocks_bp
-from src.web.routes.pipeline_decay_api import decay_api_bp
 from src.services.container import get_container
 from src.utils.template_formatters import register_template_filters
 
@@ -110,9 +109,6 @@ def register_blueprints(app: Flask) -> None:
         app.register_blueprint(health_bp)
         logger.info("Registered health monitoring blueprint")
 
-        app.register_blueprint(decay_api_bp)
-        logger.info("Registered pipeline decay API blueprint")
-
         register_template_filters(app)
         logger.info("Registered template filters")
 
@@ -142,7 +138,6 @@ def configure_blueprint_services(app: Flask) -> None:
         required_services = [
             "database_connection",
             "report_data_service",
-            "pipeline_service",
             "budget_service",
         ]
 
@@ -164,27 +159,6 @@ def configure_blueprint_services(app: Flask) -> None:
                     else:
                         service_status[name] = "healthy"
                         logger.debug("Verified service '%s' is healthy", name)
-
-                        # Extra note for pipeline decay feature visibility
-                        if name == "pipeline_service":
-                            decay_enabled = bool(
-                                hasattr(svc, "decay_engine")
-                                and getattr(svc, "decay_engine") is not None
-                            )
-                            service_status["pipeline_service_decay"] = (
-                                "enabled" if decay_enabled else "disabled"
-                            )
-                            if decay_enabled:
-                                logger.info(
-                                    "Pipeline decay system detected and enabled"
-                                )
-                            else:
-                                logger.warning("Pipeline decay system not available")
-                else:
-                    # Lazy: don't instantiate; mark as registered
-                    service_status[name] = "registered"
-                    if name == "pipeline_service":
-                        service_status["pipeline_service_decay"] = "unknown"
 
             except Exception as e:
                 service_status[name] = f"error: {e}"
@@ -240,7 +214,6 @@ def register_common_error_handlers(app: Flask) -> None:
         return (
             p.startswith("/api/")
             or p.startswith("/health/")
-            or p.startswith("/api/pipeline/decay/")
         )
 
     @app.errorhandler(404)
@@ -263,7 +236,6 @@ def register_common_error_handlers(app: Flask) -> None:
     @app.errorhandler(500)
     def internal_error(error):
         logger.error("500: %s", error, exc_info=True)
-        is_decay = request.path.startswith("/api/pipeline/decay/")
         try:
             service_status = app.config.get("SERVICE_STATUS", {})
             unhealthy = [
@@ -273,11 +245,6 @@ def register_common_error_handlers(app: Flask) -> None:
             ]
             if unhealthy:
                 logger.error("Error occurred with unhealthy services: %s", unhealthy)
-                if is_decay and "pipeline_service_decay" in service_status:
-                    logger.error(
-                        "Decay system status: %s",
-                        service_status.get("pipeline_service_decay"),
-                    )
         except Exception as e:
             logger.error("Health introspection failed during 500 handler: %s", e)
 
@@ -289,9 +256,6 @@ def register_common_error_handlers(app: Flask) -> None:
                 "error_code": "INTERNAL_ERROR",
                 "path": request.path,
             }
-            if is_decay:
-                payload["decay_system"] = "Check /health/pipeline"
-            return jsonify(payload), 500
 
         return render_template("error_500.html"), 500
 
@@ -301,7 +265,6 @@ def register_common_error_handlers(app: Flask) -> None:
         if (
             request.path.startswith("/api/")
             or request.path.startswith("/health/")
-            or request.path.startswith("/api/pipeline/decay/")
         ):
             return jsonify(
                 {
@@ -321,7 +284,6 @@ def register_common_error_handlers(app: Flask) -> None:
         if (
             request.path.startswith("/api/")
             or request.path.startswith("/health/")
-            or request.path.startswith("/api/pipeline/decay/")
         ):
             return jsonify(
                 {
@@ -339,7 +301,6 @@ def register_common_error_handlers(app: Flask) -> None:
         if (
             request.path.startswith("/api/")
             or request.path.startswith("/health/")
-            or request.path.startswith("/api/pipeline/decay/")
         ):
             return jsonify(
                 {
@@ -391,20 +352,14 @@ def create_blueprint_context_processors(app: Flask) -> None:
             else:
                 system_status = "critical"
 
-            decay_flag = (
-                service_status.get("pipeline_service_decay", "unknown") == "enabled"
-            )
-
             return {
                 "services_available": len(services),
                 "healthy_services": healthy_services,
                 "total_services": total_services,
                 "service_status": system_status,
-                "decay_system_enabled": decay_flag,
                 "system_health": {
                     "status": system_status,
                     "health_check_url": "/health/",
-                    "decay_system": decay_flag,
                     "last_check": "live",
                 },
             }
@@ -424,48 +379,6 @@ def create_blueprint_context_processors(app: Flask) -> None:
                 },
             }
 
-    @app.context_processor
-    def inject_decay_system_info():
-        """
-        Avoid instantiating pipeline_service when validation is lazy.
-        """
-        try:
-            if not app.config.get("EAGER_SERVICE_VALIDATION", True):
-                return {
-                    "decay_system": {
-                        "available": False,
-                        "status": "unknown",
-                        "api_base_url": "/api/pipeline/decay",
-                    }
-                }
-
-            svc = get_container().get("pipeline_service")
-            info = {
-                "available": False,
-                "status": "unknown",
-                "api_base_url": "/api/pipeline/decay",
-            }
-            if hasattr(svc, "decay_engine") and getattr(svc, "decay_engine"):
-                info.update(
-                    {
-                        "available": True,
-                        "status": "enabled",
-                        "features": [
-                            "real_time_adjustments",
-                            "calibration_baselines",
-                            "decay_analytics",
-                            "timeline_tracking",
-                        ],
-                    }
-                )
-            return {"decay_system": info}
-        except Exception as e:
-            return {
-                "decay_system": {"available": False, "status": "error", "error": str(e)}
-            }
-
-    logger.info("Created context processors")
-
 
 def setup_request_logging(app: Flask) -> None:
     @app.before_request
@@ -476,17 +389,6 @@ def setup_request_logging(app: Flask) -> None:
 
         if request.path.startswith("/health/"):
             logger.info("Health check requested: %s", request.path)
-
-        if request.path.startswith("/api/pipeline/decay/"):
-            logger.info("Decay API request: %s %s", request.method, request.path)
-            if request.is_json:
-                payload = request.get_json(silent=True) or {}
-                safe = {
-                    k: v
-                    for k, v in payload.items()
-                    if k not in {"webhook_signature", "auth_token"}
-                }
-                logger.debug("Decay API data: %s", safe)
 
     @app.after_request
     def log_response_info(response):
@@ -499,11 +401,6 @@ def setup_request_logging(app: Flask) -> None:
                 request.method,
                 request.path,
             )
-
-            if request.path.startswith("/api/pipeline/decay/"):
-                logger.error(
-                    "Decay API error: %s for %s", response.status_code, request.path
-                )
 
             if response.status_code >= 500:
                 try:
@@ -543,7 +440,6 @@ def configure_security_headers(app: Flask) -> None:
         if (
             path.startswith("/api/")
             or path.startswith("/health/")
-            or path.startswith("/api/pipeline/decay/")
         ):
             response.headers["Access-Control-Allow-Origin"] = "*"
             response.headers["Access-Control-Allow-Methods"] = (
@@ -557,10 +453,6 @@ def configure_security_headers(app: Flask) -> None:
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
-
-        if path.startswith("/api/pipeline/decay/"):
-            response.headers["X-Decay-System"] = "enabled"
-            response.headers["Cache-Control"] = "no-cache"
 
         return response
 
@@ -600,7 +492,6 @@ def get_blueprint_info() -> Dict[str, Any]:
                 "status": "active",
                 "endpoints": [
                     "/health/ - System health overview",
-                    "/health/pipeline - Pipeline service health",
                     "/health/budget - Budget service health",
                     "/health/database - Database connection health",
                     "/health/consistency/validate - Data consistency check",
@@ -609,26 +500,7 @@ def get_blueprint_info() -> Dict[str, Any]:
                     "/health/metrics - System performance metrics",
                 ],
             },
-            {
-                "name": "decay_api",
-                "url_prefix": "/api/pipeline/decay",
-                "description": "Pipeline decay system API for real-time adjustments",
-                "status": "active",
-                "endpoints": [
-                    "/api/pipeline/decay/revenue/booked",
-                    "/api/pipeline/decay/revenue/removed",
-                    "/api/pipeline/decay/calibration",
-                    "/api/pipeline/decay/summary/<ae_id>/<month>",
-                    "/api/pipeline/decay/timeline/<ae_id>/<month>",
-                    "/api/pipeline/decay/analytics/<ae_id>",
-                    "/api/pipeline/decay/ae/<ae_id>/summary",
-                    "/api/pipeline/decay/webhook/revenue-change",
-                    "/api/pipeline/decay/bulk/calibration",
-                    "/api/pipeline/decay/system/status",
-                    "/api/pipeline/decay/system/cleanup",
-                    "/api/pipeline/decay/export/<ae_id>",
-                ],
-            },
+
         ],
         "total_blueprints": 5,
         "features": {
@@ -638,7 +510,6 @@ def get_blueprint_info() -> Dict[str, Any]:
             "enhanced_error_handling": True,
             "security_headers": True,
             "request_logging": True,
-            "pipeline_decay_system": True,
             "real_time_adjustments": True,
             "decay_analytics": True,
             "webhook_integration": True,

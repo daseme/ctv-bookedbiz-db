@@ -341,68 +341,35 @@ def performance_story_report():
         return render_template("error_500.html", message="Error generating report"), 500
 
 
+
 @reports_bp.route("/report4")
 @log_requests
 @handle_request_errors
 def quarterly_sectors_report():
-    """Enhanced Quarterly Performance with Sector Analysis (report4.html)."""
+    """Enhanced Quarterly Performance with Sector Analysis (sector-analysis.html)."""
     try:
         container = get_container()
         report_service = safe_get_service(container, "report_data_service")
-
-        year = get_year_parameter(default_year=date.today.year)
+        year = get_year_parameter(default_year=date.today().year)
         filters = ReportFilters(year=year)
 
-        # Get all required data
-        quarterly_data = report_service.get_quarterly_performance_data(filters)
+        # Get sector data
         sector_data = report_service.get_sector_performance_data(filters)
-        ae_data = report_service.get_ae_performance_report_data(filters)
+        
+        # Get available years for dropdown
+        available_years = report_service.repository.get_available_years()
 
-        combined_data = {
-            **quarterly_data.to_dict(),
-            **sector_data.to_dict(),
-            "ae_performance": [ae.to_dict() for ae in ae_data.ae_performance],
-        }
-
-        context = prepare_template_context(
-            combined_data, {"title": "Quarterly Performance with Sector Analysis"}
-        )
-
-        return render_template("report4.html", **context)
-
-    except Exception as e:
-        logger.error(f"Error generating report4: {e}")
-        return render_template("error_500.html", message="Error generating report"), 500
-
-
-@reports_bp.route("/pipeline-revenue")
-@log_requests
-@handle_request_errors
-def pipeline_revenue_management():
-    """Pipeline Revenue Management main page."""
-    try:
-        container = get_container()
-        pipeline_service = safe_get_service(container, "pipeline_service")
-
-        # Get pipeline data
-        session_date = date.today().strftime("%Y-%m-%d")
-        session = pipeline_service.get_review_session(session_date)
-        ae_list = pipeline_service.get_ae_list()
-
-        data = {"session": session, "ae_list": ae_list, "session_date": session_date}
-
-        context = prepare_template_context(
-            data, {"title": "Pipeline Revenue Management"}
-        )
-
-        return render_template("pipeline_revenue.html", **context)
-
-    except Exception as e:
-        logger.error(f"Error loading pipeline revenue management: {e}")
         return render_template(
-            "error_500.html", message="Error loading pipeline management"
-        ), 500
+            "sector-analysis.html",
+            title="Quarterly Performance with Sector Analysis",
+            data=sector_data,
+            selected_year=year,
+            available_years=available_years
+        )
 
+    except Exception as e:
+        logger.error(f"Error generating report4: {e}", exc_info=True)
+        return render_template("error_500.html", message=f"Error generating report: {str(e)}"), 500
 
 @reports_bp.route("/language-blocks")
 @log_requests

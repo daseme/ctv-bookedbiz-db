@@ -80,35 +80,154 @@ Result:
 #### Processing Flow
 
 ```
-1. Analyze Excel file
+
+
+The import service uses a clean architecture with single-responsibility methods:
+
+```
+1. Excel Analysis (_analyze_excel_file)
    ├── Extract all broadcast months present
    ├── Count records per month
-   └── Identify sheet sources (Commercials, Worldlink Lines)
+   └── Create ExcelAnalysis value object
 
-2. Classify months
-   ├── Query closed_months table
+2. Month Classification (_classify_months)
+   ├── Query month_closures table via closure_service
    ├── Separate into closed vs open months
-   └── Log status of each
+   └── Create MonthClassification value object
 
-3. Preservation check (WEEKLY_UPDATE only)
-   ├── For each open month with 0 records in Excel:
-   │   ├── Check if database has existing records
-   │   ├── If yes: ADD to preservation list
-   │   └── Log preserved month with record count and revenue
-   └── Remove preserved months from processing list
+3. Month Filtering (_determine_months_to_process)
+   ├── For WEEKLY_UPDATE mode:
+   │   ├── Auto-skip closed months
+   │   ├── Identify months to preserve (open + no Excel data + has DB data)
+   │   ├── Skip previous calendar month (stray MC operational data)
+   │   └── Create MonthFilterResult value object
+   └── For HISTORICAL/MANUAL: process all months
 
-4. Execute import (for non-preserved open months only)
-   ├── Delete existing records for target months
-   ├── Import new records from Excel
-   ├── Validate customer alignment
-   └── Auto-correct any mismatches
+4. Mode Validation (_validate_import_mode_requirements)
+   ├── HISTORICAL: requires --closed-by parameter
+   └── MANUAL: fails if closed months present
 
-5. Post-import validation
-   ├── Verify customer_id alignment with normalization system
-   ├── Log any corrections made
-   └── Fail if alignment cannot be achieved
+5. Execute Import Transaction (_execute_import_workflow)
+   ├── Build entity cache for performance (BatchEntityResolver)
+   ├── Create import batch record
+   ├── Delete existing records for target months (with progress bar)
+   ├── Import new records from Excel (with progress bar)
+   ├── Validate customer alignment (SpotRepository)
+   ├── Auto-correct any customer_id mismatches
+   ├── Close months if HISTORICAL mode
+   └── Complete batch record
+
+6. Post-Import Results
+   ├── ImportResult value object with statistics
+   ├── Duration, records deleted/imported, net change
+   └── Any error messages or closed months
 ```
 
+### Key Architecture Components
+
+| Component | Location | Responsibility |
+|-----------|----------|----------------|
+| `BroadcastMonthImportService` | `src/services/` | Orchestrates import workflow |
+| `SpotRepository` | `src/repositories/` | All spots table SQL queries |
+| `ImportBatchRepository` | `src/repositories/` | Import batch tracking queries |
+| `ImportResult` | `src/models/import_workflow.py` | Import outcome value object |
+| `ExcelAnalysis` | `src/models/import_workflow.py` | Excel file analysis results |
+| `MonthClassification` | `src/models/import_workflow.py` | Closed vs open months |
+| `MonthFilterResult` | `src/models/import_workflow.py` | Filtering decisions |
+| `ImportContext` | `src/models/import_workflow.py` | Accumulated workflow state |
+
+---
+
+## Add new section "Architecture" after "System Components":
+
+## Architecture
+
+The daily update system follows **Clean Architecture** principles with clear separation of concerns:
+
+### Layer Structure
+
+```
+src/
+├── models/
+│   └── import_workflow.py      # Value objects (immutable data carriers)
+├── repositories/
+│   ├── spot_repository.py      # Spots table data access
+│   └── import_batch_repository.py  # Import tracking data access
+└── services/
+    └── broadcast_month_import_service.py  # Business logic orchestration
+```
+
+### Design Principles
+
+1. **Single Responsibility**: Each method does one thing (analyze, classify, filter, execute)
+2. **Immutable Value Objects**: `ExcelAnalysis`, `MonthClassification`, `MonthFilterResult` are frozen dataclasses
+3. **Repository Pattern**: All SQL queries encapsulated in repository classes
+4. **Dependency Injection**: Services receive repositories, not database connections directly
+5. **Pure Functions**: Normalizers (`build_revenue_type_normalizer`, `build_spot_type_normalizer`) are stateless
+
+### Import Service Methods
+
+| Method | Lines | Responsibility |
+|--------|-------|----------------|
+| `execute_month_replacement` | ~55 | Main orchestrator |
+| `_analyze_excel_file` | ~15 | Extract Excel metadata |
+| `_classify_months` | ~20 | Determine closed/open status |
+| `_filter_months_for_weekly_update` | ~45 | Apply WEEKLY_UPDATE rules |
+| `_identify_months_to_preserve` | ~25 | Find months to protect |
+| `_check_previous_month_skip` | ~25 | Previous month filtering |
+| `_execute_import_workflow` | ~55 | Transaction orchestration |
+| `_import_excel_data_with_progress` | ~150 | Row-by-row Excel import |
+
+---
+
+## Update "Verification Commands" section - add:
+
+### Verify Refactored Import Service
+```bash
+# Test import with dry-run (shows all preservation logic)
+uv run python -m src.services.broadcast_month_import_service \
+    data/raw/daily/"Commercial Log $(date +%y%m%d).xlsx" \
+    --mode WEEKLY_UPDATE \
+    --dry-run
+
+# Check import history
+uv run python -m src.services.broadcast_month_import_service --history
+
+# Cleanup any stuck imports
+uv run python -m src.services.broadcast_month_import_service --cleanup
+```
+
+### Verify Repository Layer
+```bash
+# Test SpotRepository month summary
+uv run python -c "
+from src.database.connection import DatabaseConnection
+from src.repositories.spot_repository import SpotRepository
+
+db = DatabaseConnection('data/database/production.db')
+repo = SpotRepository()
+
+with db.connection() as conn:
+    summary = repo.get_month_summary('Jan-26', conn)
+    print(f'Jan-26: {summary.count:,} records, \${summary.gross_revenue:,.2f}')
+
+db.close()
+"
+```
+
+---
+
+## Update "Processing Results" section:
+
+### Daily Update Processing (Stage 2)
+- **Records Imported**: ~7,500 database records (current month data)
+- **Sheet Breakdown**: Tracked via `source_file` field (e.g., "Commercial Log 260107.xlsx:Commercials")
+- **Processing Time**: ~10-15 seconds
+- **Entity Cache Hit Rate**: ~98-99%
+- **Customer Auto-Corrections**: Typically 40-60 mismatches corrected automatically
+- **Trade Records**: Filtered per CHECK constraint (logged as skipped)
+- **Month Preservation**: Open months without Excel data automatically protected
+- **Previous Month Skip**: Stray MC operational data automatically filtered
 ### Import Mode: HISTORICAL
 
 Used for bulk historical imports. Key differences from WEEKLY_UPDATE:
