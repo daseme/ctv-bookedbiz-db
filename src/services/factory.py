@@ -10,6 +10,7 @@ from typing import Optional
 from enum import Enum
 
 from .container import get_container, ServiceCreationError
+from src.services.management_performance_service import ManagementPerformanceService
 
 
 logger = logging.getLogger(__name__)
@@ -263,6 +264,10 @@ def initialize_services():
         container.register_singleton("market_analysis_service", create_market_analysis_service)
         print("✅ market_analysis_service registered")
 
+        print("🔧 Registering management_performance_service...")
+        container.register_singleton('management_performance_service', create_management_performance_service)
+        print("✅ management_performance_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -301,6 +306,8 @@ def register_default_services():
 
         container.register_singleton("planning_service", create_planning_service)
         logger.debug("Registered planning_service")
+
+
 
         logger.info("Registered all default services with container")
 
@@ -707,6 +714,16 @@ def create_market_analysis_service():
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return MarketAnalysisService(conn)
+
+def create_management_performance_service():
+    """Create ManagementPerformanceService instance."""
+    try:
+        container = get_container()
+        db_connection = container.get("database_connection")
+        return ManagementPerformanceService(db_connection)
+    except Exception as e:
+        logger.warning(f"Database connection issue for management performance service: {e}")
+        raise
 
 def register_critical_services(container):
     """Register only the most critical services for Railway"""
