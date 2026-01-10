@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% block title %}Management Performance Report{% endblock %}
+
+{% block content %}
+<style>
+    .perf-card { border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+    .perf-header { background-color: #5e81ac; color: white; padding: 0.75rem 1rem; }
+    .perf-header-entity { background-color: #eceff4; padding: 0.75rem 1rem; }
+    .stats-row { display: flex; border-bottom: 1px solid #e5e9f0; }
+    .stat-box { flex: 1; text-align: center; padding: 1.25rem 1rem; }
+    .stat-box:not(:last-child) { border-right: 1px solid #e5e9f0; }
+    .stat-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; margin-bottom: 0.25rem; }
+    .stat-value { font-size: 1.75rem; font-weight: 600; color: #5e81ac; margin-bottom: 0.25rem; }
+    .stat-value-sm { font-size: 1.5rem; }
+    .stat-sub { font-size: 0.8rem; color: #6c757d; }
+    .stat-sub-green { font-size: 0.8rem; color: #a3be8c; }
+    .stat-sub-red { font-size: 0.8rem; color: #bf616a; }
+    .perf-table { width: 100%; font-size: 0.875rem; border-collapse: collapse; }
+    .perf-table th { background-color: #eceff4; padding: 0.5rem 0.4rem; font-weight: 500; border-bottom: 2px solid #d8dee9; }
+    .perf-table td { padding: 0.5rem 0.4rem; vertical-align: middle; border-bottom: 1px solid #e5e9f0; }
+    .perf-table .total-row { background-color: #d8dee9; font-weight: 600; }
+    .perf-table .total-row td { border-bottom: none; }
+    .progress-cell { width: 140px; }
+    .progress { height: 22px; background-color: #e5e9f0; border-radius: 4px; overflow: hidden; }
+    .progress-bar { display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 500; color: white; }
+    .bar-green { background-color: #a3be8c; }
+    .bar-blue { background-color: #5e81ac; }
+    .bar-yellow { background-color: #ebcb8b; color: #333; }
+    .bar-red { background-color: #bf616a; }
+    .text-green { color: #a3be8c; }
+    .text-red { color: #bf616a; }
+    .text-end { text-align: right; }
+    .text-center { text-align: center; }
+    .text-muted { color: #6c757d; }
+    .cust-cell { font-size: 0.85rem; }
+    .cust-yoy { font-size: 0.7rem; display: block; }
+    .pacing-toggle { display: inline-flex; }
+    .pacing-toggle button { padding: 0.3rem 0.75rem; font-size: 0.8rem; border: 1px solid #5e81ac; cursor: pointer; }
+    .pacing-toggle button:first-child { border-radius: 4px 0 0 4px; border-right: none; }
+    .pacing-toggle button:last-child { border-radius: 0 4px 4px 0; }
+    .pacing-toggle .btn-inactive { background-color: #fff; color: #5e81ac; }
+    .pacing-toggle .btn-active { background-color: #5e81ac; color: #fff; }
+</style>
+
+{% set mode = report.pacing_mode %}
+{% set is_forecast = (mode == 'forecast') %}
+{% set mode_label = 'Forecast' if is_forecast else 'Budget' %}
+
+<div class="container-fluid px-4">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h1 style="font-size: 1.75rem; margin: 0;">Management Performance Report</h1>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <!-- Pacing Toggle -->
+            <div class="pacing-toggle">
+                <button class="{{ 'btn-active' if not is_forecast else 'btn-inactive' }}" 
+                        onclick="window.location.href='/reports/management-performance/{{ report.year }}?pacing=budget'">Budget</button>
+                <button class="{{ 'btn-active' if is_forecast else 'btn-inactive' }}"
+                        onclick="window.location.href='/reports/management-performance/{{ report.year }}?pacing=forecast'">Forecast</button>
+            </div>
+            <select class="form-select form-select-sm" style="width: auto;"
+                    onchange="window.location.href='/reports/management-performance/' + this.value + '?pacing={{ mode }}'">
+                {% for y in report.available_years %}
+                <option value="{{ y }}" {% if y == report.year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+            <a href="{{ url_for('reports.management_performance_csv', year=report.year) }}?pacing={{ mode }}" 
+               class="btn btn-sm btn-outline-secondary">Export CSV</a>
+            <span style="color: #6c757d; font-size: 0.85rem;">{{ report.generated_at }}</span>
+        </div>
+    </div>
+
+    <!-- Company Performance Card -->
+    <div class="perf-card">
+        <div class="perf-header">
+            <h5 style="margin: 0; font-size: 1.1rem;">Company Performance</h5>
+        </div>
+        
+        <!-- Stats Row -->
+        <div class="stats-row">
+            <div class="stat-box">
+                <div class="stat-label">Total Revenue</div>
+                <div class="stat-value">${{ "{:,.0f}".format(report.company.annual.booked) }}</div>
+                {% set q1 = report.company.quarterly[0] %}
+                {% if q1.yoy_change_pct is not none %}
+                <div class="{% if q1.yoy_change_pct >= 0 %}stat-sub-green{% else %}stat-sub-red{% endif %}">
+                    Q1: {{ "{:+.1f}".format(q1.yoy_change_pct) }}% vs prior year
+                </div>
+                {% else %}<div class="stat-sub">—</div>{% endif %}
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total Customers</div>
+                <div class="stat-value" style="color: #2e3440;">{{ report.company.annual.customer_count }}</div>
+                {% if report.company.annual.customer_yoy_change_pct is not none %}
+                <div class="{% if report.company.annual.customer_yoy_change_pct >= 0 %}stat-sub-green{% else %}stat-sub-red{% endif %}">
+                    {{ "{:+.1f}".format(report.company.annual.customer_yoy_change_pct) }}% vs prior year
+                </div>
+                {% else %}<div class="stat-sub">—</div>{% endif %}
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total {{ mode_label }}</div>
+                <div class="stat-value" style="color: #2e3440;">${{ "{:,.0f}".format(report.company.annual.forecast if is_forecast else report.company.annual.budget) }}</div>
+                <div class="stat-sub">{{ "{:.0f}".format(report.company.annual.forecast_pacing_pct if is_forecast else report.company.annual.budget_pacing_pct) }}% Complete</div>
+            </div>
+        </div>
+
+        <!-- Quarterly Table -->
+        <div style="padding: 1rem;">
+            <h6 style="color: #6c757d; margin-bottom: 0.75rem; font-size: 0.9rem;">Quarterly Performance</h6>
+            <table class="perf-table">
+                <thead>
+                    <tr>
+                        <th style="width: 8%;">Quarter</th>
+                        <th class="progress-cell">{{ mode_label }} Pacing</th>
+                        <th class="text-end" style="width: 12%;">Booked</th>
+                        <th class="text-center" style="width: 10%;">YoY</th>
+                        <th class="text-end" style="width: 12%;">Pacing</th>
+                        <th class="text-end" style="width: 12%;">{{ mode_label }}</th>
+                        <th class="text-center" style="width: 12%;">Customers</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for q in report.company.quarterly %}
+                    {% set pacing_pct = q.forecast_pacing_pct if is_forecast else q.budget_pacing_pct %}
+                    {% set pacing_amt = q.pacing_to_forecast if is_forecast else q.pacing_to_budget %}
+                    {% set target_amt = q.forecast if is_forecast else q.budget %}
+                    <tr>
+                        <td style="font-weight: 500;">{{ q.quarter_label }}</td>
+                        <td class="progress-cell">
+                            <div class="progress">
+                                <div class="progress-bar {% if pacing_pct >= 100 %}bar-green{% elif pacing_pct >= 75 %}bar-blue{% elif pacing_pct >= 50 %}bar-yellow{% else %}bar-red{% endif %}" 
+                                     style="width: {{ [pacing_pct, 100]|min }}%;">
+                                    {{ "{:.0f}".format(pacing_pct) }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end">${{ "{:,.0f}".format(q.booked) }}</td>
+                        <td class="text-center">
+                            {% if q.yoy_change_pct is not none %}
+                            <span class="{% if q.yoy_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">
+                                {{ "{:+.1f}".format(q.yoy_change_pct) }}%
+                            </span>
+                            {% else %}<span class="text-green">New</span>{% endif %}
+                        </td>
+                        <td class="text-end text-muted">${{ "{:,.0f}".format(pacing_amt) }}</td>
+                        <td class="text-end">${{ "{:,.0f}".format(target_amt) }}</td>
+                        <td class="text-center cust-cell">
+                            {{ q.customer_count }}
+                            {% if q.customer_yoy_change_pct is not none %}
+                            <span class="cust-yoy {% if q.customer_yoy_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">
+                                {{ "{:+.0f}".format(q.customer_yoy_change_pct) }}% YoY
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% set ann_pacing_pct = report.company.annual.forecast_pacing_pct if is_forecast else report.company.annual.budget_pacing_pct %}
+                    {% set ann_pacing_amt = report.company.annual.pacing_to_forecast if is_forecast else report.company.annual.pacing_to_budget %}
+                    {% set ann_target = report.company.annual.forecast if is_forecast else report.company.annual.budget %}
+                    <tr class="total-row">
+                        <td>Annual Total</td>
+                        <td class="progress-cell">
+                            <div class="progress">
+                                <div class="progress-bar bar-blue" style="width: {{ [ann_pacing_pct, 100]|min }}%;">
+                                    {{ "{:.0f}".format(ann_pacing_pct) }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end">${{ "{:,.0f}".format(report.company.annual.booked) }}</td>
+                        <td class="text-center">
+                            {% if report.company.annual.yoy_change_pct is not none %}
+                            <span class="{% if report.company.annual.yoy_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">
+                                {{ "{:+.1f}".format(report.company.annual.yoy_change_pct) }}%
+                            </span>
+                            {% else %}<span class="text-green">New</span>{% endif %}
+                        </td>
+                        <td class="text-end">${{ "{:,.0f}".format(ann_pacing_amt) }}</td>
+                        <td class="text-end">${{ "{:,.0f}".format(ann_target) }}</td>
+                        <td class="text-center cust-cell">
+                            {{ report.company.annual.customer_count }}
+                            {% if report.company.annual.customer_yoy_change_pct is not none %}
+                            <span class="cust-yoy {% if report.company.annual.customer_yoy_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">
+                                {{ "{:+.0f}".format(report.company.annual.customer_yoy_change_pct) }}% YoY
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Individual Entity Cards -->
+    {% for entity in report.entities %}
+    {% if entity.annual.budget > 0 or entity.annual.booked > 0 %}
+    <div class="perf-card">
+        <div class="perf-header-entity" style="display: flex; justify-content: space-between; align-items: center;">
+            <h5 style="margin: 0; font-size: 1.1rem; text-decoration: underline;">{{ entity.entity_name }}'s Performance</h5>
+            <span style="background-color: #4c566a; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">{{ entity.entity_type }}</span>
+        </div>
+        
+        <!-- Stats Row -->
+        <div class="stats-row">
+            <div class="stat-box">
+                <div class="stat-label">Total Revenue</div>
+                <div class="stat-value stat-value-sm">${{ "{:,.0f}".format(entity.annual.booked) }}</div>
+                {% set eq1 = entity.quarterly[0] %}
+                {% if eq1.yoy_change_pct is not none %}
+                <div class="{% if eq1.yoy_change_pct >= 0 %}stat-sub-green{% else %}stat-sub-red{% endif %}">
+                    Q1: {{ "{:+.1f}".format(eq1.yoy_change_pct) }}% vs prior year
+                </div>
+                {% else %}<div class="stat-sub">—</div>{% endif %}
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total Customers</div>
+                <div class="stat-value stat-value-sm" style="color: #2e3440;">{{ entity.annual.customer_count }}</div>
+                {% if entity.annual.customer_yoy_change_pct is not none %}
+                <div class="{% if entity.annual.customer_yoy_change_pct >= 0 %}stat-sub-green{% else %}stat-sub-red{% endif %}">
+                    {{ "{:+.1f}".format(entity.annual.customer_yoy_change_pct) }}% vs prior year
+                </div>
+                {% else %}<div class="stat-sub">—</div>{% endif %}
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total {{ mode_label }}</div>
+                <div class="stat-value stat-value-sm" style="color: #2e3440;">${{ "{:,.0f}".format(entity.annual.forecast if is_forecast else entity.annual.budget) }}</div>
+                <div class="stat-sub">{{ "{:.0f}".format(entity.annual.forecast_pacing_pct if is_forecast else entity.annual.budget_pacing_pct) }}% Complete</div>
+            </div>
+        </div>
+
+        <!-- Entity Quarterly Table -->
+        <div style="padding: 1rem;">
+            <table class="perf-table">
+                <thead>
+                    <tr>
+                        <th style="width: 8%;">Quarter</th>
+                        <th class="progress-cell">{{ mode_label }} Pacing</th>
+                        <th class="text-end" style="width: 12%;">Booked</th>
+                        <th class="text-center" style="width: 10%;">YoY</th>
+                        <th class="text-end" style="width: 12%;">Pacing</th>
+                        <th class="text-end" style="width: 12%;">{{ mode_label }}</th>
+                        <th class="text-center" style="width: 12%;">Customers</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for q in entity.quarterly %}
+                    {% set pacing_pct = q.forecast_pacing_pct if is_forecast else q.budget_pacing_pct %}
+                    {% set pacing_amt = q.pacing_to_forecast if is_forecast else q.pacing_to_budget %}
+                    {% set target_amt = q.forecast if is_forecast else q.budget %}
+                    <tr>
+                        <td>Q{{ q.quarter }}</td>
+                        <td class="progress-cell">
+                            <div class="progress">
+                                <div class="progress-bar {% if pacing_pct >= 100 %}bar-green{% elif pacing_pct >= 75 %}bar-blue{% elif pacing_pct >= 50 %}bar-yellow{% else %}bar-red{% endif %}" 
+                                     style="width: {{ [pacing_pct, 100]|min }}%;">
+                                    {{ "{:.0f}".format(pacing_pct) }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end">${{ "{:,.0f}".format(q.booked) }}</td>
+                        <td class="text-center">
+                            {% if q.yoy_change_pct is not none %}
+                            <span class="{% if q.yoy_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">
+                                {{ "{:+.1f}".format(q.yoy_change_pct) }}%
+                            </span>
+                            {% else %}<span class="text-green">New</span>{% endif %}
+                        </td>
+                        <td class="text-end text-muted">${{ "{:,.0f}".format(pacing_amt) }}</td>
+                        <td class="text-end">${{ "{:,.0f}".format(target_amt) }}</td>
+                        <td class="text-center cust-cell">
+                            {{ q.customer_count }}
+                            {% if q.customer_yoy_change_pct is not none %}
+                            <span class="cust-yoy {% if q.customer_yoy_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">
+                                {{ "{:+.0f}".format(q.customer_yoy_change_pct) }}% YoY
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% set ent_pacing_pct = entity.annual.forecast_pacing_pct if is_forecast else entity.annual.budget_pacing_pct %}
+                    {% set ent_pacing_amt = entity.annual.pacing_to_forecast if is_forecast else entity.annual.pacing_to_budget %}
+                    {% set ent_target = entity.annual.forecast if is_forecast else entity.annual.budget %}
+                    <tr class="total-row">
+                        <td>Annual Total</td>
+                        <td class="progress-cell">
+                            <div class="progress">
+                                <div class="progress-bar bar-blue" style="width: {{ [ent_pacing_pct, 100]|min }}%;">
+                                    {{ "{:.0f}".format(ent_pacing_pct) }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end">${{ "{:,.0f}".format(entity.annual.booked) }}</td>
+                        <td class="text-center">
+                            {% if entity.annual.yoy_change_pct is not none %}
+                            <span class="{% if entity.annual.yoy_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">
+                                {{ "{:+.1f}".format(entity.annual.yoy_change_pct) }}%
+                            </span>
+                            {% else %}<span class="text-green">New</span>{% endif %}
+                        </td>
+                        <td class="text-end">${{ "{:,.0f}".format(ent_pacing_amt) }}</td>
+                        <td class="text-end">${{ "{:,.0f}".format(ent_target) }}</td>
+                        <td class="text-center cust-cell">
+                            {{ entity.annual.customer_count }}
+                            {% if entity.annual.customer_yoy_change_pct is not none %}
+                            <span class="cust-yoy {% if entity.annual.customer_yoy_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">
+                                {{ "{:+.0f}".format(entity.annual.customer_yoy_change_pct) }}% YoY
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endblock %}

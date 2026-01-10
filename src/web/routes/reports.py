@@ -12,6 +12,7 @@ from datetime import date
 from src.services.container import get_container
 from src.models.report_data import ReportFilters
 from src.services.report_data_service import YearRange
+from src.services.management_performance_service import ManagementPerformanceService
 from src.services.ae_dashboard_service import AEDashboardService
 from src.web.utils.request_helpers import (
     extract_report_filters,
@@ -250,6 +251,81 @@ def ae_dashboard():
             message=f"Error generating AE dashboard: {str(e)}",
         ), 500
 
+# ============================================================================
+# Management Performance Report
+# ============================================================================
+
+@reports_bp.route('/management-performance')
+@reports_bp.route('/management-performance/<int:year>')
+def management_performance(year: int = None):
+    """
+    Management Performance Report - Company and entity quarterly performance.
+    """
+    from datetime import date
+    from src.services.container import get_container
+    
+    container = get_container()
+    service = container.get('management_performance_service')
+    
+    if year is None:
+        year = date.today().year
+    
+    # Get pacing mode from query param (default to budget)
+    pacing_mode = request.args.get('pacing', 'budget')
+    if pacing_mode not in ('budget', 'forecast'):
+        pacing_mode = 'budget'
+    
+    report_data = service.get_management_report(year, pacing_mode)
+    
+    return render_template(
+        'management-performance.html',
+        report=report_data
+    )
+
+
+@reports_bp.route('/management-performance/csv/<int:year>')
+def management_performance_csv(year: int):
+    """Export management performance data as CSV."""
+    import csv
+    import io
+    from src.services.container import get_container
+    
+    container = get_container()
+    service = container.get('management_performance_service')
+    
+    report_data = service.get_management_report(year)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow(['Entity', 'Quarter', 'Booked', 'Budget', 'Pacing', 'Budget %', 'YoY %'])
+    
+    # Company totals
+    for q in report_data.company.quarterly:
+        yoy = f"{q.yoy_change_pct:.1f}%" if q.yoy_change_pct is not None else "New"
+        writer.writerow([
+            'COMPANY TOTAL', q.quarter_label, 
+            float(q.booked), float(q.budget), float(q.pacing),
+            f"{q.budget_pacing_pct:.1f}%", yoy
+        ])
+    
+    # Entity data
+    for entity in report_data.entities:
+        for q in entity.quarterly:
+            yoy = f"{q.yoy_change_pct:.1f}%" if q.yoy_change_pct is not None else "New"
+            writer.writerow([
+                entity.entity_name, q.quarter_label,
+                float(q.booked), float(q.budget), float(q.pacing),
+                f"{q.budget_pacing_pct:.1f}%", yoy
+            ])
+    
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=management_performance_{year}.csv'}
+    )
 
 @reports_bp.route("/report1")
 @log_requests
