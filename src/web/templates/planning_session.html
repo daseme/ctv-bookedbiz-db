@@ -14,6 +14,218 @@
 
 {% block extra_styles %}
 <style>
+/* Clickable booked cells */
+.booked-cell {
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+}
+
+.booked-cell:hover {
+    background: rgba(136, 192, 208, 0.15) !important;
+}
+
+.booked-cell:hover::after {
+    content: '🔍';
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    opacity: 0.6;
+}
+
+/* Booked Detail Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(46, 52, 64, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+}
+
+.modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    max-width: 700px;
+    width: 90%;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(20px);
+    transition: transform 0.2s ease;
+}
+
+.modal-overlay.visible .modal-content {
+    transform: translateY(0);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--nord0);
+}
+
+.modal-header .subtitle {
+    font-size: 13px;
+    color: #718096;
+    font-weight: normal;
+    margin-left: 12px;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #718096;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+
+.modal-close:hover {
+    background: var(--nord5);
+    color: var(--nord0);
+}
+
+.modal-body {
+    padding: 0;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    padding: 20px 24px;
+    background: var(--nord6);
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-summary-item {
+    text-align: center;
+}
+
+.modal-summary-item .value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--nord0);
+}
+
+.modal-summary-item .label {
+    font-size: 11px;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.modal-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.modal-table th {
+    background: var(--nord5);
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #718096;
+    position: sticky;
+    top: 0;
+}
+
+.modal-table th.number {
+    text-align: right;
+}
+
+.modal-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.modal-table td.number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.modal-table tr:hover {
+    background: rgba(136, 192, 208, 0.05);
+}
+
+.modal-table .customer-name {
+    font-weight: 500;
+    color: var(--nord0);
+}
+
+.modal-table .agency-name {
+    font-size: 11px;
+    color: #718096;
+    margin-top: 2px;
+}
+
+.modal-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+    color: #718096;
+}
+
+.modal-loading .spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #e2e8f0;
+    border-top-color: var(--nord8);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 12px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.modal-empty {
+    text-align: center;
+    padding: 40px;
+    color: #718096;
+}
+
+.modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
     /* Planning-specific styles */
     .planning-controls {
         display: flex;
@@ -802,12 +1014,19 @@ To hit forecast by end of period."
                 <td class="row-label entity-name-cell">Booked</td>
                 {% for period in all_periods %}
                 {% set row = ed.rows_by_period.get(period.key) %}
-                <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
-                    ${{ "{:,.0f}".format(row.booked.amount if row else 0) }}
+                {% set booked_amount = row.booked.amount if row else 0 %}
+                <td class="number booked-cell {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}"
+                    {% if booked_amount > 0 %}
+                    onclick="showBookedDetail('{{ ed.entity.entity_name }}', {{ period.year }}, {{ period.month }})"
+                    title="Click to see customer breakdown"
+                    {% endif %}
+                    style="{% if booked_amount == 0 %}cursor: default;{% endif %}">
+                    ${{ "{:,.0f}".format(booked_amount) }}
                 </td>
                 {% endfor %}
                 <td class="number total-col">${{ "{:,.0f}".format(ed.total_booked.amount) }}</td>
             </tr>
+
             
             <!-- Forecast Row (Editable) -->
             <tr class="row-forecast">
@@ -915,7 +1134,27 @@ To hit forecast by end of period."
     Grey inputs are closed months (read-only).
     Burn Rate shows required daily pace to hit forecast for active months.
 </div>
-
+<!-- Booked Detail Modal -->
+<div class="modal-overlay" id="bookedDetailModal" onclick="closeModalOnOverlay(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>
+                <span id="modalEntityName">-</span>
+                <span class="subtitle" id="modalPeriod">-</span>
+            </h3>
+            <button class="modal-close" onclick="closeBookedModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <div class="modal-loading">
+                <div class="spinner"></div>
+                Loading...
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeBookedModal()">Close</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -1217,6 +1456,142 @@ window.addEventListener('beforeunload', function(e) {
     if (changes.size > 0) {
         e.preventDefault();
         e.returnValue = '';
+    }
+});
+
+// =========================================================================
+// Booked Detail Modal Functions
+// =========================================================================
+
+async function showBookedDetail(entityName, year, month) {
+    const modal = document.getElementById('bookedDetailModal');
+    const modalBody = document.getElementById('modalBody');
+    
+    // Show modal with loading state
+    modal.classList.add('visible');
+    document.getElementById('modalEntityName').textContent = entityName;
+    document.getElementById('modalPeriod').textContent = 'Loading...';
+    modalBody.innerHTML = `
+        <div class="modal-loading">
+            <div class="spinner"></div>
+            Loading customer breakdown...
+        </div>
+    `;
+    
+    try {
+        const response = await fetch(
+    `/reports/planning/api/booked-detail?entity=${encodeURIComponent(entityName)}&year=${year}&month=${month}`
+    );
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            renderBookedDetail(result.data);
+        } else {
+            modalBody.innerHTML = `
+                <div class="modal-empty">
+                    <p>Unable to load data: ${result.error || 'Unknown error'}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error fetching booked detail:', error);
+        modalBody.innerHTML = `
+            <div class="modal-empty">
+                <p>Network error - please try again</p>
+            </div>
+        `;
+    }
+}
+
+function renderBookedDetail(data) {
+    document.getElementById('modalPeriod').textContent = data.period.display;
+    
+    const modalBody = document.getElementById('modalBody');
+    
+    if (data.customers.length === 0) {
+        modalBody.innerHTML = `
+            <div class="modal-empty">
+                <p>No booked revenue for this period</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Build the summary and table
+    let html = `
+        <div class="modal-summary">
+            <div class="modal-summary-item">
+                <div class="value">$${formatNumber(data.total_revenue)}</div>
+                <div class="label">Total Revenue</div>
+            </div>
+            <div class="modal-summary-item">
+                <div class="value">${data.customer_count}</div>
+                <div class="label">Customers</div>
+            </div>
+            <div class="modal-summary-item">
+                <div class="value">${data.total_spots}</div>
+                <div class="label">Spots</div>
+            </div>
+        </div>
+        <table class="modal-table">
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th class="number">Revenue</th>
+                    <th class="number">Spots</th>
+                    <th class="number">% of Total</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    data.customers.forEach(customer => {
+        const pct = data.total_revenue > 0 
+            ? (customer.revenue / data.total_revenue * 100).toFixed(1) 
+            : 0;
+        
+        html += `
+            <tr>
+                <td>
+                    <div class="customer-name">${escapeHtml(customer.customer_name)}</div>
+                    ${customer.agency_name ? `<div class="agency-name">${escapeHtml(customer.agency_name)}</div>` : ''}
+                </td>
+                <td class="number">$${formatNumber(customer.revenue)}</td>
+                <td class="number">${customer.spot_count}</td>
+                <td class="number">${pct}%</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+            </tbody>
+        </table>
+    `;
+    
+    modalBody.innerHTML = html;
+}
+
+function closeBookedModal() {
+    const modal = document.getElementById('bookedDetailModal');
+    modal.classList.remove('visible');
+}
+
+function closeModalOnOverlay(event) {
+    if (event.target === event.currentTarget) {
+        closeBookedModal();
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeBookedModal();
     }
 });
 </script>

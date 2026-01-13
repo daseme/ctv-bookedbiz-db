@@ -278,56 +278,6 @@ class PlanningRepository(BaseService):
             
             return deleted
 
-    # =========================================================================
-    # Booked Revenue (from spots) - Updated for WorldLink handling
-    # =========================================================================
-
-    def get_booked_revenue(
-        self, 
-        ae_name: str, 
-        year: int, 
-        month: int
-    ) -> Decimal:
-        """Get booked revenue for an AE/year/month from spots.
-        
-        Special handling:
-        - WorldLink: Match on bill_code LIKE 'WorldLink:%'
-        - House: Exclude WorldLink bill_codes (they belong to WorldLink entity)
-        """
-        with self.safe_connection() as conn:
-            period = PlanningPeriod(year=year, month=month)
-            
-            if ae_name == "WorldLink":
-                # WorldLink revenue is identified by bill_code prefix, not sales_person
-                cursor = conn.execute("""
-                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
-                    FROM spots
-                    WHERE bill_code LIKE 'WorldLink:%'
-                      AND broadcast_month = ?
-                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                """, (period.broadcast_month,))
-            elif ae_name == "House":
-                # House revenue excludes WorldLink bill_codes
-                cursor = conn.execute("""
-                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
-                    FROM spots
-                    WHERE sales_person = ?
-                      AND broadcast_month = ?
-                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                      AND bill_code NOT LIKE 'WorldLink:%'
-                """, (ae_name, period.broadcast_month))
-            else:
-                # Standard AE lookup by sales_person
-                cursor = conn.execute("""
-                    SELECT COALESCE(SUM(gross_rate), 0) AS booked
-                    FROM spots
-                    WHERE sales_person = ?
-                      AND broadcast_month = ?
-                      AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                """, (ae_name, period.broadcast_month))
-            
-            row = cursor.fetchone()
-            return Decimal(str(row["booked"]))
 # =========================================================================
     # Booked Revenue (from spots) - Updated for WorldLink handling
     # =========================================================================
@@ -516,6 +466,71 @@ class PlanningRepository(BaseService):
                 result["WorldLink"][period] = Decimal(str(row["booked"]))
             
             return result
+
+    def get_booked_detail(
+        self,
+        entity: RevenueEntity,
+        period: PlanningPeriod,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get detailed breakdown of booked revenue by customer for an entity/period.
+        
+        Args:
+            entity: Revenue entity (AE, House, WorldLink, etc.)
+            period: Planning period (year/month)
+            limit: Max rows to return
+            
+        Returns:
+            List of dicts with customer_name, agency_name, revenue, spot_count
+        """
+        # Build WHERE clause based on entity type
+        if entity.entity_type == EntityType.AGENCY and entity.entity_name == "WorldLink":
+            # WorldLink: bill_code starts with 'WL:' or 'WORLDLINK:'
+            entity_filter = """
+                (s.bill_code LIKE 'WL:%' OR s.bill_code LIKE 'WORLDLINK:%')
+            """
+            params = [period.broadcast_month, limit]
+        elif entity.entity_type == EntityType.HOUSE:
+            entity_filter = "UPPER(TRIM(s.sales_person)) = 'HOUSE'"
+            params = [period.broadcast_month, limit]
+        else:
+            # Standard AE
+            entity_filter = "UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
+            params = [entity.entity_name, period.broadcast_month, limit]
+        
+        query = f"""
+            SELECT 
+                COALESCE(c.normalized_name, s.bill_code) as customer_name,
+                a.agency_name,
+                SUM(COALESCE(s.gross_rate, 0)) as revenue,
+                COUNT(*) as spot_count
+            FROM spots s
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            WHERE {entity_filter}
+            AND s.broadcast_month = ?
+            AND COALESCE(s.gross_rate, 0) > 0
+            AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+            GROUP BY COALESCE(c.normalized_name, s.bill_code), a.agency_name
+            HAVING SUM(COALESCE(s.gross_rate, 0)) > 0
+            ORDER BY customer_name ASC
+            LIMIT ?
+        """
+        
+        with self.safe_connection() as conn:
+            cursor = conn.execute(query, params)
+            
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    "customer_name": row[0] or "Unknown",
+                    "agency_name": row[1],
+                    "revenue": float(row[2] or 0),
+                    "spot_count": int(row[3] or 0)
+                })
+            
+            return results
 
     # =========================================================================
     # Combined Planning Data

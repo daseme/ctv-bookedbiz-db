@@ -504,6 +504,54 @@ class PlanningService(BaseService):
         
         return result
 
+    def get_booked_detail(
+            self,
+            entity_name: str,
+            year: int,
+            month: int,
+            limit: int = 50
+        ) -> Optional[Dict[str, Any]]:
+            """
+            Get detailed breakdown of booked revenue for an entity/period.
+            
+            Args:
+                entity_name: Name of the revenue entity
+                year: Year
+                month: Month (1-12)
+                limit: Max customers to return
+                
+            Returns:
+                Dict with entity info, period info, total, and customer breakdown
+            """
+            entity = self.repository.get_revenue_entity_by_name(entity_name)
+            if not entity:
+                logger.warning(f"Revenue entity not found: {entity_name}")
+                return None
+            
+            period = PlanningPeriod(year=year, month=month)
+            
+            # Get the detail breakdown
+            customers = self.repository.get_booked_detail(entity, period, limit)
+            
+            # Calculate total from the breakdown
+            total_revenue = sum(c["revenue"] for c in customers)
+            total_spots = sum(c["spot_count"] for c in customers)
+            
+            return {
+                "entity_name": entity.entity_name,
+                "entity_type": entity.entity_type.value,
+                "period": {
+                    "year": year,
+                    "month": month,
+                    "display": period.display,
+                    "broadcast_month": period.broadcast_month
+                },
+                "total_revenue": total_revenue,
+                "total_spots": total_spots,
+                "customer_count": len(customers),
+                "customers": customers
+            }
+
     # =========================================================================
     # Validation
     # =========================================================================
