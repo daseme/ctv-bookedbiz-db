@@ -421,6 +421,11 @@ class PlanningService(BaseService):
         
         These are company-wide totals showing the "physics" of hitting forecast.
         
+        Key insight: For future months, "days left" should be CUMULATIVE from today.
+        - January (current): remaining days in Jan
+        - February: remaining in Jan + all of Feb  
+        - March: remaining in Jan + all of Feb + all of Mar
+        
         Args:
             periods: List of planning periods (typically active window)
             as_of: Calculate as of this date (default: today)
@@ -435,13 +440,43 @@ class PlanningService(BaseService):
         def adjustment_lookup(year: int, month: int) -> Optional[tuple]:
             return self.repository.get_sellable_days_adjustment(year, month)
         
-        calendar = SellableDaysCalendar(adjustment_lookup)
+        cal = SellableDaysCalendar(adjustment_lookup)
         
+        # Sort periods chronologically to compute cumulative runway
+        sorted_periods = sorted(periods, key=lambda p: (p.year, p.month))
+        
+        # First pass: get sellable days info for each period
+        days_by_period = {}
+        for period in sorted_periods:
+            days_by_period[period] = cal.get_sellable_days(period.year, period.month, as_of)
+        
+        # Second pass: compute cumulative runway for each period
+        cumulative_runway = {}
+        running_total = 0
+        
+        for period in sorted_periods:
+            days_info = days_by_period[period]
+            
+            # Determine if this is a current/past month or future month
+            period_start = date(period.year, period.month, 1)
+            
+            if as_of.year == period.year and as_of.month == period.month:
+                # Current month: use remaining days, start accumulating
+                running_total = days_info.sellable_remaining
+            elif period_start > as_of:
+                # Future month: add ALL sellable days to running total
+                running_total += days_info.sellable_total
+            else:
+                # Past month: no runway (already closed)
+                running_total = 0
+            
+            cumulative_runway[period] = running_total
+        
+        # Third pass: build metrics with cumulative runway
         result = {}
         
         for period in periods:
-            # Get sellable days info
-            days_info = calendar.get_sellable_days(period.year, period.month, as_of)
+            days_info = days_by_period[period]
             
             # Get company totals
             totals = self.repository.get_company_totals_for_period(period)
@@ -452,12 +487,12 @@ class PlanningService(BaseService):
                 as_of
             )
             
-            # Build metrics object
+            # Build metrics object with CUMULATIVE runway
             metrics = BurnDownMetrics(
                 period=period,
                 sellable_days_total=days_info.sellable_total,
                 sellable_days_elapsed=days_info.sellable_elapsed,
-                sellable_days_remaining=days_info.sellable_remaining,
+                sellable_days_remaining=cumulative_runway[period],  # <-- CUMULATIVE
                 adjustment=days_info.adjustment,
                 adjustment_reason=days_info.adjustment_reason,
                 forecast_total=Money(totals["forecast"]),

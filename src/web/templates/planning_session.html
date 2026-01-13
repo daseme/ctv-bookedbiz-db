@@ -499,7 +499,60 @@
         transition: width 0.3s ease;
         min-width: 2px;
     }
-    
+    /* Gauge: show required pace as a fixed marker, actual pace as the bar */
+.pace-bar-container {
+    height: 6px;                 /* slightly taller so the marker is readable */
+    background: var(--nord3);
+    border-radius: 3px;
+    overflow: visible;            /* allow marker to poke out */
+    margin-bottom: 4px;
+    position: relative;
+}
+
+/* Required marker (always at 100% of required pace) */
+.pace-required-marker {
+    position: absolute;
+    right: 0;
+    top: -3px;
+    width: 2px;
+    height: 12px;
+    background: var(--nord6);
+    opacity: 0.85;
+    border-radius: 1px;
+}
+
+/* Actual bar stays inside */
+.pace-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    min-width: 2px;
+}
+
+/* Status label becomes "BEHIND · +$X/day needed" */
+.pace-status-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    gap: 6px;
+    align-items: baseline;
+}
+
+.pace-delta {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    opacity: 0.95;
+}
+
+/* Delta colors match status */
+.pace-ahead .pace-delta { color: var(--nord14); }
+.pace-on-track .pace-delta { color: var(--nord13); }
+.pace-behind .pace-delta { color: var(--nord11); }
+.pace-complete .pace-delta { color: var(--nord8); }
+
     /* Pace status colors */
     .pace-ahead .pace-bar {
         background: linear-gradient(90deg, var(--nord14) 0%, #8fbf8b 100%);
@@ -645,33 +698,65 @@
         <thead>
             <!-- Burn-Down Strip Row -->
             <tr class="burn-down-row">
-                <th class="burn-down-label entity-header-col">Burn Rate</th>
+                <th class="burn-down-label entity-header-col">Booking Pace</th>
                 {% for period in all_periods %}
                 {% set bd = burn_down.get(period) if burn_down else None %}
                 {% set is_active = period in active_periods %}
                 <th class="burn-down-cell {% if not is_active %}inactive{% endif %} {% if bd %}{{ bd.pace_status.css_class }}{% endif %} {% if period.month in [3, 6, 9, 12] %}q-end{% endif %}"
                     {% if bd and is_active %}
-                    data-tooltip="Forecast: {{ bd.forecast_total.formatted }}
-Booked: {{ bd.booked_total.formatted }}
-Remaining: {{ bd.remaining_to_forecast.formatted }}
+data-tooltip="Forecast: {{ bd.forecast_total.formatted }}&#10;
+Booked: {{ bd.booked_total.formatted }}&#10;
+Remaining: {{ bd.remaining_to_forecast.formatted }}&#10;
+&#10;
+Days elapsed: {{ bd.sellable_days_elapsed }}&#10;
+Days left: {{ bd.sellable_days_remaining }}{% if bd.adjustment != 0 %}&#10;
+Adjustment: {{ bd.adjustment }} ({{ bd.adjustment_reason or 'manual' }}){% endif %}&#10;
+Required: {{ bd.required_pace_formatted }}&#10;
+Actual: {{ bd.actual_pace_formatted }}{% if bd.pace_delta_per_day is defined %}&#10;
+Delta: +${{ "{:,.1f}".format(bd.pace_delta_per_day/1000) }}k/day needed{% endif %}&#10;
+To hit forecast by end of period."
 
-Days elapsed: {{ bd.sellable_days_elapsed }}
-Days left: {{ bd.sellable_days_remaining }}
-{% if bd.adjustment != 0 %}Adjustment: {{ bd.adjustment }} ({{ bd.adjustment_reason or 'manual' }})
-{% endif %}
-Required: {{ bd.required_pace_formatted }}
-Actual: {{ bd.actual_pace_formatted }}"
                     {% endif %}>
                     {% if is_active and bd %}
-                    <div class="burn-down-days">{{ bd.days_left_text }}</div>
-                    <div class="burn-down-pace">{{ bd.required_pace_formatted }}</div>
-                    <div class="pace-bar-container">
-                        <div class="pace-bar" style="width: {{ bd.pace_bar_percent }}%;"></div>
-                    </div>
-                    <div class="pace-status-label">{{ bd.pace_status.label }}</div>
+                        <div class="burn-down-days">{{ bd.days_left_text }}</div>
+                        <div class="burn-down-pace">{{ bd.required_pace_formatted }}</div>
+
+                        <div class="pace-bar-container">
+                            {# Actual pace bar (width is actual/required capped at 100) #}
+                            <div class="pace-bar" style="width: {{ bd.pace_bar_percent }}%;"></div>
+                            {# Required marker at the far right (100% of required) #}
+                            <div class="pace-required-marker" title="Required pace"></div>
+                        </div>
+
+                        <div class="pace-status-label">
+                            <span>{{ bd.pace_status.label }}</span>
+
+                            {# Operational delta: how much more per day is needed #}
+                            {% if bd.pace_status.css_class == 'pace-behind' %}
+                                {# Preferred: backend provides bd.pace_delta_per_day (numeric) #}
+                                {% if bd.pace_delta_per_day is defined %}
+                                    <span class="pace-delta">+${{ "{:,.1f}".format(bd.pace_delta_per_day/1000) }}k/day needed</span>
+                                {% elif bd.required_pace is defined and bd.actual_pace is defined %}
+                                    {# Fallback: if backend provides numeric required_pace & actual_pace #}
+                                    {% set delta = (bd.required_pace - bd.actual_pace) %}
+                                    {% if delta > 0 %}
+                                        <span class="pace-delta">+${{ "{:,.1f}".format(delta/1000) }}k/day needed</span>
+                                    {% endif %}
+                                {% endif %}
+                            {% elif bd.pace_status.css_class == 'pace-ahead' %}
+                                {# Optional: show surplus per day (same numeric requirements as above) #}
+                                {% if bd.required_pace is defined and bd.actual_pace is defined %}
+                                    {% set surplus = (bd.actual_pace - bd.required_pace) %}
+                                    {% if surplus > 0 %}
+                                        <span class="pace-delta">+${{ "{:,.1f}".format(surplus/1000) }}k/day ahead</span>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
+                        </div>
                     {% else %}
-                    <div class="burn-down-days" style="opacity: 0.4;">—</div>
+                        <div class="burn-down-days" style="opacity: 0.4;">—</div>
                     {% endif %}
+
                 </th>
                 {% endfor %}
                 <th class="burn-down-cell total-header" style="opacity: 0.4;">—</th>
