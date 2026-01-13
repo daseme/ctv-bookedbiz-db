@@ -1279,21 +1279,44 @@ function updateChangeCount() {
 }
 
 function recalculateTotals() {
-    // Recalculate entity totals using effective forecast (max of entered and booked)
+    // Recalculate entity totals and variances
     document.querySelectorAll('.entity-header').forEach(header => {
         const entityName = header.dataset.entity;
         const inputs = document.querySelectorAll(`.forecast-input[data-ae="${entityName}"]`);
-        let total = 0;
+        let totalForecast = 0;
+        
         inputs.forEach(input => {
             const displayedValue = parseNumber(input.value);
             const bookedValue = parseNumber(input.dataset.booked || '0');
-            // Use effective forecast (auto-floored to booked)
-            total += Math.max(displayedValue, bookedValue);
+            totalForecast += Math.max(displayedValue, bookedValue);
+            
+            // Update variance for this cell
+            const budgetCell = input.closest('tr').previousElementSibling.previousElementSibling.previousElementSibling;
+            const periodIndex = Array.from(input.closest('td').parentNode.children).indexOf(input.closest('td'));
+            
+            // Find the variance row and cell for this period
+            let varianceRow = input.closest('tr').nextElementSibling.nextElementSibling; // skip pipeline row
+            if (varianceRow && varianceRow.classList.contains('row-variance')) {
+                const varianceCell = varianceRow.children[periodIndex];
+                const budgetRow = input.closest('tr').previousElementSibling.previousElementSibling; // budget is 2 rows up
+                const budgetCell = budgetRow.children[periodIndex];
+                
+                if (varianceCell && budgetCell) {
+                    const budgetValue = parseNumber(budgetCell.textContent);
+                    const forecastValue = Math.max(displayedValue, bookedValue);
+                    const variance = forecastValue - budgetValue;
+                    
+                    // Update variance display
+                    varianceCell.textContent = (variance >= 0 ? '+$' : '-$') + formatNumber(Math.abs(variance));
+                    varianceCell.classList.remove('variance-positive', 'variance-negative');
+                    varianceCell.classList.add(variance >= 0 ? 'variance-positive' : 'variance-negative');
+                }
+            }
         });
         
         const totalEl = document.getElementById(`total-forecast-${entityName.replace(/ /g, '-')}`);
         if (totalEl) {
-            totalEl.textContent = '$' + formatNumber(total);
+            totalEl.textContent = '$' + formatNumber(totalForecast);
         }
     });
     
