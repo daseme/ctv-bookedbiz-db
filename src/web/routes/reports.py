@@ -327,6 +327,48 @@ def management_performance_csv(year: int):
         headers={'Content-Disposition': f'attachment; filename=management_performance_{year}.csv'}
     )
 
+
+@reports_bp.route('/planning/api/booked-detail')
+def api_booked_detail():
+    """Get detailed breakdown of booked revenue by customer."""
+    entity = request.args.get('entity')
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    limit = request.args.get('limit', default=50, type=int)
+    
+    # Validate required params
+    if not entity:
+        return jsonify({"success": False, "error": "Missing required parameter: entity"}), 400
+    if not year:
+        return jsonify({"success": False, "error": "Missing required parameter: year"}), 400
+    if not month or month < 1 or month > 12:
+        return jsonify({"success": False, "error": "Invalid month parameter (1-12)"}), 400
+    
+    try:
+        # Get service from container (same pattern as your other routes)
+        container = get_container()
+        service = container.get('planning_service')
+        
+        result = service.get_booked_detail(entity, year, month, limit)
+        
+        if result is None:
+            return jsonify({
+                "success": False, 
+                "error": f"Entity not found: {entity}"
+            }), 404
+        
+        return jsonify({
+            "success": True,
+            "data": result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching booked detail: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @reports_bp.route("/report1")
 @log_requests
 @handle_request_errors
