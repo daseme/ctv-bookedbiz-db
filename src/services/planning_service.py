@@ -19,6 +19,7 @@ from src.models.planning import BurnDownMetrics, PaceStatus
 
 from src.database.connection import DatabaseConnection
 from src.services.base_service import BaseService
+from src.repositories.sector_expectation_repository import SectorExpectationRepository
 from src.repositories.planning_repository import PlanningRepository
 from src.models.planning import (
     RevenueEntity,
@@ -30,6 +31,9 @@ from src.models.planning import (
     Money,
     ForecastUpdate,
     ForecastChange,
+    SectorExpectation,
+    EntitySectorExpectations,
+    SectorExpectationValidation,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +45,7 @@ class PlanningService(BaseService):
     def __init__(self, db_connection: DatabaseConnection):
         super().__init__(db_connection)
         self.repository = PlanningRepository(db_connection)
+        self.sector_repo = SectorExpectationRepository(db_connection)
 
     # =========================================================================
     # Planning Data Retrieval
@@ -406,6 +411,329 @@ class PlanningService(BaseService):
             "added_count": len(added),
             "added_entities": added
         }
+
+
+    # =========================================================================
+    # Sector Expectations
+    # =========================================================================
+
+    def get_sector_expectations_for_entity(
+        self,
+        ae_name: str,
+        year: int
+    ) -> EntitySectorExpectations:
+        """
+        Get all sector expectations for an entity/year.
+        
+        Args:
+            ae_name: Entity name (AE or House)
+            year: Planning year
+            
+        Returns:
+            EntitySectorExpectations with all sector detail
+        """
+        entity = self.repository.get_revenue_entity_by_name(ae_name)
+        if not entity:
+            raise ValueError(f"Unknown entity: {ae_name}")
+        
+        expectations = self.sector_repo.get_by_entity_year(ae_name, year)
+        
+        return EntitySectorExpectations(
+            entity_name=ae_name,
+            entity_type=entity.entity_type,
+            year=year,
+            expectations=expectations
+        )
+
+    def get_all_sector_expectations(
+        self,
+        year: int
+    ) -> Dict[str, EntitySectorExpectations]:
+        """
+        Get sector expectations for all entities.
+        
+        Args:
+            year: Planning year
+            
+        Returns:
+            Dict mapping entity_name -> EntitySectorExpectations
+        """
+        return self.sector_repo.get_all_for_year(year)
+
+    def get_budget_with_sectors(
+        self,
+        year: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get budget data with sector expectations for Budget Entry UI.
+        
+        Returns data structured for the expandable budget table.
+        
+        Args:
+            year: Planning year
+            
+        Returns:
+            List of entity data with budget and sector breakdown
+        """
+        entities = self.repository.get_active_revenue_entities()
+        all_expectations = self.sector_repo.get_all_for_year(year)
+        all_sectors = self.sector_repo.get_all_sectors()
+        
+        result = []
+        
+        for entity in entities:
+            # Skip WorldLink - no sector breakdown
+            if entity.entity_name == "WorldLink":
+                entity_data = {
+                    "entity": entity,
+                    "has_sector_detail": False,
+                    "budgets": {},
+                    "sectors": [],
+                    "sector_totals": {},
+                    "is_balanced": {}
+                }
+            else:
+                # Get budgets for each month
+                periods = PlanningPeriod.full_year(year)
+                budgets = {}
+                for period in periods:
+                    budget = self.repository.get_budget(
+                        entity.entity_name, period.year, period.month
+                    )
+                    budgets[period.month] = budget or Decimal("0")
+                
+                # Get sector expectations
+                entity_expectations = all_expectations.get(entity.entity_name)
+                
+                # Build sector grid for template
+                sectors = []
+                sector_totals = {m: Decimal("0") for m in range(1, 13)}
+                
+                if entity_expectations:
+                    grid = entity_expectations.monthly_grid()
+                    for sector_id, sector_code, sector_name in entity_expectations.sectors_used():
+                        sector_data = {
+                            "sector_id": sector_id,
+                            "sector_code": sector_code,
+                            "sector_name": sector_name,
+                            "amounts": {}
+                        }
+                        for month in range(1, 13):
+                            amount = grid.get(sector_id, {}).get(month, Decimal("0"))
+                            sector_data["amounts"][month] = amount
+                            sector_totals[month] += amount
+                        sectors.append(sector_data)
+                
+                # Check balance for each month
+                is_balanced = {}
+                for month in range(1, 13):
+                    is_balanced[month] = (sector_totals[month] == budgets[month])
+                
+                entity_data = {
+                    "entity": entity,
+                    "has_sector_detail": True,
+                    "budgets": budgets,
+                    "sectors": sectors,
+                    "sector_totals": sector_totals,
+                    "is_balanced": is_balanced
+                }
+            
+            result.append(entity_data)
+        
+        return result
+
+    def validate_sector_expectations(
+        self,
+        ae_name: str,
+        year: int
+    ) -> SectorExpectationValidation:
+        """
+        Validate that sector expectations sum to budget for each month.
+        
+        Args:
+            ae_name: Entity name
+            year: Planning year
+            
+        Returns:
+            SectorExpectationValidation with results
+        """
+        validation = SectorExpectationValidation(
+            entity_name=ae_name,
+            year=year,
+            is_valid=True
+        )
+        
+        # Get budget for each month
+        for month in range(1, 13):
+            budget = self.repository.get_budget(ae_name, year, month)
+            budget_amount = budget or Decimal("0")
+            
+            # Get sector total for this month
+            expectations = self.sector_repo.get_by_entity_month(ae_name, year, month)
+            sector_total = sum((e.expected_amount for e in expectations), Decimal("0"))
+            
+            if sector_total != budget_amount:
+                validation.add_month_mismatch(month, budget_amount, sector_total)
+            else:
+                validation.add_month_balanced(month, budget_amount)
+        
+        return validation
+
+    def save_sector_expectations(
+        self,
+        ae_name: str,
+        year: int,
+        expectations: List[Dict[str, Any]],
+        updated_by: str
+    ) -> Dict[str, Any]:
+        """
+        Save sector expectations with validation.
+        
+        Args:
+            ae_name: Entity name
+            year: Planning year
+            expectations: List of {sector_id, month, amount} dicts
+            updated_by: User making the change
+            
+        Returns:
+            Dict with success status and any validation errors
+        """
+        # Convert to SectorExpectation objects
+        sector_expectations = []
+        all_sectors = {s["sector_id"]: s for s in self.sector_repo.get_all_sectors()}
+        
+        for exp in expectations:
+            sector = all_sectors.get(exp["sector_id"])
+            if not sector:
+                return {
+                    "success": False,
+                    "error": f"Unknown sector_id: {exp['sector_id']}"
+                }
+            
+            sector_expectations.append(SectorExpectation(
+                ae_name=ae_name,
+                sector_id=exp["sector_id"],
+                sector_code=sector["sector_code"],
+                sector_name=sector["sector_name"],
+                year=year,
+                month=exp["month"],
+                expected_amount=Decimal(str(exp["amount"])),
+                notes=exp.get("notes")
+            ))
+        
+        # Save
+        saved_count = self.sector_repo.save_expectations(
+            ae_name, year, sector_expectations, updated_by
+        )
+        
+        # Validate against budget
+        validation = self.validate_sector_expectations(ae_name, year)
+        
+        return {
+            "success": True,
+            "saved_count": saved_count,
+            "validation": {
+                "is_valid": validation.is_valid,
+                "errors": validation.errors,
+                "month_details": validation.month_details
+            }
+        }
+
+    def add_sector_to_entity(
+        self,
+        ae_name: str,
+        sector_id: int,
+        year: int,
+        updated_by: str
+    ) -> Dict[str, Any]:
+        """
+        Add a new sector to an entity's expectations (initialized to zero).
+        
+        Args:
+            ae_name: Entity name
+            sector_id: Sector to add
+            year: Planning year
+            updated_by: User making the change
+            
+        Returns:
+            Dict with the new sector info
+        """
+        # Verify sector exists
+        all_sectors = {s["sector_id"]: s for s in self.sector_repo.get_all_sectors()}
+        sector = all_sectors.get(sector_id)
+        if not sector:
+            raise ValueError(f"Unknown sector_id: {sector_id}")
+        
+        # Check if already exists
+        existing = self.sector_repo.get_by_entity_year(ae_name, year)
+        if any(e.sector_id == sector_id for e in existing):
+            raise ValueError(f"Sector {sector['sector_name']} already exists for {ae_name}")
+        
+        # Add expectations with zero amounts for all 12 months
+        new_expectations = []
+        for month in range(1, 13):
+            exp = SectorExpectation(
+                ae_name=ae_name,
+                sector_id=sector_id,
+                sector_code=sector["sector_code"],
+                sector_name=sector["sector_name"],
+                year=year,
+                month=month,
+                expected_amount=Decimal("0")
+            )
+            self.sector_repo.save_single_expectation(exp, updated_by)
+            new_expectations.append(exp)
+        
+        logger.info(f"Added sector {sector['sector_name']} to {ae_name} for {year}")
+        
+        return {
+            "success": True,
+            "sector_id": sector_id,
+            "sector_code": sector["sector_code"],
+            "sector_name": sector["sector_name"],
+            "amounts": {m: 0 for m in range(1, 13)}
+        }
+
+    def remove_sector_from_entity(
+        self,
+        ae_name: str,
+        sector_id: int,
+        year: int
+    ) -> bool:
+        """
+        Remove a sector from an entity's expectations.
+        
+        Args:
+            ae_name: Entity name
+            sector_id: Sector to remove
+            year: Planning year
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        deleted = self.sector_repo.delete_sector_for_entity(ae_name, sector_id, year)
+        return deleted > 0
+
+    def get_available_sectors(
+        self,
+        ae_name: str,
+        year: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get sectors available to add (not already in use).
+        
+        Args:
+            ae_name: Entity name
+            year: Planning year
+            
+        Returns:
+            List of sector dicts
+        """
+        return self.sector_repo.get_available_sectors_for_entity(ae_name, year)
+
+    def get_all_sectors(self) -> List[Dict[str, Any]]:
+        """Get all active sectors."""
+        return self.sector_repo.get_all_sectors()
 
 # ============================================================================
 # Add this method to PlanningService class
