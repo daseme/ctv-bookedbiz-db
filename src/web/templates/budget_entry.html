@@ -68,6 +68,9 @@
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
     }
     
     .budget-table th.number {
@@ -139,6 +142,155 @@
     .totals-row td {
         border-bottom: none;
         padding: 14px 16px;
+    }
+
+    /* Expandable Row Styles */
+    .expand-toggle {
+        cursor: pointer;
+        user-select: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .expand-toggle .arrow {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        text-align: center;
+        line-height: 16px;
+        font-size: 12px;
+        color: var(--nord3);
+        transition: transform 0.15s;
+    }
+    
+    .expand-toggle.expanded .arrow {
+        transform: rotate(90deg);
+    }
+    
+    .expand-toggle:hover .arrow {
+        color: var(--nord8);
+    }
+    
+    /* Sector Rows */
+    .sector-row {
+        background: #f8fafc;
+    }
+    
+    .sector-row td {
+        padding: 6px 16px;
+        border-bottom: 1px solid #edf2f7;
+    }
+    
+    .sector-row:hover {
+        background: #edf2f7;
+    }
+    
+    .sector-name-cell {
+        padding-left: 48px !important;
+        font-size: 12px;
+        color: #4a5568;
+    }
+    
+    .sector-name-cell .sector-code {
+        font-weight: 600;
+        color: var(--nord10);
+        margin-right: 6px;
+    }
+    
+    .sector-input {
+        width: 100%;
+        padding: 4px 6px;
+        border: 1px solid #e2e8f0;
+        border-radius: 3px;
+        font-size: 12px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        background: white;
+    }
+    
+    .sector-input:focus {
+        outline: none;
+        border-color: var(--nord8);
+        box-shadow: 0 0 0 2px rgba(136, 192, 208, 0.2);
+    }
+    
+    .sector-input.modified {
+        background: #fef3c7;
+        border-color: var(--nord13);
+    }
+    
+    /* Sector Total Row */
+    .sector-total-row {
+        background: #edf2f7;
+    }
+    
+    .sector-total-row td {
+        padding: 8px 16px;
+        font-weight: 600;
+        font-size: 12px;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    
+    .sector-total-row .total-label {
+        padding-left: 48px;
+        color: #4a5568;
+    }
+    
+    /* Balance Indicators */
+    .balance-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+    
+    .balance-indicator.balanced {
+        background: var(--nord14);
+    }
+    
+    .balance-indicator.unbalanced {
+        background: var(--nord11);
+    }
+    
+    /* Add Sector Row */
+    .add-sector-row {
+        background: #f0fff4;
+    }
+    
+    .add-sector-row td {
+        padding: 8px 16px;
+    }
+    
+    .add-sector-cell {
+        padding-left: 48px !important;
+    }
+    
+    .add-sector-select {
+        padding: 4px 8px;
+        border: 1px dashed var(--nord14);
+        border-radius: 4px;
+        font-size: 12px;
+        background: white;
+        cursor: pointer;
+    }
+    
+    .remove-sector-btn {
+        opacity: 0;
+        padding: 2px 6px;
+        border: none;
+        background: var(--nord11);
+        color: white;
+        border-radius: 3px;
+        font-size: 10px;
+        cursor: pointer;
+        transition: opacity 0.15s;
+    }
+    
+    .sector-row:hover .remove-sector-btn {
+        opacity: 1;
     }
     
     /* Quick Fill Section */
@@ -309,6 +461,11 @@
         color: white;
         border-color: var(--nord8);
     }
+    
+    /* Hidden rows */
+    .hidden-row {
+        display: none;
+    }
 </style>
 {% endblock %}
 
@@ -326,7 +483,7 @@
             <label>Year</label>
             <select id="yearSelect" onchange="loadBudgetData()">
                 <option value="2025">2025</option>
-                <option value="2026" selected>2026</option>
+                <option value="2026" {% if selected_year == 2026 %}selected{% endif %}>2026</option>
                 <option value="2027">2027</option>
             </select>
         </div>
@@ -377,7 +534,7 @@
     <table class="budget-table" id="budgetTable">
         <thead>
             <tr>
-                <th style="width: 200px;">AE</th>
+                <th style="width: 220px;">AE</th>
                 <th class="number">Jan</th>
                 <th class="number">Feb</th>
                 <th class="number">Mar</th>
@@ -395,9 +552,21 @@
         </thead>
         <tbody>
             {% for entity in entities %}
-            <tr data-ae="{{ entity.entity_name }}">
+            {% set ae_safe = entity.entity_name | replace(' ', '-') | replace("'", '') %}
+            {% set has_sectors = entity.entity_name != 'WorldLink' %}
+            {% set entity_exp = sector_expectations.get(entity.entity_name) %}
+            
+            <!-- Main AE Row -->
+            <tr data-ae="{{ entity.entity_name }}" class="ae-row">
                 <td>
-                    <span class="ae-name">{{ entity.entity_name }}</span>
+                    {% if has_sectors %}
+                    <span class="expand-toggle" onclick="toggleSectors('{{ ae_safe }}')" data-ae="{{ ae_safe }}">
+                        <span class="arrow">▶</span>
+                        <span class="ae-name">{{ entity.entity_name }}</span>
+                    </span>
+                    {% else %}
+                    <span class="ae-name" style="margin-left: 22px;">{{ entity.entity_name }}</span>
+                    {% endif %}
                     <span class="ae-type {{ entity.entity_type.value|lower }}">{{ entity.entity_type.value }}</span>
                 </td>
                 {% for month in range(1, 13) %}
@@ -407,14 +576,66 @@
                            data-ae="{{ entity.entity_name }}"
                            data-month="{{ month }}"
                            value="{{ '{:,.0f}'.format(budgets.get(entity.entity_name, {}).get(month, 0) | float) }}"
-                           onchange="markModified(this)"
+                           onchange="markBudgetModified(this)"
                            onkeydown="handleKeydown(event, this)">
                 </td>
                 {% endfor %}
-                <td class="number total-cell" id="total-{{ entity.entity_name | replace(' ', '-') }}">
-                    $0
+                <td class="number total-cell" id="total-{{ ae_safe }}">$0</td>
+            </tr>
+            
+            {% if has_sectors %}
+            <!-- Sector Rows (hidden by default) -->
+            {% if entity_exp %}
+            {% for sector_id, sector_code, sector_name in entity_exp.sectors_used() %}
+            {% set grid = entity_exp.monthly_grid() %}
+            <tr class="sector-row hidden-row" data-ae-parent="{{ ae_safe }}" data-sector="{{ sector_id }}">
+                <td class="sector-name-cell">
+                    <span class="sector-code">{{ sector_code }}</span>
+                    {{ sector_name }}
+                    <button class="remove-sector-btn" onclick="removeSector('{{ entity.entity_name }}', {{ sector_id }})">✕</button>
+                </td>
+                {% for month in range(1, 13) %}
+                <td class="number">
+                    <input type="text"
+                           class="sector-input"
+                           data-ae="{{ entity.entity_name }}"
+                           data-sector="{{ sector_id }}"
+                           data-month="{{ month }}"
+                           value="{{ '{:,.0f}'.format(grid.get(sector_id, {}).get(month, 0) | float) }}"
+                           onchange="markSectorModified(this)"
+                           onkeydown="handleKeydown(event, this)">
+                </td>
+                {% endfor %}
+                <td class="number sector-total" data-ae="{{ ae_safe }}" data-sector="{{ sector_id }}">$0</td>
+            </tr>
+            {% endfor %}
+            {% endif %}
+            
+            <!-- Add Sector Row -->
+            <tr class="add-sector-row hidden-row" data-ae-parent="{{ ae_safe }}">
+                <td class="add-sector-cell" colspan="14">
+                    <select class="add-sector-select" 
+                            id="add-sector-{{ ae_safe }}"
+                            onchange="addSectorToEntity('{{ entity.entity_name }}', '{{ ae_safe }}', this.value)">
+                        <option value="">+ Add Sector...</option>
+                        <!-- Populated via JS -->
+                    </select>
                 </td>
             </tr>
+            
+            <!-- Sector Total Row -->
+            <tr class="sector-total-row hidden-row" data-ae-parent="{{ ae_safe }}">
+                <td class="total-label">
+                    Sector Total
+                    <span class="balance-indicator" id="balance-{{ ae_safe }}-indicator"></span>
+                </td>
+                {% for month in range(1, 13) %}
+                <td class="number" id="sector-total-{{ ae_safe }}-{{ month }}">$0</td>
+                {% endfor %}
+                <td class="number" id="sector-grand-total-{{ ae_safe }}">$0</td>
+            </tr>
+            {% endif %}
+            
             {% endfor %}
         </tbody>
         <tfoot>
@@ -437,7 +658,7 @@
     <div class="control-group">
         <span id="changeCount" style="color: #718096; font-size: 13px;"></span>
         <button class="btn btn-secondary" onclick="resetChanges()" id="resetBtn" disabled>Reset</button>
-        <button class="btn btn-primary" onclick="saveBudgets()" id="saveBtn" disabled>Save All Budgets</button>
+        <button class="btn btn-primary" onclick="saveAll()" id="saveBtn" disabled>Save All Budgets</button>
     </div>
 </div>
 
@@ -445,14 +666,47 @@
 
 {% block scripts %}
 <script>
-const changes = new Map();
-let currentYear = 2026;
+// State management
+const budgetChanges = new Map();
+const sectorChanges = new Map();
+let currentYear = {{ selected_year }};
+const allSectors = {{ all_sectors | tojson }};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     currentYear = parseInt(document.getElementById('yearSelect').value);
-    recalculateTotals();
+    recalculateAllTotals();
+    
+    // Load available sectors for each entity
+    document.querySelectorAll('.add-sector-select').forEach(select => {
+        const ae = select.id.replace('add-sector-', '');
+        loadAvailableSectors(ae);
+    });
 });
+
+// ============================================================================
+// Expand/Collapse
+// ============================================================================
+
+function toggleSectors(aeSafe) {
+    const toggle = document.querySelector(`.expand-toggle[data-ae="${aeSafe}"]`);
+    const sectorRows = document.querySelectorAll(`tr[data-ae-parent="${aeSafe}"]`);
+    
+    const isExpanded = toggle.classList.contains('expanded');
+    
+    if (isExpanded) {
+        toggle.classList.remove('expanded');
+        sectorRows.forEach(row => row.classList.add('hidden-row'));
+    } else {
+        toggle.classList.add('expanded');
+        sectorRows.forEach(row => row.classList.remove('hidden-row'));
+        recalculateSectorTotals(aeSafe);
+    }
+}
+
+// ============================================================================
+// Number Formatting
+// ============================================================================
 
 function formatNumber(num) {
     return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -462,7 +716,11 @@ function parseNumber(str) {
     return parseFloat(str.replace(/[$,]/g, '')) || 0;
 }
 
-function markModified(input) {
+// ============================================================================
+// Budget Changes
+// ============================================================================
+
+function markBudgetModified(input) {
     const ae = input.dataset.ae;
     const month = parseInt(input.dataset.month);
     const value = parseNumber(input.value);
@@ -470,38 +728,57 @@ function markModified(input) {
     input.value = formatNumber(value);
     input.classList.add('modified');
     
-    const key = `${ae}-${month}`;
-    changes.set(key, { ae_name: ae, month: month, amount: value });
+    const key = `budget-${ae}-${month}`;
+    budgetChanges.set(key, { ae_name: ae, month: month, amount: value });
     
     updateChangeCount();
-    recalculateTotals();
+    recalculateAllTotals();
+}
+
+// ============================================================================
+// Sector Changes
+// ============================================================================
+
+function markSectorModified(input) {
+    const ae = input.dataset.ae;
+    const sectorId = parseInt(input.dataset.sector);
+    const month = parseInt(input.dataset.month);
+    const value = parseNumber(input.value);
+    
+    input.value = formatNumber(value);
+    input.classList.add('modified');
+    
+    const key = `sector-${ae}-${sectorId}-${month}`;
+    sectorChanges.set(key, { 
+        ae_name: ae, 
+        sector_id: sectorId, 
+        month: month, 
+        amount: value 
+    });
+    
+    updateChangeCount();
+    
+    // Update sector totals for this AE
+    const aeSafe = ae.replace(/ /g, '-').replace(/'/g, '');
+    recalculateSectorTotals(aeSafe);
 }
 
 function handleKeydown(event, input) {
     if (event.key === 'Enter' || event.key === 'Tab') {
-        markModified(input);
+        if (input.classList.contains('budget-input')) {
+            markBudgetModified(input);
+        } else {
+            markSectorModified(input);
+        }
     }
 }
 
-function updateChangeCount() {
-    const count = changes.size;
-    const countEl = document.getElementById('changeCount');
-    const saveBtn = document.getElementById('saveBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    
-    if (count > 0) {
-        countEl.textContent = `${count} unsaved change${count > 1 ? 's' : ''}`;
-        saveBtn.disabled = false;
-        resetBtn.disabled = false;
-    } else {
-        countEl.textContent = '';
-        saveBtn.disabled = true;
-        resetBtn.disabled = true;
-    }
-}
+// ============================================================================
+// Totals Calculation
+// ============================================================================
 
-function recalculateTotals() {
-    const rows = document.querySelectorAll('#budgetTable tbody tr');
+function recalculateAllTotals() {
+    const rows = document.querySelectorAll('#budgetTable tbody tr.ae-row');
     const monthTotals = {};
     let grandTotal = 0;
     
@@ -511,6 +788,7 @@ function recalculateTotals() {
     
     rows.forEach(row => {
         const ae = row.dataset.ae;
+        const aeSafe = ae.replace(/ /g, '-').replace(/'/g, '');
         let rowTotal = 0;
         
         for (let m = 1; m <= 12; m++) {
@@ -522,7 +800,7 @@ function recalculateTotals() {
             }
         }
         
-        const totalCell = document.getElementById(`total-${ae.replace(/ /g, '-')}`);
+        const totalCell = document.getElementById(`total-${aeSafe}`);
         if (totalCell) {
             totalCell.textContent = '$' + formatNumber(rowTotal);
         }
@@ -545,6 +823,313 @@ function recalculateTotals() {
     }
 }
 
+function recalculateSectorTotals(aeSafe) {
+    const sectorRows = document.querySelectorAll(`tr.sector-row[data-ae-parent="${aeSafe}"]`);
+    const monthTotals = {};
+    let grandTotal = 0;
+    
+    for (let m = 1; m <= 12; m++) {
+        monthTotals[m] = 0;
+    }
+    
+    // Sum sector inputs
+    sectorRows.forEach(row => {
+        let rowTotal = 0;
+        const sectorId = row.dataset.sector;
+        
+        for (let m = 1; m <= 12; m++) {
+            const input = row.querySelector(`input[data-month="${m}"]`);
+            if (input) {
+                const value = parseNumber(input.value);
+                rowTotal += value;
+                monthTotals[m] += value;
+            }
+        }
+        
+        // Update sector row total
+        const sectorTotal = row.querySelector(`.sector-total[data-sector="${sectorId}"]`);
+        if (sectorTotal) {
+            sectorTotal.textContent = '$' + formatNumber(rowTotal);
+        }
+        
+        grandTotal += rowTotal;
+    });
+    
+    // Update sector total row
+    for (let m = 1; m <= 12; m++) {
+        const cell = document.getElementById(`sector-total-${aeSafe}-${m}`);
+        if (cell) {
+            cell.textContent = '$' + formatNumber(monthTotals[m]);
+        }
+    }
+    
+    const grandTotalCell = document.getElementById(`sector-grand-total-${aeSafe}`);
+    if (grandTotalCell) {
+        grandTotalCell.textContent = '$' + formatNumber(grandTotal);
+    }
+    
+    // Check balance with budget
+    checkSectorBalance(aeSafe, monthTotals);
+}
+
+function checkSectorBalance(aeSafe, sectorMonthTotals) {
+    const aeRow = document.querySelector(`tr.ae-row[data-ae="${aeSafe.replace(/-/g, ' ')}"]`) 
+                || document.querySelector(`tr.ae-row[data-ae*="${aeSafe.split('-')[0]}"]`);
+    
+    if (!aeRow) return;
+    
+    let allBalanced = true;
+    
+    for (let m = 1; m <= 12; m++) {
+        const budgetInput = aeRow.querySelector(`input[data-month="${m}"]`);
+        if (budgetInput) {
+            const budgetValue = parseNumber(budgetInput.value);
+            const sectorTotal = sectorMonthTotals[m] || 0;
+            
+            if (Math.abs(budgetValue - sectorTotal) > 0.01) {
+                allBalanced = false;
+            }
+        }
+    }
+    
+    const indicator = document.getElementById(`balance-${aeSafe}-indicator`);
+    if (indicator) {
+        indicator.className = `balance-indicator ${allBalanced ? 'balanced' : 'unbalanced'}`;
+        indicator.title = allBalanced ? 'Sectors balanced with budget' : 'Sectors do not match budget';
+    }
+}
+
+// ============================================================================
+// Sector Management
+// ============================================================================
+
+async function loadAvailableSectors(aeSafe) {
+    // Convert safe name back to actual name
+    const aeRow = document.querySelector(`tr.ae-row`);
+    if (!aeRow) return;
+    
+    // Find the actual AE name from a matching row
+    const rows = document.querySelectorAll('tr.ae-row');
+    let aeName = null;
+    rows.forEach(row => {
+        const rowAe = row.dataset.ae;
+        if (rowAe.replace(/ /g, '-').replace(/'/g, '') === aeSafe) {
+            aeName = rowAe;
+        }
+    });
+    
+    if (!aeName) return;
+    
+    try {
+        const response = await fetch(`/planning/api/sectors/available/${encodeURIComponent(aeName)}/${currentYear}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            const select = document.getElementById(`add-sector-${aeSafe}`);
+            if (select) {
+                // Clear existing options except first
+                select.innerHTML = '<option value="">+ Add Sector...</option>';
+                
+                result.data.sectors.forEach(sector => {
+                    const option = document.createElement('option');
+                    option.value = sector.sector_id;
+                    option.textContent = `${sector.sector_code} - ${sector.sector_name}`;
+                    select.appendChild(option);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error loading available sectors:', error);
+    }
+}
+
+async function addSectorToEntity(aeName, aeSafe, sectorId) {
+    if (!sectorId) return;
+    
+    try {
+        const response = await fetch('/planning/api/sector-expectations/add-sector', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ae_name: aeName,
+                sector_id: parseInt(sectorId),
+                year: currentYear
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showStatus(`Added ${result.data.sector_name}`, 'success');
+            // Reload page to show new sector row
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showStatus(result.error || 'Failed to add sector', 'error');
+        }
+    } catch (error) {
+        showStatus('Network error', 'error');
+    }
+}
+
+async function removeSector(aeName, sectorId) {
+    if (!confirm('Remove this sector? All amounts will be deleted.')) return;
+    
+    try {
+        const response = await fetch('/planning/api/sector-expectations/remove-sector', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ae_name: aeName,
+                sector_id: sectorId,
+                year: currentYear
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showStatus('Sector removed', 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showStatus(result.error || 'Failed to remove sector', 'error');
+        }
+    } catch (error) {
+        showStatus('Network error', 'error');
+    }
+}
+
+// ============================================================================
+// Change Tracking
+// ============================================================================
+
+function updateChangeCount() {
+    const totalChanges = budgetChanges.size + sectorChanges.size;
+    const countEl = document.getElementById('changeCount');
+    const saveBtn = document.getElementById('saveBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    
+    if (totalChanges > 0) {
+        countEl.textContent = `${totalChanges} unsaved change${totalChanges > 1 ? 's' : ''}`;
+        saveBtn.disabled = false;
+        resetBtn.disabled = false;
+    } else {
+        countEl.textContent = '';
+        saveBtn.disabled = true;
+        resetBtn.disabled = true;
+    }
+}
+
+// ============================================================================
+// Save Operations
+// ============================================================================
+
+async function saveAll() {
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    
+    let errors = [];
+    
+    // Save budget changes
+    if (budgetChanges.size > 0) {
+        const budgetUpdates = Array.from(budgetChanges.values()).map(c => ({
+            ae_name: c.ae_name,
+            year: currentYear,
+            month: c.month,
+            amount: c.amount
+        }));
+        
+        try {
+            const response = await fetch('/planning/api/budget/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ updates: budgetUpdates })
+            });
+            
+            const result = await response.json();
+            if (!result.success) {
+                errors.push('Budget save failed');
+            }
+        } catch (e) {
+            errors.push('Budget save error');
+        }
+    }
+    
+    // Save sector changes (grouped by AE)
+    if (sectorChanges.size > 0) {
+        // Group by AE
+        const byAe = {};
+        sectorChanges.forEach((change, key) => {
+            if (!byAe[change.ae_name]) {
+                byAe[change.ae_name] = [];
+            }
+            byAe[change.ae_name].push(change);
+        });
+        
+        // Save each AE's sector expectations
+        for (const [aeName, changes] of Object.entries(byAe)) {
+            // Get all current sector data for this AE (including unchanged)
+            const aeSafe = aeName.replace(/ /g, '-').replace(/'/g, '');
+            const allExpectations = [];
+            
+            // Collect all sector inputs for this AE
+            const sectorRows = document.querySelectorAll(`tr.sector-row[data-ae-parent="${aeSafe}"]`);
+            sectorRows.forEach(row => {
+                const sectorId = parseInt(row.dataset.sector);
+                for (let m = 1; m <= 12; m++) {
+                    const input = row.querySelector(`input[data-month="${m}"]`);
+                    if (input) {
+                        allExpectations.push({
+                            sector_id: sectorId,
+                            month: m,
+                            amount: parseNumber(input.value)
+                        });
+                    }
+                }
+            });
+            
+            try {
+                const response = await fetch('/planning/api/sector-expectations/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ae_name: aeName,
+                        year: currentYear,
+                        expectations: allExpectations
+                    })
+                });
+                
+                const result = await response.json();
+                if (!result.success) {
+                    errors.push(`Sector save failed for ${aeName}`);
+                }
+            } catch (e) {
+                errors.push(`Sector save error for ${aeName}`);
+            }
+        }
+    }
+    
+    if (errors.length === 0) {
+        // Clear modified states
+        document.querySelectorAll('.modified').forEach(input => {
+            input.classList.remove('modified');
+        });
+        budgetChanges.clear();
+        sectorChanges.clear();
+        updateChangeCount();
+        showStatus('All changes saved', 'success');
+    } else {
+        showStatus(errors.join(', '), 'error');
+    }
+    
+    saveBtn.disabled = budgetChanges.size === 0 && sectorChanges.size === 0;
+    saveBtn.textContent = 'Save All Budgets';
+}
+
+// ============================================================================
+// Quick Fill
+// ============================================================================
+
 function applyQuickFill() {
     const ae = document.getElementById('quickFillAe').value;
     const amount = parseNumber(document.getElementById('quickFillAmount').value);
@@ -556,8 +1141,8 @@ function applyQuickFill() {
     }
     
     const rows = ae === '__all__' 
-        ? document.querySelectorAll('#budgetTable tbody tr')
-        : document.querySelectorAll(`#budgetTable tbody tr[data-ae="${ae}"]`);
+        ? document.querySelectorAll('#budgetTable tbody tr.ae-row')
+        : document.querySelectorAll(`#budgetTable tbody tr.ae-row[data-ae="${ae}"]`);
     
     rows.forEach(row => {
         for (let m = 1; m <= 12; m++) {
@@ -566,7 +1151,6 @@ function applyQuickFill() {
                 let monthAmount = amount;
                 
                 if (pattern === 'quarterly') {
-                    // Slight variation by quarter
                     if (m >= 1 && m <= 3) monthAmount = amount * 0.9;
                     else if (m >= 4 && m <= 6) monthAmount = amount * 1.0;
                     else if (m >= 7 && m <= 9) monthAmount = amount * 1.0;
@@ -574,13 +1158,17 @@ function applyQuickFill() {
                 }
                 
                 input.value = formatNumber(Math.round(monthAmount));
-                markModified(input);
+                markBudgetModified(input);
             }
         }
     });
     
     showStatus(`Applied ${formatNumber(amount)}/month to ${ae === '__all__' ? 'all AEs' : ae}`, 'success');
 }
+
+// ============================================================================
+// Add New AE
+// ============================================================================
 
 async function addNewAe() {
     const name = document.getElementById('newAeName').value.trim();
@@ -602,7 +1190,6 @@ async function addNewAe() {
         
         if (result.success) {
             showStatus(`Added ${name}`, 'success');
-            // Reload page to show new AE
             setTimeout(() => location.reload(), 1000);
         } else {
             showStatus(result.error || 'Failed to add AE', 'error');
@@ -612,48 +1199,9 @@ async function addNewAe() {
     }
 }
 
-async function saveBudgets() {
-    if (changes.size === 0) return;
-    
-    const saveBtn = document.getElementById('saveBtn');
-    saveBtn.disabled = true;
-    saveBtn.textContent = 'Saving...';
-    
-    const year = parseInt(document.getElementById('yearSelect').value);
-    const updates = Array.from(changes.values()).map(c => ({
-        ae_name: c.ae_name,
-        year: year,
-        month: c.month,
-        amount: c.amount
-    }));
-    
-    try {
-        const response = await fetch('/planning/api/budget/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ updates: updates })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // Clear modified state
-            document.querySelectorAll('.budget-input.modified').forEach(input => {
-                input.classList.remove('modified');
-            });
-            changes.clear();
-            updateChangeCount();
-            showStatus(`Saved ${updates.length} budget entries`, 'success');
-        } else {
-            showStatus(result.error || 'Failed to save', 'error');
-        }
-    } catch (error) {
-        showStatus('Network error', 'error');
-    } finally {
-        saveBtn.disabled = changes.size === 0;
-        saveBtn.textContent = 'Save All Budgets';
-    }
-}
+// ============================================================================
+// Utilities
+// ============================================================================
 
 function resetChanges() {
     location.reload();

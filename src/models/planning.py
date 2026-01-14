@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 
 # ============================================================================
@@ -586,3 +586,134 @@ class ForecastChange:
     changed_date: datetime
     changed_by: str
     session_notes: Optional[str] = None
+
+# ============================================================================
+# Sector Expectations - Domain Models
+# Add this section to src/models/planning.py
+# ============================================================================
+
+@dataclass
+class SectorExpectation:
+    """
+    Sector-level budget expectation for an AE/month.
+    
+    These capture the "theory of the year" - the intended revenue mix
+    that explains HOW an AE will hit their budget number.
+    """
+    ae_name: str
+    sector_id: int
+    sector_code: str      # Denormalized for display (e.g., "AUTO")
+    sector_name: str      # Denormalized for display (e.g., "Automotive")
+    year: int
+    month: int
+    expected_amount: Decimal
+    notes: Optional[str] = None
+    expectation_id: Optional[int] = None
+    created_date: Optional[datetime] = None
+    updated_date: Optional[datetime] = None
+    updated_by: Optional[str] = None
+    
+    @property
+    def period(self) -> PlanningPeriod:
+        """Get the planning period for this expectation."""
+        return PlanningPeriod(year=self.year, month=self.month)
+    
+    @property
+    def expected_money(self) -> Money:
+        """Get expected amount as Money object."""
+        return Money(self.expected_amount)
+
+
+@dataclass
+class EntitySectorExpectations:
+    """
+    All sector expectations for one entity (AE/House) for a year.
+    
+    Used for validation: sector expectations must sum to budget for each month.
+    """
+    entity_name: str
+    entity_type: EntityType
+    year: int
+    expectations: List[SectorExpectation] = field(default_factory=list)
+    
+    def for_month(self, month: int) -> List[SectorExpectation]:
+        """Get all expectations for a specific month."""
+        return [e for e in self.expectations if e.month == month]
+    
+    def for_sector(self, sector_id: int) -> List[SectorExpectation]:
+        """Get all expectations for a specific sector (across all months)."""
+        return [e for e in self.expectations if e.sector_id == sector_id]
+    
+    def total_for_month(self, month: int) -> Decimal:
+        """Sum of all sector expectations for a month."""
+        return sum((e.expected_amount for e in self.for_month(month)), Decimal("0"))
+    
+    def total_for_sector(self, sector_id: int) -> Decimal:
+        """Sum of all months for a specific sector."""
+        return sum((e.expected_amount for e in self.for_sector(sector_id)), Decimal("0"))
+    
+    def annual_total(self) -> Decimal:
+        """Total across all sectors and months."""
+        return sum((e.expected_amount for e in self.expectations), Decimal("0"))
+    
+    def sectors_used(self) -> List[tuple]:
+        """Get unique (sector_id, sector_code, sector_name) tuples used."""
+        seen = {}
+        for e in self.expectations:
+            if e.sector_id not in seen:
+                seen[e.sector_id] = (e.sector_id, e.sector_code, e.sector_name)
+        return list(seen.values())
+    
+    def monthly_grid(self) -> Dict[int, Dict[int, Decimal]]:
+        """
+        Build a grid: sector_id -> month -> amount.
+        Useful for template rendering.
+        """
+        grid = {}
+        for e in self.expectations:
+            if e.sector_id not in grid:
+                grid[e.sector_id] = {}
+            grid[e.sector_id][e.month] = e.expected_amount
+        return grid
+
+
+@dataclass
+class SectorExpectationValidation:
+    """Result of validating sector expectations against budget."""
+    entity_name: str
+    year: int
+    is_valid: bool
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    
+    # Month-level detail
+    month_details: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    
+    def add_month_mismatch(
+        self, 
+        month: int, 
+        budget: Decimal, 
+        sector_total: Decimal
+    ):
+        """Record a month where sectors don't sum to budget."""
+        diff = sector_total - budget
+        self.errors.append(
+            f"Month {month}: sectors (${sector_total:,.0f}) ≠ budget (${budget:,.0f}), "
+            f"difference: ${diff:+,.0f}"
+        )
+        self.month_details[month] = {
+            "budget": budget,
+            "sector_total": sector_total,
+            "difference": diff,
+            "balanced": False
+        }
+        self.is_valid = False
+    
+    def add_month_balanced(self, month: int, amount: Decimal):
+        """Record a month that balances correctly."""
+        self.month_details[month] = {
+            "budget": amount,
+            "sector_total": amount,
+            "difference": Decimal("0"),
+            "balanced": True
+        }
