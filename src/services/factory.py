@@ -268,6 +268,10 @@ def initialize_services():
         container.register_singleton('management_performance_service', create_management_performance_service)
         print("✅ management_performance_service registered")
 
+        print("🔧 Registering user_service...")
+        container.register_singleton("user_service", create_user_service)
+        print("✅ user_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -724,6 +728,36 @@ def create_management_performance_service():
     except Exception as e:
         logger.warning(f"Database connection issue for management performance service: {e}")
         raise
+
+def create_user_service():
+    """Create UserService with database connection."""
+    try:
+        from src.services.user_service import UserService
+        
+        container = get_container()
+        
+        # Get database connection
+        try:
+            db_connection = container.get("database_connection")
+            logger.debug("Creating UserService with database connection")
+        except Exception as e:
+            logger.error(f"Database connection required for user service: {e}")
+            raise ServiceCreationError(
+                "UserService requires database connection"
+            ) from e
+        
+        # Create service
+        service = UserService(db_connection)
+        
+        logger.info("UserService created successfully")
+        return service
+        
+    except ImportError as e:
+        logger.error(f"Failed to import UserService: {e}")
+        raise ServiceCreationError(f"Could not import UserService: {e}") from e
+    except Exception as e:
+        logger.error(f"Failed to create user service: {e}")
+        raise ServiceCreationError(f"User service creation failed: {e}") from e
 
 def register_critical_services(container):
     """Register only the most critical services for Railway"""

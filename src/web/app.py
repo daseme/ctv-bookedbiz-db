@@ -17,6 +17,7 @@ from src.services.factory import initialize_services
 from src.config.settings import get_settings
 from src.web.blueprints import initialize_blueprints
 from src.web.routes.planning import planning_bp
+from src.web.utils.auth import login_manager
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,17 @@ def create_app(environment: Optional[str] = None) -> Flask:
             "DB_PATH": settings.database.db_path,
             "DATABASE_PATH": settings.database.db_path,  # <-- compat for customer_normalization
             "DATA_PATH": settings.services.data_path,
+            # Flask-Login configuration
+            "PERMANENT_SESSION_LIFETIME": timedelta(days=1),  # 1 day session timeout
         }
     )
+
+    # Initialize Flask-Login
+    login_manager.init_app(app)
+    login_manager.login_view = "user_management.login"
+    login_manager.login_message = "Please log in to access this page."
+    login_manager.login_message_category = "info"
+    logger.info("Flask-Login initialized with 1 day session timeout")
 
     try:
         initialize_blueprints(app)
@@ -83,6 +93,15 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.info("Planning session blueprint registered successfully")
     except Exception as e:
         logger.error(f"Failed to register planning blueprint: {e}")
+
+    # ✅ Register the user management blueprint
+    try:
+        from src.web.routes.user_management import user_management_bp
+
+        app.register_blueprint(user_management_bp)
+        logger.info("User management blueprint registered successfully")
+    except Exception as e:
+        logger.error(f"Failed to register user management blueprint: {e}")
 
 
     # Initialize decay system check (non-blocking) - FIXED for newer Flask
