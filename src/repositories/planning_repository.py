@@ -498,38 +498,41 @@ class PlanningRepository(BaseService):
             # Standard AE
             entity_filter = "UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
             params = [entity.entity_name, period.broadcast_month, limit]
-        
+
         query = f"""
-            SELECT 
+            SELECT
                 COALESCE(c.normalized_name, s.bill_code) as customer_name,
                 a.agency_name,
+                sec.sector_code,
+                sec.sector_name,
                 SUM(COALESCE(s.gross_rate, 0)) as revenue,
                 COUNT(*) as spot_count
             FROM spots s
             LEFT JOIN customers c ON s.customer_id = c.customer_id
             LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
             WHERE {entity_filter}
             AND s.broadcast_month = ?
             AND COALESCE(s.gross_rate, 0) > 0
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-            GROUP BY COALESCE(c.normalized_name, s.bill_code), a.agency_name
+            GROUP BY COALESCE(c.normalized_name, s.bill_code), a.agency_name, sec.sector_code, sec.sector_name
             HAVING SUM(COALESCE(s.gross_rate, 0)) > 0
             ORDER BY customer_name ASC
             LIMIT ?
         """
-        
+
         with self.safe_connection() as conn:
             cursor = conn.execute(query, params)
-            
             results = []
             for row in cursor.fetchall():
                 results.append({
                     "customer_name": row[0] or "Unknown",
                     "agency_name": row[1],
-                    "revenue": float(row[2] or 0),
-                    "spot_count": int(row[3] or 0)
+                    "sector_code": row[2],
+                    "sector_name": row[3],
+                    "revenue": float(row[4] or 0),
+                    "spot_count": int(row[5] or 0)
                 })
-            
             return results
 
     # =========================================================================

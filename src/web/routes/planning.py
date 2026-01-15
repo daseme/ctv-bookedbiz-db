@@ -15,6 +15,10 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, Dict, List, Any
 
+
+from src.repositories.sector_expectation_repository import SectorExpectationRepository
+from src.services.sector_planning_service import SectorPlanningService
+from src.repositories.sector_planning_repository import SectorPlanningRepository
 from src.services.container import get_container
 from src.web.utils.request_helpers import (
     handle_request_errors,
@@ -205,6 +209,68 @@ def forecast_history(ae_name: str, year: int, month: int):
 # Add these to src/web/routes/planning.py
 # ============================================================================
 
+
+@planning_bp.route('/api/sector-detail/<ae_name>/<int:year>')
+@handle_request_errors
+def get_sector_detail(ae_name: str, year: int):
+    """
+    API endpoint for sector planning detail.
+    Returns JSON with sector expectations vs booked for drill-down display.
+    """
+    # WorldLink has no sector breakdown
+    if ae_name == 'WorldLink':
+        return jsonify({
+            'success': False,
+            'error': 'WorldLink does not have sector breakdown'
+        }), 400
+    
+    # Get database from container
+    container = get_container()
+    db = container.get('database_connection')
+    
+    # Create repositories and service
+    sector_planning_repo = SectorPlanningRepository(db)
+    sector_expectation_repo = SectorExpectationRepository(db)
+    service = SectorPlanningService(sector_planning_repo, sector_expectation_repo)
+    
+    detail = service.get_sector_detail(ae_name, year)
+    
+    return jsonify({
+        'success': True,
+        'data': detail.to_dict()
+    })
+
+
+@planning_bp.route('/api/sector-summary/<int:year>')
+@handle_request_errors
+def get_sector_summaries(year: int):
+    """
+    API endpoint to get sector gap summaries for all entities.
+    Used to populate the summary indicator in the main planning grid.
+    """
+    container = get_container()
+    db = container.get('database_connection')
+    
+    # Get planning service for entity list
+    planning_service = container.get('planning_service')
+    entities = planning_service.get_revenue_entities()
+    entity_names = [e.entity_name for e in entities if e.entity_name != 'WorldLink']
+    
+    # Create sector service
+    sector_planning_repo = SectorPlanningRepository(db)
+    sector_expectation_repo = SectorExpectationRepository(db)
+    service = SectorPlanningService(sector_planning_repo, sector_expectation_repo)
+    
+    summaries = {}
+    for ae in entity_names:
+        summary = service.get_gap_summary(ae, year)
+        if summary:
+            summaries[ae] = summary
+    
+    return jsonify({
+        'success': True,
+        'summaries': summaries
+    })
 # ============================================================================
 # Sector Expectations API
 # ============================================================================
