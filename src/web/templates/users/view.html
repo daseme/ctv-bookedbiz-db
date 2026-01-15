@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}{{ user.full_name }} - User Details - CTV Booked Biz{% endblock %}
+
+{% block header_title %}{{ user.full_name }}{% endblock %}
+{% block header_subtitle %}User Account Details{% endblock %}
+
+{% block content %}
+<div class="user-details">
+    <div style="max-width: 800px; margin: 0 auto;">
+        <!-- User Info Card -->
+        <div style="background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 32px;">
+                <div>
+                    <h2 style="margin: 0 0 8px 0; color: #2d3748; font-size: 24px;">{{ user.full_name }}</h2>
+                    <p style="margin: 0; color: #718096; font-size: 14px;">{{ user.email }}</p>
+                </div>
+                <span style="display: inline-block; padding: 6px 16px; border-radius: 16px; font-size: 13px; font-weight: 600;
+                    {% if user.role.value == 'admin' %}
+                        background: #fee2e2; color: #991b1b;
+                    {% elif user.role.value == 'management' %}
+                        background: #dbeafe; color: #1e40af;
+                    {% else %}
+                        background: #f0fdf4; color: #166534;
+                    {% endif %}">
+                    {{ user.role.display_name }}
+                </span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px;">
+                <div>
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        User ID
+                    </div>
+                    <div style="font-size: 16px; color: #2d3748; font-weight: 500;">
+                        {{ user.user_id }}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        Account Created
+                    </div>
+                    <div style="font-size: 16px; color: #2d3748; font-weight: 500;">
+                        {% if user.created_date %}
+                            {{ user.created_date.strftime('%B %d, %Y') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        Last Login
+                    </div>
+                    <div style="font-size: 16px; color: #2d3748; font-weight: 500;">
+                        {% if user.last_login %}
+                            {{ user.last_login.strftime('%B %d, %Y at %I:%M %p') }}
+                        {% else %}
+                            Never
+                        {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        Last Updated
+                    </div>
+                    <div style="font-size: 16px; color: #2d3748; font-weight: 500;">
+                        {% if user.updated_date %}
+                            {{ user.updated_date.strftime('%B %d, %Y') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-bottom: 24px;">
+            <a href="{{ url_for('user_management.list_users') }}" 
+               style="padding: 10px 24px; background: #e2e8f0; color: #4a5568; border-radius: 6px; 
+                      text-decoration: none; font-weight: 500; transition: all 0.2s;"
+               onmouseover="this.style.background='#cbd5e0'" 
+               onmouseout="this.style.background='#e2e8f0'">
+                ← Back to List
+            </a>
+            <a href="{{ url_for('user_management.edit_user', user_id=user.user_id) }}" 
+               style="padding: 10px 24px; background: linear-gradient(135deg, var(--nord10) 0%, var(--nord9) 100%); 
+                      color: white; border-radius: 6px; text-decoration: none; font-weight: 600; 
+                      transition: all 0.2s; box-shadow: 0 2px 4px rgba(94, 129, 172, 0.3);"
+               onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(94, 129, 172, 0.4)'"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(94, 129, 172, 0.3)'">
+                Edit User
+            </a>
+        </div>
+
+        <!-- Danger Zone -->
+        {% if current_user.user_id != user.user_id %}
+        <div style="background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+                    border-top: 3px solid var(--nord11);">
+            <h3 style="color: var(--nord11); margin-bottom: 16px; font-size: 18px;">Danger Zone</h3>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <form method="POST" action="{{ url_for('user_management.deactivate_user', user_id=user.user_id) }}" 
+                      style="margin: 0;"
+                      onsubmit="return confirm('Are you sure you want to deactivate {{ user.full_name }}?');">
+                    <button type="submit" 
+                            style="padding: 8px 20px; background: var(--nord12); color: white; border: none; 
+                                   border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s;"
+                            onmouseover="this.style.background='#ea580c'" 
+                            onmouseout="this.style.background='var(--nord12)'">
+                        Deactivate User
+                    </button>
+                </form>
+                <form method="POST" action="{{ url_for('user_management.delete_user', user_id=user.user_id) }}" 
+                      style="margin: 0;"
+                      onsubmit="return confirm('Are you sure you want to PERMANENTLY DELETE {{ user.full_name }}? This action cannot be undone.');">
+                    <button type="submit" 
+                            style="padding: 8px 20px; background: var(--nord11); color: white; border: none; 
+                                   border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s;"
+                            onmouseover="this.style.background='#dc2626'" 
+                            onmouseout="this.style.background='var(--nord11)'">
+                        Delete User
+                    </button>
+                </form>
+            </div>
+            <div style="font-size: 12px; color: #718096; margin-top: 12px;">
+                ⚠️ These actions cannot be undone. Deactivation will delete the user account.
+            </div>
+        </div>
+        {% else %}
+        <div style="background: #fef3c7; padding: 16px; border-radius: 6px; border-left: 3px solid var(--nord13);">
+            <div style="font-size: 14px; color: #92400e;">
+                ⚠️ You cannot deactivate or delete your own account.
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

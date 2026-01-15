@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile - CTV Booked Biz{% endblock %}
+
+{% block header_title %}My Profile{% endblock %}
+{% block header_subtitle %}Your account information{% endblock %}
+
+{% block content %}
+<div class="user-profile">
+    <div style="max-width: 800px; margin: 0 auto;">
+        <!-- Profile Info Card -->
+        <div style="background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 32px;">
+                <div>
+                    <h2 style="margin: 0 0 8px 0; color: #2d3748; font-size: 24px;">{{ user.full_name }}</h2>
+                    <p style="margin: 0; color: #718096; font-size: 14px;">{{ user.email }}</p>
+                </div>
+                <span style="display: inline-block; padding: 6px 16px; border-radius: 16px; font-size: 13px; font-weight: 600;
+                    {% if user.role.value == 'admin' %}
+                        background: #fee2e2; color: #991b1b;
+                    {% elif user.role.value == 'management' %}
+                        background: #dbeafe; color: #1e40af;
+                    {% else %}
+                        background: #f0fdf4; color: #166534;
+                    {% endif %}">
+                    {{ user.role.display_name }}
+                </span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px;">
+                <div>
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        User ID
+                    </div>
+                    <div style="font-size: 16px; color: #2d3748; font-weight: 500;">
+                        {{ user.user_id }}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        Account Created
+                    </div>
+                    <div style="font-size: 16px; color: #2d3748; font-weight: 500;">
+                        {% if user.created_date %}
+                            {{ user.created_date.strftime('%B %d, %Y') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        Last Login
+                    </div>
+                    <div style="font-size: 16px; color: #2d3748; font-weight: 500;">
+                        {% if user.last_login %}
+                            {{ user.last_login.strftime('%B %d, %Y at %I:%M %p') }}
+                        {% else %}
+                            Never
+                        {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        Last Updated
+                    </div>
+                    <div style="font-size: 16px; color: #2d3748; font-weight: 500;">
+                        {% if user.updated_date %}
+                            {{ user.updated_date.strftime('%B %d, %Y') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+            <a href="/reports/" 
+               style="padding: 10px 24px; background: #e2e8f0; color: #4a5568; border-radius: 6px; 
+                      text-decoration: none; font-weight: 500; transition: all 0.2s;"
+               onmouseover="this.style.background='#cbd5e0'" 
+               onmouseout="this.style.background='#e2e8f0'">
+                ← Back to Reports
+            </a>
+            <a href="{{ url_for('user_management.change_password') }}" 
+               style="padding: 10px 24px; background: linear-gradient(135deg, var(--nord10) 0%, var(--nord9) 100%); 
+                      color: white; border-radius: 6px; text-decoration: none; font-weight: 600; 
+                      transition: all 0.2s; box-shadow: 0 2px 4px rgba(94, 129, 172, 0.3);"
+               onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(94, 129, 172, 0.4)'"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(94, 129, 172, 0.3)'">
+                Change Password
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
