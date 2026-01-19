@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Create User - CTV Booked Biz{% endblock %}
+
+{% block header_title %}Create New User{% endblock %}
+{% block header_subtitle %}Add a new user account to the system{% endblock %}
+
+{% block content %}
+<div class="user-form">
+    <div style="max-width: 600px; margin: 0 auto;">
+        <form method="POST" action="{{ url_for('user_management.create_user') }}" 
+              style="background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            
+            <div style="margin-bottom: 24px;">
+                <label for="first_name" style="display: block; margin-bottom: 8px; font-weight: 500; color: #2d3748;">
+                    First Name *
+                </label>
+                <input type="text" id="first_name" name="first_name" required
+                       style="width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 6px; 
+                              font-size: 14px; transition: border-color 0.2s;"
+                       onfocus="this.style.borderColor='var(--nord10)'" 
+                       onblur="this.style.borderColor='#e2e8f0'">
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label for="last_name" style="display: block; margin-bottom: 8px; font-weight: 500; color: #2d3748;">
+                    Last Name *
+                </label>
+                <input type="text" id="last_name" name="last_name" required
+                       style="width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 6px; 
+                              font-size: 14px; transition: border-color 0.2s;"
+                       onfocus="this.style.borderColor='var(--nord10)'" 
+                       onblur="this.style.borderColor='#e2e8f0'">
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label for="email" style="display: block; margin-bottom: 8px; font-weight: 500; color: #2d3748;">
+                    Email *
+                </label>
+                <input type="email" id="email" name="email" required
+                       style="width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 6px; 
+                              font-size: 14px; transition: border-color 0.2s;"
+                       onfocus="this.style.borderColor='var(--nord10)'" 
+                       onblur="this.style.borderColor='#e2e8f0'">
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label for="password" style="display: block; margin-bottom: 8px; font-weight: 500; color: #2d3748;">
+                    Password * (min 8 characters)
+                </label>
+                <input type="password" id="password" name="password" required minlength="8"
+                       style="width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 6px; 
+                              font-size: 14px; transition: border-color 0.2s;"
+                       onfocus="this.style.borderColor='var(--nord10)'" 
+                       onblur="this.style.borderColor='#e2e8f0'">
+            </div>
+
+            <div style="margin-bottom: 32px;">
+                <label for="role" style="display: block; margin-bottom: 8px; font-weight: 500; color: #2d3748;">
+                    Role *
+                </label>
+                <select id="role" name="role" required
+                        style="width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 6px; 
+                               font-size: 14px; background: white; transition: border-color 0.2s;"
+                        onfocus="this.style.borderColor='var(--nord10)'" 
+                        onblur="this.style.borderColor='#e2e8f0'">
+                    {% for role in roles %}
+                    <option value="{{ role.value }}" {% if role.value == 'AE' %}selected{% endif %}>
+                        {{ role.display_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <a href="{{ url_for('user_management.list_users') }}" 
+                   style="padding: 10px 24px; background: #e2e8f0; color: #4a5568; border-radius: 6px; 
+                          text-decoration: none; font-weight: 500; transition: all 0.2s;"
+                   onmouseover="this.style.background='#cbd5e0'" 
+                   onmouseout="this.style.background='#e2e8f0'">
+                    Cancel
+                </a>
+                <button type="submit" 
+                        style="padding: 10px 24px; background: linear-gradient(135deg, var(--nord10) 0%, var(--nord9) 100%); 
+                               color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; 
+                               transition: all 0.2s; box-shadow: 0 2px 4px rgba(94, 129, 172, 0.3);"
+                        onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(94, 129, 172, 0.4)'"
+                        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(94, 129, 172, 0.3)'">
+                    Create User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

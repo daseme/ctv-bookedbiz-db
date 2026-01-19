@@ -515,14 +515,31 @@
     <nav class="top-nav">
         <div class="top-nav-container">
             <a href="/" class="logo">
-                <div class="logo-icon">📊</div>
+                <div class="logo-icon">
+                    <img src="/static/logo.png" alt="CTV Logo" style="width: 100%; height: 100%; object-fit: contain;">
+                </div>
                 CTV Booked Biz
             </a>
             <div class="top-nav-actions">
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('user_management.profile') }}" 
+                   style="color: var(--nord6); text-decoration: none; margin-right: 16px; font-size: 14px; font-weight: 500;">
+                    👤 {{ current_user.first_name }}
+                </a>
+                <a href="{{ url_for('user_management.logout') }}" 
+                   style="color: var(--nord6); text-decoration: none; margin-right: 12px; font-size: 14px;">
+                    Logout
+                </a>
+                {% else %}
+                <a href="{{ url_for('user_management.login') }}" 
+                   style="color: var(--nord6); text-decoration: none; margin-right: 12px; font-size: 14px;">
+                    Login
+                </a>
+                {% endif %}
                 <button class="quick-actions" onclick="quickSearch()" style="background: rgba(255,255,255,0.2); margin-right: 12px;">
                     🔍 Search
                 </button>
-                <button class="quick-actions" onclick="window.location.href='/management-report-web'">
+                <button class="quick-actions" onclick="window.location.href='/reports/management-performance'">
                     Management Report
                 </button>
             </div>
@@ -545,7 +562,7 @@
             <div class="nav-section executive">
                 <div class="nav-section-label">📊 Executive</div>
                 <div class="nav-dropdown">
-                    <a href="/management-report-nord" class="nav-dropdown-item featured">
+                    <a href="/management_report_nord" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">❄️ Management Report</div>
                         <div class="nav-dropdown-item-desc">Executive summary with Nordic ice aesthetic</div>
                     </a>
@@ -624,7 +641,13 @@
                     <a href="/reports/customer-sector-manager" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">❄️ Customer & Sector Management</div>
                         <div class="nav-dropdown-item-desc">Complete customer database management with Nordic excellence</div>
-                </a>
+                    </a>
+                    </div>
+                    <div class="nav-dropdown-section">
+                        <a href="/users/" class="nav-dropdown-item featured">
+                            <div class="nav-dropdown-item-title">👥 User Management</div>
+                            <div class="nav-dropdown-item-desc">Manage user accounts and permissions</div>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -639,6 +662,28 @@
                 <h1>{% block header_title %}CTV Booked Biz Reports{% endblock %}</h1>
                 <div class="subtitle">{% block header_subtitle %}Revenue Analysis and Performance Tracking{% endblock %}</div>
             </div>
+            
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div style="margin-bottom: 24px;">
+                        {% for category, message in messages %}
+                            <div style="padding: 12px 16px; border-radius: 6px; margin-bottom: 8px; font-size: 14px;
+                                {% if category == 'error' %}
+                                    background: #fee2e2; border: 1px solid var(--nord11); color: #991b1b;
+                                {% elif category == 'success' %}
+                                    background: #f0fdf4; border: 1px solid var(--nord14); color: #166534;
+                                {% elif category == 'info' %}
+                                    background: #e0f2fe; border: 1px solid var(--nord8); color: #0c4a6e;
+                                {% else %}
+                                    background: #f8fafc; border: 1px solid #e2e8f0; color: #4a5568;
+                                {% endif %}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
             
             {% block content %}{% endblock %}
         </div>
@@ -656,7 +701,6 @@
             // Map URLs to navigation sections
             const urlToSection = {
                 '/management-report-web': 'executive',
-                '/management-report-nord': 'executive',
                 '/pipeline-revenue': 'executive',
                 '/report1-nord': 'operational',
                 '/report2-nord': 'operational', 
@@ -701,7 +745,6 @@
                 // Alt + M for Management Report
                 if (e.altKey && e.key === 'm') {
                     e.preventDefault();
-                    window.location.href = '/management-report-nord';
                 }
                 // Alt + D for Revenue Dashboard
                 if (e.altKey && e.key === 'd') {
@@ -748,7 +791,6 @@
             if (!query) return;
             
             const searchMap = {
-                'management': '/management-report-nord',
                 'pipeline': '/pipeline-revenue', 
                 'monthly': '/report1-nord',
                 'dashboard': '/report5',
