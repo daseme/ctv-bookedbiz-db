@@ -36,7 +36,7 @@
   .modal-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
   .modal-header h3{margin:0;font-size:16px}
   .modal-body label{display:flex;flex-direction:column;gap:6px}
-  .modal-body input[type="text"], .modal-body input:not([type]){padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px}
+  .modal-body input[type="text"], .modal-body input:not([type]), .modal-body select{padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px}
   .modal-header button,.modal-footer button{padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer}
   .action-btn.primary{background:#0ea5e9;border-color:#0284c7;color:#fff}
 </style>
@@ -84,6 +84,7 @@
     <button id="canon-open" class="action-btn primary">➕ Canonize agency</button>
     <button id="canon-customer-open" class="action-btn">🧩 Canonize customer</button>
     <button id="map-raw-open" class="action-btn">🔗 Map raw → normalized</button>
+    <button id="create-customer-open" class="action-btn">➕ Create customer</button>
   </div>
 
   <div class="table-container">
@@ -142,7 +143,7 @@
   </div>
 </div>
 
-<!-- NEW: Customer-tail canon modal -->
+<!-- Customer-tail canon modal -->
 <div id="canon-customer-modal" class="modal-overlay">
   <div class="modal">
     <div class="modal-header">
@@ -151,7 +152,7 @@
     </div>
     <div class="modal-body">
       <label>Alias (tail as seen in raw):
-        <input id="cust-alias" placeholder="e.g., Mc’Donald’s">
+        <input id="cust-alias" placeholder="e.g., Mc'Donald's">
       </label>
       <label>Canonical (tail):
         <input id="cust-canonical" placeholder="e.g., McDonald's">
@@ -190,13 +191,36 @@
   </div>
 </div>
 
+<!-- Create customer modal -->
+<div id="create-customer-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Create New Customer</h3>
+      <button type="button" id="create-customer-close" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <label>Normalized Name:
+        <input id="create-customer-name" placeholder="e.g., Health Plan of San Joaquin">
+      </label>
+      <label>Sector (optional):
+        <select id="create-customer-sector">
+          <option value="">— No sector —</option>
+        </select>
+      </label>
+      <div id="create-customer-status" class="text-sm mt-2"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="create-customer-cancel">Cancel</button>
+      <button type="button" id="create-customer-save" class="action-btn primary">Create</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/customer-normalization-manager.js') }}"></script>
 
-<!-- Inline: modal wiring + 3 endpoints -->
-<!-- Inline: modal wiring + suggestions + optimistic update -->
 <script>
 (() => {
   const $ = (q) => document.querySelector(q);
@@ -258,7 +282,6 @@
   const openMap = () => { $("#map-raw-modal").style.display = "flex"; $("#map-raw").focus(); };
   const closeMap = () => { $("#map-raw-modal").style.display = "none"; $("#map-status").textContent = ""; };
 
-  // suggestions for normalized_name
   const suggest = (() => {
     let inflight = 0;
     return async (q) => {
@@ -293,7 +316,6 @@
       if (!r.ok || !j.success) throw new Error(j.error || ("HTTP " + r.status));
       $("#map-status").textContent = `Mapped raw → '${j.normalized_name}'.`;
 
-      // optimistic in-table update (if rows carry data-raw attr)
       const row = document.querySelector(`tr[data-raw="${CSS.escape(raw)}"]`);
       if (row) {
         const normCell = row.querySelector("td:nth-child(2)");
@@ -314,8 +336,63 @@
   $("#map-raw-save")?.addEventListener("click", saveMap);
   ["#map-raw","#map-target"].forEach(s => $(s)?.addEventListener("keydown",(e)=>{ if(e.key==="Enter") saveMap(); }));
 
+  // ========== Create customer ==========
+  const openCreateCust = async () => {
+    $("#create-customer-modal").style.display = "flex";
+    $("#create-customer-name").focus();
+    const select = $("#create-customer-sector");
+    if (select && select.options.length <= 1) {
+      try {
+        const r = await fetch("/api/canon/sectors");
+        if (r.ok) {
+          const sectors = await r.json();
+          sectors.forEach(s => {
+            const opt = document.createElement("option");
+            opt.value = s.sector_id;
+            opt.textContent = `${s.sector_code} - ${s.sector_name}`;
+            select.appendChild(opt);
+          });
+        }
+      } catch { /* ignore */ }
+    }
+  };
+  const closeCreateCust = () => {
+    $("#create-customer-modal").style.display = "none";
+    $("#create-customer-status").textContent = "";
+  };
+  const saveCreateCust = async () => {
+    const normalized_name = $("#create-customer-name").value.trim();
+    const sector_id = $("#create-customer-sector").value || null;
+    if (!normalized_name) {
+      $("#create-customer-status").textContent = "Normalized name is required.";
+      return;
+    }
+    $("#create-customer-status").textContent = "Creating…";
+    try {
+      const payload = { normalized_name };
+      if (sector_id) payload.sector_id = parseInt(sector_id, 10);
+      const r = await fetch("/api/canon/create-customer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error || ("HTTP " + r.status));
+      $("#create-customer-status").textContent = `Created '${j.normalized_name}' (ID: ${j.customer_id})`;
+      $("#create-customer-name").value = "";
+      setTimeout(() => { closeCreateCust(); location.reload(); }, 800);
+    } catch (e) {
+      $("#create-customer-status").textContent = "Error: " + e.message;
+    }
+  };
+  $("#create-customer-open")?.addEventListener("click", openCreateCust);
+  $("#create-customer-close")?.addEventListener("click", closeCreateCust);
+  $("#create-customer-cancel")?.addEventListener("click", closeCreateCust);
+  $("#create-customer-save")?.addEventListener("click", saveCreateCust);
+  $("#create-customer-name")?.addEventListener("keydown", (e) => { if (e.key === "Enter") saveCreateCust(); });
+
   // ========== Close on overlay click ==========
-  ["#canon-modal","#canon-customer-modal","#map-raw-modal"].forEach(id=>{
+  ["#canon-modal","#canon-customer-modal","#map-raw-modal","#create-customer-modal"].forEach(id=>{
     $(id)?.addEventListener("click",(ev)=>{ if(ev.target===ev.currentTarget) ev.currentTarget.style.display="none"; });
   });
 })();

@@ -179,6 +179,83 @@ def _audit(
 
 # ---------- endpoints ---------------------------------------------------------
 
+@canon_bp.post("/create-customer")
+def create_customer():
+    """
+    Create a new customer record in the customers table.
+    Body: { "normalized_name": "...", "sector_id": null }
+    """
+    d = request.get_json(force=True)
+    normalized_name = _nfkc(d.get("normalized_name"))
+    sector_id = d.get("sector_id")  # Optional
+    
+    if not normalized_name:
+        return jsonify({"success": False, "error": "normalized_name required"}), 400
+
+    conn = _open_rw(current_app.config["DB_PATH"])
+    try:
+        conn.execute("BEGIN IMMEDIATE;")
+        
+        # Check if customer already exists
+        existing = conn.execute(
+            "SELECT customer_id FROM customers WHERE normalized_name = ?",
+            (normalized_name,)
+        ).fetchone()
+        
+        if existing:
+            conn.execute("ROLLBACK;")
+            return jsonify({
+                "success": False, 
+                "error": f"Customer already exists with id {existing[0]}"
+            }), 409
+        
+        # Create the customer
+        cursor = conn.execute(
+            """INSERT INTO customers (normalized_name, sector_id, is_active, created_date)
+               VALUES (?, ?, 1, datetime('now'))""",
+            (normalized_name, sector_id)
+        )
+        customer_id = cursor.lastrowid
+        
+        conn.execute("COMMIT;")
+        
+        _audit(
+            conn,
+            request.remote_addr or "",
+            "create_customer",
+            normalized_name,
+            str(customer_id),
+            f"sector_id:{sector_id}"
+        )
+        
+        return jsonify({
+            "success": True,
+            "customer_id": customer_id,
+            "normalized_name": normalized_name,
+            "sector_id": sector_id
+        })
+        
+    except Exception as e:
+        conn.execute("ROLLBACK;")
+        current_app.logger.exception("create_customer failed")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+@canon_bp.get("/sectors")
+def api_sectors():
+    """Return list of active sectors for dropdowns."""
+    conn = _open_rw(current_app.config["DB_PATH"])
+    try:
+        rows = conn.execute("""
+            SELECT sector_id, sector_code, sector_name 
+            FROM sectors 
+            WHERE is_active = 1 
+            ORDER BY sector_code
+        """).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        conn.close()
 
 @canon_bp.post("/agency")
 def canon_agency():
