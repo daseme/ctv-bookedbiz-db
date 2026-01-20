@@ -505,7 +505,7 @@ class PlanningRepository(BaseService):
                 a.agency_name,
                 sec.sector_code,
                 sec.sector_name,
-                SUM(COALESCE(s.gross_rate, 0)) as revenue,
+                SUM(s.gross_rate) as revenue,
                 COUNT(*) as spot_count
             FROM spots s
             LEFT JOIN customers c ON s.customer_id = c.customer_id
@@ -513,10 +513,8 @@ class PlanningRepository(BaseService):
             LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
             WHERE {entity_filter}
             AND s.broadcast_month = ?
-            AND COALESCE(s.gross_rate, 0) > 0
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
             GROUP BY COALESCE(c.normalized_name, s.bill_code), a.agency_name, sec.sector_code, sec.sector_name
-            HAVING SUM(COALESCE(s.gross_rate, 0)) > 0
             ORDER BY customer_name ASC
             LIMIT ?
         """
