@@ -475,18 +475,15 @@ class PlanningRepository(BaseService):
     ) -> List[Dict[str, Any]]:
         """
         Get detailed breakdown of booked revenue by customer for an entity/period.
-        
         Args:
             entity: Revenue entity (AE, House, WorldLink, etc.)
             period: Planning period (year/month)
             limit: Max rows to return
-            
         Returns:
-            List of dicts with customer_name, agency_name, revenue, spot_count
+            List of dicts with customer_id, customer_name, agency_name, revenue, spot_count
         """
         # Build WHERE clause based on entity type
         if entity.entity_type == EntityType.AGENCY and entity.entity_name == "WorldLink":
-            # WorldLink: bill_code starts with 'WL:' or 'WORLDLINK:'
             entity_filter = """
                 (s.bill_code LIKE 'WL:%' OR s.bill_code LIKE 'WORLDLINK:%')
             """
@@ -495,12 +492,12 @@ class PlanningRepository(BaseService):
             entity_filter = "UPPER(TRIM(s.sales_person)) = 'HOUSE'"
             params = [period.broadcast_month, limit]
         else:
-            # Standard AE
             entity_filter = "UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
             params = [entity.entity_name, period.broadcast_month, limit]
-
+        
         query = f"""
             SELECT
+                s.customer_id,
                 COALESCE(c.normalized_name, s.bill_code) as customer_name,
                 a.agency_name,
                 sec.sector_code,
@@ -514,22 +511,23 @@ class PlanningRepository(BaseService):
             WHERE {entity_filter}
             AND s.broadcast_month = ?
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-            GROUP BY COALESCE(c.normalized_name, s.bill_code), a.agency_name, sec.sector_code, sec.sector_name
+            GROUP BY s.customer_id, COALESCE(c.normalized_name, s.bill_code), a.agency_name, sec.sector_code, sec.sector_name
             ORDER BY customer_name ASC
             LIMIT ?
         """
-
+        
         with self.safe_connection() as conn:
             cursor = conn.execute(query, params)
             results = []
             for row in cursor.fetchall():
                 results.append({
-                    "customer_name": row[0] or "Unknown",
-                    "agency_name": row[1],
-                    "sector_code": row[2],
-                    "sector_name": row[3],
-                    "revenue": float(row[4] or 0),
-                    "spot_count": int(row[5] or 0)
+                    "customer_id": row[0],
+                    "customer_name": row[1] or "Unknown",
+                    "agency_name": row[2],
+                    "sector_code": row[3],
+                    "sector_name": row[4],
+                    "revenue": float(row[5] or 0),
+                    "spot_count": int(row[6] or 0)
                 })
             return results
 
