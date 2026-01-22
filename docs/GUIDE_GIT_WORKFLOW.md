@@ -35,6 +35,12 @@ git push origin dev
 # Restart dev service to pick up changes
 systemctl --user restart ctv-dev.service
 
+# Restart production service
+sudo systemctl restart flaskapp
+
+# watch logs if needed
+sudo journalctl -u flaskapp -f
+
 # Check if it's working
 curl -sf http://pi-ctv:5100/health/ && echo "DEV_OK"
 ```
