@@ -81,6 +81,17 @@
         </div>
         
         <div class="nord-form-group">
+            <label class="nord-label">Quarter:</label>
+            <select name="quarter" class="nord-select">
+                <option value="">All Quarters</option>
+                <option value="Q1" {% if request.args.get('quarter') == 'Q1' %}selected{% endif %}>Q1 (Jan-Mar)</option>
+                <option value="Q2" {% if request.args.get('quarter') == 'Q2' %}selected{% endif %}>Q2 (Apr-Jun)</option>
+                <option value="Q3" {% if request.args.get('quarter') == 'Q3' %}selected{% endif %}>Q3 (Jul-Sep)</option>
+                <option value="Q4" {% if request.args.get('quarter') == 'Q4' %}selected{% endif %}>Q4 (Oct-Dec)</option>
+            </select>
+        </div>
+
+        <div class="nord-form-group">
             <label class="nord-label">&nbsp;</label>
             <div style="display: flex; gap: 12px;">
                 <button type="submit" class="nord-btn nord-btn-primary">

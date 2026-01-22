@@ -382,25 +382,68 @@ def monthly_revenue_summary():
         from_year = request.args.get("from_year", "")
         to_month = request.args.get("to_month", "")
         to_year = request.args.get("to_year", "")
+
+        # Default month to Jan/Dec when year selected but month is "All"
+        if from_year and not from_month:
+            from_month = "01"
+        if to_year and not to_month:
+            to_month = "12"
+
+        logger.warning(f"FILTER PARAMS: from={from_month}/{from_year}, to={to_month}/{to_year}")
         
         with db.connection() as conn:
             cursor = conn.cursor()
             
-            # Build date filter conditions
+            # Build date filter conditions using numeric YYMM comparison
             date_conditions = []
             params = []
-            
+
             if from_year and from_month:
-                date_conditions.append("broadcast_month >= ?")
-                month_abbr = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][int(from_month)-1]
-                params.append(f"{month_abbr}-{from_year[-2:]}")
-            
+                date_conditions.append("""
+                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 + 
+                    CASE SUBSTR(broadcast_month, 1, 3)
+                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+                    END) >= ?
+                """)
+                yy = int(from_year) - 2000
+                mm = int(from_month)
+                params.append(yy * 100 + mm)
+
             if to_year and to_month:
-                date_conditions.append("broadcast_month <= ?")
-                month_abbr = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][int(to_month)-1]
-                params.append(f"{month_abbr}-{to_year[-2:]}")
+                date_conditions.append("""
+                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 + 
+                    CASE SUBSTR(broadcast_month, 1, 3)
+                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+                    END) <= ?
+                """)
+                yy = int(to_year) - 2000
+                mm = int(to_month)
+                params.append(yy * 100 + mm)
+
+            # Get quarter filter
+            quarter_filter = request.args.get("quarter", "").strip()
             
+            # Add quarter filter if specified
+            if quarter_filter:
+                quarter_months_sql = {
+                    'Q1': "('Jan','Feb','Mar')",
+                    'Q2': "('Apr','May','Jun')",
+                    'Q3': "('Jul','Aug','Sep')",
+                    'Q4': "('Oct','Nov','Dec')"
+                }
+                if quarter_filter in quarter_months_sql:
+                    date_conditions.append(f"SUBSTR(broadcast_month, 1, 3) IN {quarter_months_sql[quarter_filter]}")
+
             where_clause = " AND ".join(date_conditions) if date_conditions else "1=1"
+
+            logger.warning(f"WHERE CLAUSE: {where_clause}")
+            logger.warning(f"PARAMS: {params}")
             
             # Get available years
             cursor.execute("""
@@ -507,17 +550,37 @@ def monthly_revenue_summary():
                     AVG(gross_rate) as avg_rate
                 FROM spots
                 WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
-                  AND gross_rate > 0
-                  AND {where_clause}
+                AND gross_rate > 0
+                AND {where_clause}
                 GROUP BY quarter, year
                 ORDER BY year, quarter
             """, params).fetchall()
-            
-            quarterly_data = [
-                {"quarter": r[0], "year": r[1], "spot_count": r[2], 
-                 "total_revenue": r[3], "avg_rate": r[4], "status": "OPEN"}
-                for r in quarterly_rows
-            ]
+
+            # Define which months belong to each quarter
+            quarter_months = {
+                'Q1': ['Jan', 'Feb', 'Mar'],
+                'Q2': ['Apr', 'May', 'Jun'],
+                'Q3': ['Jul', 'Aug', 'Sep'],
+                'Q4': ['Oct', 'Nov', 'Dec']
+            }
+
+            quarterly_data = []
+            for r in quarterly_rows:
+                quarter, year, spot_count, total_revenue, avg_rate = r
+                yy = str(year)[-2:]  # e.g., "25" from 2025
+                
+                # Check if all months in this quarter are closed
+                months_in_quarter = [f"{m}-{yy}" for m in quarter_months[quarter]]
+                all_closed = all(m in closed_months for m in months_in_quarter)
+                
+                quarterly_data.append({
+                    "quarter": quarter,
+                    "year": year,
+                    "spot_count": spot_count,
+                    "total_revenue": total_revenue,
+                    "avg_rate": avg_rate,
+                    "status": "CLOSED" if all_closed else "OPEN"
+                })
             
             # Client summary
             client_row = cursor.execute(f"""
