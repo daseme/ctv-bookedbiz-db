@@ -327,7 +327,6 @@ def management_performance_csv(year: int):
         headers={'Content-Disposition': f'attachment; filename=management_performance_{year}.csv'}
     )
 
-
 @reports_bp.route('/planning/api/booked-detail')
 def api_booked_detail():
     """Get detailed breakdown of booked revenue by customer."""
@@ -369,31 +368,246 @@ def api_booked_detail():
             "error": str(e)
         }), 500
 
-@reports_bp.route("/report1")
+@reports_bp.route("/monthly/revenue-summary")
 @log_requests
 @handle_request_errors
 def monthly_revenue_summary():
-    """Monthly Revenue Summary Report (report1.html)."""
+    """Monthly Revenue Summary Report."""
     try:
         container = get_container()
-        report_service = safe_get_service(container, "report_data_service")
-
-        # Get basic monthly summary (could be enhanced to use report service)
-        year = get_year_parameter(default_year=date.today().year)
-        filters = ReportFilters(year=year)
-
-        report_data = report_service.get_monthly_revenue_report_data(year, filters)
-
-        # For now, use existing template structure
-        context = prepare_template_context(
-            {"title": "Monthly Revenue Summary", "data": report_data.to_dict()}
-        )
-
-        return render_template("report1.html", **context)
-
+        db = container.get("database_connection")
+        
+        # Get filter parameters
+        from_month = request.args.get("from_month", "")
+        from_year = request.args.get("from_year", "")
+        to_month = request.args.get("to_month", "")
+        to_year = request.args.get("to_year", "")
+        
+        with db.connection() as conn:
+            cursor = conn.cursor()
+            
+            # Build date filter conditions
+            date_conditions = []
+            params = []
+            
+            if from_year and from_month:
+                date_conditions.append("broadcast_month >= ?")
+                month_abbr = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][int(from_month)-1]
+                params.append(f"{month_abbr}-{from_year[-2:]}")
+            
+            if to_year and to_month:
+                date_conditions.append("broadcast_month <= ?")
+                month_abbr = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][int(to_month)-1]
+                params.append(f"{month_abbr}-{to_year[-2:]}")
+            
+            where_clause = " AND ".join(date_conditions) if date_conditions else "1=1"
+            
+            # Get available years
+            cursor.execute("""
+                SELECT DISTINCT 2000 + CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) as year
+                FROM spots
+                WHERE broadcast_month IS NOT NULL
+                ORDER BY year DESC
+            """)
+            available_years = [row[0] for row in cursor.fetchall()]
+            
+            # Get monthly data
+            cursor.execute(f"""
+                SELECT 
+                    broadcast_month,
+                    COUNT(*) as spot_count,
+                    SUM(gross_rate) as total_revenue,
+                    AVG(gross_rate) as avg_rate,
+                    MIN(gross_rate) as min_rate,
+                    MAX(gross_rate) as max_rate
+                FROM spots
+                WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                  AND gross_rate > 0
+                  AND {where_clause}
+                GROUP BY broadcast_month
+                ORDER BY 
+                    CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER),
+                    CASE SUBSTR(broadcast_month, 1, 3)
+                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+                    END
+            """, params)
+            
+            # Get closed months
+            cursor.execute("SELECT broadcast_month FROM month_closures")
+            closed_months = {row[0] for row in cursor.fetchall()}
+            
+            monthly_rows = cursor.execute(f"""
+                SELECT 
+                    broadcast_month,
+                    COUNT(*) as spot_count,
+                    SUM(gross_rate) as total_revenue,
+                    AVG(gross_rate) as avg_rate,
+                    MIN(gross_rate) as min_rate,
+                    MAX(gross_rate) as max_rate
+                FROM spots
+                WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                  AND gross_rate > 0
+                  AND {where_clause}
+                GROUP BY broadcast_month
+                ORDER BY 
+                    CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER),
+                    CASE SUBSTR(broadcast_month, 1, 3)
+                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+                    END
+            """, params).fetchall()
+            
+            monthly_data = []
+            total_spots = 0
+            total_revenue = 0
+            
+            for row in monthly_rows:
+                bm, spots, rev, avg_r, min_r, max_r = row
+                total_spots += spots or 0
+                total_revenue += rev or 0
+                monthly_data.append({
+                    "formatted_month": bm,
+                    "spot_count": spots,
+                    "total_revenue": rev,
+                    "avg_rate": avg_r,
+                    "min_rate": min_r,
+                    "max_rate": max_r,
+                    "status": "CLOSED" if bm in closed_months else "OPEN"
+                })
+            
+            # Add total row
+            if monthly_data:
+                monthly_data.append({
+                    "formatted_month": "*** TOTAL ***",
+                    "spot_count": total_spots,
+                    "total_revenue": total_revenue,
+                    "avg_rate": total_revenue / total_spots if total_spots else 0,
+                    "min_rate": None,
+                    "max_rate": None,
+                    "status": ""
+                })
+            
+            # Get quarterly data
+            quarterly_rows = cursor.execute(f"""
+                SELECT 
+                    CASE 
+                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jan','Feb','Mar') THEN 'Q1'
+                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Apr','May','Jun') THEN 'Q2'
+                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jul','Aug','Sep') THEN 'Q3'
+                        ELSE 'Q4'
+                    END as quarter,
+                    2000 + CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) as year,
+                    COUNT(*) as spot_count,
+                    SUM(gross_rate) as total_revenue,
+                    AVG(gross_rate) as avg_rate
+                FROM spots
+                WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                  AND gross_rate > 0
+                  AND {where_clause}
+                GROUP BY quarter, year
+                ORDER BY year, quarter
+            """, params).fetchall()
+            
+            quarterly_data = [
+                {"quarter": r[0], "year": r[1], "spot_count": r[2], 
+                 "total_revenue": r[3], "avg_rate": r[4], "status": "OPEN"}
+                for r in quarterly_rows
+            ]
+            
+            # Client summary
+            client_row = cursor.execute(f"""
+                SELECT 
+                    COUNT(DISTINCT customer_id) as total_clients,
+                    AVG(client_revenue) as avg_revenue,
+                    MAX(client_revenue) as max_revenue
+                FROM (
+                    SELECT customer_id, SUM(gross_rate) as client_revenue
+                    FROM spots
+                    WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                      AND gross_rate > 0
+                      AND customer_id IS NOT NULL
+                      AND {where_clause}
+                    GROUP BY customer_id
+                )
+            """, params).fetchone()
+            
+            client_summary = {
+                "total_clients": client_row[0] or 0,
+                "avg_revenue_per_client": client_row[1] or 0,
+                "max_client_revenue": client_row[2] or 0
+            }
+            
+            # Client monthly data
+            client_monthly_rows = cursor.execute(f"""
+                SELECT 
+                    broadcast_month,
+                    COUNT(DISTINCT customer_id) as client_count,
+                    SUM(gross_rate) as total_revenue,
+                    AVG(gross_rate) as avg_spot_rate
+                FROM spots
+                WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                  AND gross_rate > 0
+                  AND customer_id IS NOT NULL
+                  AND {where_clause}
+                GROUP BY broadcast_month
+                ORDER BY broadcast_month
+            """, params).fetchall()
+            
+            client_monthly_data = []
+            for row in client_monthly_rows:
+                client_monthly_data.append({
+                    "formatted_month": row[0],
+                    "client_count": row[1],
+                    "total_revenue": row[2],
+                    "avg_revenue_per_client": (row[2] / row[1]) if row[1] else 0,
+                    "avg_spot_rate": row[3]
+                })
+            
+            # Top clients
+            top_client_rows = cursor.execute(f"""
+                SELECT 
+                    COALESCE(c.normalized_name, s.bill_code) as client_name,
+                    SUM(s.gross_rate) as total_revenue,
+                    COUNT(*) as spot_count,
+                    AVG(s.gross_rate) as avg_rate
+                FROM spots s
+                LEFT JOIN customers c ON s.customer_id = c.customer_id
+                WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                  AND s.gross_rate > 0
+                  AND {where_clause.replace('broadcast_month', 's.broadcast_month')}
+                GROUP BY COALESCE(c.normalized_name, s.bill_code)
+                ORDER BY total_revenue DESC
+                LIMIT 20
+            """, params).fetchall()
+            
+            top_clients = [
+                {"client_name": r[0], "total_revenue": r[1], "spot_count": r[2], "avg_rate": r[3]}
+                for r in top_client_rows
+            ]
+        
+        data = {
+            "available_years": available_years,
+            "monthly_data": monthly_data,
+            "quarterly_data": quarterly_data,
+            "client_summary": client_summary,
+            "client_monthly_data": client_monthly_data,
+            "top_clients": top_clients
+        }
+        
+        return render_template(
+            "monthly_revenue_summary.html", 
+            title="Monthly Revenue Summary", 
+            data=data
+)
+        
     except Exception as e:
-        logger.error(f"Error generating report1: {e}")
-        return render_template("error_500.html", message="Error generating report"), 500
+        logger.error(f"Error generating monthly revenue summary: {e}", exc_info=True)
+        raise
 
 
 @reports_bp.route("/report2")

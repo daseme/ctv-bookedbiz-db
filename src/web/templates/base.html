@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>{% block title %}CTV Booked Biz Reports{% endblock %}</title>
+    <title>{% block title %}SpotOps - Business Intelligence{% endblock %}</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <style>
         body {
@@ -518,7 +518,7 @@
                 <div class="logo-icon">
                     <img src="/static/logo.png" alt="CTV Logo" style="width: 100%; height: 100%; object-fit: contain;">
                 </div>
-                CTV Booked Biz
+                SpotOps
             </a>
             <div class="top-nav-actions">
                 {% if current_user.is_authenticated %}
@@ -562,13 +562,13 @@
             <div class="nav-section executive">
                 <div class="nav-section-label">📊 Executive</div>
                 <div class="nav-dropdown">
-                    <a href="/management_report_nord" class="nav-dropdown-item featured">
+                    <a href="/reports/management-performance" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">❄️ Management Report</div>
-                        <div class="nav-dropdown-item-desc">Executive summary with Nordic ice aesthetic</div>
+                        <div class="nav-dropdown-item-desc">Executive summar</div>
                     </a>
-                    <a href="/pipeline-revenue" class="nav-dropdown-item featured">
-                        <div class="nav-dropdown-item-title">❄️ Pipeline Revenue Management</div>
-                        <div class="nav-dropdown-item-desc">Pipeline forecasting with Nordic design</div>
+                    <a href="/planning/" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">❄️ Revenue Forecast Tool</div>
+                        <div class="nav-dropdown-item-desc">Revenue update</div>
                     </a>
                 </div>
             </div>
@@ -582,21 +582,21 @@
                         <div class="nav-dropdown-item-desc">Interactive customer-level revenue breakdown with filtering</div>
                     </a>
                     <div class="nav-dropdown-section">
-                        <a href="/report1-nord" class="nav-dropdown-item featured">
+                        <a href="/reports/monthly/revenue-summary" class="nav-dropdown-item featured">
                             <div class="nav-dropdown-item-title">❄️ Monthly Revenue Summary</div>
-                            <div class="nav-dropdown-item-desc">Nordic ice aesthetic with advanced UI components</div>
+                            <div class="nav-dropdown-item-desc">what this is</div>
                         </a>
                         <a href="/report2-nord" class="nav-dropdown-item featured">
                             <div class="nav-dropdown-item-title">❄️ Expectation Tracking</div>
-                            <div class="nav-dropdown-item-desc">Budget tracking with Nordic ice aesthetic</div>
+                            <div class="nav-dropdown-item-desc">what this is</div>
                         </a>
                         <a href="/report3-nord" class="nav-dropdown-item featured">
                             <div class="nav-dropdown-item-title">❄️ Performance Story</div>
-                            <div class="nav-dropdown-item-desc">Performance narrative with Nordic ice aesthetic</div>
+                            <div class="nav-dropdown-item-desc">Performance narrative</div>
                         </a>
                         <a href="/report4-nord" class="nav-dropdown-item featured">
                             <div class="nav-dropdown-item-title">❄️ Sector Analysis</div>
-                            <div class="nav-dropdown-item-desc">Sector breakdown with Nordic ice aesthetic</div>
+                            <div class="nav-dropdown-item-desc">Sector breakdown</div>
                         </a>
                     </div>
                 </div>
@@ -608,16 +608,16 @@
                 <div class="nav-dropdown">
                     <a href="/reports/language-blocks" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">❄️ Language Block Performance</div>
-                        <div class="nav-dropdown-item-desc">Comprehensive language block analytics with Nordic design excellence</div>
+                        <div class="nav-dropdown-item-desc">Comprehensive language block analytics</div>
                     </a>
                     <div class="nav-dropdown-section">
                         <a href="/report6-nord" class="nav-dropdown-item featured">
                             <div class="nav-dropdown-item-title">❄️ Language Analysis</div>
-                            <div class="nav-dropdown-item-desc">Language analysis with Nordic ice aesthetic</div>
+                            <div class="nav-dropdown-item-desc">Language analysis</div>
                         </a>
                         <a href="/report7-nord" class="nav-dropdown-item featured">
                             <div class="nav-dropdown-item-title">❄️ Market-Language Analysis</div>
-                            <div class="nav-dropdown-item-desc">Market-language cross-analysis with Nordic ice aesthetic</div>
+                            <div class="nav-dropdown-item-desc">Market-language cross-analysis</div>
                         </a>
                     </div>
                 </div>
@@ -627,20 +627,14 @@
             <div class="nav-section admin">
                 <div class="nav-section-label">⚙️ Admin</div>
                 <div class="nav-dropdown">
-                    <a href="/budget-management" class="nav-dropdown-item featured">
+                    <a href="/planning/budget" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">❄️ Budget Management</div>
-                        <div class="nav-dropdown-item-desc">Budget planning with Nordic ice aesthetic</div>
+                        <div class="nav-dropdown-item-desc">Budget data entry</div>
                     </a>
-                    <div class="nav-dropdown-section">
-                        <a href="/sector-management" class="nav-dropdown-item featured">
-                            <div class="nav-dropdown-item-title">❄️ Sector Management</div>
-                            <div class="nav-dropdown-item-desc">Sector management with Nordic ice aesthetic</div>
-                        </a>
-                    </div>
                     <div class="nav-dropdown">
                     <a href="/reports/customer-sector-manager" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">❄️ Customer & Sector Management</div>
-                        <div class="nav-dropdown-item-desc">Complete customer database management with Nordic excellence</div>
+                        <div class="nav-dropdown-item-desc">Complete customer database management</div>
                     </a>
                     </div>
                     <div class="nav-dropdown-section">

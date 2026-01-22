@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 # --- app blueprints & utilities ---
 from src.web.routes.reports import reports_bp
 from src.web.routes.api import api_bp
-from src.web.routes.budget import budget_bp
 from src.web.routes.health import health_bp
 from src.web.routes.language_blocks import language_blocks_bp
 from src.services.container import get_container
@@ -103,9 +102,6 @@ def register_blueprints(app: Flask) -> None:
         app.register_blueprint(api_bp)
         logger.info("Registered API blueprint")
 
-        app.register_blueprint(budget_bp)
-        logger.info("Registered budget blueprint")
-
         app.register_blueprint(health_bp)
         logger.info("Registered health monitoring blueprint")
 
@@ -138,7 +134,7 @@ def configure_blueprint_services(app: Flask) -> None:
         required_services = [
             "database_connection",
             "report_data_service",
-            "budget_service",
+
         ]
 
         service_status: Dict[str, str] = {}
@@ -480,19 +476,12 @@ def get_blueprint_info() -> Dict[str, Any]:
                 "status": "active",
             },
             {
-                "name": "budget",
-                "url_prefix": "/budget",
-                "description": "Budget management interface",
-                "status": "active",
-            },
-            {
                 "name": "health",
                 "url_prefix": "/health",
                 "description": "System health monitoring and emergency repair",
                 "status": "active",
                 "endpoints": [
                     "/health/ - System health overview",
-                    "/health/budget - Budget service health",
                     "/health/database - Database connection health",
                     "/health/consistency/validate - Data consistency check",
                     "/health/consistency/repair - Data consistency repair",
