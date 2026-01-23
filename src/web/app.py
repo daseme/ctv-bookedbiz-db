@@ -103,6 +103,13 @@ def create_app(environment: Optional[str] = None) -> Flask:
     except Exception as e:
         logger.error(f"Failed to register user management blueprint: {e}")
 
+    try:
+        from src.web.routes.pricing import pricing_bp
+        app.register_blueprint(pricing_bp)
+        logger.info("Pricing analysis blueprint registered successfully")
+    except Exception as e:
+        logger.error(f"Failed to register pricing blueprint: {e}")
+
 
     # Initialize decay system check (non-blocking) - FIXED for newer Flask
     def check_decay_system():
