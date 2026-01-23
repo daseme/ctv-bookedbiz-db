@@ -2,10 +2,11 @@
 """
 Pricing analysis routes with drill-down navigation.
 Uses broadcast_month periods from month_closures for accurate YoY comparison.
+Supports configurable time period selection via URL parameters.
 """
 
 import logging
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, url_for
 from src.services.container import get_container
 from src.services.pricing_analysis_service import (
     DRILL_PATHS,
@@ -26,6 +27,29 @@ def safe_get_service(container, name):
         raise
 
 
+def get_period_params():
+    """Extract period parameters from request args."""
+    return {
+        'from': request.args.get('from'),
+        'to': request.args.get('to')
+    }
+
+
+def preserve_period_params(base_url: str, period_params: dict) -> str:
+    """Append period params to URL if present."""
+    params = []
+    if period_params.get('from'):
+        params.append(f"from={period_params['from']}")
+    if period_params.get('to'):
+        params.append(f"to={period_params['to']}")
+    
+    if not params:
+        return base_url
+    
+    separator = '&' if '?' in base_url else '?'
+    return f"{base_url}{separator}{'&'.join(params)}"
+
+
 @pricing_bp.route("/")
 def pricing_index():
     """Pricing analysis landing page with trend and quarterly summary."""
@@ -33,10 +57,10 @@ def pricing_index():
         container = get_container()
         service = safe_get_service(container, "pricing_analysis_service")
 
-        # Get trailing 12 closed months
-        period = service.get_trailing_12_closed_months()
+        # Get available periods for dropdowns
+        available = service.get_available_periods()
 
-        if not period.months:
+        if not available.closed_months:
             return render_template(
                 "pricing/index.html",
                 error="No closed months found. Close at least one month to use pricing analysis.",
@@ -46,8 +70,18 @@ def pricing_index():
                 filter_options={},
                 entry_points=list(DRILL_PATHS.keys()),
                 dimension_labels=DIMENSION_LABELS,
-                period=period,
+                period=None,
+                available_periods=available.to_dict(),
+                selected_from=None,
+                selected_to=None,
             )
+
+        # Parse URL params (or use defaults)
+        period_params = get_period_params()
+        period = service.get_period_from_params(
+            period_params['from'], 
+            period_params['to']
+        )
 
         # Get overall summary
         overall = service.get_overall_summary(period)
@@ -70,6 +104,9 @@ def pricing_index():
             entry_points=list(DRILL_PATHS.keys()),
             dimension_labels=DIMENSION_LABELS,
             period=period,
+            available_periods=available.to_dict(),
+            selected_from=period.start_month,
+            selected_to=period.end_month,
         )
     except Exception as e:
         logger.error(f"Error in pricing_index: {e}", exc_info=True)
@@ -83,10 +120,10 @@ def analyze_dimension(dimension: str):
         container = get_container()
         service = safe_get_service(container, "pricing_analysis_service")
 
-        # Get period
-        period = service.get_trailing_12_closed_months()
+        # Get available periods
+        available = service.get_available_periods()
 
-        if not period.months:
+        if not available.closed_months:
             return render_template(
                 "pricing/drilldown.html",
                 error="No closed months found.",
@@ -100,11 +137,21 @@ def analyze_dimension(dimension: str):
                 entry_point=dimension,
                 filters={},
                 min_spots=10,
-                period=period,
+                period=None,
                 dimension_labels=DIMENSION_LABELS,
+                available_periods=available.to_dict(),
+                selected_from=None,
+                selected_to=None,
             )
 
-        # Build filters from query params
+        # Parse period params
+        period_params = get_period_params()
+        period = service.get_period_from_params(
+            period_params['from'],
+            period_params['to']
+        )
+
+        # Build filters from query params (exclude period params)
         filters = {}
         for key in DRILL_PATHS.get(dimension, []):
             value = request.args.get(key)
@@ -158,10 +205,31 @@ def analyze_dimension(dimension: str):
             min_spots=min_spots,
             period=period,
             dimension_labels=DIMENSION_LABELS,
+            available_periods=available.to_dict(),
+            selected_from=period.start_month,
+            selected_to=period.end_month,
         )
     except Exception as e:
         logger.error(f"Error in analyze_dimension: {e}", exc_info=True)
         return render_template("error_500.html"), 500
+
+
+@pricing_bp.route("/api/periods")
+def api_periods():
+    """API endpoint for available periods and presets."""
+    try:
+        container = get_container()
+        service = safe_get_service(container, "pricing_analysis_service")
+
+        available = service.get_available_periods()
+
+        return jsonify({
+            "success": True,
+            **available.to_dict()
+        })
+    except Exception as e:
+        logger.error(f"Error in api_periods: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @pricing_bp.route("/api/trend")
@@ -171,7 +239,12 @@ def api_monthly_trend():
         container = get_container()
         service = safe_get_service(container, "pricing_analysis_service")
 
-        period = service.get_trailing_12_closed_months()
+        # Parse period params
+        period_params = get_period_params()
+        period = service.get_period_from_params(
+            period_params['from'],
+            period_params['to']
+        )
 
         # Build filters
         filters = {}
@@ -210,7 +283,13 @@ def api_dimension_data(dimension: str):
         container = get_container()
         service = safe_get_service(container, "pricing_analysis_service")
 
-        period = service.get_trailing_12_closed_months()
+        # Parse period params
+        period_params = get_period_params()
+        period = service.get_period_from_params(
+            period_params['from'],
+            period_params['to']
+        )
+        
         min_spots = request.args.get('min_spots', 10, type=int)
 
         # Build filters
@@ -257,7 +336,12 @@ def api_overall_summary():
         container = get_container()
         service = safe_get_service(container, "pricing_analysis_service")
 
-        period = service.get_trailing_12_closed_months()
+        # Parse period params
+        period_params = get_period_params()
+        period = service.get_period_from_params(
+            period_params['from'],
+            period_params['to']
+        )
 
         # Build filters
         filters = {}

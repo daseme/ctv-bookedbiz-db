@@ -5,7 +5,7 @@ Uses broadcast_month and month_closures for accurate period comparisons.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Any
 from datetime import datetime
 import logging
 
@@ -47,6 +47,22 @@ def get_prior_year_month(bm: str) -> str:
     year_suffix = int(bm[4:6])
     prior_year = year_suffix - 1
     return f"{month_abbr}-{prior_year:02d}"
+
+
+def get_months_in_range(start_bm: str, end_bm: str, closed_months: List[str]) -> List[str]:
+    """Get all closed months between start and end (inclusive)."""
+    start_iso = broadcast_month_to_iso(start_bm)
+    end_iso = broadcast_month_to_iso(end_bm)
+    
+    result = []
+    for m in closed_months:
+        m_iso = broadcast_month_to_iso(m)
+        if start_iso <= m_iso <= end_iso:
+            result.append(m)
+    
+    # Sort chronologically
+    result.sort(key=broadcast_month_to_iso)
+    return result
 
 
 @dataclass
@@ -119,6 +135,45 @@ class PeriodContext:
     def prior_months_sql_list(self) -> str:
         """Generate SQL IN clause values for prior year."""
         return ', '.join(f"'{m}'" for m in self.prior_months)
+    
+    @property
+    def start_month(self) -> Optional[str]:
+        """First month in the period."""
+        return self.months[0] if self.months else None
+    
+    @property
+    def end_month(self) -> Optional[str]:
+        """Last month in the period."""
+        return self.months[-1] if self.months else None
+
+
+@dataclass
+class PeriodPreset:
+    """A preset period selection."""
+    from_month: str
+    to_month: str
+
+
+@dataclass
+class AvailablePeriods:
+    """Available periods and presets for UI."""
+    closed_months: List[str]  # All closed months, chronological (oldest first)
+    presets: Dict[str, Optional[PeriodPreset]]
+    default: PeriodPreset
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict for template/JSON."""
+        return {
+            "closed_months": self.closed_months,
+            "presets": {
+                k: {"from": v.from_month, "to": v.to_month} if v else None
+                for k, v in self.presets.items()
+            },
+            "default": {
+                "from": self.default.from_month,
+                "to": self.default.to_month
+            }
+        }
 
 
 @dataclass
@@ -192,8 +247,8 @@ class PricingAnalysisService:
         self.db = db_connection
         logger.info("PricingAnalysisService initialized")
 
-    def get_closed_months(self, limit: int = 24) -> List[str]:
-        """Get list of closed months, sorted chronologically (most recent first)."""
+    def get_closed_months(self, limit: int = 100) -> List[str]:
+        """Get list of closed months, sorted chronologically (oldest first)."""
         query = """
             SELECT broadcast_month
             FROM month_closures
@@ -204,32 +259,183 @@ class PricingAnalysisService:
                     WHEN 'Apr' THEN '04' WHEN 'May' THEN '05' WHEN 'Jun' THEN '06'
                     WHEN 'Jul' THEN '07' WHEN 'Aug' THEN '08' WHEN 'Sep' THEN '09'
                     WHEN 'Oct' THEN '10' WHEN 'Nov' THEN '11' WHEN 'Dec' THEN '12'
-                END DESC
+                END ASC
             LIMIT ?
         """
         with self.db.connection() as conn:
             cursor = conn.execute(query, [limit])
             return [row[0] for row in cursor.fetchall()]
 
-    def get_trailing_12_closed_months(self) -> PeriodContext:
-        """Get the trailing 12 closed months with prior year equivalents."""
-        closed = self.get_closed_months(12)
+    def get_available_periods(self) -> AvailablePeriods:
+        """
+        Returns available months and computed presets.
+        Closed months are sorted chronologically (oldest first).
+        """
+        closed_months = self.get_closed_months(100)
         
-        if not closed:
-            # Fallback if no closures exist
-            logger.warning("No closed months found, using current year")
-            return PeriodContext(
-                months=[],
-                prior_months=[],
-                display_range="No closed months",
-                is_closed=False
+        if not closed_months:
+            # No closed months - return empty
+            return AvailablePeriods(
+                closed_months=[],
+                presets={
+                    "trailing_12": None,
+                    "ytd": None,
+                    "prior_year": None,
+                    "last_quarter": None
+                },
+                default=PeriodPreset("", "")
             )
         
-        # closed is already sorted desc, so reverse for chronological
-        months = list(reversed(closed))
+        # Most recent is last (chronological order)
+        most_recent = closed_months[-1]
+        most_recent_iso = broadcast_month_to_iso(most_recent)
+        current_year = most_recent_iso[:4]
+        prior_year = str(int(current_year) - 1)
+        
+        presets: Dict[str, Optional[PeriodPreset]] = {}
+        
+        # Trailing 12: most recent 12 closed months
+        trailing_12_months = closed_months[-12:] if len(closed_months) >= 12 else closed_months
+        if trailing_12_months:
+            presets["trailing_12"] = PeriodPreset(
+                trailing_12_months[0],
+                trailing_12_months[-1]
+            )
+        else:
+            presets["trailing_12"] = None
+        
+        # YTD: Jan of current year to most recent closed month of current year
+        current_year_months = [
+            m for m in closed_months 
+            if broadcast_month_to_iso(m).startswith(current_year)
+        ]
+        if current_year_months:
+            presets["ytd"] = PeriodPreset(
+                current_year_months[0],
+                current_year_months[-1]
+            )
+        else:
+            presets["ytd"] = None
+        
+        # Prior Year: All 12 months of prior year (if all closed)
+        prior_year_months = [
+            m for m in closed_months 
+            if broadcast_month_to_iso(m).startswith(prior_year)
+        ]
+        if len(prior_year_months) == 12:
+            presets["prior_year"] = PeriodPreset(
+                prior_year_months[0],
+                prior_year_months[-1]
+            )
+        else:
+            presets["prior_year"] = None
+        
+        # Last Quarter: most recent fully-closed quarter
+        presets["last_quarter"] = self._compute_last_quarter_preset(closed_months)
+        
+        # Default: trailing 12 (or all available)
+        default = presets["trailing_12"] or PeriodPreset(
+            closed_months[0], 
+            closed_months[-1]
+        )
+        
+        return AvailablePeriods(
+            closed_months=closed_months,
+            presets=presets,
+            default=default
+        )
+    
+    def _compute_last_quarter_preset(
+        self, 
+        closed_months: List[str]
+    ) -> Optional[PeriodPreset]:
+        """Find most recent fully-closed quarter."""
+        if not closed_months:
+            return None
+        
+        # Quarter definitions (month numbers)
+        quarters = {
+            'Q1': ['01', '02', '03'],
+            'Q2': ['04', '05', '06'],
+            'Q3': ['07', '08', '09'],
+            'Q4': ['10', '11', '12']
+        }
+        
+        # Convert to ISO for easier comparison
+        closed_iso = set(broadcast_month_to_iso(m) for m in closed_months)
+        
+        # Get most recent month to determine search range
+        most_recent_iso = broadcast_month_to_iso(closed_months[-1])
+        most_recent_year = int(most_recent_iso[:4])
+        most_recent_month = int(most_recent_iso[5:7])
+        
+        # Check quarters in reverse order (most recent first)
+        for year in range(most_recent_year, most_recent_year - 3, -1):
+            for q_name in ['Q4', 'Q3', 'Q2', 'Q1']:
+                q_months = quarters[q_name]
+                year_str = str(year)
+                
+                # Build ISO months for this quarter
+                q_iso_months = [f"{year_str}-{m}" for m in q_months]
+                
+                # Skip if quarter is in the future
+                if q_iso_months[-1] > most_recent_iso:
+                    continue
+                
+                # Check if all 3 months are closed
+                if all(m in closed_iso for m in q_iso_months):
+                    return PeriodPreset(
+                        iso_to_broadcast_month(q_iso_months[0]),
+                        iso_to_broadcast_month(q_iso_months[-1])
+                    )
+        
+        return None
+
+    def get_period_from_params(
+        self,
+        from_month: Optional[str],
+        to_month: Optional[str]
+    ) -> PeriodContext:
+        """
+        Build PeriodContext from URL params with validation.
+        Falls back to trailing 12 if params invalid.
+        """
+        available = self.get_available_periods()
+        closed_set = set(available.closed_months)
+        
+        # Validate from_month
+        valid_from = from_month if from_month in closed_set else None
+        # Validate to_month  
+        valid_to = to_month if to_month in closed_set else None
+        
+        # Check chronological order
+        if valid_from and valid_to:
+            from_iso = broadcast_month_to_iso(valid_from)
+            to_iso = broadcast_month_to_iso(valid_to)
+            if from_iso > to_iso:
+                logger.warning(
+                    f"Invalid period range: {from_month} > {to_month}, using default"
+                )
+                valid_from = None
+                valid_to = None
+        
+        # Apply defaults for missing values
+        if not valid_from and not valid_to:
+            # Use default (trailing 12)
+            valid_from = available.default.from_month
+            valid_to = available.default.to_month
+        elif not valid_from:
+            # Only to provided - use default from
+            valid_from = available.default.from_month
+        elif not valid_to:
+            # Only from provided - use most recent closed
+            valid_to = available.closed_months[-1] if available.closed_months else valid_from
+        
+        # Build list of months in range
+        months = get_months_in_range(valid_from, valid_to, available.closed_months)
         prior_months = [get_prior_year_month(m) for m in months]
         
-        display_range = f"{months[0]} to {months[-1]}" if months else "N/A"
+        display_range = f"{valid_from} to {valid_to}" if months else "No closed months"
         
         return PeriodContext(
             months=months,
@@ -237,6 +443,10 @@ class PricingAnalysisService:
             display_range=display_range,
             is_closed=True
         )
+
+    def get_trailing_12_closed_months(self) -> PeriodContext:
+        """Get the trailing 12 closed months with prior year equivalents."""
+        return self.get_period_from_params(None, None)
 
     def _build_month_filter(self, months: List[str]) -> Tuple[str, List[str]]:
         """Build WHERE clause for broadcast_month IN (...)."""

@@ -9,13 +9,15 @@
 <span class="breadcrumb-separator">›</span>
 <span class="breadcrumb-link">Analytics</span>
 <span class="breadcrumb-separator">›</span>
-<a href="{{ url_for('pricing.pricing_index') }}" class="breadcrumb-link">Pricing</a>
+<a href="{{ url_for('pricing.pricing_index', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="breadcrumb-link">Pricing</a>
 {% for crumb in context.breadcrumbs %}
 <span class="breadcrumb-separator">›</span>
 {% if loop.last %}
 <span class="breadcrumb-current">{{ crumb.label }}</span>
 {% else %}
-<a href="{{ url_for('pricing.analyze_dimension', dimension=entry_point, **{crumb.dimension: crumb.value} if crumb.value else {}) }}" class="breadcrumb-link">{{ crumb.label }}</a>
+{% set crumb_params = {'from': selected_from, 'to': selected_to} if selected_from and selected_to else {} %}
+{% if crumb.value %}{% set _ = crumb_params.update({crumb.dimension: crumb.value}) %}{% endif %}
+<a href="{{ url_for('pricing.analyze_dimension', dimension=entry_point, **crumb_params) }}" class="breadcrumb-link">{{ crumb.label }}</a>
 {% endif %}
 {% endfor %}
 {% endblock %}
@@ -27,7 +29,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 16px;
 }
@@ -374,7 +376,7 @@
 <!-- Breadcrumb Trail -->
 <div class="breadcrumb-trail">
   <div class="breadcrumb-item">
-    <a href="{{ url_for('pricing.pricing_index') }}">📊 Pricing</a>
+    <a href="{{ url_for('pricing.pricing_index', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}">📊 Pricing</a>
   </div>
   {% for crumb in context.breadcrumbs %}
   <span class="breadcrumb-arrow">→</span>
@@ -382,7 +384,9 @@
     {% if loop.last %}
     {{ crumb.label }}
     {% else %}
-    <a href="{{ url_for('pricing.analyze_dimension', dimension=entry_point, **{crumb.dimension: crumb.value} if crumb.value else {}) }}">{{ crumb.label }}</a>
+    {% set crumb_params = {'from': selected_from, 'to': selected_to} if selected_from and selected_to else {} %}
+    {% if crumb.value %}{% set _ = crumb_params.update({crumb.dimension: crumb.value}) %}{% endif %}
+    <a href="{{ url_for('pricing.analyze_dimension', dimension=entry_point, **crumb_params) }}">{{ crumb.label }}</a>
     {% endif %}
   </div>
   {% endfor %}
@@ -401,14 +405,29 @@
       {% endif %}
     </div>
   </div>
+  {% if period %}
   <div class="period-badge">
     📅 {{ period.display_range }}
   </div>
+  {% endif %}
 </div>
+
+{# Period Selector #}
+{% if available_periods and available_periods.closed_months %}
+{% include "pricing/_period_selector.html" %}
+{% endif %}
 
 <!-- Filters -->
 <form class="filters-bar" method="get">
-  <!-- Preserve existing filters -->
+  <!-- Preserve period params -->
+  {% if selected_from %}
+  <input type="hidden" name="from" value="{{ selected_from }}">
+  {% endif %}
+  {% if selected_to %}
+  <input type="hidden" name="to" value="{{ selected_to }}">
+  {% endif %}
+  
+  <!-- Preserve existing dimension filters -->
   {% for key, val in filters.items() %}
   <input type="hidden" name="{{ key }}" value="{{ val }}">
   {% endfor %}
@@ -569,7 +588,9 @@
   "nextDimension": "{{ context.next_dimension or '' }}",
   "isTerminal": {{ 'true' if context.is_terminal else 'false' }},
   "filters": {{ filters | tojson | safe }},
-  "dimensionColumn": "{{ dimension }}"
+  "dimensionColumn": "{{ dimension }}",
+  "periodFrom": "{{ selected_from or '' }}",
+  "periodTo": "{{ selected_to or '' }}"
 }
 </script>
 
@@ -670,9 +691,17 @@ function drillDown(value) {
     return;
   }
   
-  // Build URL with new filter
+  // Build URL with new filter, preserving period params
   const url = new URL(window.location.href);
   url.searchParams.set(config.currentDimension, value);
+  
+  // Ensure period params are preserved
+  if (config.periodFrom) {
+    url.searchParams.set('from', config.periodFrom);
+  }
+  if (config.periodTo) {
+    url.searchParams.set('to', config.periodTo);
+  }
   
   console.log('Drilling down to:', url.toString());
   window.location.href = url.toString();

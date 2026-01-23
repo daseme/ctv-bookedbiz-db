@@ -1,0 +1,343 @@
+{# src/web/templates/pricing/_period_selector.html #}
+{# 
+  Reusable period selector component.
+  
+  Required variables:
+  - available_periods: dict with closed_months, presets, default
+  - selected_from: currently selected start month
+  - selected_to: currently selected end month
+#}
+
+<div class="period-selector">
+  <form class="period-form" method="get" id="periodForm">
+    {# Preserve non-period params #}
+    {% for key, val in request.args.items() %}
+      {% if key not in ['from', 'to'] %}
+      <input type="hidden" name="{{ key }}" value="{{ val }}">
+      {% endif %}
+    {% endfor %}
+    
+    <div class="period-controls">
+      <div class="period-field">
+        <label for="period-from">From</label>
+        <select name="from" id="period-from" class="period-select">
+          {% for month in available_periods.closed_months %}
+          <option value="{{ month }}" {{ 'selected' if month == selected_from else '' }}>{{ month }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <div class="period-field">
+        <label for="period-to">To</label>
+        <select name="to" id="period-to" class="period-select">
+          {% for month in available_periods.closed_months | reverse %}
+          <option value="{{ month }}" {{ 'selected' if month == selected_to else '' }}>{{ month }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <button type="submit" class="period-apply-btn" id="periodApplyBtn">
+        <span class="apply-text">Apply</span>
+        <span class="apply-loading" style="display: none;">⏳</span>
+      </button>
+    </div>
+    
+    <div class="period-presets">
+      <span class="presets-label">Quick:</span>
+      
+      {% if available_periods.presets.trailing_12 %}
+      <button type="button" 
+              class="preset-btn" 
+              data-from="{{ available_periods.presets.trailing_12.from }}" 
+              data-to="{{ available_periods.presets.trailing_12.to }}">
+        Trailing 12
+      </button>
+      {% else %}
+      <button type="button" class="preset-btn disabled" disabled 
+              title="Not enough closed months available">
+        Trailing 12
+      </button>
+      {% endif %}
+      
+      {% if available_periods.presets.ytd %}
+      <button type="button" 
+              class="preset-btn" 
+              data-from="{{ available_periods.presets.ytd.from }}" 
+              data-to="{{ available_periods.presets.ytd.to }}">
+        YTD
+      </button>
+      {% else %}
+      <button type="button" class="preset-btn disabled" disabled 
+              title="No closed months in current year">
+        YTD
+      </button>
+      {% endif %}
+      
+      {% if available_periods.presets.prior_year %}
+      <button type="button" 
+              class="preset-btn" 
+              data-from="{{ available_periods.presets.prior_year.from }}" 
+              data-to="{{ available_periods.presets.prior_year.to }}">
+        Prior Year
+      </button>
+      {% else %}
+      <button type="button" class="preset-btn disabled" disabled 
+              title="Prior year not fully closed (need all 12 months)">
+        Prior Year
+      </button>
+      {% endif %}
+      
+      {% if available_periods.presets.last_quarter %}
+      <button type="button" 
+              class="preset-btn" 
+              data-from="{{ available_periods.presets.last_quarter.from }}" 
+              data-to="{{ available_periods.presets.last_quarter.to }}">
+        Last Quarter
+      </button>
+      {% else %}
+      <button type="button" class="preset-btn disabled" disabled 
+              title="No fully closed quarter available">
+        Last Quarter
+      </button>
+      {% endif %}
+    </div>
+    
+    <div class="period-error" id="periodError">
+      Start month cannot be after end month
+    </div>
+  </form>
+</div>
+
+<style>
+.period-selector {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.period-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.period-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.period-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.period-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5568;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.period-select {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  background: white;
+  min-width: 100px;
+  cursor: pointer;
+}
+
+.period-select:focus {
+  outline: none;
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.period-apply-btn {
+  padding: 6px 16px;
+  background: #4299e1;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 70px;
+}
+
+.period-apply-btn:hover:not(:disabled) {
+  background: #3182ce;
+}
+
+.period-apply-btn:disabled {
+  background: #a0aec0;
+  cursor: not-allowed;
+}
+
+.period-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.presets-label {
+  font-size: 12px;
+  color: #718096;
+  font-weight: 500;
+}
+
+.preset-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #4a5568;
+}
+
+.preset-btn:hover:not(.disabled) {
+  background: #edf2f7;
+  border-color: #4299e1;
+  color: #3182ce;
+}
+
+.preset-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f7fafc;
+}
+
+.preset-btn.active {
+  background: #ebf8ff;
+  border-color: #4299e1;
+  color: #3182ce;
+}
+
+.period-error {
+  color: #c53030;
+  font-size: 12px;
+  display: none;
+  padding: 8px 12px;
+  background: #fff5f5;
+  border: 1px solid #fc8181;
+  border-radius: 3px;
+}
+
+.period-error.visible {
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .period-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .period-field { width: 100%; }
+  .period-select { width: 100%; }
+  .period-apply-btn { width: 100%; }
+  .period-presets { justify-content: flex-start; }
+}
+</style>
+
+<script>
+(function() {
+  var MONTH_TO_NUM = {
+    'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+    'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+    'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+  };
+  
+  function broadcastMonthToIso(bm) {
+    if (!bm || bm.length !== 6) return '';
+    var monthAbbr = bm.substring(0, 3);
+    var yearSuffix = bm.substring(4, 6);
+    var monthNum = MONTH_TO_NUM[monthAbbr] || '00';
+    return '20' + yearSuffix + '-' + monthNum;
+  }
+  
+  var fromSelect = document.getElementById('period-from');
+  var toSelect = document.getElementById('period-to');
+  var applyBtn = document.getElementById('periodApplyBtn');
+  var errorDiv = document.getElementById('periodError');
+  var form = document.getElementById('periodForm');
+  
+  if (!fromSelect || !toSelect || !applyBtn || !errorDiv || !form) {
+    console.warn('Period selector: missing elements');
+    return;
+  }
+  
+  function validatePeriod() {
+    var fromIso = broadcastMonthToIso(fromSelect.value);
+    var toIso = broadcastMonthToIso(toSelect.value);
+    
+    if (fromIso > toIso) {
+      applyBtn.disabled = true;
+      errorDiv.classList.add('visible');
+      return false;
+    } else {
+      applyBtn.disabled = false;
+      errorDiv.classList.remove('visible');
+      return true;
+    }
+  }
+  
+  function highlightActivePreset() {
+    var fromVal = fromSelect.value;
+    var toVal = toSelect.value;
+    var presetBtns = document.querySelectorAll('.preset-btn:not(.disabled)');
+    
+    for (var i = 0; i < presetBtns.length; i++) {
+      var btn = presetBtns[i];
+      if (btn.dataset.from === fromVal && btn.dataset.to === toVal) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    }
+  }
+  
+  fromSelect.addEventListener('change', function() {
+    validatePeriod();
+    highlightActivePreset();
+  });
+  
+  toSelect.addEventListener('change', function() {
+    validatePeriod();
+    highlightActivePreset();
+  });
+  
+  var presetBtns = document.querySelectorAll('.preset-btn:not(.disabled)');
+  for (var i = 0; i < presetBtns.length; i++) {
+    presetBtns[i].addEventListener('click', function() {
+      fromSelect.value = this.dataset.from;
+      toSelect.value = this.dataset.to;
+      validatePeriod();
+      highlightActivePreset();
+    });
+  }
+  
+  form.addEventListener('submit', function(e) {
+    if (!validatePeriod()) {
+      e.preventDefault();
+      return;
+    }
+    applyBtn.querySelector('.apply-text').style.display = 'none';
+    applyBtn.querySelector('.apply-loading').style.display = 'inline';
+    applyBtn.disabled = true;
+  });
+  
+  validatePeriod();
+  highlightActivePreset();
+})();
+</script>
