@@ -433,7 +433,7 @@ def configure_security_headers(app: Flask) -> None:
             # Allow inline for Jinja output; tighten if you move to hashed CSP.
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline'; "
+                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
                 "style-src 'self' 'unsafe-inline'"
             )
 
