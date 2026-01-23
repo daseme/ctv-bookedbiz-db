@@ -526,8 +526,8 @@ class PricingAnalysisService:
 
         filter_clauses, filter_params = self._build_filter_clause(filters)
 
-        # Current period by quarter
-        where_clauses = [month_clause] + filter_clauses
+        # Current period by quarter - filter out NULL year_quarter from bad air_date data
+        where_clauses = [month_clause, "year_quarter IS NOT NULL"] + filter_clauses
         params = month_params + filter_params
 
         query = f"""
@@ -546,8 +546,8 @@ class PricingAnalysisService:
             cursor = conn.execute(query, params)
             current = {row[0]: row for row in cursor.fetchall()}
 
-            # Prior period
-            prior_where = [prior_month_clause] + filter_clauses
+            # Prior period - also filter out NULL year_quarter
+            prior_where = [prior_month_clause, "year_quarter IS NOT NULL"] + filter_clauses
             prior_params = prior_month_params + filter_params
             prior_query = f"""
                 SELECT
