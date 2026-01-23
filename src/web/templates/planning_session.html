@@ -226,6 +226,17 @@
     justify-content: flex-end;
     gap: 12px;
 }
+.customer-link {
+    color: var(--nord10);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.15s;
+}
+
+.customer-link:hover {
+    color: var(--nord8);
+    text-decoration: underline;
+}
     /* Planning-specific styles */
     .planning-controls {
         display: flex;
@@ -1646,25 +1657,14 @@ function renderBookedDetail(data) {
     
     let currentSector = null;
     sortedCustomers.forEach(customer => {
+        console.log('customer_id:', customer.customer_id, 'name:', customer.customer_name);
         const pct = data.total_revenue > 0 
             ? (customer.revenue / data.total_revenue * 100).toFixed(1) 
             : 0;
         
-        // Add sector subtotal header when sorting by sector
+        // Sector header logic...
         if (bookedDetailSort === 'sector' && customer.sector_name !== currentSector) {
-            if (currentSector !== null) {
-                // Add subtotal for previous sector
-                const sectorTotal = sortedCustomers
-                    .filter(c => c.sector_name === currentSector)
-                    .reduce((sum, c) => sum + c.revenue, 0);
-                html += `
-                    <tr class="sector-subtotal">
-                        <td colspan="2" style="text-align: right; font-weight: 600;">Subtotal:</td>
-                        <td class="number" style="font-weight: 600;">$${formatNumber(sectorTotal)}</td>
-                        <td colspan="2"></td>
-                    </tr>
-                `;
-            }
+            // ...existing subtotal code...
             currentSector = customer.sector_name;
             html += `
                 <tr class="sector-group-header">
@@ -1675,12 +1675,20 @@ function renderBookedDetail(data) {
             `;
         }
         
+        // Build customer name cell separately to avoid nested template issues
+        let customerCell;
+        if (customer.customer_id && customer.customer_id > 0) {
+            customerCell = '<a href="/reports/customer/' + customer.customer_id + '" class="customer-name customer-link">' + escapeHtml(customer.customer_name) + '</a>';
+        } else {
+            customerCell = '<div class="customer-name">' + escapeHtml(customer.customer_name) + '</div>';
+        }
+        if (customer.agency_name) {
+            customerCell += '<div class="agency-name">' + escapeHtml(customer.agency_name) + '</div>';
+        }
+        
         html += `
             <tr>
-                <td>
-                    <div class="customer-name">${escapeHtml(customer.customer_name)}</div>
-                    ${customer.agency_name ? `<div class="agency-name">${escapeHtml(customer.agency_name)}</div>` : ''}
-                </td>
+                <td>${customerCell}</td>
                 <td class="sector-cell">${customer.sector_name ? escapeHtml(customer.sector_name) : '<span style="color: #999;">—</span>'}</td>
                 <td class="number">$${formatNumber(customer.revenue)}</td>
                 <td class="number">${customer.spot_count}</td>
@@ -1815,7 +1823,7 @@ function renderSectorDetail(entityName, data) {
     html += `
         <tr class="sector-detail-row sector-detail-header">
             <td class="sector-name-cell">Sector Breakdown</td>
-            ${periods.map(m => `<td class="number">Expected / Booked</td>`).join('')}
+            ${periods.map(m => `<td class="number">Budget / Booked</td>`).join('')}
             <td class="number total-col">Total Gap</td>
         </tr>
     `;

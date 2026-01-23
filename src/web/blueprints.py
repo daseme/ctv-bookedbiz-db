@@ -33,6 +33,7 @@ from src.web.routes.reports import reports_bp
 from src.web.routes.api import api_bp
 from src.web.routes.health import health_bp
 from src.web.routes.language_blocks import language_blocks_bp
+from src.web.routes.customer_detail_routes import customer_detail_bp
 from src.services.container import get_container
 from src.utils.template_formatters import register_template_filters
 
@@ -98,6 +99,9 @@ def register_blueprints(app: Flask) -> None:
 
         app.register_blueprint(reports_bp)
         logger.info("Registered reports blueprint")
+
+        app.register_blueprint(customer_detail_bp, url_prefix='/reports')  # Add this
+        logger.info("Registered customer detail blueprint")
 
         app.register_blueprint(api_bp)
         logger.info("Registered API blueprint")

@@ -464,7 +464,7 @@ def monthly_revenue_summary():
                     MIN(gross_rate) as min_rate,
                     MAX(gross_rate) as max_rate
                 FROM spots
-                WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                WHERE revenue_type = 'Internal Ad Sales'
                   AND gross_rate > 0
                   AND {where_clause}
                 GROUP BY broadcast_month
@@ -491,7 +491,7 @@ def monthly_revenue_summary():
                     MIN(gross_rate) as min_rate,
                     MAX(gross_rate) as max_rate
                 FROM spots
-                WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                WHERE revenue_type = 'Internal Ad Sales'
                   AND gross_rate > 0
                   AND {where_clause}
                 GROUP BY broadcast_month
@@ -549,7 +549,7 @@ def monthly_revenue_summary():
                     SUM(gross_rate) as total_revenue,
                     AVG(gross_rate) as avg_rate
                 FROM spots
-                WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                WHERE revenue_type = 'Internal Ad Sales'
                 AND gross_rate > 0
                 AND {where_clause}
                 GROUP BY quarter, year
@@ -591,7 +591,7 @@ def monthly_revenue_summary():
                 FROM (
                     SELECT customer_id, SUM(gross_rate) as client_revenue
                     FROM spots
-                    WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                    WHERE revenue_type = 'Internal Ad Sales'
                       AND gross_rate > 0
                       AND customer_id IS NOT NULL
                       AND {where_clause}
@@ -613,7 +613,7 @@ def monthly_revenue_summary():
                     SUM(gross_rate) as total_revenue,
                     AVG(gross_rate) as avg_spot_rate
                 FROM spots
-                WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                WHERE revenue_type = 'Internal Ad Sales'
                   AND gross_rate > 0
                   AND customer_id IS NOT NULL
                   AND {where_clause}
@@ -640,7 +640,7 @@ def monthly_revenue_summary():
                     AVG(s.gross_rate) as avg_rate
                 FROM spots s
                 LEFT JOIN customers c ON s.customer_id = c.customer_id
-                WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                WHERE s.revenue_type = 'Internal Ad Sales'
                   AND s.gross_rate > 0
                   AND {where_clause.replace('broadcast_month', 's.broadcast_month')}
                 GROUP BY COALESCE(c.normalized_name, s.bill_code)
@@ -664,7 +664,7 @@ def monthly_revenue_summary():
         
         return render_template(
             "monthly_revenue_summary.html", 
-            title="Monthly Revenue Summary", 
+            title="Monthly Inhouse Ad Sales Revenue Summary", 
             data=data
 )
         
