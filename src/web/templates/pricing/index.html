@@ -19,7 +19,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 16px;
 }
@@ -31,18 +31,15 @@
   color: #2d3748;
 }
 
-.period-badge {
+.period-display {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #edf2f7;
-  padding: 8px 14px;
-  border-radius: 4px;
-  font-size: 12px;
+  font-size: 13px;
   color: #4a5568;
 }
 
-.period-badge .closed-indicator {
+.period-display .closed-indicator {
   display: inline-block;
   width: 8px;
   height: 8px;
@@ -259,16 +256,23 @@
 {% block content %}
 <div class="pricing-header">
   <h2>Pricing Analysis Dashboard</h2>
-  <div class="period-badge">
+  {% if period %}
+  <div class="period-display">
     <span class="closed-indicator"></span>
-    <span>📅 Closed Months: {{ period.display_range }}</span>
+    <span>📅 {{ period.display_range }}</span>
   </div>
+  {% endif %}
 </div>
 
 {% if error %}
 <div class="error-banner">
   ⚠️ {{ error }}
 </div>
+{% endif %}
+
+{# Period Selector #}
+{% if available_periods and available_periods.closed_months %}
+{% include "pricing/_period_selector.html" %}
 {% endif %}
 
 {% if overall %}
@@ -360,43 +364,43 @@
 <div class="entry-points-section">
   <div class="section-title">🔍 Explore Pricing By Dimension</div>
   <div class="entry-points-grid">
-    <a href="{{ url_for('pricing.analyze_dimension', dimension='ae') }}" class="entry-point-card">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='ae', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
       <div class="entry-point-icon">👤</div>
       <div class="entry-point-title">By Account Executive</div>
       <div class="entry-point-desc">Compare pricing across AEs, then drill into markets and customers</div>
     </a>
     
-    <a href="{{ url_for('pricing.analyze_dimension', dimension='market') }}" class="entry-point-card">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='market', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
       <div class="entry-point-icon">📍</div>
       <div class="entry-point-title">By Market</div>
       <div class="entry-point-desc">Regional pricing analysis with AE and sector breakdowns</div>
     </a>
     
-    <a href="{{ url_for('pricing.analyze_dimension', dimension='sector') }}" class="entry-point-card">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='sector', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
       <div class="entry-point-icon">🏭</div>
       <div class="entry-point-title">By Sector</div>
       <div class="entry-point-desc">Industry-level pricing patterns and customer details</div>
     </a>
     
-    <a href="{{ url_for('pricing.analyze_dimension', dimension='language') }}" class="entry-point-card">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='language', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
       <div class="entry-point-icon">🌐</div>
       <div class="entry-point-title">By Language</div>
       <div class="entry-point-desc">Language-specific pricing with day part analysis</div>
     </a>
     
-    <a href="{{ url_for('pricing.analyze_dimension', dimension='day_part') }}" class="entry-point-card">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='day_part', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
       <div class="entry-point-icon">🕐</div>
       <div class="entry-point-title">By Day Part</div>
       <div class="entry-point-desc">Pricing across Early Morning, Daytime, Prime, etc.</div>
     </a>
     
-    <a href="{{ url_for('pricing.analyze_dimension', dimension='day_type') }}" class="entry-point-card">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='day_type', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
       <div class="entry-point-icon">📅</div>
       <div class="entry-point-title">Weekday vs Weekend</div>
       <div class="entry-point-desc">Compare pricing patterns by day type</div>
     </a>
     
-    <a href="{{ url_for('pricing.analyze_dimension', dimension='tenure') }}" class="entry-point-card">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='tenure', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
       <div class="entry-point-icon">⏱️</div>
       <div class="entry-point-title">By Customer Tenure</div>
       <div class="entry-point-desc">How pricing changes with customer age</div>
@@ -409,12 +413,7 @@
 <script id="monthly-trend-data" type="application/json">
 [
   {% for t in monthly_trend %}
-  {
-    "broadcast_month": "{{ t.broadcast_month }}",
-    "avg_rate": {{ t.avg_rate }},
-    "spot_count": {{ t.spot_count }},
-    "total_revenue": {{ t.total_revenue }}
-  }{% if not loop.last %},{% endif %}
+  {"broadcast_month": {{ t.broadcast_month | tojson }}, "avg_rate": {{ t.avg_rate }}, "spot_count": {{ t.spot_count }}, "total_revenue": {{ t.total_revenue }}}{% if not loop.last %},{% endif %}
   {% endfor %}
 ]
 </script>
@@ -501,7 +500,7 @@ document.addEventListener('DOMContentLoaded', function() {
               const label = context.dataset.label || '';
               const value = context.parsed.y;
               if (label.includes('Rate')) {
-                return label + ': $' + value.toFixed(2);
+                return label + ': ' + '\x24' + value.toFixed(2);
               }
               return label + ': ' + value.toLocaleString();
             }
@@ -524,7 +523,7 @@ document.addEventListener('DOMContentLoaded', function() {
           },
           ticks: {
             callback: function(value) {
-              return '$' + value.toFixed(0);
+              return '\x24' + value.toFixed(0);
             }
           }
         },
