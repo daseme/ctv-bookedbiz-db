@@ -1,0 +1,725 @@
+{# src/web/templates/pricing/drilldown.html #}
+{% extends "base.html" %}
+
+{% block title %}{{ dimension_label }} Pricing - CTV Reports{% endblock %}
+
+{% block header_title %}Pricing Analysis{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-link">Analytics</span>
+<span class="breadcrumb-separator">›</span>
+<a href="{{ url_for('pricing.pricing_index') }}" class="breadcrumb-link">Pricing</a>
+{% for crumb in context.breadcrumbs %}
+<span class="breadcrumb-separator">›</span>
+{% if loop.last %}
+<span class="breadcrumb-current">{{ crumb.label }}</span>
+{% else %}
+<a href="{{ url_for('pricing.analyze_dimension', dimension=entry_point, **{crumb.dimension: crumb.value} if crumb.value else {}) }}" class="breadcrumb-link">{{ crumb.label }}</a>
+{% endif %}
+{% endfor %}
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+/* Header */
+.drilldown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.drilldown-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.drilldown-subtitle {
+  font-size: 13px;
+  color: #718096;
+  margin-top: 4px;
+}
+
+/* Period Badge */
+.period-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #edf2f7;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #4a5568;
+}
+
+/* Breadcrumb Trail */
+.breadcrumb-trail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.breadcrumb-item a {
+  color: #4299e1;
+  text-decoration: none;
+}
+
+.breadcrumb-item a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-item.current {
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.breadcrumb-arrow {
+  color: #a0aec0;
+}
+
+/* Filters */
+.filters-bar {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+}
+
+.filter-group label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5568;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filter-group select,
+.filter-group input {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  background: white;
+}
+
+.filter-group select:focus,
+.filter-group input:focus {
+  outline: none;
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.apply-btn {
+  padding: 6px 16px;
+  background: #4299e1;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.apply-btn:hover {
+  background: #3182ce;
+}
+
+/* Summary Stats */
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.summary-stat {
+  background: #fafafa;
+  border-left: 3px solid #4299e1;
+  padding: 12px 16px;
+}
+
+.summary-stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.summary-stat-label {
+  font-size: 11px;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Data Table */
+.results-section {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fafafa;
+}
+
+.results-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.results-count {
+  font-size: 12px;
+  color: #718096;
+}
+
+.export-btn {
+  padding: 6px 12px;
+  background: #edf2f7;
+  color: #4a5568;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-btn:hover {
+  background: #e2e8f0;
+}
+
+.table-container {
+  max-height: 500px;
+  overflow: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  background: white;
+  text-align: left;
+  padding: 12px;
+  border-bottom: 2px solid #2d3748;
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 10;
+}
+
+.data-table th.numeric {
+  text-align: right;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.data-table th.sortable:hover {
+  background: #f7fafc;
+}
+
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #4a5568;
+}
+
+.data-table td.numeric {
+  text-align: right;
+  font-feature-settings: "tnum";
+}
+
+.data-table tr.clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.data-table tr.clickable:hover {
+  background: #f0f7ff;
+}
+
+.data-table tr.clickable:hover td:first-child {
+  color: #4299e1;
+}
+
+/* Change indicators */
+.change-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.change-badge.positive {
+  background: #f0fff4;
+  color: #2f855a;
+}
+
+.change-badge.negative {
+  background: #fff5f5;
+  color: #c53030;
+}
+
+.change-badge.neutral {
+  background: #f7fafc;
+  color: #718096;
+}
+
+/* Drill indicator */
+.drill-indicator {
+  color: #a0aec0;
+  margin-left: 8px;
+  font-size: 12px;
+}
+
+/* Monthly chart (for terminal view) */
+.monthly-chart-section {
+  padding: 20px;
+}
+
+.monthly-chart-container {
+  height: 300px;
+}
+
+/* No data state */
+.no-data {
+  text-align: center;
+  padding: 48px 24px;
+  color: #718096;
+}
+
+.no-data-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.no-data-message {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.no-data-hint {
+  font-size: 12px;
+  color: #a0aec0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .filters-bar {
+    flex-direction: column;
+  }
+  
+  .filter-group {
+    width: 100%;
+  }
+  
+  .summary-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .table-container {
+    max-height: 400px;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb Trail -->
+<div class="breadcrumb-trail">
+  <div class="breadcrumb-item">
+    <a href="{{ url_for('pricing.pricing_index') }}">📊 Pricing</a>
+  </div>
+  {% for crumb in context.breadcrumbs %}
+  <span class="breadcrumb-arrow">→</span>
+  <div class="breadcrumb-item {{ 'current' if loop.last else '' }}">
+    {% if loop.last %}
+    {{ crumb.label }}
+    {% else %}
+    <a href="{{ url_for('pricing.analyze_dimension', dimension=entry_point, **{crumb.dimension: crumb.value} if crumb.value else {}) }}">{{ crumb.label }}</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Header -->
+<div class="drilldown-header">
+  <div>
+    <h2 class="drilldown-title">Pricing by {{ dimension_label }}</h2>
+    <div class="drilldown-subtitle">
+      {% if filters %}
+      Filtered by: 
+      {% for key, val in filters.items() %}
+      {{ dimension_labels.get(key, key) }}: {{ val }}{% if not loop.last %}, {% endif %}
+      {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+  <div class="period-badge">
+    📅 {{ period.display_range }}
+  </div>
+</div>
+
+<!-- Filters -->
+<form class="filters-bar" method="get">
+  <!-- Preserve existing filters -->
+  {% for key, val in filters.items() %}
+  <input type="hidden" name="{{ key }}" value="{{ val }}">
+  {% endfor %}
+  
+  <div class="filter-group">
+    <label for="day_type">Day Type</label>
+    <select name="day_type" id="day_type">
+      <option value="">All</option>
+      {% for opt in filter_options.get('day_type', []) %}
+      <option value="{{ opt }}" {{ 'selected' if filters.get('day_type') == opt else '' }}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  
+  <div class="filter-group">
+    <label for="day_part">Day Part</label>
+    <select name="day_part" id="day_part">
+      <option value="">All</option>
+      {% for opt in filter_options.get('day_part', []) %}
+      <option value="{{ opt }}" {{ 'selected' if filters.get('day_part') == opt else '' }}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  
+  <div class="filter-group">
+    <label for="min_spots">Min Spots</label>
+    <input type="number" name="min_spots" id="min_spots" value="{{ min_spots }}" min="1" max="1000" style="width: 80px;">
+  </div>
+  
+  <button type="submit" class="apply-btn">Apply Filters</button>
+</form>
+
+<!-- Summary Stats -->
+<div class="summary-stats">
+  <div class="summary-stat">
+    <div class="summary-stat-value">${{ "{:,.2f}".format(overall.avg_rate) }}</div>
+    <div class="summary-stat-label">Avg Rate (Filtered)</div>
+  </div>
+  <div class="summary-stat">
+    <div class="summary-stat-value">{{ "{:,}".format(overall.spot_count) }}</div>
+    <div class="summary-stat-label">Total Spots</div>
+  </div>
+  <div class="summary-stat">
+    <div class="summary-stat-value">${{ "{:,.0f}".format(overall.total_revenue) }}</div>
+    <div class="summary-stat-label">Total Revenue</div>
+  </div>
+  {% if overall.yoy_rate_change is not none %}
+  <div class="summary-stat">
+    <div class="summary-stat-value">
+      <span class="{{ 'change-positive' if overall.yoy_rate_change >= 0 else 'change-negative' }}">
+        {{ "{:+.1f}".format(overall.yoy_rate_change) }}%
+      </span>
+    </div>
+    <div class="summary-stat-label">AVG Rate vs Prior Year</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Results Table -->
+<div class="results-section">
+  <div class="results-header">
+    <div>
+      <span class="results-title">{{ dimension_label }} Breakdown</span>
+      <span class="results-count">({{ data | length }} results)</span>
+    </div>
+    <button class="export-btn" onclick="exportTableToCSV()">📥 Export CSV</button>
+  </div>
+  
+  {% if is_monthly %}
+  <!-- Monthly Trend View (Terminal) -->
+  <div class="monthly-chart-section">
+    <div class="monthly-chart-container">
+      <canvas id="monthlyChart"></canvas>
+    </div>
+  </div>
+  
+  <div class="table-container">
+    <table class="data-table" id="resultsTable">
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th class="numeric">Avg Rate</th>
+          <th class="numeric">Spots</th>
+          <th class="numeric">Revenue</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data %}
+        <tr>
+          <td>{{ row.broadcast_month }}</td>
+          <td class="numeric">${{ "{:,.2f}".format(row.avg_rate) }}</td>
+          <td class="numeric">{{ "{:,}".format(row.spot_count) }}</td>
+          <td class="numeric">${{ "{:,.0f}".format(row.total_revenue) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+  {% elif data %}
+  <!-- Dimension Breakdown View -->
+  <div class="table-container">
+    <table class="data-table" id="resultsTable">
+      <thead>
+        <tr>
+          <th class="sortable" data-sort="name">{{ dimension_label }}</th>
+          <th class="numeric sortable" data-sort="rate">Avg Rate</th>
+          <th class="numeric sortable" data-sort="spots">Spots</th>
+          <th class="numeric sortable" data-sort="revenue">Revenue</th>
+          <th class="numeric">AVG Rate vs Prior Yr</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data %}
+        <tr class="{{ 'clickable' if not context.is_terminal else '' }}"
+            {% if not context.is_terminal %}
+            onclick="drillDown('{{ row.dimension_value | e }}')"
+            {% endif %}>
+          <td>
+            {{ row.dimension_value }}
+            {% if not context.is_terminal %}
+            <span class="drill-indicator">→</span>
+            {% endif %}
+          </td>
+          <td class="numeric">${{ "{:,.2f}".format(row.avg_rate) }}</td>
+          <td class="numeric">{{ "{:,}".format(row.spot_count) }}</td>
+          <td class="numeric">${{ "{:,.0f}".format(row.total_revenue) }}</td>
+          <td class="numeric">
+            {% if row.yoy_rate_change is not none %}
+            <span class="change-badge {{ 'positive' if row.yoy_rate_change >= 0 else 'negative' }}">
+              {{ "{:+.1f}".format(row.yoy_rate_change) }}%
+            </span>
+            {% else %}
+            <span class="change-badge neutral">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+  {% else %}
+  <!-- No Data State -->
+  <div class="no-data">
+    <div class="no-data-icon">📭</div>
+    <div class="no-data-message">No data matches your filters</div>
+    <div class="no-data-hint">Try adjusting the minimum spots threshold or removing filters</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Hidden data for JS -->
+<script id="drill-config" type="application/json">
+{
+  "entryPoint": "{{ entry_point }}",
+  "currentDimension": "{{ dimension }}",
+  "nextDimension": "{{ context.next_dimension or '' }}",
+  "isTerminal": {{ 'true' if context.is_terminal else 'false' }},
+  "filters": {{ filters | tojson | safe }},
+  "dimensionColumn": "{{ dimension }}"
+}
+</script>
+
+{% if is_monthly %}
+<script id="monthly-data" type="application/json">
+[
+  {% for row in data %}
+  {"broadcast_month": "{{ row.broadcast_month }}", "avg_rate": {{ row.avg_rate }}, "spot_count": {{ row.spot_count }}, "total_revenue": {{ row.total_revenue }}}{% if not loop.last %},{% endif %}
+  {% endfor %}
+]
+</script>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('🔍 Pricing Drilldown initializing...');
+  
+  // Parse config
+  let config = {};
+  try {
+    const configEl = document.getElementById('drill-config');
+    if (configEl) {
+      config = JSON.parse(configEl.textContent || '{}');
+    }
+  } catch (e) {
+    console.error('Failed to parse drill config:', e);
+  }
+  
+  console.log('Drill config:', config);
+  
+  // Monthly chart (if terminal view)
+  const monthlyDataEl = document.getElementById('monthly-data');
+  if (monthlyDataEl) {
+    try {
+      const monthlyData = JSON.parse(monthlyDataEl.textContent || '[]');
+      
+      if (monthlyData.length > 0) {
+        const ctx = document.getElementById('monthlyChart');
+        
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: monthlyData.map(d => d.broadcast_month),
+            datasets: [{
+              label: 'Avg Rate ($)',
+              data: monthlyData.map(d => d.avg_rate),
+              borderColor: '#4299e1',
+              backgroundColor: 'rgba(66, 153, 225, 0.1)',
+              fill: true,
+              tension: 0.3
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return 'Avg Rate: $' + context.parsed.y.toFixed(2);
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                ticks: {
+                  callback: function(value) {
+                    return '$' + value.toFixed(0);
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.error('Failed to create monthly chart:', e);
+    }
+  }
+  
+  console.log('✅ Pricing Drilldown ready');
+});
+
+// Drill-down navigation
+function drillDown(value) {
+  const configEl = document.getElementById('drill-config');
+  if (!configEl) return;
+  
+  const config = JSON.parse(configEl.textContent || '{}');
+  
+  if (config.isTerminal || !config.nextDimension) {
+    console.log('At terminal level, no further drill-down');
+    return;
+  }
+  
+  // Build URL with new filter
+  const url = new URL(window.location.href);
+  url.searchParams.set(config.currentDimension, value);
+  
+  console.log('Drilling down to:', url.toString());
+  window.location.href = url.toString();
+}
+
+// Export to CSV
+function exportTableToCSV() {
+  const table = document.getElementById('resultsTable');
+  if (!table) return;
+  
+  let csv = [];
+  
+  // Headers
+  const headers = [];
+  table.querySelectorAll('thead th').forEach(th => {
+    headers.push('"' + th.textContent.trim().replace(/"/g, '""') + '"');
+  });
+  csv.push(headers.join(','));
+  
+  // Rows
+  table.querySelectorAll('tbody tr').forEach(tr => {
+    const row = [];
+    tr.querySelectorAll('td').forEach(td => {
+      let val = td.textContent.trim();
+      // Remove arrow indicators
+      val = val.replace(/→/g, '').trim();
+      row.push('"' + val.replace(/"/g, '""') + '"');
+    });
+    csv.push(row.join(','));
+  });
+  
+  // Download
+  const blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  
+  const configEl = document.getElementById('drill-config');
+  const config = configEl ? JSON.parse(configEl.textContent) : {};
+  const dimension = config.currentDimension || 'pricing';
+  
+  a.download = `pricing_${dimension}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  
+  console.log('📥 CSV exported');
+}
+</script>
+{% endblock %}

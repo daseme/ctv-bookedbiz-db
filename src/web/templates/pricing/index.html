@@ -1,0 +1,555 @@
+{# src/web/templates/pricing/index.html #}
+{% extends "base.html" %}
+
+{% block title %}Pricing Analysis - CTV Reports{% endblock %}
+
+{% block header_title %}Pricing Analysis{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-link">Analytics</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Pricing Analysis</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+/* Layout */
+.pricing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pricing-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.period-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #edf2f7;
+  padding: 8px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #4a5568;
+}
+
+.period-badge .closed-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #48bb78;
+  border-radius: 50%;
+}
+
+/* Error State */
+.error-banner {
+  background: #fff5f5;
+  border: 1px solid #fc8181;
+  border-left: 4px solid #e53e3e;
+  padding: 16px 20px;
+  border-radius: 4px;
+  margin-bottom: 24px;
+  color: #c53030;
+}
+
+/* Stats Cards */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: #fafafa;
+  border-left: 3px solid #4299e1;
+  padding: 16px;
+  border-radius: 0 4px 4px 0;
+}
+
+.stat-card.positive { border-left-color: #48bb78; }
+.stat-card.negative { border-left-color: #f56565; }
+.stat-card.neutral { border-left-color: #a0aec0; }
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-change {
+  font-size: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.stat-change.positive { color: #2f855a; }
+.stat-change.negative { color: #c53030; }
+
+/* Chart Container */
+.chart-section {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 16px;
+}
+
+.chart-container {
+  height: 300px;
+  position: relative;
+}
+
+/* Quarterly Table */
+.quarterly-section {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 16px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid #2d3748;
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.data-table th.numeric {
+  text-align: right;
+}
+
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #4a5568;
+}
+
+.data-table td.numeric {
+  text-align: right;
+  font-feature-settings: "tnum";
+}
+
+.data-table tr:hover {
+  background: #f7fafc;
+}
+
+.change-positive { color: #2f855a; }
+.change-negative { color: #c53030; }
+.change-neutral { color: #718096; }
+
+/* Entry Points */
+.entry-points-section {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 20px;
+}
+
+.entry-points-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.entry-point-card {
+  display: block;
+  padding: 16px;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  text-decoration: none;
+  color: #2d3748;
+  transition: all 0.2s;
+}
+
+.entry-point-card:hover {
+  background: #edf2f7;
+  border-color: #4299e1;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.entry-point-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.entry-point-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.entry-point-desc {
+  font-size: 12px;
+  color: #718096;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .chart-container {
+    height: 250px;
+  }
+  
+  .entry-points-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .entry-points-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pricing-header">
+  <h2>Pricing Analysis Dashboard</h2>
+  <div class="period-badge">
+    <span class="closed-indicator"></span>
+    <span>📅 Closed Months: {{ period.display_range }}</span>
+  </div>
+</div>
+
+{% if error %}
+<div class="error-banner">
+  ⚠️ {{ error }}
+</div>
+{% endif %}
+
+{% if overall %}
+<!-- Overall Stats -->
+<div class="stats-row">
+  <div class="stat-card {{ 'positive' if overall.yoy_rate_change and overall.yoy_rate_change >= 0 else 'negative' if overall.yoy_rate_change else '' }}">
+    <div class="stat-value">${{ "{:,.2f}".format(overall.avg_rate) }}</div>
+    <div class="stat-label">Average Spot Rate</div>
+    {% if overall.yoy_rate_change is not none %}
+    <div class="stat-change {{ 'positive' if overall.yoy_rate_change >= 0 else 'negative' }}">
+      {{ "{:+.1f}".format(overall.yoy_rate_change) }}% vs Prior Year
+    </div>
+    {% endif %}
+  </div>
+  
+  <div class="stat-card {{ 'positive' if overall.yoy_volume_change and overall.yoy_volume_change >= 0 else 'negative' if overall.yoy_volume_change else '' }}">
+    <div class="stat-value">{{ "{:,}".format(overall.spot_count) }}</div>
+    <div class="stat-label">Total Spots</div>
+    {% if overall.yoy_volume_change is not none %}
+    <div class="stat-change {{ 'positive' if overall.yoy_volume_change >= 0 else 'negative' }}">
+      {{ "{:+.1f}".format(overall.yoy_volume_change) }}% vs Prior Year
+    </div>
+    {% endif %}
+  </div>
+  
+  <div class="stat-card">
+    <div class="stat-value">${{ "{:,.0f}".format(overall.total_revenue) }}</div>
+    <div class="stat-label">Total Revenue</div>
+    {% if overall.prior_total_revenue %}
+    <div class="stat-change {{ 'positive' if overall.total_revenue >= overall.prior_total_revenue else 'negative' }}">
+      {{ "{:+.1f}".format(((overall.total_revenue - overall.prior_total_revenue) / overall.prior_total_revenue) * 100) }}% vs Prior Year
+    </div>
+    {% endif %}
+  </div>
+  
+  <div class="stat-card neutral">
+    <div class="stat-value">{{ monthly_trend | length }}</div>
+    <div class="stat-label">Months Analyzed</div>
+  </div>
+</div>
+
+<!-- Monthly Trend Chart -->
+<div class="chart-section">
+  <div class="chart-title">📈 Monthly Average Rate Trend (Closed Months Only)</div>
+  <div class="chart-container">
+    <canvas id="trendChart"></canvas>
+  </div>
+</div>
+
+<!-- Quarterly Summary -->
+{% if quarterly %}
+<div class="quarterly-section">
+  <div class="section-title">📊 Quarterly Summary</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Quarter</th>
+        <th class="numeric">Avg Rate</th>
+        <th class="numeric">Spots</th>
+        <th class="numeric">Revenue</th>
+        <th class="numeric">Avg Rate vs Prior Year</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in quarterly %}
+      <tr>
+        <td>{{ q.year_quarter }}</td>
+        <td class="numeric">${{ "{:,.2f}".format(q.avg_rate) }}</td>
+        <td class="numeric">{{ "{:,}".format(q.spot_count) }}</td>
+        <td class="numeric">${{ "{:,.0f}".format(q.total_revenue) }}</td>
+        <td class="numeric">
+          {% if q.yoy_rate_change is not none %}
+          <span class="{{ 'change-positive' if q.yoy_rate_change >= 0 else 'change-negative' }}">
+            {{ "{:+.1f}".format(q.yoy_rate_change) }}%
+          </span>
+          {% else %}
+          <span class="change-neutral">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- Entry Points for Drill-Down -->
+<div class="entry-points-section">
+  <div class="section-title">🔍 Explore Pricing By Dimension</div>
+  <div class="entry-points-grid">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='ae') }}" class="entry-point-card">
+      <div class="entry-point-icon">👤</div>
+      <div class="entry-point-title">By Account Executive</div>
+      <div class="entry-point-desc">Compare pricing across AEs, then drill into markets and customers</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='market') }}" class="entry-point-card">
+      <div class="entry-point-icon">📍</div>
+      <div class="entry-point-title">By Market</div>
+      <div class="entry-point-desc">Regional pricing analysis with AE and sector breakdowns</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='sector') }}" class="entry-point-card">
+      <div class="entry-point-icon">🏭</div>
+      <div class="entry-point-title">By Sector</div>
+      <div class="entry-point-desc">Industry-level pricing patterns and customer details</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='language') }}" class="entry-point-card">
+      <div class="entry-point-icon">🌐</div>
+      <div class="entry-point-title">By Language</div>
+      <div class="entry-point-desc">Language-specific pricing with day part analysis</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='day_part') }}" class="entry-point-card">
+      <div class="entry-point-icon">🕐</div>
+      <div class="entry-point-title">By Day Part</div>
+      <div class="entry-point-desc">Pricing across Early Morning, Daytime, Prime, etc.</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='day_type') }}" class="entry-point-card">
+      <div class="entry-point-icon">📅</div>
+      <div class="entry-point-title">Weekday vs Weekend</div>
+      <div class="entry-point-desc">Compare pricing patterns by day type</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='tenure') }}" class="entry-point-card">
+      <div class="entry-point-icon">⏱️</div>
+      <div class="entry-point-title">By Customer Tenure</div>
+      <div class="entry-point-desc">How pricing changes with customer age</div>
+    </a>
+  </div>
+</div>
+
+<!-- Hidden data for JavaScript -->
+{% if monthly_trend %}
+<script id="monthly-trend-data" type="application/json">
+[
+  {% for t in monthly_trend %}
+  {
+    "broadcast_month": "{{ t.broadcast_month }}",
+    "avg_rate": {{ t.avg_rate }},
+    "spot_count": {{ t.spot_count }},
+    "total_revenue": {{ t.total_revenue }}
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+]
+</script>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('📊 Pricing Analysis Dashboard initializing...');
+  
+  // Parse trend data
+  let trendData = [];
+  try {
+    const dataEl = document.getElementById('monthly-trend-data');
+    if (dataEl) {
+      trendData = JSON.parse(dataEl.textContent || '[]');
+    }
+  } catch (e) {
+    console.error('Failed to parse trend data:', e);
+  }
+  
+  if (trendData.length === 0) {
+    console.warn('No trend data available');
+    return;
+  }
+  
+  // Data is already sorted chronologically by the service
+  const labels = trendData.map(d => d.broadcast_month);
+  const rates = trendData.map(d => d.avg_rate);
+  const volumes = trendData.map(d => d.spot_count);
+  
+  // Create chart
+  const ctx = document.getElementById('trendChart');
+  if (!ctx) {
+    console.error('Chart canvas not found');
+    return;
+  }
+  
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Avg Rate ($)',
+          data: rates,
+          borderColor: '#4299e1',
+          backgroundColor: 'rgba(66, 153, 225, 0.1)',
+          fill: true,
+          tension: 0.3,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Spot Count',
+          data: volumes,
+          borderColor: '#48bb78',
+          backgroundColor: 'transparent',
+          borderDash: [5, 5],
+          tension: 0.3,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            usePointStyle: true,
+            padding: 20
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = context.dataset.label || '';
+              const value = context.parsed.y;
+              if (label.includes('Rate')) {
+                return label + ': $' + value.toFixed(2);
+              }
+              return label + ': ' + value.toLocaleString();
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: {
+            display: false
+          }
+        },
+        y: {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          title: {
+            display: true,
+            text: 'Avg Rate ($)'
+          },
+          ticks: {
+            callback: function(value) {
+              return '$' + value.toFixed(0);
+            }
+          }
+        },
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          title: {
+            display: true,
+            text: 'Spot Count'
+          },
+          grid: {
+            drawOnChartArea: false
+          },
+          ticks: {
+            callback: function(value) {
+              return value.toLocaleString();
+            }
+          }
+        }
+      }
+    }
+  });
+  
+  console.log('✅ Pricing Analysis Dashboard ready');
+});
+</script>
+{% endblock %}

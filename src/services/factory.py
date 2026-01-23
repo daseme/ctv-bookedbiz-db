@@ -11,6 +11,7 @@ from enum import Enum
 
 from .container import get_container, ServiceCreationError
 from src.services.management_performance_service import ManagementPerformanceService
+from src.services.pricing_analysis_service import PricingAnalysisService
 
 
 logger = logging.getLogger(__name__)
@@ -272,6 +273,10 @@ def initialize_services():
         container.register_singleton("user_service", create_user_service)
         print("✅ user_service registered")
 
+        print("🔧 Registering pricing_analysis_service...")
+        container.register_singleton("pricing_analysis_service", create_pricing_analysis_service)
+        print("✅ pricing_analysis_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -377,6 +382,11 @@ def emergency_register_report_service(container):
         print(f"❌ Traceback: {traceback.format_exc()}")
         return False
 
+def create_pricing_analysis_service():
+    """Factory function for PricingAnalysisService."""
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return PricingAnalysisService(db_connection)
 
 def create_emergency_container():
     """Create minimal working container for Railway"""
