@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}Year-over-Year Comparison{% endblock %}
+
+{% block extra_css %}
+<style>
+    .comparison-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    
+    .comparison-card:hover {
+        transform: translateX(4px);
+    }
+    
+    .improving {
+        border-left-color: #a3be8c !important;
+    }
+    
+    .declining {
+        border-left-color: #bf616a !important;
+    }
+    
+    .stable {
+        border-left-color: #5e81ac !important;
+    }
+    
+    .change-indicator {
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    
+    .sparkline {
+        height: 40px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('pricing_trends.trends_dashboard') }}">Pricing Intelligence</a></li>
+                    <li class="breadcrumb-item active">YoY Comparison</li>
+                </ol>
+            </nav>
+            <h1 class="display-5">Year-over-Year Comparison</h1>
+            <p class="text-muted">Compare {{ current_year }} vs {{ previous_year }} performance by {{ dimension|title }}</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <span class="badge bg-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">{{ current_year }} vs {{ previous_year }}</span>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('pricing_trends.yoy_comparison') }}" class="row g-3">
+                        <div class="col-md-4">
+                            <label for="dimension" class="form-label">Dimension</label>
+                            <select name="dimension" id="dimension" class="form-select">
+                                {% for dim in available_dimensions %}
+                                <option value="{{ dim }}" {% if dim == dimension %}selected{% endif %}>
+                                    {{ dim|replace('_', ' ')|title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="current" class="form-label">Current Year</label>
+                            <select name="current" id="current" class="form-select">
+                                <option value="2025" {% if current_year == '2025' %}selected{% endif %}>2025</option>
+                                <option value="2024" {% if current_year == '2024' %}selected{% endif %}>2024</option>
+                                <option value="2023" {% if current_year == '2023' %}selected{% endif %}>2023</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="previous" class="form-label">Previous Year</label>
+                            <select name="previous" id="previous" class="form-select">
+                                <option value="2024" {% if previous_year == '2024' %}selected{% endif %}>2024</option>
+                                <option value="2023" {% if previous_year == '2023' %}selected{% endif %}>2023</option>
+                                <option value="2022" {% if previous_year == '2022' %}selected{% endif %}>2022</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-arrow-clockwise"></i> Compare
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+<!-- No Data Message -->
+    {% if not comparison or comparison|length == 0 %}
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-warning">
+                <h5><i class="bi bi-exclamation-triangle"></i> No Comparison Data Available</h5>
+                <p class="mb-0">
+                    No data found for comparison between {{ current_year }} and {{ previous_year }}.
+                    This could be because:
+                </p>
+                <ul class="mb-0 mt-2">
+                    <li>No closed months exist for these years</li>
+                    <li>Selected dimension has no overlapping data between years</li>
+                    <li>Try selecting different years or a different dimension</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        {% set improving_count = comparison|selectattr('is_improving')|list|length %}
+        {% set declining_count = comparison|length - improving_count %}
+        {% set total_current = comparison|sum(attribute='current_revenue') %}
+        {% set total_previous = comparison|sum(attribute='previous_revenue') %}
+        {% set total_change = ((total_current - total_previous) / total_previous * 100)|float if total_previous > 0 else 0 %}
+        
+        <div class="col-md-3">
+            <div class="card shadow-sm text-center">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Overall Revenue Change</h6>
+                    <h3 class="{% if total_change > 0 %}text-success{% elif total_change < 0 %}text-danger{% endif %}">
+                        {{ total_change|round(1) }}%
+                        <i class="bi bi-arrow-{% if total_change > 0 %}up{% elif total_change < 0 %}down{% else %}right{% endif %}"></i>
+                    </h3>
+                    <small class="text-muted">
+                        ${{ total_previous|round(0) }} → ${{ total_current|round(0) }}
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card shadow-sm text-center">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Improving</h6>
+                    <h3 class="text-success">{{ improving_count }}</h3>
+                    <small class="text-muted">{{ ((improving_count / comparison|length * 100)|round(0)) if comparison|length > 0 else 0 }}% of total</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card shadow-sm text-center">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Declining</h6>
+                    <h3 class="text-danger">{{ declining_count }}</h3>
+                    <small class="text-muted">{{ ((declining_count / comparison|length * 100)|round(0)) if comparison|length > 0 else 0 }}% of total</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card shadow-sm text-center">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Total {{ dimension|title }}s</h6>
+                    <h3>{{ comparison|length }}</h3>
+                    <small class="text-muted">Compared</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Comparison Cards -->
+    <div class="row g-4 mb-4">
+        {% for item in comparison %}
+        {% set card_class = 'improving' if item.is_improving else 'declining' %}
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="card comparison-card {{ card_class }} shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <h5 class="card-title mb-0">{{ item.dimension_value }}</h5>
+                        {% if item.is_improving %}
+                        <span class="badge bg-success">
+                            <i class="bi bi-arrow-up"></i> Improving
+                        </span>
+                        {% else %}
+                        <span class="badge bg-danger">
+                            <i class="bi bi-arrow-down"></i> Declining
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Rate Comparison -->
+                    <div class="mb-3">
+                        <h6 class="text-muted mb-2">Average Rate</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted d-block">{{ previous_year }}</small>
+                                <strong>${{ item.previous_avg_rate|round(2) }}</strong>
+                            </div>
+                            <div class="col-6 text-end">
+                                <small class="text-muted d-block">{{ current_year }}</small>
+                                <strong>${{ item.current_avg_rate|round(2) }}</strong>
+                            </div>
+                        </div>
+                        <div class="text-center mt-2">
+                            <span class="change-indicator {% if item.rate_change_pct > 0 %}text-success{% elif item.rate_change_pct < 0 %}text-danger{% endif %}">
+                                {{ item.rate_change_pct|round(1) }}%
+                                <i class="bi bi-arrow-{% if item.rate_change_pct > 0 %}up{% elif item.rate_change_pct < 0 %}down{% else %}right{% endif %} fs-5"></i>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Revenue Comparison -->
+                    <div>
+                        <h6 class="text-muted mb-2">Total Revenue</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted d-block">{{ previous_year }}</small>
+                                <strong>${{ item.previous_revenue|round(0) }}</strong>
+                            </div>
+                            <div class="col-6 text-end">
+                                <small class="text-muted d-block">{{ current_year }}</small>
+                                <strong>${{ item.current_revenue|round(0) }}</strong>
+                            </div>
+                        </div>
+                        <div class="text-center mt-2">
+                            <span class="{% if item.revenue_change_pct > 0 %}text-success{% elif item.revenue_change_pct < 0 %}text-danger{% endif %}">
+                                {{ item.revenue_change_pct|round(1) }}%
+                                <i class="bi bi-arrow-{% if item.revenue_change_pct > 0 %}up{% elif item.revenue_change_pct < 0 %}down{% else %}right{% endif %}"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Insights -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-start border-success border-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-trophy text-success"></i> Top Performers
+                    </h5>
+                    <p class="text-muted">Highest rate improvement {{ previous_year }} → {{ current_year }}</p>
+                    <div class="list-group list-group-flush">
+                        {% set sorted_items = comparison|sort(attribute='rate_change_pct', reverse=true) %}
+                        {% for item in sorted_items %}
+                        {% if loop.index <= 5 %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>{{ item.dimension_value }}</span>
+                            <span class="badge bg-success">+{{ item.rate_change_pct|round(1) }}%</span>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card shadow-sm border-start border-danger border-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-exclamation-triangle text-danger"></i> Needs Attention
+                        </h5>
+                    <div class="list-group list-group-flush">
+                        {% set sorted_items = comparison|sort(attribute='rate_change_pct') %}
+                        {% for item in sorted_items %}
+                        {% if loop.index <= 5 %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>{{ item.dimension_value }}</span>
+                            <span class="badge bg-danger">{{ item.rate_change_pct|round(1) }}%</span>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Business Context -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-lightbulb"></i> Interpretation Guide</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6 class="text-success">Rate Increasing, Revenue Up</h6>
+                            <p class="small">Best case - pricing power with volume growth</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-warning">Rate Increasing, Revenue Down</h6>
+                            <p class="small">Better pricing but losing volume - watch retention</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-danger">Rate Decreasing, Revenue Down</h6>
+                            <p class="small">Worst case - discounting without gaining volume</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Could add Chart.js sparklines here if desired
+    console.log('YoY Comparison loaded');
+</script>
+{% endblock %}

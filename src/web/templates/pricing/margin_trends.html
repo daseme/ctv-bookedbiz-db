@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}Margin Trends Analysis{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chart-container {
+        position: relative;
+        height: 500px;
+        margin-bottom: 2rem;
+    }
+    
+    .margin-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    
+    .margin-card:hover {
+        transform: translateX(4px);
+    }
+    
+    .margin-excellent {
+        border-left-color: #a3be8c !important;
+    }
+    
+    .margin-good {
+        border-left-color: #ebcb8b !important;
+    }
+    
+    .margin-concern {
+        border-left-color: #bf616a !important;
+    }
+    
+    .gauge-container {
+        position: relative;
+        height: 120px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('pricing_trends.trends_dashboard') }}">Pricing Intelligence</a></li>
+                    <li class="breadcrumb-item active">Margin Trends</li>
+                </ol>
+            </nav>
+            <h1 class="display-5">Margin Trends Analysis</h1>
+            <p class="text-muted">Monitor gross margin percentage to identify pricing discipline patterns</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <span class="badge bg-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">{{ groupby|title }}</span>
+            <span class="badge bg-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">{{ months_back }} Months</span>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('pricing_trends.margin_trends') }}" class="row g-3">
+                        <div class="col-md-4">
+                            <label for="groupby" class="form-label">Group By</label>
+                            <select name="groupby" id="groupby" class="form-select">
+                                {% for dim in available_dimensions %}
+                                <option value="{{ dim }}" {% if dim == groupby %}selected{% endif %}>
+                                    {{ dim|replace('_', ' ')|title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="months_back" class="form-label">Time Period</label>
+                            <select name="months_back" id="months_back" class="form-select">
+                                <option value="6" {% if months_back == 6 %}selected{% endif %}>Last 6 Months</option>
+                                <option value="12" {% if months_back == 12 %}selected{% endif %}>Last 12 Months</option>
+                                <option value="24" {% if months_back == 24 %}selected{% endif %}>Last 24 Months</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary me-2">
+                                <i class="bi bi-arrow-clockwise"></i> Update View
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="exportChart()">
+                                <i class="bi bi-download"></i> Export
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-piggy-bank"></i> 
+                        Gross Margin % Over Time by {{ groupby|replace('_', ' ')|title }}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="marginTrendsChart"></canvas>
+                    </div>
+                    <div class="text-muted text-center">
+                        <small>
+                            <i class="bi bi-info-circle"></i> 
+                            Rising margins indicate better pricing discipline; falling margins suggest discounting
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Margin Analysis Cards -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h4 class="mb-3">Current Margin Performance</h4>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        {% for dim_val, margin_points in margins.items() %}
+        {% if margin_points|length > 1 %}
+        {% set first = margin_points[0] %}
+        {% set last = margin_points[-1] %}
+        {% set avg_margin = (margin_points|sum(attribute='margin_percentage') / margin_points|length)|float %}
+        {% set margin_change = last.margin_percentage - first.margin_percentage %}
+        {% set card_class = 'margin-excellent' if avg_margin >= 75 else ('margin-good' if avg_margin >= 60 else 'margin-concern') %}
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="card margin-card {{ card_class }} shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">{{ dim_val }}</h6>
+                    <h2 class="card-title mb-3">
+                        {{ last.margin_formatted }}
+                        <small class="text-muted fs-6">current margin</small>
+                    </h2>
+                    
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <small class="text-muted d-block">Gross Rate</small>
+                            <strong>{{ last.gross_formatted }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Station Net</small>
+                            <strong>{{ last.net_formatted }}</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <small class="text-muted d-block">Starting Margin</small>
+                            <strong>{{ first.margin_formatted }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Change</small>
+                            <strong class="{% if margin_change > 0 %}text-success{% elif margin_change < 0 %}text-danger{% endif %}">
+                                {{ margin_change|round(1) }}pp
+                                <i class="bi bi-arrow-{% if margin_change > 0 %}up{% elif margin_change < 0 %}down{% else %}right{% endif %}"></i>
+                            </strong>
+                        </div>
+                    </div>
+                    
+                    <div class="progress mb-2" style="height: 25px;">
+                        <div class="progress-bar {% if avg_margin >= 75 %}bg-success{% elif avg_margin >= 60 %}bg-warning{% else %}bg-danger{% endif %}" 
+                             role="progressbar" 
+                             style="width: {{ avg_margin }}%"
+                             aria-valuenow="{{ avg_margin }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            {{ avg_margin|round(1) }}% avg
+                        </div>
+                    </div>
+                    
+                    <small class="text-muted">
+                        {% if avg_margin >= 75 %}
+                            <i class="bi bi-check-circle-fill text-success"></i> Excellent margin protection
+                        {% elif avg_margin >= 60 %}
+                            <i class="bi bi-exclamation-circle-fill text-warning"></i> Good margin, room for improvement
+                        {% else %}
+                            <i class="bi bi-x-circle-fill text-danger"></i> Low margin - review pricing
+                        {% endif %}
+                    </small>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- Insights -->
+    <div class="row mt-5">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-start border-success border-4">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-arrow-up-circle text-success"></i> Rising Margins</h5>
+                    <p class="text-muted mb-3">Indicates better pricing discipline or value capture</p>
+                    <ul class="list-unstyled">
+                        {% for dim_val, margin_points in margins.items() %}
+                        {% if margin_points|length > 1 %}
+                        {% set first = margin_points[0] %}
+                        {% set last = margin_points[-1] %}
+                        {% set change = last.margin_percentage - first.margin_percentage %}
+                        {% if change > 2 %}
+                        <li class="mb-2">
+                            <strong>{{ dim_val }}:</strong> 
+                            <span class="text-success">+{{ change|round(1) }}pp</span>
+                            <small class="text-muted">({{ first.margin_formatted }} → {{ last.margin_formatted }})</small>
+                        </li>
+                        {% endif %}
+                        {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card shadow-sm border-start border-danger border-4">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-arrow-down-circle text-danger"></i> Falling Margins</h5>
+                    <p class="text-muted mb-3">May indicate aggressive discounting or cost increases</p>
+                    <ul class="list-unstyled">
+                        {% for dim_val, margin_points in margins.items() %}
+                        {% if margin_points|length > 1 %}
+                        {% set first = margin_points[0] %}
+                        {% set last = margin_points[-1] %}
+                        {% set change = last.margin_percentage - first.margin_percentage %}
+                        {% if change < -2 %}
+                        <li class="mb-2">
+                            <strong>{{ dim_val }}:</strong> 
+                            <span class="text-danger">{{ change|round(1) }}pp</span>
+                            <small class="text-muted">({{ first.margin_formatted }} → {{ last.margin_formatted }})</small>
+                        </li>
+                        {% endif %}
+                        {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Business Context -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-lightbulb"></i> Understanding Margin Trends</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6 class="text-success">Healthy Patterns</h6>
+                            <ul>
+                                <li>Stable or rising margins over time</li>
+                                <li>Margins above 70% consistently</li>
+                                <li>Small variance between team members</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-warning">Warning Signs</h6>
+                            <ul>
+                                <li>Steady margin decline over quarters</li>
+                                <li>Margins consistently below 60%</li>
+                                <li>High variance between AEs</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-primary">Action Items</h6>
+                            <ul>
+                                <li>Coach AEs with falling margins</li>
+                                <li>Document successful pricing strategies</li>
+                                <li>Review rate cards for market alignment</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    const chartData = {{ chart_data|tojson }};
+    
+    const colors = [
+        '#5e81ac', '#88c0d0', '#81a1c1', '#8fbcbb',
+        '#bf616a', '#d08770', '#ebcb8b', '#a3be8c',
+        '#b48ead', '#4c566a', '#434c5e', '#3b4252'
+    ];
+    
+    chartData.datasets.forEach((dataset, index) => {
+        dataset.borderColor = colors[index % colors.length];
+        dataset.backgroundColor = colors[index % colors.length] + '20';
+        dataset.tension = 0.4;
+        dataset.pointRadius = 4;
+        dataset.pointHoverRadius = 6;
+    });
+    
+    const ctx = document.getElementById('marginTrendsChart').getContext('2d');
+    const marginTrendsChart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 15
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(46, 52, 64, 0.95)',
+                    padding: 12,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y.toFixed(1) + '%';
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                }
+            }
+        }
+    });
+    
+    function exportChart() {
+        const link = document.createElement('a');
+        link.download = 'margin_trends_{{ groupby }}_{{ months_back }}m.png';
+        link.href = marginTrendsChart.toBase64Image();
+        link.click();
+    }
+</script>
+{% endblock %}

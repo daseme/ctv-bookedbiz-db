@@ -17,6 +17,7 @@ from src.services.factory import initialize_services
 from src.config.settings import get_settings
 from src.web.blueprints import initialize_blueprints
 from src.web.routes.planning import planning_bp
+from src.web.routes.pricing_trends_routes import pricing_trends_bp
 from src.web.utils.auth import login_manager
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,14 @@ def create_app(environment: Optional[str] = None) -> Flask:
     login_manager.login_message_category = "info"
     logger.info("Flask-Login initialized with 1 day session timeout")
 
+    @app.template_filter('number_format')
+    def number_format_filter(value, decimals=0):
+        """Format number with commas"""
+        try:
+            return f"{float(value):,.{decimals}f}"
+        except (ValueError, TypeError):
+            return value
+
     try:
         initialize_blueprints(app)
         logger.info("Blueprints initialized successfully")
@@ -73,6 +82,15 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.info("Customer normalization blueprint registered successfully")
     except Exception as e:
         logger.error(f"Failed to register customer normalization blueprint: {e}")
+
+    # ✅ Register the pricing trends blueprint
+    try:
+        from src.web.routes.pricing_trends_routes import pricing_trends_bp
+
+        app.register_blueprint(pricing_trends_bp)
+        logger.info("Pricing trends blueprint registered successfully")
+    except Exception as e:
+        logger.error(f"Failed to register pricing trends blueprint: {e}")
 
     # ✅ Register the customer CANON tool *after* app exists
     try:

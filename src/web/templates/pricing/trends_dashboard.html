@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing Trends & Intelligence{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-4">Pricing Trends & Intelligence</h1>
+            <p class="lead text-muted">Strategic pricing analytics and trend analysis</p>
+        </div>
+    </div>
+
+    <!-- Navigation Cards -->
+    <div class="row g-4">
+        <!-- Rate Trends -->
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm hover-lift">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="icon-box bg-primary-subtle rounded-3 p-3">
+                            <i class="bi bi-graph-up text-primary fs-3"></i>
+                        </div>
+                    </div>
+                    <h5 class="card-title">Rate Trends</h5>
+                    <p class="card-text text-muted">
+                        Track how average rates change over time by sector, language, AE, or market.
+                    </p>
+                    <a href="{{ url_for('pricing_trends.rate_trends') }}" class="btn btn-outline-primary btn-sm">
+                        View Analysis →
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Margin Trends -->
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm hover-lift">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="icon-box bg-success-subtle rounded-3 p-3">
+                            <i class="bi bi-piggy-bank text-success fs-3"></i>
+                        </div>
+                    </div>
+                    <h5 class="card-title">Margin Analysis</h5>
+                    <p class="card-text text-muted">
+                        Monitor gross margin percentages to identify pricing discipline trends.
+                    </p>
+                    <a href="{{ url_for('pricing_trends.margin_trends') }}" class="btn btn-outline-success btn-sm">
+                        View Analysis →
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pricing Consistency -->
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm hover-lift">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="icon-box bg-warning-subtle rounded-3 p-3">
+                            <i class="bi bi-bullseye text-warning fs-3"></i>
+                        </div>
+                    </div>
+                    <h5 class="card-title">Pricing Consistency</h5>
+                    <p class="card-text text-muted">
+                        Measure rate volatility to identify pricing discipline issues.
+                    </p>
+                    <a href="{{ url_for('pricing_trends.pricing_consistency') }}" class="btn btn-outline-warning btn-sm">
+                        View Analysis →
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- YoY Comparison -->
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm hover-lift">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="icon-box bg-info-subtle rounded-3 p-3">
+                            <i class="bi bi-arrow-left-right text-info fs-3"></i>
+                        </div>
+                    </div>
+                    <h5 class="card-title">YoY Comparison</h5>
+                    <p class="card-text text-muted">
+                        Compare current vs previous year to identify improving trends.
+                    </p>
+                    <a href="{{ url_for('pricing_trends.yoy_comparison') }}" class="btn btn-outline-info btn-sm">
+                        View Analysis →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Coming Soon Section -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <h3 class="mb-4">Coming Soon</h3>
+        </div>
+    </div>
+
+<!-- Revenue Concentration -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm hover-lift">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="icon-box bg-danger-subtle rounded-3 p-3">
+                            <i class="bi bi-diagram-3 text-danger fs-3"></i>
+                        </div>
+                    </div>
+                    <h5 class="card-title">Revenue Concentration</h5>
+                    <p class="card-text text-muted">
+                        Analyze customer diversification with HHI and top N metrics.
+                    </p>
+                    <a href="{{ url_for('pricing_trends.concentration_analysis') }}" class="btn btn-outline-danger btn-sm">
+                        View Analysis →
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Customer Cohorts -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm opacity-75">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="icon-box bg-secondary-subtle rounded-3 p-3">
+                            <i class="bi bi-people text-secondary fs-3"></i>
+                        </div>
+                        <span class="badge bg-secondary ms-auto">Phase 2</span>
+                    </div>
+                    <h5 class="card-title">Customer Cohorts</h5>
+                    <p class="card-text text-muted">
+                        Track customer lifetime value and retention by acquisition cohort.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rate Card Compliance -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm opacity-75">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="icon-box bg-secondary-subtle rounded-3 p-3">
+                            <i class="bi bi-card-checklist text-secondary fs-3"></i>
+                        </div>
+                        <span class="badge bg-secondary ms-auto">Requires Rate Card</span>
+                    </div>
+                    <h5 class="card-title">Rate Card Compliance</h5>
+                    <p class="card-text text-muted">
+                        Measure price realization index and discount depth analysis.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Stats Section -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> About Pricing Intelligence</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>For Managers</h6>
+                            <ul class="list-unstyled">
+                                <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Identify AEs with pricing discipline issues</li>
+                                <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Track margin protection vs revenue buying behavior</li>
+                                <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Monitor rate improvements by language or sector</li>
+                                <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Spot pricing inconsistencies requiring coaching</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>For Investors</h6>
+                            <ul class="list-unstyled">
+                                <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Assess pricing power trends over time</li>
+                                <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Understand revenue quality and sustainability</li>
+                                <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Evaluate customer concentration risk (coming soon)</li>
+                                <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Track cohort economics and LTV (coming soon)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.hover-lift {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+
+.icon-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+}
+</style>
+{% endblock %}

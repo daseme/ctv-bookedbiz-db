@@ -1,0 +1,169 @@
+src/web
+├── src/web/models
+├── src/web/__pycache__
+│   ├── src/web/__pycache__/app.cpython-311.pyc
+│   ├── src/web/__pycache__/app.cpython-313.pyc
+│   ├── src/web/__pycache__/asgi.cpython-311.pyc
+│   ├── src/web/__pycache__/asgi.cpython-313.pyc
+│   ├── src/web/__pycache__/blueprints.cpython-311.pyc
+│   ├── src/web/__pycache__/blueprints.cpython-313.pyc
+│   ├── src/web/__pycache__/__init__.cpython-311.pyc
+│   └── src/web/__pycache__/__init__.cpython-313.pyc
+├── src/web/review_ui
+│   ├── src/web/review_ui/__pycache__
+│   │   └── src/web/review_ui/__pycache__/app.cpython-311.pyc
+│   └── src/web/review_ui/app.py
+├── src/web/routes
+│   ├── src/web/routes/__pycache__
+│   │   ├── src/web/routes/__pycache__/api.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/api.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/budget.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/budget.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/canon_tools.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/canon_tools.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/customer_detail_routes.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/customer_normalization.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/customer_normalization.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/customer_sector_api.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/customer_sector_api.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/health.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/health.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/__init__.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/__init__.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/language_blocks.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/language_blocks.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/pipeline_decay_api.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/pipeline_decay_api.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/pipeline_routes.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/pipeline_routes.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/planning.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/pricing.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/pricing_trends_routes.cpython-313.pyc
+│   │   ├── src/web/routes/__pycache__/reports.cpython-311.pyc
+│   │   ├── src/web/routes/__pycache__/reports.cpython-313.pyc
+│   │   └── src/web/routes/__pycache__/user_management.cpython-313.pyc
+│   ├── src/web/routes/api.py
+│   ├── src/web/routes/budget.py.backup
+│   ├── src/web/routes/canon_tools.py
+│   ├── src/web/routes/customer_detail_routes.py
+│   ├── src/web/routes/customer_normalization.py
+│   ├── src/web/routes/customer_sector_api.py
+│   ├── src/web/routes/health.py
+│   ├── src/web/routes/__init__.py
+│   ├── src/web/routes/language_blocks.py
+│   ├── src/web/routes/planning.py
+│   ├── src/web/routes/pricing.py
+│   ├── src/web/routes/pricing_trends_routes.py
+│   ├── src/web/routes/reports.py
+│   └── src/web/routes/user_management.py
+├── src/web/static
+│   ├── src/web/static/css
+│   │   ├── src/web/static/css/customer-sector-manager.css
+│   │   ├── src/web/static/css/pipeline-components.css
+│   │   ├── src/web/static/css/pipeline-decay-theme.css
+│   │   └── src/web/static/css/pipeline-modals.css
+│   ├── src/web/static/js
+│   │   ├── src/web/static/js/modules
+│   │   │   ├── src/web/static/js/modules/customer-sector-api.js
+│   │   │   ├── src/web/static/js/modules/customer-sector-state.js
+│   │   │   └── src/web/static/js/modules/customer-sector-ui.js
+│   │   ├── src/web/static/js/customer-normalization-manager.js
+│   │   ├── src/web/static/js/customer-sector-manager.js
+│   │   ├── src/web/static/js/pipeline-api.js
+│   │   ├── src/web/static/js/pipeline-config.js
+│   │   ├── src/web/static/js/pipeline-controller.js
+│   │   ├── src/web/static/js/pipeline-decay.js
+│   │   └── src/web/static/js/pipeline-ui.js
+│   └── src/web/static/logo.png
+├── src/web/templates
+│   ├── src/web/templates/old
+│   │   ├── src/web/templates/old/management_report.html
+│   │   ├── src/web/templates/old/management_report_web.html
+│   │   ├── src/web/templates/old/nav_demo.html
+│   │   ├── src/web/templates/old/nav_test.html
+│   │   ├── src/web/templates/old/nord_showcase.html
+│   │   ├── src/web/templates/old/report1.html
+│   │   ├── src/web/templates/old/report2.html
+│   │   ├── src/web/templates/old/report2_nord.html
+│   │   ├── src/web/templates/old/report3.html
+│   │   ├── src/web/templates/old/report3_nord.html
+│   │   ├── src/web/templates/old/report4.html
+│   │   ├── src/web/templates/old/report6.html
+│   │   ├── src/web/templates/old/report6_nord.html
+│   │   ├── src/web/templates/old/report7.html
+│   │   ├── src/web/templates/old/report7_nord.html
+│   │   └── src/web/templates/old/sector_management_old.html
+│   ├── src/web/templates/pipeline
+│   │   ├── src/web/templates/pipeline/partials
+│   │   │   ├── src/web/templates/pipeline/partials/customer_modal.html
+│   │   │   └── src/web/templates/pipeline/partials/decay_timeline_modal.html
+│   │   ├── src/web/templates/pipeline/pipeline_revenue_management.html
+│   │   └── src/web/templates/pipeline/UserGuide.md
+│   ├── src/web/templates/pricing
+│   │   ├── src/web/templates/pricing/drilldown.html
+│   │   ├── src/web/templates/pricing/index.html
+│   │   ├── src/web/templates/pricing/margin_trends.html
+│   │   ├── src/web/templates/pricing/_period_selector.html
+│   │   ├── src/web/templates/pricing/pricing_consistency.html
+│   │   ├── src/web/templates/pricing/rate_trends.html
+│   │   ├── src/web/templates/pricing/trends_dashboard.html
+│   │   └── src/web/templates/pricing/yoy_comparison.html
+│   ├── src/web/templates/users
+│   │   ├── src/web/templates/users/change_password.html
+│   │   ├── src/web/templates/users/create.html
+│   │   ├── src/web/templates/users/edit.html
+│   │   ├── src/web/templates/users/list.html
+│   │   ├── src/web/templates/users/profile.html
+│   │   └── src/web/templates/users/view.html
+│   ├── src/web/templates/ae-dashboard.html
+│   ├── src/web/templates/base.html
+│   ├── src/web/templates/budget_entry.html
+│   ├── src/web/templates/budget-management-main.html
+│   ├── src/web/templates/budget_management_old.html
+│   ├── src/web/templates/customer_detail.html
+│   ├── src/web/templates/customer_normalization_manager.html
+│   ├── src/web/templates/customer_sector_manager.html
+│   ├── src/web/templates/error_404.html
+│   ├── src/web/templates/error_500.html
+│   ├── src/web/templates/index.html
+│   ├── src/web/templates/language_blocks_report.html
+│   ├── src/web/templates/login.html
+│   ├── src/web/templates/management-performance.html
+│   ├── src/web/templates/management_report_nord.html
+│   ├── src/web/templates/market-analysis.html
+│   ├── src/web/templates/monthly_revenue_summary.html
+│   ├── src/web/templates/nord_base.html
+│   ├── src/web/templates/planning_session.html
+│   ├── src/web/templates/revenue-dashboard-customer.html
+│   ├── src/web/templates/revenue-dashboard-customer.html.newfeatures
+│   ├── src/web/templates/sector-analysis.html
+│   └── src/web/templates/sector_management.html
+├── src/web/utils
+│   ├── src/web/utils/__pycache__
+│   │   ├── src/web/utils/__pycache__/auth.cpython-313.pyc
+│   │   ├── src/web/utils/__pycache__/__init__.cpython-311.pyc
+│   │   ├── src/web/utils/__pycache__/__init__.cpython-313.pyc
+│   │   ├── src/web/utils/__pycache__/request_helpers.cpython-311.pyc
+│   │   └── src/web/utils/__pycache__/request_helpers.cpython-313.pyc
+│   ├── src/web/utils/auth.py
+│   ├── src/web/utils/__init__.py
+│   └── src/web/utils/request_helpers.py
+├── src/web/ae_config.json
+├── src/web/app.py
+├── src/web/asgi.py
+├── src/web/auto_generated_nord_routes.py
+├── src/web/blueprints.py
+├── src/web/check_flask_response.py
+├── src/web/database_schema.json
+├── src/web/dev-environment-overview-flask-wsl.md
+├── src/web/__init__.py
+├── src/web/pipeline_app_v2.py
+├── src/web/README.md
+├── src/web/REPORTING_DOCUMENTATION_AND_TODOS.md
+├── src/web/run_app.sh
+├── src/web/runserver_steps_wsl.txt
+├── src/web/temp_output.json
+├── src/web/temp_year_test.json
+└── src/web/test_output.json
+
+19 directories, 148 files

@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+
+{% block title %}Rate Trends Analysis{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chart-container {
+        position: relative;
+        height: 500px;
+        margin-bottom: 2rem;
+    }
+    
+    .dimension-badge {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+    }
+    
+    .metric-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    
+    .metric-card:hover {
+        transform: translateX(4px);
+    }
+    
+    .trend-up {
+        border-left-color: #a3be8c !important;
+    }
+    
+    .trend-down {
+        border-left-color: #bf616a !important;
+    }
+    
+    .trend-stable {
+        border-left-color: #5e81ac !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('pricing_trends.trends_dashboard') }}">Pricing Intelligence</a></li>
+                    <li class="breadcrumb-item active">Rate Trends</li>
+                </ol>
+            </nav>
+            <h1 class="display-5">Rate Trends Analysis</h1>
+            <p class="text-muted">Track how average rates evolve over time across different dimensions</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <span class="badge dimension-badge bg-primary">{{ dimension|title }}</span>
+            <span class="badge dimension-badge bg-secondary">{{ months_back }} Months</span>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('pricing_trends.rate_trends') }}" class="row g-3">
+                        <div class="col-md-4">
+                            <label for="dimension" class="form-label">Dimension</label>
+                            <select name="dimension" id="dimension" class="form-select">
+                                {% for dim in available_dimensions %}
+                                <option value="{{ dim }}" {% if dim == dimension %}selected{% endif %}>
+                                    {{ dim|replace('_', ' ')|title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="months_back" class="form-label">Time Period</label>
+                            <select name="months_back" id="months_back" class="form-select">
+                                <option value="6" {% if months_back == 6 %}selected{% endif %}>Last 6 Months</option>
+                                <option value="12" {% if months_back == 12 %}selected{% endif %}>Last 12 Months</option>
+                                <option value="24" {% if months_back == 24 %}selected{% endif %}>Last 24 Months</option>
+                                <option value="36" {% if months_back == 36 %}selected{% endif %}>Last 36 Months</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary me-2">
+                                <i class="bi bi-arrow-clockwise"></i> Update View
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="exportChart()">
+                                <i class="bi bi-download"></i> Export
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-graph-up"></i> 
+                        Average Rate Over Time by {{ dimension|replace('_', ' ')|title }}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="rateTrendsChart"></canvas>
+                    </div>
+                    <div class="text-muted text-center">
+                        <small>
+                            <i class="bi bi-info-circle"></i> 
+                            Hover over data points for detailed information
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Metrics -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h4 class="mb-3">Key Metrics by {{ dimension|replace('_', ' ')|title }}</h4>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        {% for dim_val, trend_points in trends.items() %}
+        {% if trend_points|length > 1 %}
+        {% set first = trend_points[0] %}
+        {% set last = trend_points[-1] %}
+        {% set change = ((last.average_rate - first.average_rate) / first.average_rate * 100)|float %}
+        {% set trend_class = 'trend-up' if change > 2 else ('trend-down' if change < -2 else 'trend-stable') %}
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="card metric-card {{ trend_class }} shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">{{ dim_val }}</h6>
+                    <h3 class="card-title mb-3">
+                        {{ last.average_rate_formatted }}
+                        <small class="text-muted fs-6">current avg</small>
+                    </h3>
+                    
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <small class="text-muted d-block">Starting Rate</small>
+                            <strong>{{ first.average_rate_formatted }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Change</small>
+                            <strong class="{% if change > 0 %}text-success{% elif change < 0 %}text-danger{% endif %}">
+                                {{ change|round(1) }}%
+                                <i class="bi bi-arrow-{% if change > 0 %}up{% elif change < 0 %}down{% else %}right{% endif %}"></i>
+                            </strong>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <small class="text-muted d-block">Total Spots</small>
+                            <strong>{{ trend_points|sum(attribute='spot_count')|number_format }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Total Revenue</small>
+                            <strong>${{ (trend_points|sum(attribute='total_revenue'))|number_format(2) }}</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <a href="{{ url_for('pricing_trends.rate_momentum', dimension=dimension, dimension_value=dim_val) }}" 
+                           class="btn btn-sm btn-outline-primary">
+                            View Momentum →
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- Business Insights -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card shadow-sm border-start border-primary border-4">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-lightbulb"></i> Business Insights</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>What This Tells You:</h6>
+                            <ul>
+                                <li>Which {{ dimension|replace('_', ' ') }}s are improving rates over time</li>
+                                <li>Identify pricing trends that may indicate market changes</li>
+                                <li>Spot opportunities to adjust pricing strategy</li>
+                                <li>Track effectiveness of rate increase initiatives</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Action Items:</h6>
+                            <ul>
+                                <li><strong>Rising rates:</strong> Document successful pricing strategies</li>
+                                <li><strong>Falling rates:</strong> Investigate competitive pressure or mix shift</li>
+                                <li><strong>Volatile rates:</strong> Review pricing consistency with team</li>
+                                <li><strong>Stable rates:</strong> Consider testing price increases</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    // Chart data from backend
+    const chartData = {{ chart_data|tojson }};
+    
+    // Color palette (Nord theme)
+    const colors = [
+        '#5e81ac', '#88c0d0', '#81a1c1', '#8fbcbb',
+        '#bf616a', '#d08770', '#ebcb8b', '#a3be8c',
+        '#b48ead', '#4c566a', '#434c5e', '#3b4252'
+    ];
+    
+    // Prepare datasets with colors
+    chartData.datasets.forEach((dataset, index) => {
+        dataset.borderColor = colors[index % colors.length];
+        dataset.backgroundColor = colors[index % colors.length] + '20';
+        dataset.tension = 0.4;
+        dataset.pointRadius = 4;
+        dataset.pointHoverRadius = 6;
+    });
+    
+    // Create chart
+    const ctx = document.getElementById('rateTrendsChart').getContext('2d');
+    const rateTrendsChart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(46, 52, 64, 0.95)',
+                    padding: 12,
+                    titleFont: {
+                        size: 14
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += '$' + context.parsed.y.toFixed(2);
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        font: {
+                            size: 11
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(0);
+                        },
+                        font: {
+                            size: 11
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                }
+            }
+        }
+    });
+    
+    // Export function
+    function exportChart() {
+        const link = document.createElement('a');
+        link.download = 'rate_trends_{{ dimension }}_{{ months_back }}m.png';
+        link.href = rateTrendsChart.toBase64Image();
+        link.click();
+    }
+    
+    // Add number formatting filter
+    Jinja2.filters.number_format = function(value, decimals = 0) {
+        return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        }).format(value);
+    };
+</script>
+{% endblock %}
