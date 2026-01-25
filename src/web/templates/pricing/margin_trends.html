@@ -2,40 +2,8 @@
 
 {% block title %}Margin Trends Analysis{% endblock %}
 
-{% block extra_css %}
-<style>
-    .chart-container {
-        position: relative;
-        height: 500px;
-        margin-bottom: 2rem;
-    }
-    
-    .margin-card {
-        border-left: 4px solid;
-        transition: transform 0.2s;
-    }
-    
-    .margin-card:hover {
-        transform: translateX(4px);
-    }
-    
-    .margin-excellent {
-        border-left-color: #a3be8c !important;
-    }
-    
-    .margin-good {
-        border-left-color: #ebcb8b !important;
-    }
-    
-    .margin-concern {
-        border-left-color: #bf616a !important;
-    }
-    
-    .gauge-container {
-        position: relative;
-        height: 120px;
-    }
-</style>
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
 {% endblock %}
 
 {% block content %}

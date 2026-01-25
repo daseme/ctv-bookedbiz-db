@@ -2,38 +2,8 @@
 
 {% block title %}Pricing Consistency Analysis{% endblock %}
 
-{% block extra_css %}
-<style>
-    .consistency-badge {
-        font-size: 0.85rem;
-        padding: 0.4rem 0.8rem;
-    }
-    
-    .cv-bar {
-        height: 8px;
-        border-radius: 4px;
-        background: linear-gradient(to right, #a3be8c, #ebcb8b, #bf616a);
-        position: relative;
-    }
-    
-    .cv-indicator {
-        position: absolute;
-        height: 20px;
-        width: 3px;
-        background: #2e3440;
-        top: -6px;
-        transform: translateX(-50%);
-    }
-    
-    .detail-row {
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-    
-    .detail-row:hover {
-        background-color: #f8f9fa;
-    }
-</style>
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
 {% endblock %}
 
 {% block content %}

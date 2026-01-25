@@ -2,38 +2,8 @@
 
 {% block title %}Year-over-Year Comparison{% endblock %}
 
-{% block extra_css %}
-<style>
-    .comparison-card {
-        border-left: 4px solid;
-        transition: transform 0.2s;
-    }
-    
-    .comparison-card:hover {
-        transform: translateX(4px);
-    }
-    
-    .improving {
-        border-left-color: #a3be8c !important;
-    }
-    
-    .declining {
-        border-left-color: #bf616a !important;
-    }
-    
-    .stable {
-        border-left-color: #5e81ac !important;
-    }
-    
-    .change-indicator {
-        font-size: 1.5rem;
-        font-weight: bold;
-    }
-    
-    .sparkline {
-        height: 40px;
-    }
-</style>
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
 {% endblock %}
 
 {% block content %}

@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 
 {% block title %}Pricing Trends & Intelligence{% endblock %}
-
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
+{% endblock %}
 {% block content %}
 <div class="container-fluid">
     <!-- Header -->
