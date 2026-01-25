@@ -3,7 +3,7 @@ Service Container for dependency injection and service management.
 Provides centralized service registration and resolution with support
 for singleton and factory patterns.
 """
-
+from __future__ import annotations
 from typing import Dict, Any, Callable, TypeVar, Type, Optional
 import logging
 from functools import wraps
@@ -94,6 +94,20 @@ class ServiceContainer:
 
         # Service not found - raise ServiceNotFoundError directly (no try/catch wrapper!)
         raise ServiceNotFoundError(f"Service '{name}' not found in container")
+
+    def setup_container(db_path: str) -> ServiceContainer:
+        """Setup and configure the service container."""
+        container = ServiceContainer()
+        
+        # ... your existing service registrations ...
+        
+        # Register pricing trends service
+        container.register_singleton(
+            "pricing_trends_service",
+            lambda: PricingTrendsService(database)  # database is your db connection object
+        )
+        
+        return container
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value by key."""

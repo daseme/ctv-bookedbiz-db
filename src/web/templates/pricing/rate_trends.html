@@ -2,40 +2,8 @@
 
 {% block title %}Rate Trends Analysis{% endblock %}
 
-{% block extra_css %}
-<style>
-    .chart-container {
-        position: relative;
-        height: 500px;
-        margin-bottom: 2rem;
-    }
-    
-    .dimension-badge {
-        font-size: 0.9rem;
-        padding: 0.5rem 1rem;
-    }
-    
-    .metric-card {
-        border-left: 4px solid;
-        transition: transform 0.2s;
-    }
-    
-    .metric-card:hover {
-        transform: translateX(4px);
-    }
-    
-    .trend-up {
-        border-left-color: #a3be8c !important;
-    }
-    
-    .trend-down {
-        border-left-color: #bf616a !important;
-    }
-    
-    .trend-stable {
-        border-left-color: #5e81ac !important;
-    }
-</style>
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
 {% endblock %}
 
 {% block content %}
