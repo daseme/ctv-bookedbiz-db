@@ -126,6 +126,7 @@ def analyze_dimension(dimension: str):
         if not available.closed_months:
             return render_template(
                 "pricing/drilldown.html",
+                active_tab='drilldown',  # TAB NAVIGATION
                 error="No closed months found.",
                 dimension=dimension,
                 dimension_label=DIMENSION_LABELS.get(dimension, dimension),
@@ -193,6 +194,7 @@ def analyze_dimension(dimension: str):
 
         return render_template(
             "pricing/drilldown.html",
+            active_tab='drilldown',  # TAB NAVIGATION
             dimension=current_dim,
             dimension_label=DIMENSION_LABELS.get(current_dim, current_dim),
             data=data,

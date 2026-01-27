@@ -55,6 +55,7 @@ def rate_trends():
     
     return render_template(
         'pricing/rate_trends.html',
+        active_tab='rate_trends',
         dimension=dimension,
         months_back=months_back,
         trends=trends,
@@ -79,6 +80,7 @@ def margin_trends():
     
     return render_template(
         'pricing/margin_trends.html',
+        active_tab='margin_trends',
         groupby=groupby,
         months_back=months_back,
         margins=margins,
@@ -101,6 +103,7 @@ def pricing_consistency():
     
     return render_template(
         'pricing/pricing_consistency.html',
+        active_tab='consistency',
         dimension=dimension,
         timeframe=timeframe,
         volatility=volatility,
@@ -127,6 +130,7 @@ def yoy_comparison():
     
     return render_template(
         'pricing/yoy_comparison.html',
+        active_tab='yoy',
         dimension=dimension,
         current_year=current_year,
         previous_year=previous_year,
@@ -148,6 +152,7 @@ def rate_momentum(dimension: str, dimension_value: str):
     
     return render_template(
         'pricing/rate_momentum.html',
+        active_tab='rate_trends',
         dimension=dimension,
         dimension_value=dimension_value,
         months_back=months_back,
@@ -182,6 +187,7 @@ def concentration_analysis():
     
     return render_template(
         'pricing/concentration_analysis.html',
+        active_tab='concentration',
         year=year,
         metrics=current_metrics,
         top_customers=top_customers,

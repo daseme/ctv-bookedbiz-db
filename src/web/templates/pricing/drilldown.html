@@ -1,5 +1,5 @@
 {# src/web/templates/pricing/drilldown.html #}
-{% extends "base.html" %}
+{% extends "pricing/_pricing_layout.html" %}
 
 {% block title %}{{ dimension_label }} Pricing - CTV Reports{% endblock %}
 
@@ -369,6 +369,53 @@
     max-height: 400px;
   }
 }
+/* Entry Points */
+.entry-points-section {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 20px;
+}
+
+.entry-points-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.entry-point-card {
+  display: block;
+  padding: 16px;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  text-decoration: none;
+  color: #2d3748;
+  transition: all 0.2s;
+}
+
+.entry-point-card:hover {
+  background: #edf2f7;
+  border-color: #4299e1;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.entry-point-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.entry-point-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.entry-point-desc {
+  font-size: 12px;
+  color: #718096;
+}
 </style>
 {% endblock %}
 
@@ -578,6 +625,54 @@
     <div class="no-data-hint">Try adjusting the minimum spots threshold or removing filters</div>
   </div>
   {% endif %}
+</div>
+
+<!-- Entry Points for Drill-Down -->
+<div class="entry-points-section">
+  <div class="section-title">🔍 Explore Pricing By Dimension</div>
+  <div class="entry-points-grid">
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='ae', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
+      <div class="entry-point-icon">👤</div>
+      <div class="entry-point-title">By Account Executive</div>
+      <div class="entry-point-desc">Compare pricing across AEs, then drill into markets and customers</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='market', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
+      <div class="entry-point-icon">📍</div>
+      <div class="entry-point-title">By Market</div>
+      <div class="entry-point-desc">Regional pricing analysis with AE and sector breakdowns</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='sector', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
+      <div class="entry-point-icon">🏭</div>
+      <div class="entry-point-title">By Sector</div>
+      <div class="entry-point-desc">Industry-level pricing patterns and customer details</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='language', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
+      <div class="entry-point-icon">🌐</div>
+      <div class="entry-point-title">By Language</div>
+      <div class="entry-point-desc">Language-specific pricing with day part analysis</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='day_part', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
+      <div class="entry-point-icon">🕐</div>
+      <div class="entry-point-title">By Day Part</div>
+      <div class="entry-point-desc">Pricing across Early Morning, Daytime, Prime, etc.</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='day_type', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
+      <div class="entry-point-icon">📅</div>
+      <div class="entry-point-title">Weekday vs Weekend</div>
+      <div class="entry-point-desc">Compare pricing patterns by day type</div>
+    </a>
+    
+    <a href="{{ url_for('pricing.analyze_dimension', dimension='tenure', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="entry-point-card">
+      <div class="entry-point-icon">⏱️</div>
+      <div class="entry-point-title">By Customer Tenure</div>
+      <div class="entry-point-desc">How pricing changes with customer age</div>
+    </a>
+  </div>
 </div>
 
 <!-- Hidden data for JS -->

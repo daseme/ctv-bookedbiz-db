@@ -1,0 +1,86 @@
+{# src/web/templates/pricing/_tabs.html #}
+{#
+  Unified tab navigation for pricing reports.
+  Uses existing Bootstrap-like classes from pricing.css for compatibility.
+  
+  Required variable from view function:
+    active_tab: string - one of 'drilldown', 'concentration', 'rate_trends', 
+                         'margin_trends', 'consistency', 'yoy'
+  
+  Optional variables (auto-preserved across tab switches):
+    selected_from: string - period start (e.g., 'Jan-24')
+    selected_to: string - period end (e.g., 'Dec-24')
+#}
+
+{# Build period params dict for URL generation #}
+{% set period_params = {} %}
+{% if selected_from %}{% set _ = period_params.update({'from': selected_from}) %}{% endif %}
+{% if selected_to %}{% set _ = period_params.update({'to': selected_to}) %}{% endif %}
+
+<div class="row mb-4">
+  <div class="col-12">
+    <nav class="pricing-tabs" aria-label="Pricing report navigation">
+      
+      {# Analysis Group #}
+      <div class="pricing-tab-group">
+        <span class="pricing-tab-group-label">Analysis</span>
+        <div class="pricing-tab-items">
+          <a href="{{ url_for('pricing.analyze_dimension', dimension='ae', **period_params) }}" 
+             class="pricing-tab {{ 'active' if active_tab == 'drilldown' else '' }}"
+             {% if active_tab == 'drilldown' %}aria-current="page"{% endif %}>
+            <span class="pricing-tab-icon">🔍</span>
+            <span class="pricing-tab-label">Drilldown</span>
+          </a>
+          <a href="{{ url_for('pricing_trends.concentration_analysis', **period_params) }}" 
+             class="pricing-tab {{ 'active' if active_tab == 'concentration' else '' }}"
+             {% if active_tab == 'concentration' %}aria-current="page"{% endif %}>
+            <span class="pricing-tab-icon">📊</span>
+            <span class="pricing-tab-label">Concentration</span>
+          </a>
+        </div>
+      </div>
+
+      {# Trends Group #}
+      <div class="pricing-tab-group">
+        <span class="pricing-tab-group-label">Trends</span>
+        <div class="pricing-tab-items">
+          <a href="{{ url_for('pricing_trends.rate_trends', **period_params) }}" 
+             class="pricing-tab {{ 'active' if active_tab == 'rate_trends' else '' }}"
+             {% if active_tab == 'rate_trends' %}aria-current="page"{% endif %}>
+            <span class="pricing-tab-icon">📈</span>
+            <span class="pricing-tab-label">Rate Trends</span>
+          </a>
+          <a href="{{ url_for('pricing_trends.margin_trends', **period_params) }}" 
+             class="pricing-tab {{ 'active' if active_tab == 'margin_trends' else '' }}"
+             {% if active_tab == 'margin_trends' %}aria-current="page"{% endif %}>
+            <span class="pricing-tab-icon">💰</span>
+            <span class="pricing-tab-label">Margins</span>
+          </a>
+          <a href="{{ url_for('pricing_trends.pricing_consistency', **period_params) }}" 
+             class="pricing-tab {{ 'active' if active_tab == 'consistency' else '' }}"
+             {% if active_tab == 'consistency' %}aria-current="page"{% endif %}>
+            <span class="pricing-tab-icon">🎯</span>
+            <span class="pricing-tab-label">Consistency</span>
+          </a>
+          <a href="{{ url_for('pricing_trends.yoy_comparison', **period_params) }}" 
+             class="pricing-tab {{ 'active' if active_tab == 'yoy' else '' }}"
+             {% if active_tab == 'yoy' %}aria-current="page"{% endif %}>
+            <span class="pricing-tab-icon">↔️</span>
+            <span class="pricing-tab-label">YoY</span>
+          </a>
+        </div>
+      </div>
+
+      {# Dashboard Link (right-aligned) #}
+      <div class="pricing-tab-group pricing-tab-group-end">
+        <a href="{{ url_for('pricing.pricing_index', **period_params) }}" 
+           class="pricing-tab pricing-tab-home"
+           title="Back to Pricing Dashboard">
+          <span class="pricing-tab-icon">🏠</span>
+          <span class="pricing-tab-label">Dashboard</span>
+        </a>
+      </div>
+      
+    </nav>
+  </div>
+</div>

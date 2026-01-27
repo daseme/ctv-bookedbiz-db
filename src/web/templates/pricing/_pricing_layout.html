@@ -1,0 +1,80 @@
+{# src/web/templates/pricing/_pricing_layout.html #}
+{# 
+  Master layout for all pricing reports.
+  Provides unified tab navigation and consistent structure.
+  
+  Compatible with existing Bootstrap-like classes in pricing.css.
+  
+  Required blocks from child templates:
+  - pricing_title: Page title suffix (used in browser tab and breadcrumb)
+  - pricing_content: Main content area
+  
+  Optional blocks:
+  - pricing_page_title: Override display title (defaults to pricing_title)
+  - pricing_subtitle: Description text below title
+  - pricing_header_extra: Additional header content (badges, buttons)
+  - pricing_styles: Page-specific CSS
+  - pricing_scripts: Page-specific JavaScript
+  
+  Variables automatically available:
+  - active_tab: Current tab identifier (set by view function)
+  - available_periods: Period selector data (optional)
+  - selected_from, selected_to: Current period selection (optional)
+#}
+{% extends "base.html" %}
+
+{% block title %}{% block pricing_title %}Pricing{% endblock %} - Pricing Intelligence{% endblock %}
+
+{% block header_title %}Pricing Intelligence{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-link">Analytics</span>
+<span class="breadcrumb-separator">›</span>
+<a href="{{ url_for('pricing.pricing_index') }}" class="breadcrumb-link">Pricing</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">{{ self.pricing_title() }}</span>
+{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
+{% block pricing_styles %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  {# Tab Navigation - uses existing Bootstrap-like utilities #}
+  {% include "pricing/_tabs.html" %}
+
+  {# Page Header - compatible with existing .row/.col classes #}
+  <div class="row mb-4">
+    <div class="col-md-8">
+      <h1 class="display-5">{% block pricing_page_title %}{{ self.pricing_title() }}{% endblock %}</h1>
+      {% set subtitle %}{% block pricing_subtitle %}{% endblock %}{% endset %}
+      {% if subtitle %}
+      <p class="lead text-muted">{{ subtitle }}</p>
+      {% endif %}
+    </div>
+    <div class="col-md-4 text-end">
+      {% block pricing_header_extra %}{% endblock %}
+    </div>
+  </div>
+
+  {# Period Selector (if available_periods passed) #}
+  {% if available_periods and available_periods.closed_months %}
+  <div class="row mb-4">
+    <div class="col-12">
+      {% include "pricing/_period_selector.html" %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# Main Content #}
+  {% block pricing_content %}{% endblock %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% block pricing_scripts %}{% endblock %}
+{% endblock %}

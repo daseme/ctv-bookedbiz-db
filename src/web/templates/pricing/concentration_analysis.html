@@ -1,673 +1,300 @@
-{% extends "base.html" %}
+{# src/web/templates/pricing/concentration_analysis.html #}
+{# Refactored to use unified layout with existing Bootstrap-like classes #}
+{% extends "pricing/_pricing_layout.html" %}
 
-{% block title %}Revenue Concentration Analysis{% endblock %}
+{% block pricing_title %}Revenue Concentration{% endblock %}
 
-{% block extra_styles %}
-<style>
-/* Concentration-specific styles using Nord variables from base */
-.concentration-controls {
-    background: var(--nord6);
-    border: 1px solid var(--nord4);
-    border-radius: 4px;
-    padding: 16px;
-    margin-bottom: 24px;
-    display: flex;
-    gap: 16px;
-    align-items: flex-end;
-    flex-wrap: wrap;
-}
+{% block pricing_subtitle %}Analyze customer diversification with Herfindahl-Hirschman Index{% endblock %}
 
-.control-group {
-    display: flex;
-    flex-direction: column;
-    min-width: 150px;
-}
-
-.control-group label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--nord3);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-}
-
-.control-group select {
-    padding: 8px 12px;
-    font-size: 13px;
-    border: 1px solid var(--nord4);
-    border-radius: 4px;
-    background: white;
-}
-
-.control-group select:focus {
-    outline: none;
-    border-color: var(--nord10);
-}
-
-.apply-btn {
-    padding: 8px 20px;
-    background: var(--nord10);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.apply-btn:hover {
-    background: var(--nord9);
-}
-
-/* Metrics Grid */
-.metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
-    margin-bottom: 32px;
-}
-
-.metric-card {
-    background: white;
-    border: 1px solid var(--nord4);
-    border-radius: 4px;
-    padding: 20px;
-    text-align: center;
-}
-
-.metric-card.hhi-card {
-    border-left: 4px solid var(--nord10);
-}
-
-.metric-value {
-    font-size: 28px;
-    font-weight: 600;
-    color: var(--nord0);
-    margin-bottom: 4px;
-}
-
-.metric-label {
-    font-size: 12px;
-    color: var(--nord3);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 8px;
-}
-
-.metric-sublabel {
-    font-size: 13px;
-    color: var(--nord3);
-}
-
-.metric-subvalue {
-    font-size: 18px;
-    font-weight: 500;
-    color: var(--nord2);
-}
-
-/* Risk Badges */
-.risk-badge {
-    display: inline-block;
-    padding: 6px 16px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    margin-top: 8px;
-}
-
-.risk-low {
-    background: rgba(163, 190, 140, 0.2);
-    color: var(--nord14);
-}
-
-.risk-moderate {
-    background: rgba(235, 203, 139, 0.2);
-    color: #b58900;
-}
-
-.risk-high {
-    background: rgba(191, 97, 106, 0.2);
-    color: var(--nord11);
-}
-
-/* HHI Guide */
-.hhi-guide {
-    background: var(--nord6);
-    border: 1px solid var(--nord4);
-    border-radius: 4px;
-    padding: 20px;
-    margin-bottom: 32px;
-}
-
-.hhi-guide-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--nord0);
-    margin-bottom: 12px;
-}
-
-.hhi-guide-text {
-    font-size: 13px;
-    color: var(--nord2);
-    margin-bottom: 16px;
-}
-
-.hhi-levels {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
-}
-
-.hhi-level {
-    padding: 12px;
-    border-radius: 4px;
-}
-
-.hhi-level.low {
-    background: rgba(163, 190, 140, 0.15);
-    border-left: 3px solid var(--nord14);
-}
-
-.hhi-level.moderate {
-    background: rgba(235, 203, 139, 0.15);
-    border-left: 3px solid var(--nord13);
-}
-
-.hhi-level.high {
-    background: rgba(191, 97, 106, 0.15);
-    border-left: 3px solid var(--nord11);
-}
-
-.hhi-level-title {
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 4px;
-}
-
-.hhi-level.low .hhi-level-title { color: var(--nord14); }
-.hhi-level.moderate .hhi-level-title { color: #b58900; }
-.hhi-level.high .hhi-level-title { color: var(--nord11); }
-
-.hhi-level-desc {
-    font-size: 12px;
-    color: var(--nord2);
-}
-
-/* Customer Table */
-.customers-section {
-    margin-bottom: 32px;
-}
-
-.section-header {
-    background: var(--nord10);
-    color: white;
-    padding: 12px 16px;
-    border-radius: 4px 4px 0 0;
-    font-weight: 600;
-    font-size: 14px;
-}
-
-.section-header.success {
-    background: var(--nord14);
-}
-
-.customers-table-wrapper {
-    border: 1px solid var(--nord4);
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-    overflow: hidden;
-}
-
-.customers-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-}
-
-.customers-table th {
-    text-align: left;
-    padding: 12px;
-    background: var(--nord6);
-    border-bottom: 2px solid var(--nord4);
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--nord2);
-}
-
-.customers-table th.numeric {
-    text-align: right;
-}
-
-.customers-table td {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--nord4);
-    color: var(--nord1);
-}
-
-.customers-table td.numeric {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-
-.customers-table tr:hover {
-    background: var(--nord6);
-}
-
-/* Rank Badges */
-.rank-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    font-weight: 600;
-    font-size: 12px;
-}
-
-.rank-top10 {
-    background: rgba(191, 97, 106, 0.15);
-    color: var(--nord11);
-    border: 2px solid var(--nord11);
-}
-
-.rank-top20 {
-    background: rgba(235, 203, 139, 0.15);
-    color: #b58900;
-    border: 2px solid var(--nord13);
-}
-
-.rank-other {
-    background: var(--nord6);
-    color: var(--nord3);
-    border: 2px solid var(--nord4);
-}
-
-/* Revenue Bar */
-.revenue-bar-container {
-    height: 24px;
-    background: var(--nord5);
-    border-radius: 4px;
-    overflow: hidden;
-    min-width: 200px;
-}
-
-.revenue-bar {
-    height: 100%;
-    background: linear-gradient(90deg, var(--nord10), var(--nord8));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 11px;
-    font-weight: 600;
-    min-width: 40px;
-}
-
-/* Cumulative Warning */
-.cumulative-warning {
-    color: var(--nord13);
-    font-weight: 600;
-}
-
-/* Insights Grid */
-.insights-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 16px;
-    margin-top: 32px;
-}
-
-.insight-card {
-    background: white;
-    border: 1px solid var(--nord4);
-    border-radius: 4px;
-    padding: 20px;
-}
-
-.insight-card.healthy {
-    border-left: 4px solid var(--nord14);
-}
-
-.insight-card.warning {
-    border-left: 4px solid var(--nord11);
-}
-
-.insight-title {
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--nord0);
-    margin-bottom: 12px;
-}
-
-.insight-title.healthy { color: var(--nord14); }
-.insight-title.warning { color: var(--nord11); }
-
-.insight-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.insight-list li {
-    padding: 6px 0;
-    font-size: 13px;
-    color: var(--nord2);
-    border-bottom: 1px solid var(--nord5);
-}
-
-.insight-list li:last-child {
-    border-bottom: none;
-}
-
-/* Table Footer */
-.table-footer {
-    padding: 12px 16px;
-    background: var(--nord6);
-    border: 1px solid var(--nord4);
-    border-top: none;
-    font-size: 12px;
-    color: var(--nord3);
-}
-
-/* Scrollable table container */
-.table-scroll {
-    max-height: 500px;
-    overflow-y: auto;
-}
-
-/* No data alert */
-.no-data-alert {
-    background: rgba(235, 203, 139, 0.15);
-    border: 1px solid var(--nord13);
-    border-left: 4px solid var(--nord13);
-    padding: 16px 20px;
-    border-radius: 4px;
-    margin-bottom: 24px;
-}
-
-.no-data-alert h3 {
-    color: #b58900;
-    font-size: 14px;
-    margin: 0 0 8px 0;
-}
-
-.no-data-alert p {
-    color: var(--nord2);
-    font-size: 13px;
-    margin: 0;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .metrics-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .hhi-levels {
-        grid-template-columns: 1fr;
-    }
-    
-    .concentration-controls {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .control-group {
-        width: 100%;
-    }
-    
-    .revenue-bar-container {
-        min-width: 120px;
-    }
-}
-</style>
+{% block pricing_header_extra %}
+<span class="badge bg-primary dimension-badge">{{ year }}</span>
 {% endblock %}
 
-{% block content %}
-<!-- Controls -->
-<div class="concentration-controls">
-    <form method="GET" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; width: 100%;">
-        <div class="control-group" style="flex: 1;">
-            <label for="year">Analysis Year</label>
-            <select name="year" id="year">
-                {% for y in available_years %}
-                <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
-                {% endfor %}
+{% block pricing_content %}
+{# Controls - using existing card/form classes #}
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <form method="GET" class="row g-3">
+          <div class="col-md-4">
+            <label for="year" class="form-label">Analysis Year</label>
+            <select name="year" id="year" class="form-select">
+              {% for y in available_years %}
+              <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
             </select>
-        </div>
-        <button type="submit" class="apply-btn">Update Analysis</button>
-    </form>
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-arrow-clockwise"></i> Update Analysis
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% if not metrics %}
-<!-- No Data Message -->
-<div class="no-data-alert">
-    <h3>⚠️ No Concentration Data Available</h3>
-    <p>No revenue data found for {{ year }}. Try selecting a different year with closed months.</p>
+{# No Data - using existing alert classes #}
+<div class="row">
+  <div class="col-12">
+    <div class="alert alert-warning">
+      <h5 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> No Concentration Data Available</h5>
+      <p class="mb-0">No revenue data found for {{ year }}. Try selecting a different year with closed months.</p>
+    </div>
+  </div>
 </div>
 {% else %}
 
-<!-- Key Metrics -->
-<div class="metrics-grid">
-    <div class="metric-card hhi-card">
-        <div class="metric-label">Herfindahl Index (HHI)</div>
-        <div class="metric-value">{{ metrics.hhi_formatted }}</div>
-        <span class="risk-badge {% if metrics.herfindahl_index > 0.25 %}risk-high{% elif metrics.herfindahl_index > 0.15 %}risk-moderate{% else %}risk-low{% endif %}">
-            {{ metrics.concentration_risk }}
-        </span>
-        <div class="metric-sublabel" style="margin-top: 12px; font-size: 11px;">
-            Lower values = better diversification
-        </div>
+{# Key Metrics - using existing stats-row classes #}
+<div class="stats-row">
+  <div class="stat-card {{ 'negative' if metrics.herfindahl_index > 0.25 else ('neutral' if metrics.herfindahl_index > 0.15 else 'positive') }}">
+    <div class="stat-value">{{ metrics.hhi_formatted }}</div>
+    <div class="stat-label">Herfindahl Index (HHI)</div>
+    <div class="stat-change">
+      <span class="badge {{ 'bg-danger' if metrics.herfindahl_index > 0.25 else ('bg-warning' if metrics.herfindahl_index > 0.15 else 'bg-success') }}">
+        {{ metrics.concentration_risk }}
+      </span>
     </div>
-    
-    <div class="metric-card">
-        <div class="metric-label">Top 10 Customers</div>
-        <div class="metric-value" style="color: var(--nord11);">{{ metrics.top_10_percentage|round(1) }}%</div>
-        <div class="metric-sublabel">of total revenue</div>
-        <div class="metric-subvalue">${{ (metrics.top_10_revenue / 1000)|round(1) }}K</div>
-    </div>
-    
-    <div class="metric-card">
-        <div class="metric-label">Top 20 Customers</div>
-        <div class="metric-value" style="color: #b58900;">{{ metrics.top_20_percentage|round(1) }}%</div>
-        <div class="metric-sublabel">of total revenue</div>
-        <div class="metric-subvalue">${{ (metrics.top_20_revenue / 1000)|round(1) }}K</div>
-    </div>
-    
-    <div class="metric-card">
-        <div class="metric-label">Total Customer Base</div>
-        <div class="metric-value">{{ metrics.total_customers }}</div>
-        <div class="metric-sublabel">active customers</div>
-        <div class="metric-subvalue">${{ (metrics.total_revenue / 1000)|round(1) }}K total</div>
-    </div>
+  </div>
+  
+  <div class="stat-card">
+    <div class="stat-value text-danger">{{ metrics.top_10_percentage|round(1) }}%</div>
+    <div class="stat-label">Top 10 Customers</div>
+    <div class="stat-change">${{ (metrics.top_10_revenue / 1000)|round(1) }}K</div>
+  </div>
+  
+  <div class="stat-card">
+    <div class="stat-value text-warning">{{ metrics.top_20_percentage|round(1) }}%</div>
+    <div class="stat-label">Top 20 Customers</div>
+    <div class="stat-change">${{ (metrics.top_20_revenue / 1000)|round(1) }}K</div>
+  </div>
+  
+  <div class="stat-card neutral">
+    <div class="stat-value">{{ metrics.total_customers }}</div>
+    <div class="stat-label">Active Customers</div>
+    <div class="stat-change">${{ (metrics.total_revenue / 1000)|round(1) }}K total</div>
+  </div>
 </div>
 
-<!-- HHI Guide -->
-<div class="hhi-guide">
-    <div class="hhi-guide-title">📊 Understanding the Herfindahl-Hirschman Index (HHI)</div>
-    <div class="hhi-guide-text">
-        The HHI measures market concentration by summing the squares of each customer's market share. 
-        It ranges from near 0 (perfect diversification) to 1 (monopoly).
+{# HHI Guide - using existing card classes #}
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title"><i class="bi bi-info-circle"></i> Understanding the Herfindahl-Hirschman Index</h5>
+        <p class="card-text mb-3">
+          HHI measures concentration by summing squared market shares. Range: 0 (perfect diversity) to 1 (monopoly).
+        </p>
+        <div class="row">
+          <div class="col-md-4">
+            <div class="alert alert-success mb-0 py-2">
+              <strong>HHI &lt; 0.15: Well Diversified</strong>
+              <br><small>Low concentration risk</small>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="alert alert-warning mb-0 py-2">
+              <strong>HHI 0.15-0.25: Moderate Risk</strong>
+              <br><small>Monitor top customers</small>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="alert mb-0 py-2" style="background: rgba(191, 97, 106, 0.15); border-color: var(--nord11);">
+              <strong class="text-danger">HHI &gt; 0.25: High Risk</strong>
+              <br><small>Revenue heavily dependent on few</small>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="hhi-levels">
-        <div class="hhi-level low">
-            <div class="hhi-level-title">HHI &lt; 0.15: Well Diversified</div>
-            <div class="hhi-level-desc">Low concentration risk. Healthy customer portfolio with no dangerous dependencies.</div>
-        </div>
-        <div class="hhi-level moderate">
-            <div class="hhi-level-title">HHI 0.15-0.25: Moderate Risk</div>
-            <div class="hhi-level-desc">Some concentration present. Monitor top customers closely and work on diversification.</div>
-        </div>
-        <div class="hhi-level high">
-            <div class="hhi-level-title">HHI &gt; 0.25: High Risk</div>
-            <div class="hhi-level-desc">Significant concentration. Revenue heavily dependent on few customers.</div>
-        </div>
-    </div>
+  </div>
 </div>
 
-<!-- Trend Chart -->
+{# Trend Chart #}
 {% if trend and trend|length > 1 %}
-<div class="chart-container">
-    <div class="chart-title">📈 Concentration Trend Over Time</div>
-    <div class="chart" style="height: 300px;">
-        <canvas id="concentrationTrendChart"></canvas>
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-graph-up"></i> Concentration Trend Over Time</h5>
+      </div>
+      <div class="card-body">
+        <div class="chart-container">
+          <canvas id="concentrationTrendChart"></canvas>
+        </div>
+        <p class="text-muted text-center small mt-2">
+          <i class="bi bi-info-circle"></i> Lower HHI values indicate improving diversification
+        </p>
+      </div>
     </div>
-    <div class="annotation">Lower HHI values indicate improving diversification</div>
+  </div>
 </div>
 {% endif %}
 
-<!-- Top Customers Table -->
-<div class="customers-section">
-    <div class="section-header success">
-        👥 Top 50 Customers by Revenue Contribution
-    </div>
-    <div class="customers-table-wrapper">
-        <div class="table-scroll">
-            <table class="customers-table">
-                <thead>
-                    <tr>
-                        <th style="width: 70px; text-align: center;">Rank</th>
-                        <th>Customer Name</th>
-                        <th class="numeric" style="width: 120px;">Revenue</th>
-                        <th style="width: 280px;">% of Total</th>
-                        <th class="numeric" style="width: 100px;">Cumulative</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% set cumulative = namespace(value=0) %}
-                    {% for customer in top_customers %}
-                    {% set cumulative.value = cumulative.value + customer.percentage_of_total %}
-                    <tr>
-                        <td style="text-align: center;">
-                            <span class="rank-badge {% if customer.rank <= 10 %}rank-top10{% elif customer.rank <= 20 %}rank-top20{% else %}rank-other{% endif %}">
-                                {{ customer.rank }}
-                            </span>
-                        </td>
-                        <td><strong>{{ customer.customer_name }}</strong></td>
-                        <td class="numeric">{{ customer.revenue_formatted }}</td>
-                        <td>
-                            <div class="revenue-bar-container">
-                                <div class="revenue-bar" style="width: {{ [customer.percentage_of_total * 10, 100]|min }}%;">
-                                    {{ customer.percentage_formatted }}
-                                </div>
-                            </div>
-                        </td>
-                        <td class="numeric {% if cumulative.value >= 80 %}cumulative-warning{% endif %}">
-                            {{ cumulative.value|round(1) }}%
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+{# Top Customers Table - using existing table classes #}
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-people"></i> Top 50 Customers by Revenue</h5>
+        <button class="btn btn-sm btn-outline-light" onclick="exportTableToCSV()">
+          <i class="bi bi-download"></i> Export
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 500px;">
+          <table class="table table-hover mb-0" id="customersTable">
+            <thead class="table-light" style="position: sticky; top: 0;">
+              <tr>
+                <th style="width: 70px;" class="text-center">Rank</th>
+                <th>Customer</th>
+                <th class="text-end" style="width: 120px;">Revenue</th>
+                <th style="width: 220px;">% of Total</th>
+                <th class="text-end" style="width: 100px;">Cumulative</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set cumulative = namespace(value=0) %}
+              {% for customer in top_customers %}
+              {% set cumulative.value = cumulative.value + customer.percentage_of_total %}
+              <tr>
+                <td class="text-center">
+                  <span class="rank-badge {{ 'rank-top10' if customer.rank <= 10 else ('rank-top20' if customer.rank <= 20 else 'rank-other') }}">
+                    {{ customer.rank }}
+                  </span>
+                </td>
+                <td><strong>{{ customer.customer_name }}</strong></td>
+                <td class="text-end">{{ customer.revenue_formatted }}</td>
+                <td>
+                  <div class="revenue-bar-container">
+                    <div class="revenue-bar" style="width: {{ [customer.percentage_of_total * 10, 100]|min }}%;">
+                      {{ customer.percentage_formatted }}
+                    </div>
+                  </div>
+                </td>
+                <td class="text-end {{ 'text-warning fw-bold' if cumulative.value >= 80 else '' }}">
+                  {{ cumulative.value|round(1) }}%
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
-    </div>
-    <div class="table-footer">
+      </div>
+      <div class="card-footer">
         <strong>80/20 Rule:</strong> 
         {% set top_for_80 = namespace(count=0, cumulative=0) %}
         {% for customer in top_customers %}
-            {% set top_for_80.cumulative = top_for_80.cumulative + customer.percentage_of_total %}
-            {% if top_for_80.cumulative < 80 %}
-                {% set top_for_80.count = top_for_80.count + 1 %}
-            {% endif %}
+          {% set top_for_80.cumulative = top_for_80.cumulative + customer.percentage_of_total %}
+          {% if top_for_80.cumulative < 80 %}
+            {% set top_for_80.count = top_for_80.count + 1 %}
+          {% endif %}
         {% endfor %}
         Top {{ top_for_80.count }} customers represent 80% of revenue
+      </div>
     </div>
+  </div>
 </div>
 
-<!-- Business Insights -->
-<div class="insights-grid">
-    <div class="insight-card healthy">
-        <div class="insight-title healthy">✓ Healthy Indicators</div>
-        <ul class="insight-list">
-            <li>HHI below 0.15 indicates excellent diversification</li>
-            <li>Top 10 customers representing less than 30% of revenue</li>
-            <li>No single customer exceeding 10% of total revenue</li>
-            <li>Steady or growing total customer count year-over-year</li>
-            <li>Declining or stable HHI trend over time</li>
+{# Insights - using existing card classes with border styling #}
+<div class="row g-4">
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100 border-start border-success border-4">
+      <div class="card-body">
+        <h5 class="card-title text-success"><i class="bi bi-check-circle"></i> Healthy Indicators</h5>
+        <ul class="list-unstyled mb-0">
+          <li class="mb-2"><i class="bi bi-check text-success"></i> HHI below 0.15 indicates excellent diversification</li>
+          <li class="mb-2"><i class="bi bi-check text-success"></i> Top 10 customers representing less than 30% of revenue</li>
+          <li class="mb-2"><i class="bi bi-check text-success"></i> No single customer exceeding 10% of total revenue</li>
+          <li class="mb-2"><i class="bi bi-check text-success"></i> Steady or growing total customer count YoY</li>
         </ul>
+      </div>
     </div>
-    
-    <div class="insight-card warning">
-        <div class="insight-title warning">⚠ Warning Signs</div>
-        <ul class="insight-list">
-            <li>HHI above 0.25 signals dangerous concentration risk</li>
-            <li>Top 3 customers exceeding 50% of total revenue</li>
-            <li>Any single customer representing over 15% of revenue</li>
-            <li>Increasing HHI trend (concentration getting worse)</li>
-            <li>Heavy reliance on single industry or customer segment</li>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100 border-start border-danger border-4">
+      <div class="card-body">
+        <h5 class="card-title text-danger"><i class="bi bi-exclamation-triangle"></i> Warning Signs</h5>
+        <ul class="list-unstyled mb-0">
+          <li class="mb-2"><i class="bi bi-x text-danger"></i> HHI above 0.25 signals dangerous concentration</li>
+          <li class="mb-2"><i class="bi bi-x text-danger"></i> Top 3 customers exceeding 50% of total revenue</li>
+          <li class="mb-2"><i class="bi bi-x text-danger"></i> Any single customer representing over 15% of revenue</li>
+          <li class="mb-2"><i class="bi bi-x text-danger"></i> Increasing HHI trend over time</li>
         </ul>
+      </div>
     </div>
+  </div>
 </div>
 
 {% endif %}
 {% endblock %}
 
-{% block extra_js %}
+{% block pricing_scripts %}
 {% if trend and trend|length > 1 %}
 <script>
-    const trendData = {
-        labels: {{ trend|map(attribute='period')|list|tojson }},
-        datasets: [{
-            label: 'Herfindahl Index (HHI)',
-            data: {{ trend|map(attribute='herfindahl_index')|list|tojson }},
-            borderColor: '#5e81ac',
-            backgroundColor: 'rgba(94, 129, 172, 0.1)',
-            borderWidth: 3,
-            tension: 0.4,
-            fill: true,
-            pointRadius: 6,
-            pointHoverRadius: 8,
-            pointBackgroundColor: '#5e81ac',
-            pointBorderColor: '#fff',
-            pointBorderWidth: 2
-        }]
-    };
-    
-    const ctx = document.getElementById('concentrationTrendChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: trendData,
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { 
-                    display: true,
-                    position: 'top'
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(46, 52, 64, 0.95)',
-                    padding: 12,
-                    callbacks: {
-                        label: function(context) {
-                            let label = 'HHI: ' + context.parsed.y.toFixed(4);
-                            let risk = '';
-                            if (context.parsed.y > 0.25) risk = ' (High Risk)';
-                            else if (context.parsed.y > 0.15) risk = ' (Moderate Risk)';
-                            else risk = ' (Well Diversified)';
-                            return label + risk;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: { grid: { display: false } },
-                y: {
-                    beginAtZero: true,
-                    max: 0.5,
-                    ticks: {
-                        callback: function(value) { return value.toFixed(2); }
-                    },
-                    grid: { color: 'rgba(0, 0, 0, 0.05)' }
-                }
-            }
+const trendData = {
+  labels: {{ trend|map(attribute='period')|list|tojson }},
+  datasets: [{
+    label: 'Herfindahl Index',
+    data: {{ trend|map(attribute='herfindahl_index')|list|tojson }},
+    borderColor: '#5e81ac',
+    backgroundColor: 'rgba(94, 129, 172, 0.1)',
+    borderWidth: 3,
+    tension: 0.4,
+    fill: true,
+    pointRadius: 6,
+    pointBackgroundColor: '#5e81ac',
+    pointBorderColor: '#fff',
+    pointBorderWidth: 2
+  }]
+};
+
+new Chart(document.getElementById('concentrationTrendChart'), {
+  type: 'line',
+  data: trendData,
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            let risk = ctx.parsed.y > 0.25 ? ' (High Risk)' : ctx.parsed.y > 0.15 ? ' (Moderate)' : ' (Well Diversified)';
+            return 'HHI: ' + ctx.parsed.y.toFixed(4) + risk;
+          }
         }
-    });
+      }
+    },
+    scales: {
+      x: { grid: { display: false } },
+      y: { beginAtZero: true, max: 0.5, ticks: { callback: v => v.toFixed(2) } }
+    }
+  }
+});
 </script>
 {% endif %}
+
+<script>
+function exportTableToCSV() {
+  const table = document.getElementById('customersTable');
+  if (!table) return;
+  let csv = [];
+  table.querySelectorAll('tr').forEach(row => {
+    const cells = [];
+    row.querySelectorAll('th, td').forEach(cell => {
+      cells.push('"' + cell.textContent.trim().replace(/"/g, '""') + '"');
+    });
+    csv.push(cells.join(','));
+  });
+  const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'concentration_{{ year }}.csv';
+  a.click();
+}
+</script>
 {% endblock %}
