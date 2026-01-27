@@ -1352,3 +1352,576 @@
     height: 400px;
     width: 100%;
 }
+/* =============================================================================
+   PRICING TAB NAVIGATION - APPEND TO EXISTING pricing.css
+   
+   Add these styles to the END of your existing pricing.css file.
+   DO NOT replace the existing file - these are additions only.
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   Tab Navigation System
+   ----------------------------------------------------------------------------- */
+.pricing-tabs {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px;
+  background: var(--nord6);
+  border: 1px solid var(--nord4);
+  border-radius: 4px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.pricing-tab-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pricing-tab-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--nord3);
+  padding-right: 8px;
+  border-right: 1px solid var(--nord4);
+  margin-right: 4px;
+}
+
+.pricing-tab-items {
+  display: flex;
+  gap: 4px;
+}
+
+.pricing-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--nord2);
+  text-decoration: none;
+  background: white;
+  border: 1px solid var(--nord4);
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.pricing-tab:hover {
+  background: var(--nord5);
+  border-color: var(--nord10);
+  color: var(--nord10);
+}
+
+.pricing-tab.active {
+  background: var(--nord10);
+  border-color: var(--nord10);
+  color: white;
+}
+
+.pricing-tab-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pricing-tab-group-end {
+  margin-left: auto;
+}
+
+.pricing-tab-home {
+  background: transparent;
+  border-color: transparent;
+}
+
+.pricing-tab-home:hover {
+  background: var(--nord5);
+}
+
+/* -----------------------------------------------------------------------------
+   Pricing Layout Page Header
+   ----------------------------------------------------------------------------- */
+.pricing-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pricing-page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--nord0);
+}
+
+.pricing-page-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--nord3);
+}
+
+.pricing-page-header-extra {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* -----------------------------------------------------------------------------
+   Pricing Period Selector Wrapper
+   ----------------------------------------------------------------------------- */
+.pricing-period-selector {
+  margin-bottom: 24px;
+}
+
+/* -----------------------------------------------------------------------------
+   Pricing Content Area
+   ----------------------------------------------------------------------------- */
+.pricing-content {
+  /* Container for main content - no special styling needed */
+}
+
+/* -----------------------------------------------------------------------------
+   Unified Control Forms (supplements existing .filters-bar)
+   ----------------------------------------------------------------------------- */
+.pricing-controls {
+  background: var(--nord6);
+  border: 1px solid var(--nord4);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.pricing-controls-form {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.pricing-control-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+}
+
+.pricing-control-group label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--nord3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.pricing-control-group select,
+.pricing-control-group input {
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid var(--nord4);
+  border-radius: 3px;
+  background: white;
+}
+
+.pricing-control-group select:focus,
+.pricing-control-group input:focus {
+  outline: none;
+  border-color: var(--nord10);
+  box-shadow: 0 0 0 3px rgba(94, 129, 172, 0.15);
+}
+
+/* -----------------------------------------------------------------------------
+   Unified Buttons (supplements existing .btn classes)
+   ----------------------------------------------------------------------------- */
+.pricing-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pricing-btn-primary {
+  background: var(--nord10);
+  color: white;
+}
+
+.pricing-btn-primary:hover {
+  background: var(--nord9);
+}
+
+.pricing-btn-secondary {
+  background: var(--nord5);
+  color: var(--nord2);
+  border: 1px solid var(--nord4);
+}
+
+.pricing-btn-secondary:hover {
+  background: var(--nord4);
+}
+
+.pricing-btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* -----------------------------------------------------------------------------
+   Unified Stat Cards (supplements existing .stat-card)
+   ----------------------------------------------------------------------------- */
+.pricing-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.pricing-stat-card {
+  background: white;
+  border: 1px solid var(--nord4);
+  border-left: 3px solid var(--nord10);
+  border-radius: 0 4px 4px 0;
+  padding: 16px;
+}
+
+.pricing-stat-card.positive { border-left-color: var(--nord14); }
+.pricing-stat-card.negative { border-left-color: var(--nord11); }
+.pricing-stat-card.warning { border-left-color: var(--nord13); }
+.pricing-stat-card.neutral { border-left-color: var(--nord3); }
+
+.pricing-stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--nord0);
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-stat-label {
+  font-size: 11px;
+  color: var(--nord3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pricing-stat-change {
+  font-size: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--nord5);
+}
+
+.pricing-stat-change.positive { color: var(--nord14); }
+.pricing-stat-change.negative { color: var(--nord11); }
+
+/* -----------------------------------------------------------------------------
+   Unified Cards (supplements existing .card classes)
+   ----------------------------------------------------------------------------- */
+.pricing-card {
+  background: white;
+  border: 1px solid var(--nord4);
+  border-radius: 4px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.pricing-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--nord6);
+  border-bottom: 1px solid var(--nord4);
+}
+
+.pricing-card-header.primary { background: var(--nord10); color: white; }
+.pricing-card-header.success { background: var(--nord14); color: white; }
+.pricing-card-header.warning { background: var(--nord13); color: var(--nord0); }
+.pricing-card-header.danger { background: var(--nord11); color: white; }
+
+.pricing-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.pricing-card-body {
+  padding: 16px;
+}
+
+.pricing-card-footer {
+  padding: 8px 16px;
+  background: var(--nord6);
+  border-top: 1px solid var(--nord4);
+  font-size: 12px;
+  color: var(--nord3);
+}
+
+/* -----------------------------------------------------------------------------
+   Unified Tables (supplements existing .data-table)
+   ----------------------------------------------------------------------------- */
+.pricing-table-wrapper {
+  overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pricing-table th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  padding: 12px;
+  background: white;
+  border-bottom: 2px solid var(--nord0);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--nord2);
+  z-index: 10;
+}
+
+.pricing-table th.numeric { text-align: right; }
+
+.pricing-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--nord5);
+  color: var(--nord1);
+}
+
+.pricing-table td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-table tr:hover { background: var(--nord6); }
+
+/* -----------------------------------------------------------------------------
+   Unified Badges (supplements existing .badge classes)
+   ----------------------------------------------------------------------------- */
+.pricing-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+}
+
+.pricing-badge-primary { background: rgba(94, 129, 172, 0.15); color: var(--nord10); }
+.pricing-badge-success { background: rgba(163, 190, 140, 0.2); color: var(--nord14); }
+.pricing-badge-warning { background: rgba(235, 203, 139, 0.2); color: #b58900; }
+.pricing-badge-danger { background: rgba(191, 97, 106, 0.2); color: var(--nord11); }
+.pricing-badge-neutral { background: var(--nord5); color: var(--nord3); }
+
+/* -----------------------------------------------------------------------------
+   Unified Alerts (supplements existing .alert classes)
+   ----------------------------------------------------------------------------- */
+.pricing-alert {
+  padding: 16px;
+  border-radius: 4px;
+  margin-bottom: 24px;
+  border-left: 4px solid;
+}
+
+.pricing-alert-info {
+  background: rgba(94, 129, 172, 0.1);
+  border-left-color: var(--nord10);
+}
+
+.pricing-alert-warning {
+  background: rgba(235, 203, 139, 0.15);
+  border-left-color: var(--nord13);
+}
+
+.pricing-alert-danger {
+  background: rgba(191, 97, 106, 0.1);
+  border-left-color: var(--nord11);
+}
+
+.pricing-alert-success {
+  background: rgba(163, 190, 140, 0.1);
+  border-left-color: var(--nord14);
+}
+
+.pricing-alert-title {
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.pricing-alert-text {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* -----------------------------------------------------------------------------
+   Charts (unified)
+   ----------------------------------------------------------------------------- */
+.pricing-chart-container {
+  height: 300px;
+  position: relative;
+}
+
+.pricing-chart-annotation {
+  text-align: center;
+  font-size: 12px;
+  color: var(--nord3);
+  margin-top: 8px;
+}
+
+/* -----------------------------------------------------------------------------
+   HHI Guide (Concentration-specific)
+   ----------------------------------------------------------------------------- */
+.pricing-hhi-guide {
+  background: var(--nord6);
+  border: 1px solid var(--nord4);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.pricing-hhi-levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.pricing-hhi-level {
+  padding: 8px;
+  border-radius: 3px;
+  border-left: 3px solid;
+}
+
+.pricing-hhi-level.low { 
+  background: rgba(163, 190, 140, 0.1); 
+  border-left-color: var(--nord14); 
+}
+.pricing-hhi-level.moderate { 
+  background: rgba(235, 203, 139, 0.1); 
+  border-left-color: var(--nord13); 
+}
+.pricing-hhi-level.high { 
+  background: rgba(191, 97, 106, 0.1); 
+  border-left-color: var(--nord11); 
+}
+
+/* -----------------------------------------------------------------------------
+   Insights Grid (two-column layout)
+   ----------------------------------------------------------------------------- */
+.pricing-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.pricing-insight-card {
+  background: white;
+  border: 1px solid var(--nord4);
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.pricing-insight-card.healthy { border-left: 4px solid var(--nord14); }
+.pricing-insight-card.warning { border-left: 4px solid var(--nord11); }
+
+.pricing-insight-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.pricing-insight-title.healthy { color: var(--nord14); }
+.pricing-insight-title.warning { color: var(--nord11); }
+
+.pricing-insight-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.pricing-insight-list li {
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--nord2);
+  border-bottom: 1px solid var(--nord5);
+}
+
+.pricing-insight-list li:last-child { border-bottom: none; }
+
+/* -----------------------------------------------------------------------------
+   Tab Navigation - Responsive
+   ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .pricing-tabs {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .pricing-tab-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .pricing-tab-group-label {
+    border-right: none;
+    border-bottom: 1px solid var(--nord4);
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+  }
+  
+  .pricing-tab-items {
+    flex-wrap: wrap;
+  }
+  
+  .pricing-tab-group-end {
+    margin-left: 0;
+  }
+  
+  .pricing-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .pricing-controls-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .pricing-control-group {
+    width: 100%;
+  }
+  
+  .pricing-chart-container {
+    height: 250px;
+  }
+  
+  .pricing-insights-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .pricing-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .pricing-hhi-levels {
+    grid-template-columns: 1fr;
+  }
+}

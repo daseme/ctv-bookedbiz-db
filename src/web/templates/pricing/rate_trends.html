@@ -1,12 +1,12 @@
-{% extends "base.html" %}
+{% extends "pricing/_pricing_layout.html" %}
 
-{% block title %}Rate Trends Analysis{% endblock %}
+{% block pricing_titletitle %}Rate Trends Analysis{% endblock %}
 
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
 {% endblock %}
 
-{% block content %}
+{% block pricing_content %}
 <div class="container-fluid">
     <!-- Header -->
     <div class="row mb-4">

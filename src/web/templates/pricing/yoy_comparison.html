@@ -1,12 +1,10 @@
-{% extends "base.html" %}
+{% extends "pricing/_pricing_layout.html" %}
 
-{% block title %}Year-over-Year Comparison{% endblock %}
+{% block pricing_title %}Year-over-Year Comparison{% endblock %}
 
-{% block extra_styles %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
-{% endblock %}
 
-{% block content %}
+
+{% block pricing_content %}
 <div class="container-fluid">
     <!-- Header -->
     <div class="row mb-4">
