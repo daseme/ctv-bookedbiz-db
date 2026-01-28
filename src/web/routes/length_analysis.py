@@ -183,10 +183,44 @@ def by_customer():
             ORDER BY total_revenue DESC
             LIMIT 50
         """, [revenue_type] + year_param + [min_spots]).fetchall()
+        
+        # Get rate breakdown by length for each customer
+        customer_names = [row['customer_name'] for row in customer_mix]
+        customer_length_rates = {}
+        if customer_names:
+            placeholders = ','.join(['?' for _ in customer_names])
+            length_breakdown = conn.execute(f"""
+                SELECT 
+                    customer_name,
+                    length_bucket,
+                    bucket_sort_order,
+                    COUNT(*) AS spots,
+                    ROUND(AVG(gross_rate), 2) AS avg_rate,
+                    ROUND(AVG(margin_pct), 2) AS avg_margin
+                FROM v_spot_length_analysis
+                WHERE revenue_type = ?
+                  AND customer_name IN ({placeholders})
+                  {year_filter}
+                GROUP BY customer_name, length_bucket, bucket_sort_order
+                HAVING COUNT(*) >= 5
+                ORDER BY customer_name, bucket_sort_order
+            """, [revenue_type] + customer_names + year_param).fetchall()
+            
+            for row in length_breakdown:
+                cust = row['customer_name']
+                if cust not in customer_length_rates:
+                    customer_length_rates[cust] = []
+                customer_length_rates[cust].append({
+                    'bucket': row['length_bucket'],
+                    'spots': row['spots'],
+                    'avg_rate': row['avg_rate'],
+                    'avg_margin': row['avg_margin']
+                })
     
     return render_template(
         'length_analysis/by_customer.html',
         customer_mix=customer_mix,
+        customer_length_rates=customer_length_rates,
         selected_revenue_type=revenue_type,
         available_years=available_years,
         selected_year=year,
