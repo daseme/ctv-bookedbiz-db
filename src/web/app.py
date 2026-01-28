@@ -19,6 +19,7 @@ from src.web.blueprints import initialize_blueprints
 from src.web.routes.planning import planning_bp
 from src.web.routes.pricing_trends_routes import pricing_trends_bp
 from src.web.utils.auth import login_manager
+from src.web.routes.length_analysis import length_analysis_bp
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,20 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.info("Pricing analysis blueprint registered successfully")
     except Exception as e:
         logger.error(f"Failed to register pricing blueprint: {e}")
+
+    try:
+        from src.web.routes.reports import reports_bp
+        app.register_blueprint(reports_bp)
+        logger.info("Reports blueprint registered successfully")
+    except Exception as e:
+        logger.error(f"Failed to register reports blueprint: {e}")
+
+    try:
+        from src.web.routes.length_analysis import length_analysis_bp
+        app.register_blueprint(length_analysis_bp)
+        logger.info("Length analysis blueprint registered successfully")
+    except Exception as e:
+        logger.error(f"Failed to register length analysis blueprint: {e}")
 
 
     # Initialize decay system check (non-blocking) - FIXED for newer Flask
