@@ -21,13 +21,14 @@ def dashboard():
     
     # Build year filter for SQL
     year_filter = ""
+    year_filter_v = ""
     year_param = []
     if year:
         year_filter = "AND broadcast_month LIKE ?"
-        year_param = [f"%-{year[-2:]}"]  # Convert 2024 to %-24
+        year_filter_v = "AND v.broadcast_month LIKE ?"
+        year_param = [f"%-{year[-2:]}"]
     
     with db.connection() as conn:
-        # Helper to convert Row to dict
         def rows_to_dicts(rows):
             return [dict(row) for row in rows]
         
@@ -118,6 +119,50 @@ def dashboard():
                     'spot_count': row['spot_count'],
                     'margin_pct': row['avg_margin_pct']
                 })
+
+        # Top rate combinations (language + market)
+        top_rate_combos = conn.execute(f"""
+            SELECT 
+                l.language_group,
+                m.market_code,
+                COUNT(*) AS spots,
+                ROUND(AVG(v.gross_rate), 2) AS avg_rate,
+                ROUND(AVG(v.margin_pct), 2) AS avg_margin,
+                ROUND(SUM(v.gross_rate), 0) AS total_revenue
+            FROM spots s
+            JOIN v_spot_length_analysis v ON s.spot_id = v.spot_id
+            JOIN languages l ON s.language_code = l.language_code
+            JOIN markets m ON s.market_id = m.market_id
+            WHERE v.revenue_type = ?
+              AND l.language_group NOT IN ('Review Required', 'Multi-Language')
+              {year_filter_v}
+            GROUP BY l.language_group, m.market_code
+            HAVING COUNT(*) >= 50
+            ORDER BY avg_rate DESC
+            LIMIT 15
+        """, [revenue_type] + year_param).fetchall()
+        
+        # Bottom rate combos (opportunity gaps)
+        bottom_rate_combos = conn.execute(f"""
+            SELECT 
+                l.language_group,
+                m.market_code,
+                COUNT(*) AS spots,
+                ROUND(AVG(v.gross_rate), 2) AS avg_rate,
+                ROUND(AVG(v.margin_pct), 2) AS avg_margin,
+                ROUND(SUM(v.gross_rate), 0) AS total_revenue
+            FROM spots s
+            JOIN v_spot_length_analysis v ON s.spot_id = v.spot_id
+            JOIN languages l ON s.language_code = l.language_code
+            JOIN markets m ON s.market_id = m.market_id
+            WHERE v.revenue_type = ?
+              AND l.language_group NOT IN ('Review Required', 'Multi-Language')
+              {year_filter_v}
+            GROUP BY l.language_group, m.market_code
+            HAVING COUNT(*) >= 50
+            ORDER BY avg_rate ASC
+            LIMIT 10
+        """, [revenue_type] + year_param).fetchall()
     
     return render_template(
         'length_analysis/dashboard.html',
@@ -129,9 +174,195 @@ def dashboard():
         selected_year=year,
         totals=totals,
         rate_ladder=rate_ladder,
-        thirty_sec_rate=thirty_sec_rate
+        thirty_sec_rate=thirty_sec_rate,
+        top_rate_combos=top_rate_combos,
+        bottom_rate_combos=bottom_rate_combos
     )
 
+
+@length_analysis_bp.route('/by-language')
+def by_language():
+    """Length mix analysis by language group."""
+    container = get_container()
+    db = container.get("database_connection")
+    revenue_type = request.args.get('revenue_type', 'Internal Ad Sales')
+    year = request.args.get('year', '')
+    
+    year_filter = ""
+    year_param = []
+    if year:
+        year_filter = "AND v.broadcast_month LIKE ?"
+        year_param = [f"%-{year[-2:]}"]
+    
+    with db.connection() as conn:
+        years = conn.execute("""
+            SELECT DISTINCT '20' || SUBSTR(broadcast_month, 5, 2) AS year
+            FROM v_spot_length_analysis
+            WHERE revenue_type = ?
+            ORDER BY year DESC
+        """, [revenue_type]).fetchall()
+        available_years = [row['year'] for row in years]
+        
+        # Aggregate by language_group, not individual language_code
+        language_mix = conn.execute(f"""
+            SELECT 
+                l.language_group AS language_name,
+                l.language_group AS language_code,
+                l.language_group,
+                COUNT(*) AS total_spots,
+                ROUND(SUM(v.gross_rate), 2) AS total_revenue,
+                ROUND(AVG(v.gross_rate), 2) AS avg_rate,
+                ROUND(AVG(v.margin_pct), 2) AS avg_margin,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = 'Billboard' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_billboard,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = ':15' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_15,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = ':30' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_30,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = ':45' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_45,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = ':60' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_60,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket IN ('Extended', ':120', 'Long-form', 'Program-length') THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_long
+            FROM spots s
+            JOIN v_spot_length_analysis v ON s.spot_id = v.spot_id
+            JOIN languages l ON s.language_code = l.language_code
+            WHERE v.revenue_type = ?
+              AND s.language_code IS NOT NULL
+              AND s.language_code != ''
+              {year_filter}
+            GROUP BY l.language_group
+            ORDER BY total_revenue DESC
+        """, [revenue_type] + year_param).fetchall()
+        
+        # Rate breakdown by length for each language GROUP
+        language_groups = [row['language_group'] for row in language_mix]
+        language_length_rates = {}
+        if language_groups:
+            placeholders = ','.join(['?' for _ in language_groups])
+            length_breakdown = conn.execute(f"""
+                SELECT 
+                    l.language_group AS language_code,
+                    v.length_bucket,
+                    v.bucket_sort_order,
+                    COUNT(*) AS spots,
+                    ROUND(AVG(v.gross_rate), 2) AS avg_rate,
+                    ROUND(AVG(v.margin_pct), 2) AS avg_margin
+                FROM spots s
+                JOIN v_spot_length_analysis v ON s.spot_id = v.spot_id
+                JOIN languages l ON s.language_code = l.language_code
+                WHERE v.revenue_type = ?
+                  AND l.language_group IN ({placeholders})
+                  {year_filter}
+                GROUP BY l.language_group, v.length_bucket, v.bucket_sort_order
+                HAVING COUNT(*) >= 5
+                ORDER BY l.language_group, v.bucket_sort_order
+            """, [revenue_type] + language_groups + year_param).fetchall()
+            
+            for row in length_breakdown:
+                code = row['language_code']
+                if code not in language_length_rates:
+                    language_length_rates[code] = []
+                language_length_rates[code].append({
+                    'bucket': row['length_bucket'],
+                    'spots': row['spots'],
+                    'avg_rate': row['avg_rate'],
+                    'avg_margin': row['avg_margin']
+                })
+    
+    return render_template(
+        'length_analysis/by_language.html',
+        language_mix=language_mix,
+        language_length_rates=language_length_rates,
+        selected_revenue_type=revenue_type,
+        available_years=available_years,
+        selected_year=year
+    )
+
+
+@length_analysis_bp.route('/by-market')
+def by_market():
+    """Length mix analysis by market."""
+    container = get_container()
+    db = container.get("database_connection")
+    revenue_type = request.args.get('revenue_type', 'Internal Ad Sales')
+    year = request.args.get('year', '')
+    
+    # Build year filter for SQL
+    year_filter = ""
+    year_param = []
+    if year:
+        year_filter = "AND v.broadcast_month LIKE ?"
+        year_param = [f"%-{year[-2:]}"]
+    
+    with db.connection() as conn:
+        # Get available years for filter
+        years = conn.execute("""
+            SELECT DISTINCT '20' || SUBSTR(broadcast_month, 5, 2) AS year
+            FROM v_spot_length_analysis
+            WHERE revenue_type = ?
+            ORDER BY year DESC
+        """, [revenue_type]).fetchall()
+        available_years = [row['year'] for row in years]
+        
+        # Summary by market
+        market_mix = conn.execute(f"""
+            SELECT 
+                v.market_code,
+                COUNT(*) AS total_spots,
+                ROUND(SUM(v.gross_rate), 2) AS total_revenue,
+                ROUND(AVG(v.gross_rate), 2) AS avg_rate,
+                ROUND(AVG(v.margin_pct), 2) AS avg_margin,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = 'Billboard' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_billboard,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = ':15' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_15,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = ':30' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_30,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = ':45' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_45,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket = ':60' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_60,
+                ROUND(100.0 * SUM(CASE WHEN v.length_bucket IN ('Extended', ':120', 'Long-form', 'Program-length') THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_long
+            FROM v_spot_length_analysis v
+            WHERE v.revenue_type = ?
+              AND v.market_code IS NOT NULL
+              {year_filter}
+            GROUP BY v.market_code
+            ORDER BY total_revenue DESC
+        """, [revenue_type] + year_param).fetchall()
+        
+        # Get rate breakdown by length for each market
+        market_codes = [row['market_code'] for row in market_mix]
+        market_length_rates = {}
+        if market_codes:
+            placeholders = ','.join(['?' for _ in market_codes])
+            length_breakdown = conn.execute(f"""
+                SELECT 
+                    v.market_code,
+                    v.length_bucket,
+                    v.bucket_sort_order,
+                    COUNT(*) AS spots,
+                    ROUND(AVG(v.gross_rate), 2) AS avg_rate,
+                    ROUND(AVG(v.margin_pct), 2) AS avg_margin
+                FROM v_spot_length_analysis v
+                WHERE v.revenue_type = ?
+                  AND v.market_code IN ({placeholders})
+                  {year_filter}
+                GROUP BY v.market_code, v.length_bucket, v.bucket_sort_order
+                HAVING COUNT(*) >= 5
+                ORDER BY v.market_code, v.bucket_sort_order
+            """, [revenue_type] + market_codes + year_param).fetchall()
+            
+            for row in length_breakdown:
+                code = row['market_code']
+                if code not in market_length_rates:
+                    market_length_rates[code] = []
+                market_length_rates[code].append({
+                    'bucket': row['length_bucket'],
+                    'spots': row['spots'],
+                    'avg_rate': row['avg_rate'],
+                    'avg_margin': row['avg_margin']
+                })
+    
+    return render_template(
+        'length_analysis/by_market.html',
+        market_mix=market_mix,
+        market_length_rates=market_length_rates,
+        selected_revenue_type=revenue_type,
+        available_years=available_years,
+        selected_year=year
+    )
 
 @length_analysis_bp.route('/by-customer')
 def by_customer():
@@ -167,7 +398,6 @@ def by_customer():
                 ROUND(SUM(gross_rate), 2) AS total_revenue,
                 ROUND(AVG(gross_rate), 2) AS avg_rate,
                 ROUND(AVG(margin_pct), 2) AS avg_margin,
-                -- Length mix percentages
                 ROUND(100.0 * SUM(CASE WHEN length_bucket = 'Billboard' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_billboard,
                 ROUND(100.0 * SUM(CASE WHEN length_bucket = ':15' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_15,
                 ROUND(100.0 * SUM(CASE WHEN length_bucket = ':30' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_30,
@@ -234,14 +464,30 @@ def margin_analysis():
     container = get_container()
     db = container.get("database_connection")
     revenue_type = request.args.get('revenue_type', 'Internal Ad Sales')
+    year = request.args.get('year', '')
+    
+    # Build year filter for SQL
+    year_filter = ""
+    year_param = []
+    if year:
+        year_filter = "AND broadcast_month LIKE ?"
+        year_param = [f"%-{year[-2:]}"]
     
     with db.connection() as conn:
-        # Helper to convert Row to dict
         def rows_to_dicts(rows):
             return [dict(row) for row in rows]
         
+        # Get available years for filter
+        years = conn.execute("""
+            SELECT DISTINCT '20' || SUBSTR(broadcast_month, 5, 2) AS year
+            FROM v_spot_length_analysis
+            WHERE revenue_type = ?
+            ORDER BY year DESC
+        """, [revenue_type]).fetchall()
+        available_years = [row['year'] for row in years]
+        
         # Margin distribution by bucket
-        margin_by_bucket_raw = conn.execute("""
+        margin_by_bucket_raw = conn.execute(f"""
             SELECT 
                 length_bucket,
                 bucket_sort_order,
@@ -254,9 +500,10 @@ def margin_analysis():
                 ROUND(MAX(margin_pct), 2) AS max_margin
             FROM v_spot_length_analysis
             WHERE revenue_type = ?
+            {year_filter}
             GROUP BY length_bucket, bucket_sort_order
             ORDER BY bucket_sort_order
-        """, [revenue_type]).fetchall()
+        """, [revenue_type] + year_param).fetchall()
         margin_by_bucket = rows_to_dicts(margin_by_bucket_raw)
         
         # Low margin spots (investigation list)

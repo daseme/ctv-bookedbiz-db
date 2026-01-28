@@ -16,6 +16,10 @@
         <div class="d-flex gap-2">
             <a href="{{ url_for('length_analysis.by_customer') }}?revenue_type={{ selected_revenue_type }}&year={{ selected_year }}" 
                class="btn btn-outline-primary btn-sm">By Customer</a>
+            <a href="{{ url_for('length_analysis.by_language') }}?revenue_type={{ selected_revenue_type }}&year={{ selected_year }}" 
+               class="btn btn-outline-primary btn-sm">By Language</a>
+            <a href="{{ url_for('length_analysis.by_market') }}?revenue_type={{ selected_revenue_type }}&year={{ selected_year }}" 
+               class="btn btn-outline-primary btn-sm">By Market</a>
             <a href="{{ url_for('length_analysis.margin_analysis') }}?revenue_type={{ selected_revenue_type }}&year={{ selected_year }}" 
                class="btn btn-outline-primary btn-sm">Margin Analysis</a>
         </div>
@@ -172,6 +176,83 @@
         </div>
         <div class="card-body">
             <canvas id="trendChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Rate Power Grid -->
+<div class="row mt-4">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">💰 Highest Rate Combinations</h5>
+                <small class="text-muted">Min 50 spots</small>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Language</th>
+                                <th>Market</th>
+                                <th class="text-end">Avg Rate</th>
+                                <th class="text-end">Margin</th>
+                                <th class="text-end">Spots</th>
+                                <th class="text-end">Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in top_rate_combos %}
+                            <tr>
+                                <td><strong>{{ row['language_group'] }}</strong></td>
+                                <td>{{ row['market_code'] }}</td>
+                                <td class="text-end text-success fw-bold">${{ "{:.2f}".format(row['avg_rate']) }}</td>
+                                <td class="text-end">
+                                    <span class="{% if row['avg_margin'] > 12 %}text-success{% elif row['avg_margin'] < 5 %}text-danger{% endif %}">
+                                        {{ row['avg_margin'] }}%
+                                    </span>
+                                </td>
+                                <td class="text-end text-muted">{{ "{:,}".format(row['spots']) }}</td>
+                                <td class="text-end">${{ "{:,.0f}".format(row['total_revenue']) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">⚠️ Rate Opportunity Gaps</h5>
+                <small class="text-muted">Pricing uplift targets</small>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Language</th>
+                                <th>Market</th>
+                                <th class="text-end">Avg Rate</th>
+                                <th class="text-end">Spots</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in bottom_rate_combos %}
+                            <tr>
+                                <td>{{ row['language_group'] }}</td>
+                                <td>{{ row['market_code'] }}</td>
+                                <td class="text-end text-danger">${{ "{:.2f}".format(row['avg_rate']) }}</td>
+                                <td class="text-end text-muted">{{ "{:,}".format(row['spots']) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>

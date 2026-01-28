@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Length Mix by Market{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
+<style>
+    .expandable-row { cursor: pointer; }
+    .expandable-row:hover { background: var(--nord6); }
+    .detail-rows { display: none; }
+    .detail-rows.show { display: table-row-group; }
+    .detail-row td { 
+        background: var(--nord6); 
+        padding-left: 40px !important;
+        font-size: 12px;
+        color: var(--nord2);
+    }
+    .expand-icon { 
+        display: inline-block; 
+        width: 16px; 
+        transition: transform 0.2s; 
+    }
+    .expandable-row.expanded .expand-icon { transform: rotate(90deg); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{{ url_for('length_analysis.dashboard') }}?revenue_type={{ selected_revenue_type }}&year={{ selected_year }}">Length Analysis</a></li>
+                    <li class="breadcrumb-item active">By Market</li>
+                </ol>
+            </nav>
+            <h1 class="h3 mb-0">Length Mix by Market</h1>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="card mb-4">
+        <div class="card-body py-2">
+            <form method="GET" class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <label class="col-form-label">Year:</label>
+                </div>
+                <div class="col-auto">
+                    <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All Years</option>
+                        {% for yr in available_years %}
+                        <option value="{{ yr }}" {% if yr == selected_year %}selected{% endif %}>{{ yr }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <input type="hidden" name="revenue_type" value="{{ selected_revenue_type }}">
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Markets by Revenue</h5>
+            <small class="text-muted">Click row to expand rate breakdown by length</small>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Market</th>
+                            <th class="text-end">Spots</th>
+                            <th class="text-end">Revenue</th>
+                            <th class="text-end">Avg Rate</th>
+                            <th class="text-end">Margin</th>
+                            <th class="text-center" colspan="6">Length Mix</th>
+                        </tr>
+                        <tr class="small text-muted">
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th class="text-center">BB</th>
+                            <th class="text-center">:15</th>
+                            <th class="text-center">:30</th>
+                            <th class="text-center">:45</th>
+                            <th class="text-center">:60</th>
+                            <th class="text-center">Long</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in market_mix %}
+                        <tr class="expandable-row" data-market="{{ row['market_code'] }}">
+                            <td><span class="expand-icon">▶</span></td>
+                            <td><strong>{{ row['market_code'] }}</strong></td>
+                            <td class="text-end">{{ "{:,}".format(row['total_spots']) }}</td>
+                            <td class="text-end">${{ "{:,.0f}".format(row['total_revenue']) }}</td>
+                            <td class="text-end"><strong>${{ "{:.2f}".format(row['avg_rate']) }}</strong></td>
+                            <td class="text-end">
+                                <span class="{% if row['avg_margin'] < 5 %}text-danger{% elif row['avg_margin'] > 12 %}text-success{% endif %}">
+                                    {{ row['avg_margin'] }}%
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                {% if row['pct_billboard'] > 0 %}
+                                <span class="badge bg-secondary">{{ row['pct_billboard'] }}%</span>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if row['pct_15'] > 0 %}
+                                <span class="badge bg-info">{{ row['pct_15'] }}%</span>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if row['pct_30'] > 0 %}
+                                <span class="badge bg-primary">{{ row['pct_30'] }}%</span>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if row['pct_45'] > 0 %}
+                                <span class="badge bg-info">{{ row['pct_45'] }}%</span>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if row['pct_60'] > 0 %}
+                                <span class="badge bg-warning text-dark">{{ row['pct_60'] }}%</span>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if row['pct_long'] > 0 %}
+                                <span class="badge bg-danger">{{ row['pct_long'] }}%</span>
+                                {% else %}-{% endif %}
+                            </td>
+                        </tr>
+                        <!-- Detail rows -->
+                        <tbody class="detail-rows" data-market="{{ row['market_code'] }}">
+                            {% for detail in market_length_rates.get(row['market_code'], []) %}
+                            <tr class="detail-row">
+                                <td></td>
+                                <td colspan="3" class="text-muted">
+                                    <strong>{{ detail['bucket'] }}</strong>
+                                </td>
+                                <td class="text-end">
+                                    ${{ "{:.2f}".format(detail['avg_rate']) }}
+                                </td>
+                                <td class="text-end">
+                                    <span class="{% if detail['avg_margin'] < 5 %}text-danger{% elif detail['avg_margin'] > 12 %}text-success{% endif %}">
+                                        {{ detail['avg_margin'] }}%
+                                    </span>
+                                </td>
+                                <td colspan="6" class="text-muted">
+                                    {{ "{:,}".format(detail['spots']) }} spots
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.expandable-row').forEach(row => {
+    row.addEventListener('click', function() {
+        const marketCode = this.dataset.market;
+        const detailRows = document.querySelector(`.detail-rows[data-market="${marketCode}"]`);
+        
+        this.classList.toggle('expanded');
+        detailRows.classList.toggle('show');
+    });
+});
+</script>
+{% endblock %}
