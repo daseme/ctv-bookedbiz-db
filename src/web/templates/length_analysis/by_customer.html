@@ -4,6 +4,24 @@
 
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
+<style>
+    .expandable-row { cursor: pointer; }
+    .expandable-row:hover { background: var(--nord6); }
+    .detail-rows { display: none; }
+    .detail-rows.show { display: table-row-group; }
+    .detail-row td { 
+        background: var(--nord6); 
+        padding-left: 40px !important;
+        font-size: 12px;
+        color: var(--nord2);
+    }
+    .expand-icon { 
+        display: inline-block; 
+        width: 16px; 
+        transition: transform 0.2s; 
+    }
+    .expandable-row.expanded .expand-icon { transform: rotate(90deg); }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -12,7 +30,7 @@
         <div>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-1">
-                    <li class="breadcrumb-item"><a href="{{ url_for('length_analysis.dashboard') }}">Length Analysis</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('length_analysis.dashboard') }}?revenue_type={{ selected_revenue_type }}&year={{ selected_year }}">Length Analysis</a></li>
                     <li class="breadcrumb-item active">By Customer</li>
                 </ol>
             </nav>
@@ -53,20 +71,23 @@
     <div class="card">
         <div class="card-header">
             <h5 class="card-title mb-0">Top 50 Customers by Revenue</h5>
+            <small class="text-muted">Click row to expand rate breakdown by length</small>
         </div>
-        <div class="card-body">
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-sm table-hover">
+                <table class="table table-sm mb-0">
                     <thead>
                         <tr>
+                            <th></th>
                             <th>Customer</th>
                             <th class="text-end">Spots</th>
                             <th class="text-end">Revenue</th>
                             <th class="text-end">Avg Rate</th>
                             <th class="text-end">Margin</th>
-                            <th class="text-center" colspan="5">Length Mix</th>
+                            <th class="text-center" colspan="6">Length Mix</th>
                         </tr>
                         <tr class="small text-muted">
+                            <th></th>
                             <th></th>
                             <th></th>
                             <th></th>
@@ -82,19 +103,20 @@
                     </thead>
                     <tbody>
                         {% for row in customer_mix %}
-                        <tr>
+                        <tr class="expandable-row" data-customer="{{ loop.index }}">
+                            <td><span class="expand-icon">▶</span></td>
                             <td>
-                            {% if row['customer_id'] %}
-                            <a href="{{ url_for('customer_detail.customer_detail', customer_id=row['customer_id']) }}">
+                                {% if row['customer_id'] %}
+                                <a href="{{ url_for('customer_detail.customer_detail', customer_id=row['customer_id']) }}" onclick="event.stopPropagation();">
+                                    {{ row['customer_name'] or '(Unknown)' }}
+                                </a>
+                                {% else %}
                                 {{ row['customer_name'] or '(Unknown)' }}
-                            </a>
-                            {% else %}
-                            {{ row['customer_name'] or '(Unknown)' }}
-                            {% endif %}
-                        </td>
+                                {% endif %}
+                            </td>
                             <td class="text-end">{{ "{:,}".format(row['total_spots']) }}</td>
                             <td class="text-end">${{ "{:,.0f}".format(row['total_revenue']) }}</td>
-                            <td class="text-end">${{ "{:.2f}".format(row['avg_rate']) }}</td>
+                            <td class="text-end"><strong>${{ "{:.2f}".format(row['avg_rate']) }}</strong></td>
                             <td class="text-end">
                                 <span class="{% if row['avg_margin'] < 5 %}text-danger{% elif row['avg_margin'] > 12 %}text-success{% endif %}">
                                     {{ row['avg_margin'] }}%
@@ -131,6 +153,28 @@
                                 {% else %}-{% endif %}
                             </td>
                         </tr>
+                        <!-- Detail rows -->
+                        <tbody class="detail-rows" data-customer="{{ loop.index }}">
+                            {% for detail in customer_length_rates.get(row['customer_name'], []) %}
+                            <tr class="detail-row">
+                                <td></td>
+                                <td colspan="3" class="text-muted">
+                                    <strong>{{ detail['bucket'] }}</strong>
+                                </td>
+                                <td class="text-end">
+                                    ${{ "{:.2f}".format(detail['avg_rate']) }}
+                                </td>
+                                <td class="text-end">
+                                    <span class="{% if detail['avg_margin'] < 5 %}text-danger{% elif detail['avg_margin'] > 12 %}text-success{% endif %}">
+                                        {{ detail['avg_margin'] }}%
+                                    </span>
+                                </td>
+                                <td colspan="6" class="text-muted">
+                                    {{ "{:,}".format(detail['spots']) }} spots
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -138,4 +182,18 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.expandable-row').forEach(row => {
+    row.addEventListener('click', function() {
+        const customerId = this.dataset.customer;
+        const detailRows = document.querySelector(`.detail-rows[data-customer="${customerId}"]`);
+        
+        this.classList.toggle('expanded');
+        detailRows.classList.toggle('show');
+    });
+});
+</script>
 {% endblock %}
