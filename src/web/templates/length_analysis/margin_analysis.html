@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Margin Analysis by Length{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{{ url_for('length_analysis.dashboard') }}">Length Analysis</a></li>
+                    <li class="breadcrumb-item active">Margin Analysis</li>
+                </ol>
+            </nav>
+            <h1 class="h3 mb-0">Margin Analysis by Length</h1>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="card mb-4">
+        <div class="card-body py-2">
+            <form method="GET" class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <label class="col-form-label">Year:</label>
+                </div>
+                <div class="col-auto">
+                    <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All Years</option>
+                        {% for yr in available_years %}
+                        <option value="{{ yr }}" {% if yr == selected_year %}selected{% endif %}>{{ yr }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <input type="hidden" name="revenue_type" value="{{ selected_revenue_type }}">
+            </form>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Margin by Bucket -->
+        <div class="col-lg-7 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Margin by Length Bucket</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Bucket</th>
+                                    <th class="text-end">Spots</th>
+                                    <th class="text-end">Gross</th>
+                                    <th class="text-end">Net</th>
+                                    <th class="text-end">Margin $</th>
+                                    <th class="text-end">Margin %</th>
+                                    <th class="text-end">Range</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in margin_by_bucket %}
+                                <tr>
+                                    <td><strong>{{ row['length_bucket'] }}</strong></td>
+                                    <td class="text-end">{{ "{:,}".format(row['spot_count']) }}</td>
+                                    <td class="text-end">${{ "{:,.0f}".format(row['gross_revenue']) }}</td>
+                                    <td class="text-end">${{ "{:,.0f}".format(row['net_revenue']) }}</td>
+                                    <td class="text-end text-success">${{ "{:,.0f}".format(row['margin_dollars']) }}</td>
+                                    <td class="text-end">
+                                        <div class="d-flex align-items-center justify-content-end gap-2">
+                                            <div class="progress" style="width: 60px; height: 8px;">
+                                                <div class="progress-bar {% if row['avg_margin_pct'] < 5 %}bg-danger{% elif row['avg_margin_pct'] > 12 %}bg-success{% else %}bg-warning{% endif %}" 
+                                                     style="width: {{ [row['avg_margin_pct'] * 5, 100] | min }}%"></div>
+                                            </div>
+                                            <span class="{% if row['avg_margin_pct'] < 5 %}text-danger fw-bold{% elif row['avg_margin_pct'] > 12 %}text-success{% endif %}">
+                                                {{ row['avg_margin_pct'] }}%
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="text-end text-muted small">
+                                        {{ row['min_margin'] }}% – {{ row['max_margin'] }}%
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Margin Chart -->
+        <div class="col-lg-5 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Margin % by Length</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="marginChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Low Margin Investigation -->
+    <div class="card">
+        <div class="card-header bg-danger bg-opacity-10">
+            <h5 class="card-title mb-0 text-danger">⚠️ Low Margin Investigation (< 5%)</h5>
+        </div>
+        <div class="card-body">
+            {% if low_margin_spots %}
+            <p class="text-muted mb-3">Customers with 10+ spots averaging under 5% margin. Investigate pricing or commission structures.</p>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Length</th>
+                            <th class="text-end">Spots</th>
+                            <th class="text-end">Avg Rate</th>
+                            <th class="text-end">Avg Margin</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in low_margin_spots %}
+                        <tr>
+                            <td>{{ row['customer_name'] or '(Unknown)' }}</td>
+                            <td>{{ row['length_bucket'] }}</td>
+                            <td class="text-end">{{ "{:,}".format(row['spot_count']) }}</td>
+                            <td class="text-end">${{ "{:.2f}".format(row['avg_rate']) }}</td>
+                            <td class="text-end text-danger fw-bold">{{ row['avg_margin'] }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-success mb-0">✓ No significant low-margin patterns detected.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const marginData = {{ margin_by_bucket | tojson }};
+
+const ctx = document.getElementById('marginChart').getContext('2d');
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: marginData.map(d => d.length_bucket),
+        datasets: [{
+            label: 'Margin %',
+            data: marginData.map(d => d.avg_margin_pct),
+            backgroundColor: marginData.map(d => 
+                d.avg_margin_pct < 5 ? 'rgba(191, 97, 106, 0.8)' : 
+                d.avg_margin_pct > 12 ? 'rgba(163, 190, 140, 0.8)' : 
+                'rgba(235, 203, 139, 0.8)'
+            ),
+            borderColor: marginData.map(d => 
+                d.avg_margin_pct < 5 ? 'rgba(191, 97, 106, 1)' : 
+                d.avg_margin_pct > 12 ? 'rgba(163, 190, 140, 1)' : 
+                'rgba(235, 203, 139, 1)'
+            ),
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        indexAxis: 'y',
+        scales: {
+            x: {
+                beginAtZero: true,
+                max: 20,
+                title: { display: true, text: 'Margin %' },
+                ticks: { callback: v => v + '%' }
+            }
+        },
+        plugins: {
+            legend: { display: false },
+            annotation: {
+                annotations: {
+                    line1: {
+                        type: 'line',
+                        xMin: 5,
+                        xMax: 5,
+                        borderColor: 'rgba(191, 97, 106, 0.5)',
+                        borderWidth: 2,
+                        borderDash: [5, 5]
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

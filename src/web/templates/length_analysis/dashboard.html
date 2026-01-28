@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Length Analysis Dashboard{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">Length Analysis Dashboard</h1>
+            <p class="text-muted mb-0">Rate intelligence by spot length bucket</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('length_analysis.by_customer') }}?revenue_type={{ selected_revenue_type }}&year={{ selected_year }}" 
+               class="btn btn-outline-primary btn-sm">By Customer</a>
+            <a href="{{ url_for('length_analysis.margin_analysis') }}?revenue_type={{ selected_revenue_type }}&year={{ selected_year }}" 
+               class="btn btn-outline-primary btn-sm">Margin Analysis</a>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="card mb-4">
+        <div class="card-body py-2">
+            <form method="GET" class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <label class="col-form-label">Revenue Type:</label>
+                </div>
+                <div class="col-auto">
+                    <select name="revenue_type" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for rt in revenue_types %}
+                        <option value="{{ rt }}" {% if rt == selected_revenue_type %}selected{% endif %}>{{ rt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="col-form-label">Year:</label>
+                </div>
+                <div class="col-auto">
+                    <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">All Years</option>
+                        {% for yr in available_years %}
+                        <option value="{{ yr }}" {% if yr == selected_year %}selected{% endif %}>{{ yr }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto text-muted">
+                    {{ "{:,}".format(totals['total_spots']) }} spots · 
+                    ${{ "{:,.0f}".format(totals['total_revenue']) }} revenue ·
+                    ${{ "{:.2f}".format(totals['overall_avg_rate']) }} avg rate ·
+                    {{ totals['overall_margin'] }}% margin
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Rate Ladder -->
+        <div class="col-lg-5 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Rate Ladder (vs :30 Baseline)</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Length</th>
+                                <th class="text-end">Avg Rate</th>
+                                <th class="text-end">Ratio</th>
+                                <th class="text-end">Margin</th>
+                                <th class="text-end">Spots</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in rate_ladder %}
+                            <tr class="{% if row['bucket'] == ':30' %}table-primary{% endif %}">
+                                <td>
+                                    <strong>{{ row['bucket'] }}</strong>
+                                </td>
+                                <td class="text-end">${{ "{:.2f}".format(row['avg_rate']) }}</td>
+                                <td class="text-end">
+                                    {% if row['ratio_to_30'] %}
+                                    <span class="badge {% if row['ratio_to_30'] > 1.5 %}bg-success{% elif row['ratio_to_30'] < 0.5 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                        {{ row['ratio_to_30'] }}x
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <span class="{% if row['margin_pct'] < 5 %}text-danger{% elif row['margin_pct'] > 12 %}text-success{% endif %}">
+                                        {{ row['margin_pct'] }}%
+                                    </span>
+                                </td>
+                                <td class="text-end text-muted">{{ "{:,}".format(row['spot_count']) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    
+                    <div class="mt-3 small text-muted">
+                        <strong>Industry benchmarks:</strong><br>
+                        :15 = 0.50-0.65x · :60 = 1.50-1.75x · Billboard = 1.5-2.5x
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Chart -->
+        <div class="col-lg-7 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Revenue & Rate by Length</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="lengthChart" height="280"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Table -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Length Bucket Detail</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Length Bucket</th>
+                            <th class="text-end">Spots</th>
+                            <th class="text-end">Revenue</th>
+                            <th class="text-end">Avg Rate</th>
+                            <th class="text-end">Avg Net</th>
+                            <th class="text-end">Rate/Sec</th>
+                            <th class="text-end">Margin %</th>
+                            <th class="text-end">Min Rate</th>
+                            <th class="text-end">Max Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in bucket_summary %}
+                        <tr>
+                            <td><strong>{{ row['length_bucket'] }}</strong></td>
+                            <td class="text-end">{{ "{:,}".format(row['spot_count']) }}</td>
+                            <td class="text-end">${{ "{:,.0f}".format(row['total_revenue']) }}</td>
+                            <td class="text-end">${{ "{:.2f}".format(row['avg_rate'] or 0) }}</td>
+                            <td class="text-end">${{ "{:.2f}".format(row['avg_net'] or 0) }}</td>
+                            <td class="text-end">${{ "{:.2f}".format(row['avg_rate_per_second'] or 0) }}</td>
+                            <td class="text-end">
+                                <span class="{% if (row['avg_margin_pct'] or 0) < 5 %}text-danger fw-bold{% elif (row['avg_margin_pct'] or 0) > 12 %}text-success{% endif %}">
+                                    {{ row['avg_margin_pct'] or 0 }}%
+                                </span>
+                            </td>
+                            <td class="text-end text-muted">${{ "{:.2f}".format(row['min_rate'] or 0) }}</td>
+                            <td class="text-end text-muted">${{ "{:.2f}".format(row['max_rate'] or 0) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trend Chart -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Rate Trend by Length (Closed Months)</h5>
+        </div>
+        <div class="card-body">
+            <canvas id="trendChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Revenue & Rate Chart
+const bucketData = {{ bucket_summary | tojson }};
+const ctx1 = document.getElementById('lengthChart').getContext('2d');
+new Chart(ctx1, {
+    type: 'bar',
+    data: {
+        labels: bucketData.map(d => d.length_bucket),
+        datasets: [
+            {
+                label: 'Revenue ($)',
+                data: bucketData.map(d => d.total_revenue),
+                backgroundColor: 'rgba(136, 192, 208, 0.7)',
+                borderColor: 'rgba(136, 192, 208, 1)',
+                borderWidth: 1,
+                yAxisID: 'y'
+            },
+            {
+                label: 'Avg Rate ($)',
+                data: bucketData.map(d => d.avg_rate),
+                type: 'line',
+                borderColor: 'rgba(235, 203, 139, 1)',
+                backgroundColor: 'rgba(235, 203, 139, 0.2)',
+                borderWidth: 2,
+                yAxisID: 'y1',
+                tension: 0.1
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+            y: {
+                type: 'linear',
+                position: 'left',
+                title: { display: true, text: 'Revenue ($)' },
+                ticks: { callback: v => '$' + (v/1000000).toFixed(1) + 'M' }
+            },
+            y1: {
+                type: 'linear',
+                position: 'right',
+                title: { display: true, text: 'Avg Rate ($)' },
+                grid: { drawOnChartArea: false },
+                ticks: { callback: v => '$' + v }
+            }
+        }
+    }
+});
+
+// Trend Chart
+const trendData = {{ monthly_trend | tojson }};
+const months = [...new Set(trendData.map(d => d.broadcast_month))].sort();
+const buckets = ['Billboard', ':15', ':30', ':60'];
+const colors = {
+    'Billboard': 'rgba(163, 190, 140, 1)',
+    ':15': 'rgba(235, 203, 139, 1)',
+    ':30': 'rgba(136, 192, 208, 1)',
+    ':60': 'rgba(180, 142, 173, 1)'
+};
+
+const trendDatasets = buckets.map(bucket => ({
+    label: bucket,
+    data: months.map(m => {
+        const match = trendData.find(d => d.broadcast_month === m && d.length_bucket === bucket);
+        return match ? match.avg_rate : null;
+    }),
+    borderColor: colors[bucket],
+    backgroundColor: colors[bucket].replace('1)', '0.2)'),
+    borderWidth: 2,
+    tension: 0.1,
+    spanGaps: true
+}));
+
+const ctx2 = document.getElementById('trendChart').getContext('2d');
+new Chart(ctx2, {
+    type: 'line',
+    data: { labels: months, datasets: trendDatasets },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+            y: {
+                title: { display: true, text: 'Avg Rate ($)' },
+                ticks: { callback: v => '$' + v }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

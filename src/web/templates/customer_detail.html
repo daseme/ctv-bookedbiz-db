@@ -15,7 +15,6 @@
 {% block extra_styles %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 <style>
-    /* Customer header info */
     .customer-meta-bar {
         display: flex;
         flex-wrap: wrap;
@@ -61,7 +60,6 @@
         color: #718096;
     }
     
-    /* KPI Cards - match your existing style */
     .kpi-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -109,7 +107,6 @@
     .kpi-change.positive { color: var(--nord14); }
     .kpi-change.negative { color: var(--nord11); }
     
-    /* Content grid */
     .content-grid {
         display: grid;
         grid-template-columns: 2fr 1fr;
@@ -121,7 +118,6 @@
         .content-grid { grid-template-columns: 1fr; }
     }
     
-    /* Cards */
     .card {
         background: white;
         border-radius: 8px;
@@ -145,14 +141,12 @@
         padding: 0;
     }
     
-    /* Chart container */
     .chart-container {
         position: relative;
         height: 280px;
         padding: 16px;
     }
     
-    /* Breakdown list */
     .breakdown-list {
         list-style: none;
         padding: 0;
@@ -213,7 +207,6 @@
         border-radius: 3px;
     }
     
-    /* Data table */
     .data-table {
         width: 100%;
         border-collapse: collapse;
@@ -248,7 +241,6 @@
         background: #f8fafc;
     }
     
-    /* Aliases */
     .alias-list {
         display: flex;
         flex-wrap: wrap;
@@ -265,7 +257,6 @@
         font-family: monospace;
     }
     
-    /* Back link */
     .back-link {
         display: inline-flex;
         align-items: center;
@@ -286,7 +277,6 @@
 {% block content %}
 <a href="javascript:history.back()" class="back-link">← Back</a>
 
-<!-- Customer Meta Bar -->
 <div class="customer-meta-bar">
     {% if report.summary.sector_name %}
     <div class="meta-item">
@@ -325,7 +315,6 @@
     </div>
 </div>
 
-<!-- KPI Cards -->
 <div class="kpi-grid">
     <div class="kpi-card">
         <div class="kpi-value">${{ "{:,.0f}".format(report.summary.lifetime_gross) }}</div>
@@ -357,17 +346,14 @@
     </div>
 </div>
 
-<!-- Main Content Grid -->
 <div class="content-grid">
-    <!-- Revenue Trend Chart -->
     <div class="card">
-        <div class="card-header">Revenue Trend</div>
+        <div class="card-header">Monthly Gross Revenue</div>
         <div class="chart-container">
             <canvas id="revenueChart"></canvas>
         </div>
     </div>
     
-    <!-- Language Breakdown -->
     <div class="card">
         <div class="card-header">Revenue by Language</div>
         <div class="card-body no-padding">
@@ -393,9 +379,7 @@
     </div>
 </div>
 
-<!-- Second Row -->
 <div class="content-grid">
-    <!-- AE Breakdown -->
     <div class="card">
         <div class="card-header">Revenue by Account Executive</div>
         <div class="card-body no-padding">
@@ -420,7 +404,6 @@
         </div>
     </div>
     
-    <!-- Market Breakdown -->
     <div class="card">
         <div class="card-header">Revenue by Market</div>
         <div class="card-body no-padding">
@@ -446,7 +429,6 @@
     </div>
 </div>
 
-<!-- Recent Activity Table -->
 <div class="card" style="margin-bottom: 24px;">
     <div class="card-header">Recent Activity</div>
     <div class="card-body no-padding">
@@ -487,7 +469,6 @@
     </div>
 </div>
 
-<!-- Bill Code Aliases -->
 {% if report.bill_code_aliases %}
 <div class="card">
     <div class="card-header">Bill Code Aliases ({{ report.bill_code_aliases|length }})</div>
@@ -502,9 +483,6 @@
 
 {% block scripts %}
 <script>
-console.log('Monthly trend data:', {{ report.monthly_trend | tojson }});
-</script>
-<script>
 document.addEventListener('DOMContentLoaded', function() {
     const ctx = document.getElementById('revenueChart');
     if (!ctx) return;
@@ -512,44 +490,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const monthlyData = {{ report.monthly_trend | tojson }};
     const labels = monthlyData.map(m => m.broadcast_month);
     const grossData = monthlyData.map(m => parseFloat(m.gross_revenue));
-    const netData = monthlyData.map(m => parseFloat(m.net_revenue));
     
     new Chart(ctx.getContext('2d'), {
-        type: 'line',
+        type: 'bar',
         data: {
             labels: labels,
-            datasets: [
-                {
-                    label: 'Gross Revenue',
-                    data: grossData,
-                    borderColor: '#5E81AC',
-                    backgroundColor: 'rgba(94, 129, 172, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    borderWidth: 2
-                },
-                {
-                    label: 'Net Revenue',
-                    data: netData,
-                    borderColor: '#A3BE8C',
-                    backgroundColor: 'rgba(163, 190, 140, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    borderWidth: 2
-                }
-            ]
+            datasets: [{
+                label: 'Gross Revenue',
+                data: grossData,
+                backgroundColor: 'rgba(94, 129, 172, 0.8)',
+                borderColor: '#5E81AC',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    position: 'top',
-                    labels: {
-                        usePointStyle: true,
-                        padding: 20
-                    }
-                }
+                legend: { display: false }
             },
             scales: {
                 x: {

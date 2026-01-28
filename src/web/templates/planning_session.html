@@ -1047,8 +1047,9 @@ To hit forecast by end of period."
                 <td colspan="1" class="entity-name-cell">
                     <span class="expand-icon">▶</span>
                     {{ ed.entity.entity_name }}
-                    <span class="entity-badge {{ ed.entity.entity_type }}">{{ ed.entity.entity_type|upper }}</span>
-                    <span class="sector-summary-indicator" id="sector-summary-{{ ed.entity.entity_name|replace(' ', '-') }}"></span>
+<span class="entity-badge {{ ed.entity.entity_type.value }}">
+    {{ ed.entity.entity_type.value|upper }}
+</span>
                 </td>
                 {% for period in all_periods %}
                 <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}"></td>
@@ -1762,6 +1763,7 @@ function toggleSectorDetail(entityName, year) {
     
     if (expandedEntities.has(entityName)) {
         // Collapse
+        container.innerHTML = '';
         container.classList.remove('expanded');
         header.classList.remove('expanded');
         expandedEntities.delete(entityName);
@@ -1923,24 +1925,6 @@ function renderSectorError(entityName, message) {
     `;
 }
 
-// Load sector summaries on page load
-async function loadSectorSummaries(year) {
-    try {
-        const response = await fetch(`/planning/api/sector-summary/${year}`);
-        const result = await response.json();
-        
-        if (result.success) {
-            Object.entries(result.summaries).forEach(([ae, summary]) => {
-                const el = document.getElementById(`sector-summary-${ae.replace(/ /g, '-')}`);
-                if (el && summary) {
-                    el.innerHTML = `<span class="gap-indicator">${summary}</span>`;
-                }
-            });
-        }
-    } catch (error) {
-        console.error('Failed to load sector summaries:', error);
-    }
-}
 
 // Call on page load
 document.addEventListener('DOMContentLoaded', function() {

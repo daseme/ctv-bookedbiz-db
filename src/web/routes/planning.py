@@ -45,7 +45,7 @@ class CompanySummaryWrapper:
     def __init__(self, data: dict):
         self._data = data
         self._periods_by_key = {}
-        for p in data.get("periods", []):  # Use dict access
+        for p in data.get("periods", []):
             period = p["period"]
             self._periods_by_key[period.key] = PeriodDataWrapper(p)
     
@@ -125,11 +125,6 @@ class PeriodDataWrapper:
 # Main UI Routes
 # ============================================================================
 
-# ============================================================================
-# Update the planning_session route in src/web/routes/planning.py
-# Add burn_down_metrics to the template data
-# ============================================================================
-
 @planning_bp.route("/")
 def planning_session():
     """Main planning session view."""
@@ -137,28 +132,23 @@ def planning_session():
         container = get_container()
         planning_service = container.get("planning_service")
         
-        # Get planning year from query param or default to current year
         planning_year = request.args.get("year", date.today().year, type=int)
         months_ahead = request.args.get("months_ahead", 2, type=int)
         
-        # Get planning summary (entity-level data)
         summary = planning_service.get_planning_summary(
             months_ahead=months_ahead,
             planning_year=planning_year
         )
         
-        # Get company summary (aggregated totals) - THIS WAS MISSING
         company_summary = planning_service.get_company_summary(
             months_ahead=months_ahead,
             planning_year=planning_year
         )
         
-        # Get burn-down metrics for active periods only
         burn_down_metrics = planning_service.get_burn_down_metrics(
             periods=summary.active_periods
         )
         
-        # Build template data
         template_data = {
             "planning_year": planning_year,
             "current_date": date.today().strftime("%B %d, %Y"),
@@ -166,9 +156,7 @@ def planning_session():
             "active_periods": summary.active_periods,
             "past_periods": summary.past_periods,
             "entity_data": summary.entity_data,
-            "company": CompanySummaryWrapper(company_summary),  # Pass company dict
-            
-            # Burn-down metrics
+            "company": CompanySummaryWrapper(company_summary),
             "burn_down": burn_down_metrics,
         }
         
@@ -204,31 +192,54 @@ def forecast_history(ae_name: str, year: int, month: int):
         logger.error(f"Error loading forecast history: {e}", exc_info=True)
         return create_error_response(str(e), 500)
 
-# ============================================================================
-# Sector Expectations - API Routes
-# Add these to src/web/routes/planning.py
-# ============================================================================
 
+@planning_bp.route("/budget")
+@log_requests
+@handle_request_errors
+def budget_entry():
+    """Budget entry page with sector expectations."""
+    try:
+        year = request.args.get("year", 2026, type=int)
+        
+        container = get_container()
+        planning_service = safe_get_service(container, "planning_service")
+        
+        entities = planning_service.get_revenue_entities()
+        budgets = _get_budget_data_for_year(year)
+        sector_expectations = planning_service.get_all_sector_expectations(year)
+        all_sectors = planning_service.get_all_sectors()
+        
+        return render_template(
+            "budget_entry.html",
+            entities=entities,
+            budgets=budgets,
+            sector_expectations=sector_expectations,
+            all_sectors=all_sectors,
+            selected_year=year
+        )
+    
+    except Exception as e:
+        logger.error(f"Error loading budget entry: {e}", exc_info=True)
+        return render_template("error_500.html", message="Error loading budget entry"), 500
+
+
+# ============================================================================
+# Sector Detail API Routes
+# ============================================================================
 
 @planning_bp.route('/api/sector-detail/<ae_name>/<int:year>')
 @handle_request_errors
 def get_sector_detail(ae_name: str, year: int):
-    """
-    API endpoint for sector planning detail.
-    Returns JSON with sector expectations vs booked for drill-down display.
-    """
-    # WorldLink has no sector breakdown
+    """API endpoint for sector planning detail."""
     if ae_name == 'WorldLink':
         return jsonify({
             'success': False,
             'error': 'WorldLink does not have sector breakdown'
         }), 400
     
-    # Get database from container
     container = get_container()
     db = container.get('database_connection')
     
-    # Create repositories and service
     sector_planning_repo = SectorPlanningRepository(db)
     sector_expectation_repo = SectorExpectationRepository(db)
     service = SectorPlanningService(sector_planning_repo, sector_expectation_repo)
@@ -244,19 +255,14 @@ def get_sector_detail(ae_name: str, year: int):
 @planning_bp.route('/api/sector-summary/<int:year>')
 @handle_request_errors
 def get_sector_summaries(year: int):
-    """
-    API endpoint to get sector gap summaries for all entities.
-    Used to populate the summary indicator in the main planning grid.
-    """
+    """API endpoint to get sector gap summaries for all entities."""
     container = get_container()
     db = container.get('database_connection')
     
-    # Get planning service for entity list
     planning_service = container.get('planning_service')
     entities = planning_service.get_revenue_entities()
     entity_names = [e.entity_name for e in entities if e.entity_name != 'WorldLink']
     
-    # Create sector service
     sector_planning_repo = SectorPlanningRepository(db)
     sector_expectation_repo = SectorExpectationRepository(db)
     service = SectorPlanningService(sector_planning_repo, sector_expectation_repo)
@@ -271,6 +277,8 @@ def get_sector_summaries(year: int):
         'success': True,
         'summaries': summaries
     })
+
+
 # ============================================================================
 # Sector Expectations API
 # ============================================================================
@@ -283,11 +291,8 @@ def api_get_sectors():
     try:
         container = get_container()
         planning_service = safe_get_service(container, "planning_service")
-        
         sectors = planning_service.get_all_sectors()
-        
         return create_success_response({"sectors": sectors})
-    
     except Exception as e:
         logger.error(f"Error getting sectors: {e}", exc_info=True)
         return create_error_response(str(e), 500)
@@ -301,11 +306,8 @@ def api_get_available_sectors(ae_name: str, year: int):
     try:
         container = get_container()
         planning_service = safe_get_service(container, "planning_service")
-        
         sectors = planning_service.get_available_sectors(ae_name, year)
-        
         return create_success_response({"sectors": sectors})
-    
     except Exception as e:
         logger.error(f"Error getting available sectors: {e}", exc_info=True)
         return create_error_response(str(e), 500)
@@ -322,7 +324,6 @@ def api_get_sector_expectations(ae_name: str, year: int):
         
         entity_exp = planning_service.get_sector_expectations_for_entity(ae_name, year)
         
-        # Format for JSON
         sectors_data = []
         grid = entity_exp.monthly_grid()
         
@@ -361,20 +362,7 @@ def api_get_sector_expectations(ae_name: str, year: int):
 @log_requests
 @handle_request_errors
 def api_save_sector_expectations():
-    """
-    API: Save sector expectations for an entity/year.
-    
-    Request body:
-    {
-        "ae_name": "Charmaine Lane",
-        "year": 2026,
-        "expectations": [
-            {"sector_id": 1, "month": 1, "amount": 33384},
-            {"sector_id": 1, "month": 2, "amount": 40184},
-            ...
-        ]
-    }
-    """
+    """API: Save sector expectations for an entity/year."""
     try:
         data = request.get_json()
         
@@ -412,16 +400,7 @@ def api_save_sector_expectations():
 @log_requests
 @handle_request_errors
 def api_add_sector_to_entity():
-    """
-    API: Add a new sector to an entity's expectations.
-    
-    Request body:
-    {
-        "ae_name": "Charmaine Lane",
-        "sector_id": 7,
-        "year": 2026
-    }
-    """
+    """API: Add a new sector to an entity's expectations."""
     try:
         data = request.get_json()
         
@@ -460,16 +439,7 @@ def api_add_sector_to_entity():
 @log_requests
 @handle_request_errors
 def api_remove_sector_from_entity():
-    """
-    API: Remove a sector from an entity's expectations.
-    
-    Request body:
-    {
-        "ae_name": "Charmaine Lane",
-        "sector_id": 7,
-        "year": 2026
-    }
-    """
+    """API: Remove a sector from an entity's expectations."""
     try:
         data = request.get_json()
         
@@ -531,344 +501,7 @@ def api_validate_sector_expectations(ae_name: str, year: int):
 
 
 # ============================================================================
-# Update budget_entry route to include sector data
-# ============================================================================
-
-@planning_bp.route("/budget")
-@log_requests
-@handle_request_errors
-def budget_entry():
-    """Budget entry page with sector expectations."""
-    try:
-        year = request.args.get("year", 2026, type=int)
-        
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        # Get all revenue entities
-        entities = planning_service.get_revenue_entities()
-        
-        # Get existing budget data for the year
-        budgets = _get_budget_data_for_year(year)
-        
-        # Get sector expectations for all entities
-        sector_expectations = planning_service.get_all_sector_expectations(year)
-        
-        # Get all sectors for dropdown
-        all_sectors = planning_service.get_all_sectors()
-        
-        return render_template(
-            "budget_entry.html",
-            entities=entities,
-            budgets=budgets,
-            sector_expectations=sector_expectations,
-            all_sectors=all_sectors,
-            selected_year=year
-        )
-    
-    except Exception as e:
-        logger.error(f"Error loading budget entry: {e}", exc_info=True)
-        return render_template("error_500.html", message="Error loading budget entry"), 500
-# ============================================================================
-# Sector Expectations API
-# ============================================================================
-
-@planning_bp.route("/api/sectors")
-@log_requests
-@handle_request_errors
-def api_get_sectors():
-    """API: Get all available sectors."""
-    try:
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        sectors = planning_service.get_all_sectors()
-        
-        return create_success_response({"sectors": sectors})
-    
-    except Exception as e:
-        logger.error(f"Error getting sectors: {e}", exc_info=True)
-        return create_error_response(str(e), 500)
-
-
-@planning_bp.route("/api/sectors/available/<ae_name>/<int:year>")
-@log_requests
-@handle_request_errors
-def api_get_available_sectors(ae_name: str, year: int):
-    """API: Get sectors available to add for an entity."""
-    try:
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        sectors = planning_service.get_available_sectors(ae_name, year)
-        
-        return create_success_response({"sectors": sectors})
-    
-    except Exception as e:
-        logger.error(f"Error getting available sectors: {e}", exc_info=True)
-        return create_error_response(str(e), 500)
-
-
-@planning_bp.route("/api/sector-expectations/<ae_name>/<int:year>")
-@log_requests
-@handle_request_errors
-def api_get_sector_expectations(ae_name: str, year: int):
-    """API: Get sector expectations for an entity/year."""
-    try:
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        entity_exp = planning_service.get_sector_expectations_for_entity(ae_name, year)
-        
-        # Format for JSON
-        sectors_data = []
-        grid = entity_exp.monthly_grid()
-        
-        for sector_id, sector_code, sector_name in entity_exp.sectors_used():
-            sector_data = {
-                "sector_id": sector_id,
-                "sector_code": sector_code,
-                "sector_name": sector_name,
-                "amounts": {
-                    str(m): float(grid.get(sector_id, {}).get(m, 0))
-                    for m in range(1, 13)
-                },
-                "annual_total": float(entity_exp.total_for_sector(sector_id))
-            }
-            sectors_data.append(sector_data)
-        
-        return create_success_response({
-            "entity_name": ae_name,
-            "year": year,
-            "sectors": sectors_data,
-            "monthly_totals": {
-                str(m): float(entity_exp.total_for_month(m))
-                for m in range(1, 13)
-            },
-            "annual_total": float(entity_exp.annual_total())
-        })
-    
-    except ValueError as e:
-        return create_error_response(str(e), 404)
-    except Exception as e:
-        logger.error(f"Error getting sector expectations: {e}", exc_info=True)
-        return create_error_response(str(e), 500)
-
-
-@planning_bp.route("/api/sector-expectations/save", methods=["POST"])
-@log_requests
-@handle_request_errors
-def api_save_sector_expectations():
-    """
-    API: Save sector expectations for an entity/year.
-    
-    Request body:
-    {
-        "ae_name": "Charmaine Lane",
-        "year": 2026,
-        "expectations": [
-            {"sector_id": 1, "month": 1, "amount": 33384},
-            {"sector_id": 1, "month": 2, "amount": 40184},
-            ...
-        ]
-    }
-    """
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return create_error_response("No data provided", 400)
-        
-        required = ["ae_name", "year", "expectations"]
-        for field in required:
-            if field not in data:
-                return create_error_response(f"Missing required field: {field}", 400)
-        
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        result = planning_service.save_sector_expectations(
-            ae_name=data["ae_name"],
-            year=data["year"],
-            expectations=data["expectations"],
-            updated_by=data.get("updated_by", "Web Interface")
-        )
-        
-        logger.info(
-            f"Saved sector expectations: {data['ae_name']} {data['year']} - "
-            f"{result['saved_count']} rows"
-        )
-        
-        return create_success_response(result)
-    
-    except Exception as e:
-        logger.error(f"Error saving sector expectations: {e}", exc_info=True)
-        return create_error_response(str(e), 500)
-
-
-@planning_bp.route("/api/sector-expectations/add-sector", methods=["POST"])
-@log_requests
-@handle_request_errors
-def api_add_sector_to_entity():
-    """
-    API: Add a new sector to an entity's expectations.
-    
-    Request body:
-    {
-        "ae_name": "Charmaine Lane",
-        "sector_id": 7,
-        "year": 2026
-    }
-    """
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return create_error_response("No data provided", 400)
-        
-        required = ["ae_name", "sector_id", "year"]
-        for field in required:
-            if field not in data:
-                return create_error_response(f"Missing required field: {field}", 400)
-        
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        result = planning_service.add_sector_to_entity(
-            ae_name=data["ae_name"],
-            sector_id=data["sector_id"],
-            year=data["year"],
-            updated_by=data.get("updated_by", "Web Interface")
-        )
-        
-        logger.info(
-            f"Added sector {result['sector_name']} to {data['ae_name']} for {data['year']}"
-        )
-        
-        return create_success_response(result)
-    
-    except ValueError as e:
-        return create_error_response(str(e), 400)
-    except Exception as e:
-        logger.error(f"Error adding sector: {e}", exc_info=True)
-        return create_error_response(str(e), 500)
-
-
-@planning_bp.route("/api/sector-expectations/remove-sector", methods=["POST"])
-@log_requests
-@handle_request_errors
-def api_remove_sector_from_entity():
-    """
-    API: Remove a sector from an entity's expectations.
-    
-    Request body:
-    {
-        "ae_name": "Charmaine Lane",
-        "sector_id": 7,
-        "year": 2026
-    }
-    """
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return create_error_response("No data provided", 400)
-        
-        required = ["ae_name", "sector_id", "year"]
-        for field in required:
-            if field not in data:
-                return create_error_response(f"Missing required field: {field}", 400)
-        
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        deleted = planning_service.remove_sector_from_entity(
-            ae_name=data["ae_name"],
-            sector_id=data["sector_id"],
-            year=data["year"]
-        )
-        
-        if deleted:
-            logger.info(
-                f"Removed sector {data['sector_id']} from {data['ae_name']} for {data['year']}"
-            )
-            return create_success_response({"message": "Sector removed"})
-        else:
-            return create_error_response("Sector not found", 404)
-    
-    except Exception as e:
-        logger.error(f"Error removing sector: {e}", exc_info=True)
-        return create_error_response(str(e), 500)
-
-
-@planning_bp.route("/api/sector-expectations/validate/<ae_name>/<int:year>")
-@log_requests
-@handle_request_errors
-def api_validate_sector_expectations(ae_name: str, year: int):
-    """API: Validate sector expectations against budget."""
-    try:
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        validation = planning_service.validate_sector_expectations(ae_name, year)
-        
-        return create_success_response({
-            "entity_name": ae_name,
-            "year": year,
-            "is_valid": validation.is_valid,
-            "errors": validation.errors,
-            "warnings": validation.warnings,
-            "month_details": {
-                str(k): v for k, v in validation.month_details.items()
-            }
-        })
-    
-    except Exception as e:
-        logger.error(f"Error validating sector expectations: {e}", exc_info=True)
-        return create_error_response(str(e), 500)
-
-
-# ============================================================================
-# Update budget_entry route to include sector data
-# ============================================================================
-
-@planning_bp.route("/budget")
-@log_requests
-@handle_request_errors
-def budget_entry():
-    """Budget entry page with sector expectations."""
-    try:
-        year = request.args.get("year", 2026, type=int)
-        
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        # Get all revenue entities
-        entities = planning_service.get_revenue_entities()
-        
-        # Get existing budget data for the year
-        budgets = _get_budget_data_for_year(year)
-        
-        # Get sector expectations for all entities
-        sector_expectations = planning_service.get_all_sector_expectations(year)
-        
-        # Get all sectors for dropdown
-        all_sectors = planning_service.get_all_sectors()
-        
-        return render_template(
-            "budget_entry.html",
-            entities=entities,
-            budgets=budgets,
-            sector_expectations=sector_expectations,
-            all_sectors=all_sectors,
-            selected_year=year
-        )
-    
-    except Exception as e:
-        logger.error(f"Error loading budget entry: {e}", exc_info=True)
-        return render_template("error_500.html", message="Error loading budget entry"), 500
-# ============================================================================
-# API Routes
+# Planning API Routes
 # ============================================================================
 
 @planning_bp.route("/api/summary")
@@ -892,7 +525,6 @@ def api_get_summary():
             planning_year=planning_year
         )
         
-        # Serialize for JSON
         data = {
             "planning_year": planning_year,
             "all_periods": [
@@ -907,7 +539,6 @@ def api_get_summary():
                 {"year": p.year, "month": p.month, "display": p.display, "key": p.key}
                 for p in summary.past_periods
             ],
-            # Legacy support
             "periods": [
                 {"year": p.year, "month": p.month, "display": p.display}
                 for p in summary.active_periods
@@ -1218,47 +849,8 @@ def api_get_history(ae_name: str, year: int, month: int):
 
 
 # ============================================================================
-# Blueprint Registration
+# Budget API Routes
 # ============================================================================
-
-def register_planning_routes(app):
-    """Register planning blueprint with the Flask app."""
-    app.register_blueprint(planning_bp)
-    logger.info("Planning routes registered at /planning")
-
-
-# ============================================================================
-# Budget Entry Routes
-# ============================================================================
-
-@planning_bp.route("/budget")
-@log_requests
-@handle_request_errors
-def budget_entry():
-    """Budget entry page."""
-    try:
-        year = request.args.get("year", 2026, type=int)
-        
-        container = get_container()
-        planning_service = safe_get_service(container, "planning_service")
-        
-        # Get all revenue entities
-        entities = planning_service.get_revenue_entities()
-        
-        # Get existing budget data for the year
-        budgets = _get_budget_data_for_year(year)
-        
-        return render_template(
-            "budget_entry.html",
-            entities=entities,
-            budgets=budgets,
-            selected_year=year
-        )
-    
-    except Exception as e:
-        logger.error(f"Error loading budget entry: {e}", exc_info=True)
-        return render_template("error_500.html", message="Error loading budget entry"), 500
-
 
 @planning_bp.route("/api/budget/bulk", methods=["POST"])
 @log_requests
@@ -1324,7 +916,6 @@ def api_add_entity():
         db_connection = container.get("database_connection")
         
         with db_connection.transaction() as conn:
-            # Check if already exists
             cursor = conn.execute(
                 "SELECT entity_id FROM revenue_entities WHERE entity_name = ?",
                 (name,)
@@ -1332,7 +923,6 @@ def api_add_entity():
             if cursor.fetchone():
                 return create_error_response(f"Entity '{name}' already exists", 400)
             
-            # Insert new entity
             conn.execute("""
                 INSERT INTO revenue_entities (entity_name, entity_type, is_active)
                 VALUES (?, ?, 1)
@@ -1350,6 +940,10 @@ def api_add_entity():
         logger.error(f"Error adding entity: {e}", exc_info=True)
         return create_error_response(str(e), 500)
 
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
 
 def _get_budget_data_for_year(year: int) -> dict:
     """Get all budget data for a year, organized by AE and month."""
@@ -1376,4 +970,13 @@ def _get_budget_data_for_year(year: int) -> dict:
     except Exception as e:
         logger.error(f"Error getting budget data: {e}")
         return {}
-    
+
+
+# ============================================================================
+# Blueprint Registration
+# ============================================================================
+
+def register_planning_routes(app):
+    """Register planning blueprint with the Flask app."""
+    app.register_blueprint(planning_bp)
+    logger.info("Planning routes registered at /planning")
