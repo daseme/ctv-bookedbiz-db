@@ -326,7 +326,7 @@ def extract_broadcast_months_from_excel(
 
     try:
         workbook = load_workbook(excel_file_path, read_only=True, data_only=True)
-        worksheet = workbook['Data']
+        worksheet = workbook["Data"]
 
         # Find the month column
         header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))[
@@ -420,7 +420,7 @@ def extract_broadcast_months_from_excel(
 
         if verbose or error_count > 0:
             success_rate = stats["success_rate"]
-            print(f"✅ Processing complete:")
+            print("✅ Processing complete:")
             print(f"   • Processed: {stats['total_parsed']} month values")
             print(f"   • Success rate: {success_rate:.1f}%")
             print(f"   • Unique months found: {len(broadcast_months)}")
@@ -568,7 +568,7 @@ if __name__ == "__main__":
             except BroadcastMonthParseError as e:
                 print(f"✗ {test_date} -> Error: {e}")
 
-        print(f"\n📊 Test Statistics:")
+        print("\n📊 Test Statistics:")
         stats = parser.get_statistics()
         for key, value in stats.items():
             if key != "unique_months_found":  # Skip the set for cleaner output
@@ -597,7 +597,7 @@ if __name__ == "__main__":
                         except BroadcastMonthParseError:
                             continue
 
-                    print(f"\n📅 Summary by year:")
+                    print("\n📅 Summary by year:")
                     for year in sorted(years.keys()):
                         print(f"   {year}: {', '.join(sorted(years[year]))}")
             else:

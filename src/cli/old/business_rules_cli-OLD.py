@@ -11,9 +11,7 @@ import sqlite3
 import sys
 import os
 import json
-from typing import List, Dict, Any
-from datetime import datetime
-from pathlib import Path
+from typing import List
 
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -21,7 +19,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from src.services.business_rules_service import BusinessRulesService
 
 # Note: Enhanced service import will be added when we fix that file too
-from src.models.business_rules_models import BusinessRuleType, SpotData
 
 
 class BusinessRulesCLI:
@@ -86,7 +83,7 @@ class BusinessRulesCLI:
 
     def estimate_impact(self) -> None:
         """Estimate impact of business rules on all spots"""
-        print(f"\n📊 Estimating business rules impact...")
+        print("\n📊 Estimating business rules impact...")
 
         estimates = self.business_rules_service.estimate_total_impact()
 
@@ -99,7 +96,7 @@ class BusinessRulesCLI:
         cursor.execute("SELECT COUNT(*) FROM spots")
         total_spots = cursor.fetchone()[0]
 
-        print(f"\n📈 ESTIMATED IMPACT:")
+        print("\n📈 ESTIMATED IMPACT:")
         print(f"{'Rule Type':<30} {'Spots':<12} {'% of Total':<12}")
         print("-" * 55)
 
@@ -120,7 +117,7 @@ class BusinessRulesCLI:
 
     def show_rules(self) -> None:
         """Show all configured business rules"""
-        print(f"\n📋 BUSINESS RULES CONFIGURATION:")
+        print("\n📋 BUSINESS RULES CONFIGURATION:")
         print("=" * 60)
 
         rules = self.business_rules_service.get_rules_summary()
@@ -141,7 +138,7 @@ class BusinessRulesCLI:
 
     def validate_rules(self) -> None:
         """Validate business rules configuration"""
-        print(f"\n🔍 Validating business rules configuration...")
+        print("\n🔍 Validating business rules configuration...")
 
         # Check if sectors exist
         cursor = self.conn.cursor()
@@ -167,24 +164,24 @@ class BusinessRulesCLI:
                 else:
                     print(f"   ✅ Sectors valid: {rule['sector_codes']}")
             else:
-                print(f"   ✅ Applies to all sectors")
+                print("   ✅ Applies to all sectors")
 
             # Check duration constraints
             if rule["min_duration_minutes"] and rule["max_duration_minutes"]:
                 if rule["min_duration_minutes"] >= rule["max_duration_minutes"]:
-                    print(f"   ❌ Invalid duration range")
+                    print("   ❌ Invalid duration range")
                     all_valid = False
                 else:
-                    print(f"   ✅ Duration range valid")
+                    print("   ✅ Duration range valid")
 
         if all_valid:
-            print(f"\n✅ All business rules are valid!")
+            print("\n✅ All business rules are valid!")
         else:
-            print(f"\n❌ Some business rules have issues")
+            print("\n❌ Some business rules have issues")
 
     def show_stats(self) -> None:
         """Show business rules statistics"""
-        print(f"\n📊 BUSINESS RULES STATISTICS:")
+        print("\n📊 BUSINESS RULES STATISTICS:")
         print("=" * 50)
 
         stats = self.business_rules_service.get_stats()
@@ -200,7 +197,7 @@ class BusinessRulesCLI:
         print(f"Flagged for review: {stats['flagged_for_review']}")
 
         if stats["rules_applied"]:
-            print(f"\nRules applied:")
+            print("\nRules applied:")
             for rule_type, count in stats["rules_applied"].items():
                 print(f"  • {rule_type}: {count}")
 
@@ -226,7 +223,7 @@ class BusinessRulesCLI:
         flagged = sum(1 for _, result in results if result.requires_attention)
         no_rule = total - auto_resolved - flagged
 
-        print(f"\n📊 TEST RESULTS:")
+        print("\n📊 TEST RESULTS:")
         print(f"   • Total spots tested: {total}")
         print(
             f"   • Auto-resolved: {auto_resolved} ({auto_resolved / total * 100:.1f}%)"
@@ -242,12 +239,12 @@ class BusinessRulesCLI:
                 rule_counts[rule_type] = rule_counts.get(rule_type, 0) + 1
 
         if rule_counts:
-            print(f"\n🎯 RULES TRIGGERED:")
+            print("\n🎯 RULES TRIGGERED:")
             for rule_type, count in rule_counts.items():
                 print(f"   • {rule_type}: {count}")
 
         # Show sample matches
-        print(f"\n📋 SAMPLE MATCHES:")
+        print("\n📋 SAMPLE MATCHES:")
         shown = 0
         for spot_data, result in results:
             if result.rule_applied and shown < 5:

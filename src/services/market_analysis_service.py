@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MarketAnalysisData:
     """Data container for market analysis results."""
+
     selected_year: str
     available_years: List[str]
     revenue_context: Dict[str, Any]
@@ -31,11 +32,19 @@ class MarketAnalysisService:
     """Service for market analysis data retrieval and formatting."""
 
     LANGUAGE_GROUPS = {
-        'M': 'Chinese', 'C': 'Chinese', 'M/C': 'Chinese',
-        'V': 'Vietnamese', 'T': 'Filipino', 'K': 'Korean',
-        'J': 'Japanese', 'SA': 'South Asian', 'HM': 'Hmong',
-        'E': 'English', 'EN': 'English', 'ENG': 'English',
-        'P': 'South Asian',  # Punjabi
+        "M": "Chinese",
+        "C": "Chinese",
+        "M/C": "Chinese",
+        "V": "Vietnamese",
+        "T": "Filipino",
+        "K": "Korean",
+        "J": "Japanese",
+        "SA": "South Asian",
+        "HM": "Hmong",
+        "E": "English",
+        "EN": "English",
+        "ENG": "English",
+        "P": "South Asian",  # Punjabi
     }
 
     def __init__(self, db_connection):
@@ -61,32 +70,42 @@ class MarketAnalysisService:
             cursor = conn.cursor()
             suffix = year[-2:]
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT SUM(COALESCE(gross_rate, 0))
                 FROM spots
                 WHERE broadcast_month LIKE ?
                 AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-            """, (f"%-{suffix}",))
+            """,
+                (f"%-{suffix}",),
+            )
             total_gross = cursor.fetchone()[0] or 0
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT SUM(COALESCE(gross_rate, 0))
                 FROM spots
                 WHERE broadcast_month LIKE ?
                 AND revenue_type = 'Internal Ad Sales'
-            """, (f"%-{suffix}",))
+            """,
+                (f"%-{suffix}",),
+            )
             internal_ad_sales = cursor.fetchone()[0] or 0
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT SUM(COALESCE(gross_rate, 0))
                 FROM spots
                 WHERE broadcast_month LIKE ?
                 AND revenue_type = 'Internal Ad Sales'
                 AND spot_type IN ('COM', 'BNS')
-            """, (f"%-{suffix}",))
+            """,
+                (f"%-{suffix}",),
+            )
             report_scope = cursor.fetchone()[0] or 0
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT revenue_type, SUM(COALESCE(gross_rate, 0)) as revenue
                 FROM spots
                 WHERE broadcast_month LIKE ?
@@ -94,7 +113,9 @@ class MarketAnalysisService:
                 AND revenue_type != 'Internal Ad Sales'
                 GROUP BY revenue_type
                 ORDER BY revenue DESC
-            """, (f"%-{suffix}",))
+            """,
+                (f"%-{suffix}",),
+            )
             other_types = {row[0]: row[1] for row in cursor.fetchall()}
 
             return {
@@ -103,7 +124,9 @@ class MarketAnalysisService:
                 "report_scope": report_scope,
                 "excluded_from_report": total_gross - report_scope,
                 "other_revenue_types": other_types,
-                "report_percentage": (report_scope / total_gross * 100) if total_gross > 0 else 0,
+                "report_percentage": (report_scope / total_gross * 100)
+                if total_gross > 0
+                else 0,
             }
 
     def _build_language_case_sql(self) -> str:
@@ -162,17 +185,21 @@ class MarketAnalysisService:
         for row in rows:
             lang, revenue, paid, bonus, total = row
             total_revenue += revenue
-            results.append({
-                "language": lang,
-                "revenue": revenue,
-                "paid_spots": paid,
-                "bonus_spots": bonus,
-                "total_spots": total,
-                "avg_per_spot": revenue / total if total > 0 else 0,
-            })
+            results.append(
+                {
+                    "language": lang,
+                    "revenue": revenue,
+                    "paid_spots": paid,
+                    "bonus_spots": bonus,
+                    "total_spots": total,
+                    "avg_per_spot": revenue / total if total > 0 else 0,
+                }
+            )
 
         for r in results:
-            r["percentage"] = (r["revenue"] / total_revenue * 100) if total_revenue > 0 else 0
+            r["percentage"] = (
+                (r["revenue"] / total_revenue * 100) if total_revenue > 0 else 0
+            )
 
         return results
 
@@ -215,23 +242,33 @@ class MarketAnalysisService:
             lang, market, revenue, spots = row
             lang_totals[lang] = lang_totals.get(lang, 0) + revenue
             market_totals[market] = market_totals.get(market, 0) + revenue
-            results.append({
-                "language": lang,
-                "market": market,
-                "revenue": revenue,
-                "total_spots": spots,
-            })
+            results.append(
+                {
+                    "language": lang,
+                    "market": market,
+                    "revenue": revenue,
+                    "total_spots": spots,
+                }
+            )
 
         for r in results:
-            r["pct_of_language"] = (r["revenue"] / lang_totals[r["language"]] * 100) if lang_totals.get(r["language"], 0) > 0 else 0
-            r["pct_of_market"] = (r["revenue"] / market_totals[r["market"]] * 100) if market_totals.get(r["market"], 0) > 0 else 0
+            r["pct_of_language"] = (
+                (r["revenue"] / lang_totals[r["language"]] * 100)
+                if lang_totals.get(r["language"], 0) > 0
+                else 0
+            )
+            r["pct_of_market"] = (
+                (r["revenue"] / market_totals[r["market"]] * 100)
+                if market_totals.get(r["market"], 0) > 0
+                else 0
+            )
 
         return results
 
     def get_market_summary(self, year: str) -> List[Dict[str, Any]]:
         """Get market-level summary."""
         breakdown = self.get_market_breakdown(year)
-        
+
         market_data = {}
         total_revenue = 0
 
@@ -245,15 +282,25 @@ class MarketAnalysisService:
 
         results = []
         for market, data in market_data.items():
-            top_lang = max(data["languages"].items(), key=lambda x: x[1]) if data["languages"] else ("Unknown", 0)
-            results.append({
-                "market": market,
-                "revenue": data["revenue"],
-                "pct_of_total": (data["revenue"] / total_revenue * 100) if total_revenue > 0 else 0,
-                "top_language": top_lang[0],
-                "top_language_pct": (top_lang[1] / data["revenue"] * 100) if data["revenue"] > 0 else 0,
-                "unique_languages": len(data["languages"]),
-            })
+            top_lang = (
+                max(data["languages"].items(), key=lambda x: x[1])
+                if data["languages"]
+                else ("Unknown", 0)
+            )
+            results.append(
+                {
+                    "market": market,
+                    "revenue": data["revenue"],
+                    "pct_of_total": (data["revenue"] / total_revenue * 100)
+                    if total_revenue > 0
+                    else 0,
+                    "top_language": top_lang[0],
+                    "top_language_pct": (top_lang[1] / data["revenue"] * 100)
+                    if data["revenue"] > 0
+                    else 0,
+                    "unique_languages": len(data["languages"]),
+                }
+            )
 
         results.sort(key=lambda x: x["revenue"], reverse=True)
         return results
@@ -264,7 +311,8 @@ class MarketAnalysisService:
             cursor = conn.cursor()
             suffix = year[-2:]
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT 
                     UPPER(TRIM(language_code)) as code,
                     COUNT(*) as spots,
@@ -276,7 +324,9 @@ class MarketAnalysisService:
                 AND spot_type IN ('COM', 'BNS')
                 GROUP BY UPPER(TRIM(language_code))
                 ORDER BY revenue DESC
-            """, (f"%-{suffix}",))
+            """,
+                (f"%-{suffix}",),
+            )
             rows = cursor.fetchall()
 
         codes = []
@@ -287,12 +337,14 @@ class MarketAnalysisService:
             code, spots, revenue = row
             code = code if code else "EMPTY"
             group = self.LANGUAGE_GROUPS.get(code, "Other")
-            codes.append({
-                "code": code,
-                "spots": spots,
-                "revenue": revenue,
-                "group": group,
-            })
+            codes.append(
+                {
+                    "code": code,
+                    "spots": spots,
+                    "revenue": revenue,
+                    "group": group,
+                }
+            )
             total_spots += spots
             total_revenue += revenue
 
@@ -302,15 +354,18 @@ class MarketAnalysisService:
             "total_revenue": total_revenue,
         }
 
-    def get_market_analysis_data(self, year: Optional[str] = None) -> MarketAnalysisData:
+    def get_market_analysis_data(
+        self, year: Optional[str] = None
+    ) -> MarketAnalysisData:
         """Get complete market analysis data for web display."""
         import time
+
         start_time = time.time()
 
         available_years = self.get_available_years()
         if not year:
             year = str(date.today().year)
-        
+
         if year not in available_years and available_years:
             year = available_years[0]
 
@@ -335,7 +390,7 @@ class MarketAnalysisService:
                 "report_type": "market_analysis",
                 "data_source": "spots.language_code",
                 "filters": "Internal Ad Sales + COM/BNS",
-            }
+            },
         )
 
     def get_csv_data(self, year: str, report_type: str) -> List[Dict[str, Any]]:

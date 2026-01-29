@@ -7,14 +7,11 @@ Run this to validate that concurrency control and data consistency fixes work pr
 import os
 import sys
 import tempfile
-import threading
 import time
 import json
-import sqlite3
 import requests
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
@@ -483,7 +480,7 @@ class CriticalFixesTestSuite:
                     if large_data_entries != 5:
                         file_integrity_ok = False
 
-            except (json.JSONDecodeError, FileNotFoundError, OSError) as e:
+            except (json.JSONDecodeError, FileNotFoundError, OSError):
                 file_integrity_ok = False
 
             successful_ops = sum(1 for r in results if r.get("success", False))
@@ -696,7 +693,7 @@ app.run(host='localhost', port={TEST_CONFIG["FLASK_PORT"]}, debug=False)
         overall_status = "PASSED" if failed_tests == 0 else "FAILED"
         self.test_results["overall_status"] = overall_status.lower()
 
-        print(f"\n📈 OVERALL RESULTS:")
+        print("\n📈 OVERALL RESULTS:")
         print(f"   Total Tests: {total_tests}")
         print(f"   Passed: {passed_tests} ✅")
         print(f"   Failed: {failed_tests} ❌")

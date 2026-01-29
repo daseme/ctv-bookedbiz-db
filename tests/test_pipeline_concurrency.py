@@ -7,10 +7,8 @@ import unittest
 import tempfile
 import os
 import json
-import threading
 import time
 import sqlite3
-from unittest.mock import Mock, patch
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Assuming the enhanced PipelineService is in the artifacts above

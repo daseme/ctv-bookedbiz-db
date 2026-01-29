@@ -6,7 +6,6 @@ Test script for language assignment functionality
 import sqlite3
 import sys
 import os
-import tempfile
 
 # Add src directory to path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "src"))
@@ -128,7 +127,7 @@ def test_language_assignment():
     print(f"\n📊 Test Results: {passed} passed, {failed} failed")
 
     # Test batch processing
-    print(f"\n🔄 Testing batch processing...")
+    print("\n🔄 Testing batch processing...")
     batch_results = service.batch_assign_languages([1, 2, 3, 4, 5])
 
     if len(batch_results) == 5:
@@ -139,14 +138,14 @@ def test_language_assignment():
         )
 
     # Test summary functions
-    print(f"\n📈 Testing summary functions...")
+    print("\n📈 Testing summary functions...")
     summary = service.get_review_required_summary()
     print(f"   • Undetermined spots: {summary['undetermined_language']}")
     print(f"   • Invalid codes: {summary['invalid_codes']}")
     print(f"   • High value undetermined: {summary['high_value_undetermined']}")
 
     db.close()
-    print(f"\n✅ Testing complete!")
+    print("\n✅ Testing complete!")
 
 
 if __name__ == "__main__":

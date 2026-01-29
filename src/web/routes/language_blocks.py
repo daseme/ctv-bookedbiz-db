@@ -10,10 +10,8 @@ from datetime import datetime, date
 from src.services.container import get_container
 from src.web.utils.request_helpers import (
     create_json_response,
-    create_success_response,
     create_error_response,
     handle_service_error,
-    safe_get_service,
     log_requests,
     handle_request_errors,
 )
@@ -478,7 +476,7 @@ def get_recent_activity():
             # With filters, adjust the recent activity logic
             if year and not month:
                 # Show all months for the year
-                where_clause = f"(is_active = 1 OR is_active IS NULL) AND year = ? AND year_month IS NOT NULL AND year_month != ''"
+                where_clause = "(is_active = 1 OR is_active IS NULL) AND year = ? AND year_month IS NOT NULL AND year_month != ''"
             else:
                 # Specific month or other filters
                 where_clause = " AND ".join(

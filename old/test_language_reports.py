@@ -5,11 +5,9 @@ Tests the language block reporting views and generates sample reports
 """
 
 import sqlite3
-import pandas as pd
 from datetime import datetime
 import json
 import os
-from pathlib import Path
 
 
 class LanguageBlockReporter:

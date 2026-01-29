@@ -6,9 +6,10 @@ SQLite 3.40 compatible.
 """
 
 from __future__ import annotations
-import sqlite3, unicodedata
+import sqlite3
+import unicodedata
 from dataclasses import dataclass
-from typing import Optional, Tuple, List
+from typing import Optional
 from flask import Blueprint, current_app, request, jsonify
 
 canon_bp = Blueprint("canon", __name__, url_prefix="/api/canon")
@@ -420,6 +421,7 @@ def suggest_normalized():
         ).fetchall()
     return jsonify([r[0] for r in rows])
 
+
 @canon_bp.post("/consolidate-customer")
 def consolidate_customer():
     """
@@ -430,62 +432,69 @@ def consolidate_customer():
     source_id = d.get("source_customer_id")
     target_id = d.get("target_customer_id")
     dry_run = bool(d.get("dry_run", True))
-    
+
     if not source_id or not target_id or source_id == target_id:
-        return jsonify({"success": False, "error": "Valid source and target customer IDs required"}), 400
+        return jsonify(
+            {"success": False, "error": "Valid source and target customer IDs required"}
+        ), 400
 
     conn = _open_rw(current_app.config["DB_PATH"])
     try:
         conn.execute("BEGIN IMMEDIATE;")
-        
+
         # Verify both customers exist and get their details
         source_customer = conn.execute(
-            "SELECT customer_id, normalized_name FROM customers WHERE customer_id = ?", 
-            (source_id,)
+            "SELECT customer_id, normalized_name FROM customers WHERE customer_id = ?",
+            (source_id,),
         ).fetchone()
         target_customer = conn.execute(
-            "SELECT customer_id, normalized_name FROM customers WHERE customer_id = ?", 
-            (target_id,)
+            "SELECT customer_id, normalized_name FROM customers WHERE customer_id = ?",
+            (target_id,),
         ).fetchone()
-        
+
         if not source_customer:
             conn.execute("ROLLBACK;")
-            return jsonify({"success": False, "error": f"Source customer {source_id} not found"}), 404
+            return jsonify(
+                {"success": False, "error": f"Source customer {source_id} not found"}
+            ), 404
         if not target_customer:
             conn.execute("ROLLBACK;")
-            return jsonify({"success": False, "error": f"Target customer {target_id} not found"}), 404
-        
+            return jsonify(
+                {"success": False, "error": f"Target customer {target_id} not found"}
+            ), 404
+
         # Get consolidation stats
         spots_count = conn.execute(
             "SELECT COUNT(*) as cnt FROM spots WHERE customer_id = ?", (source_id,)
         ).fetchone()["cnt"]
-        
+
         total_revenue = conn.execute(
-            "SELECT COALESCE(SUM(gross_rate), 0) as total FROM spots WHERE customer_id = ?", (source_id,)
+            "SELECT COALESCE(SUM(gross_rate), 0) as total FROM spots WHERE customer_id = ?",
+            (source_id,),
         ).fetchone()["total"]
-        
+
         # Check for any entity_aliases that point to source customer
         alias_count = conn.execute(
-            "SELECT COUNT(*) as cnt FROM entity_aliases WHERE target_entity_id = ? AND entity_type = 'customer'", 
-            (source_id,)
+            "SELECT COUNT(*) as cnt FROM entity_aliases WHERE target_entity_id = ? AND entity_type = 'customer'",
+            (source_id,),
         ).fetchone()["cnt"]
-        
+
         # Get month breakdown for audit
         monthly_spots = conn.execute(
             """SELECT broadcast_month, COUNT(*) as spots, SUM(gross_rate) as revenue 
                FROM spots WHERE customer_id = ? 
-               GROUP BY broadcast_month ORDER BY broadcast_month""", 
-            (source_id,)
+               GROUP BY broadcast_month ORDER BY broadcast_month""",
+            (source_id,),
         ).fetchall()
-        
+
         consolidation_summary = {
             "source_customer": {
                 "id": source_id,
-                "normalized_name": source_customer["normalized_name"]
+                "normalized_name": source_customer["normalized_name"],
             },
             "target_customer": {
-                "id": target_id, 
-                "normalized_name": target_customer["normalized_name"]
+                "id": target_id,
+                "normalized_name": target_customer["normalized_name"],
             },
             "impact": {
                 "spots_affected": spots_count,
@@ -495,35 +504,41 @@ def consolidate_customer():
                     {
                         "month": row["broadcast_month"],
                         "spots": row["spots"],
-                        "revenue": float(row["revenue"])
-                    } for row in monthly_spots
-                ]
-            }
+                        "revenue": float(row["revenue"]),
+                    }
+                    for row in monthly_spots
+                ],
+            },
         }
-        
+
         if dry_run:
             conn.execute("ROLLBACK;")
-            return jsonify({
-                "success": True,
-                "dry_run": True,
-                "consolidation_summary": consolidation_summary
-            })
-        
+            return jsonify(
+                {
+                    "success": True,
+                    "dry_run": True,
+                    "consolidation_summary": consolidation_summary,
+                }
+            )
+
         # Perform actual consolidation
         # 1. Update all spots to point to target customer
-        conn.execute("UPDATE spots SET customer_id = ? WHERE customer_id = ?", (target_id, source_id))
-        
+        conn.execute(
+            "UPDATE spots SET customer_id = ? WHERE customer_id = ?",
+            (target_id, source_id),
+        )
+
         # 2. Update any entity_aliases to point to target customer
         conn.execute(
-            "UPDATE entity_aliases SET target_entity_id = ? WHERE target_entity_id = ? AND entity_type = 'customer'", 
-            (target_id, source_id)
+            "UPDATE entity_aliases SET target_entity_id = ? WHERE target_entity_id = ? AND entity_type = 'customer'",
+            (target_id, source_id),
         )
-        
+
         # 3. Delete the source customer record
         conn.execute("DELETE FROM customers WHERE customer_id = ?", (source_id,))
-        
+
         conn.execute("COMMIT;")
-        
+
         # Audit log
         _audit(
             conn,
@@ -531,16 +546,18 @@ def consolidate_customer():
             "customer_consolidation",
             f"source_{source_id}_to_{target_id}",
             f"{source_customer['normalized_name']} -> {target_customer['normalized_name']}",
-            f"spots:{spots_count},revenue:{total_revenue:.2f},aliases:{alias_count}"
+            f"spots:{spots_count},revenue:{total_revenue:.2f},aliases:{alias_count}",
         )
-        
-        return jsonify({
-            "success": True,
-            "dry_run": False,
-            "consolidation_summary": consolidation_summary,
-            "message": f"Successfully consolidated customer {source_id} into {target_id}"
-        })
-        
+
+        return jsonify(
+            {
+                "success": True,
+                "dry_run": False,
+                "consolidation_summary": consolidation_summary,
+                "message": f"Successfully consolidated customer {source_id} into {target_id}",
+            }
+        )
+
     except Exception as e:
         conn.execute("ROLLBACK;")
         current_app.logger.exception("consolidate_customer failed")
@@ -615,19 +632,20 @@ def find_duplicate_customers():
             FROM duplicate_groups dg
             ORDER BY total_revenue DESC;
             """
-            
+
             rows = conn.execute(duplicates_sql).fetchall()
-            
+
             duplicates = []
             for row in rows:
                 # Parse customer IDs and get detailed info for each
                 customer_ids = [int(x.strip()) for x in row["customer_ids"].split(",")]
                 actual_names = row["actual_names"].split(",")
-                
+
                 # Get detailed info for each customer
                 customer_details = []
                 for cid in customer_ids:
-                    cust_info = conn.execute("""
+                    cust_info = conn.execute(
+                        """
                         SELECT 
                             customer_id, 
                             normalized_name, 
@@ -635,36 +653,46 @@ def find_duplicate_customers():
                             (SELECT COUNT(*) FROM spots WHERE customer_id = ?) as spot_count,
                             (SELECT COALESCE(SUM(gross_rate), 0) FROM spots WHERE customer_id = ?) as total_revenue
                         FROM customers WHERE customer_id = ?
-                    """, (cid, cid, cid)).fetchone()
-                    
+                    """,
+                        (cid, cid, cid),
+                    ).fetchone()
+
                     if cust_info:
-                        customer_details.append({
-                            "customer_id": cust_info["customer_id"],
-                            "normalized_name": cust_info["normalized_name"], 
-                            "created_date": cust_info["created_date"],
-                            "spot_count": cust_info["spot_count"],
-                            "total_revenue": float(cust_info["total_revenue"])
-                        })
-                
+                        customer_details.append(
+                            {
+                                "customer_id": cust_info["customer_id"],
+                                "normalized_name": cust_info["normalized_name"],
+                                "created_date": cust_info["created_date"],
+                                "spot_count": cust_info["spot_count"],
+                                "total_revenue": float(cust_info["total_revenue"]),
+                            }
+                        )
+
                 # Sort customers by revenue (largest first) to suggest merge direction
                 customer_details.sort(key=lambda x: x["total_revenue"], reverse=True)
-                
-                duplicates.append({
-                    "canonical_target": row["canonical_full_name"],
-                    "customer_count": row["customer_count"],
-                    "actual_names": actual_names,
-                    "customers": customer_details,
-                    "suggested_target": customer_details[0]["customer_id"] if customer_details else None,
-                    "total_revenue": float(row["total_revenue"]),
-                    "total_spots": row["total_spots"]
-                })
-            
-            return jsonify({
-                "success": True,
-                "duplicates_found": len(duplicates),
-                "duplicates": duplicates
-            })
-            
+
+                duplicates.append(
+                    {
+                        "canonical_target": row["canonical_full_name"],
+                        "customer_count": row["customer_count"],
+                        "actual_names": actual_names,
+                        "customers": customer_details,
+                        "suggested_target": customer_details[0]["customer_id"]
+                        if customer_details
+                        else None,
+                        "total_revenue": float(row["total_revenue"]),
+                        "total_spots": row["total_spots"],
+                    }
+                )
+
+            return jsonify(
+                {
+                    "success": True,
+                    "duplicates_found": len(duplicates),
+                    "duplicates": duplicates,
+                }
+            )
+
     except Exception as e:
         current_app.logger.exception("find_duplicate_customers failed")
         return jsonify({"success": False, "error": str(e)}), 500

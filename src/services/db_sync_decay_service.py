@@ -6,9 +6,8 @@ NO CHANGES to your Excel import system required
 """
 
 import logging
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, date
-import sqlite3
+from typing import Dict, List, Any, Optional
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -502,8 +501,6 @@ def simple_ae_decay_check(ae_service, pipeline_service, ae_id: str) -> Dict[str,
                     def get_monthly_revenue(self, ae_name, month):
                         # Try to get monthly revenue - simplified version
                         try:
-                            from datetime import datetime
-
                             year, month_num = month.split("-")
 
                             from src.models.report_data import ReportFilters

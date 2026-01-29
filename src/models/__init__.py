@@ -2,6 +2,7 @@
 """
 Data models for the CTV reporting system.
 """
+
 from .report_data import (
     ReportFilters,
     ReportMetadata,

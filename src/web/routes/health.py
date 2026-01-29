@@ -5,7 +5,7 @@ Provides system health checks and emergency recovery capabilities.
 """
 
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 from datetime import datetime
 
 from src.services.container import get_container

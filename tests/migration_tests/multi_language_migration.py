@@ -335,9 +335,9 @@ def test_multi_language_migration(year="2024"):
         )
 
         if abs(nkb_analysis["total_nkb_revenue"] - 66700.00) < 1.0:
-            print(f"   ✅ Confirmed: The $66,700 difference was from NKB spots!")
+            print("   ✅ Confirmed: The $66,700 difference was from NKB spots!")
         else:
-            print(f"   ❓ Unexpected: NKB revenue doesn't match expected $66,700")
+            print("   ❓ Unexpected: NKB revenue doesn't match expected $66,700")
 
         # 1. Validate migration
         print("\n1. Validating Migration:")
@@ -361,7 +361,7 @@ def test_multi_language_migration(year="2024"):
         print(f"   Execution Time: {result.execution_time:.3f}s")
 
         # 3. Compare with documented results
-        print(f"\n3. Validation Against Your Guide:")
+        print("\n3. Validation Against Your Guide:")
         documented_multi_language_total = 407960.30  # From your guide
         difference = abs(result.revenue - documented_multi_language_total)
 
@@ -370,17 +370,17 @@ def test_multi_language_migration(year="2024"):
         print(f"   Difference: ${difference:,.2f}")
 
         if difference < 1.0:
-            print(f"   ✅ PERFECT MATCH! (Difference < $1.00)")
+            print("   ✅ PERFECT MATCH! (Difference < $1.00)")
             perfect_match = True
         else:
             print(f"   ❌ DIFFERENCE FOUND! (Difference: ${difference:,.2f})")
             perfect_match = False
 
         # 4. Analyze patterns
-        print(f"\n4. Cross-Audience Analysis:")
+        print("\n4. Cross-Audience Analysis:")
         patterns = analyze_multi_language_patterns(year, conn)
 
-        print(f"   Language Code Breakdown (showing Filipino leadership):")
+        print("   Language Code Breakdown (showing Filipino leadership):")
         filipino_found = False
         for lang_code, spots, revenue, spot_pct, rev_pct in patterns[
             "language_breakdown"
@@ -396,7 +396,7 @@ def test_multi_language_migration(year="2024"):
                 )
 
         # 5. Day of week breakdown
-        print(f"\n   Day of Week Breakdown:")
+        print("\n   Day of Week Breakdown:")
         weekend_total = 0
         weekday_total = 0
 
@@ -412,9 +412,9 @@ def test_multi_language_migration(year="2024"):
                 weekday_total += revenue
 
         # 6. Strategic insights
-        print(f"\n5. Strategic Insights:")
+        print("\n5. Strategic Insights:")
         print(
-            f"   • Filipino Cross-Audience Leadership: Look for 'T' (Tagalog) dominance"
+            "   • Filipino Cross-Audience Leadership: Look for 'T' (Tagalog) dominance"
         )
         print(
             f"   • Weekday Revenue: ${weekday_total:,.2f} ({weekday_total / result.revenue * 100:.1f}%)"
@@ -423,15 +423,15 @@ def test_multi_language_migration(year="2024"):
             f"   • Weekend Revenue: ${weekend_total:,.2f} ({weekend_total / result.revenue * 100:.1f}%)"
         )
         print(
-            f"   • Excludes Chinese Prime Time: Shows non-Chinese cross-audience strategy"
+            "   • Excludes Chinese Prime Time: Shows non-Chinese cross-audience strategy"
         )
-        print(f"   • Excludes NKB Overnight Shopping: Clean separation of categories")
+        print("   • Excludes NKB Overnight Shopping: Clean separation of categories")
         print(
-            f"   • Transition Time Focus: Cross-cultural advertising outside premium hours"
+            "   • Transition Time Focus: Cross-cultural advertising outside premium hours"
         )
 
         # 7. Show generated query
-        print(f"\n6. Generated Query:")
+        print("\n6. Generated Query:")
         builder = MultiLanguageQueryBuilder(year)
         builder.add_multi_language_conditions().exclude_chinese_prime_time().exclude_nkb_overnight_shopping()
         print("   " + builder.build_select_revenue_query().replace("\n", "\n   "))
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     success = test_multi_language_migration("2024")
 
     if success:
-        print(f"\n✅ Multi-Language Migration Test Complete!")
-        print(f"Ready to proceed with remaining categories!")
+        print("\n✅ Multi-Language Migration Test Complete!")
+        print("Ready to proceed with remaining categories!")
     else:
-        print(f"\n❌ Migration test failed - investigate before proceeding!")
+        print("\n❌ Migration test failed - investigate before proceeding!")

@@ -6,7 +6,6 @@ Addresses the stalling issue in bulk import operations.
 
 import sys
 import sqlite3
-import logging
 import time
 import gc
 import psutil
@@ -306,24 +305,24 @@ class EnhancedProductionExcelImporter:
                     missing_critical_columns.append(critical)
 
         # Display analysis
-        print(f"\n📊 Column Mapping Analysis:")
+        print("\n📊 Column Mapping Analysis:")
         print(f"  ✅ Mapped columns: {len(mapped_columns)}")
         print(f"  ❓ Unmapped columns: {len(unmapped_columns)}")
         print(f"  ❌ Missing critical: {len(missing_critical_columns)}")
 
         if mapped_columns:
-            print(f"\n✅ Successfully Mapped Columns:")
+            print("\n✅ Successfully Mapped Columns:")
             for col in sorted(mapped_columns):
                 db_field = self.COLUMN_MAPPING[col]
                 print(f"  '{col}' → {db_field}")
 
         if unmapped_columns:
-            print(f"\n❓ Unmapped Columns (will be ignored):")
+            print("\n❓ Unmapped Columns (will be ignored):")
             for col in sorted(unmapped_columns):
                 print(f"  '{col}'")
 
         if missing_critical_columns:
-            print(f"\n❌ Missing Critical Columns:")
+            print("\n❌ Missing Critical Columns:")
             for col in missing_critical_columns:
                 print(f"  '{col}' - Required for import")
                 if col in alternative_mappings:
@@ -331,32 +330,32 @@ class EnhancedProductionExcelImporter:
 
         # Interactive confirmation
         if interactive:
-            print(f"\n🚨 COLUMN MAPPING CONFIRMATION")
-            print(f"Excel file structure analysis complete.")
+            print("\n🚨 COLUMN MAPPING CONFIRMATION")
+            print("Excel file structure analysis complete.")
 
             if missing_critical_columns:
                 print(
                     f"❌ Cannot proceed: Missing critical columns {missing_critical_columns}"
                 )
-                print(f"Please ensure your Excel file contains the required columns.")
+                print("Please ensure your Excel file contains the required columns.")
                 return False
 
             if unmapped_columns:
                 print(
                     f"⚠️  Warning: {len(unmapped_columns)} columns will be ignored during import."
                 )
-                print(f"This might indicate column naming differences between files.")
+                print("This might indicate column naming differences between files.")
 
-            print(f"\nProceed with import using current column mapping?")
+            print("\nProceed with import using current column mapping?")
             print(f"  - {len(mapped_columns)} columns will be imported")
             print(f"  - {len(unmapped_columns)} columns will be ignored")
 
             while True:
-                response = input(f"\nContinue with import? (yes/no): ").strip().lower()
+                response = input("\nContinue with import? (yes/no): ").strip().lower()
                 if response in ["yes", "y"]:
                     return True
                 elif response in ["no", "n"]:
-                    print(f"❌ Import cancelled by user")
+                    print("❌ Import cancelled by user")
                     return False
                 else:
                     print("Please enter 'yes' or 'no'")
@@ -529,7 +528,7 @@ class EnhancedProductionExcelImporter:
                 f"Missing required columns after mapping: {', '.join(missing_columns)}"
             )
 
-        print(f"✅ Column mapping validated and confirmed")
+        print("✅ Column mapping validated and confirmed")
         print(f"📋 Mapped {len(self.column_indexes)} columns for import")
 
     def _process_sequential_fixed(
@@ -939,42 +938,42 @@ class EnhancedProductionExcelImporter:
     def _print_final_results(self, results: ImportResults):
         """Print comprehensive final results."""
         print(f"\n{'=' * 60}")
-        print(f"🎉 FIXED PRODUCTION IMPORT COMPLETED")
+        print("🎉 FIXED PRODUCTION IMPORT COMPLETED")
         print(f"{'=' * 60}")
-        print(f"📊 Performance Metrics:")
+        print("📊 Performance Metrics:")
         print(f"  Duration: {results.duration_seconds:.2f} seconds")
         print(f"  Processing Rate: {results.records_per_second:,.0f} records/second")
 
         if results.batch_id:
             print(f"  Batch ID: {results.batch_id}")
 
-        print(f"")
-        print(f"📈 Import Results:")
+        print("")
+        print("📈 Import Results:")
         print(f"  Total Records: {results.total_records:,}")
         print(f"  Successfully Imported: {results.records_imported:,}")
         print(f"  Skipped: {results.records_skipped:,}")
         print(
             f"  Success Rate: {(results.records_imported / results.total_records) * 100:.1f}%"
         )
-        print(f"")
-        print(f"🏢 Data Creation:")
+        print("")
+        print("🏢 Data Creation:")
         print(f"  New Agencies: {results.new_agencies_created}")
         print(f"  New Customers: {results.new_customers_created}")
         print(f"  Customer Names Normalized: {results.customers_normalized}")
 
         # Show broadcast months processed
         if results.broadcast_months_processed:
-            print(f"")
-            print(f"📅 Broadcast Months Processed:")
+            print("")
+            print("📅 Broadcast Months Processed:")
             print(f"  Months: {', '.join(results.broadcast_months_processed)}")
             print(f"  Total: {len(results.broadcast_months_processed)} months")
 
         if results.records_skipped > 0:
-            print(f"\n⚠️  Error Analysis:")
+            print("\n⚠️  Error Analysis:")
             print(f"  Total Errors: {results.records_skipped}")
 
             if results.error_summary:
-                print(f"  Error Types:")
+                print("  Error Types:")
                 for error_type, count in sorted(
                     results.error_summary.items(), key=lambda x: x[1], reverse=True
                 ):
@@ -982,7 +981,7 @@ class EnhancedProductionExcelImporter:
                     print(f"    {error_type}: {count} ({percentage:.1f}%)")
 
             if results.errors:
-                print(f"\n  Sample Errors (first 5):")
+                print("\n  Sample Errors (first 5):")
                 for error in results.errors[:5]:
                     print(f"    • {error}")
 
@@ -1046,10 +1045,10 @@ def main():
     results = importer.import_with_batch_id(args.excel_file, args.batch_id, args.limit)
 
     if results.success:
-        print(f"\n✅ FIXED Import completed successfully!")
+        print("\n✅ FIXED Import completed successfully!")
         sys.exit(0)
     else:
-        print(f"\n❌ FIXED Import failed!")
+        print("\n❌ FIXED Import failed!")
         for error in results.errors:
             print(f"  {error}")
         sys.exit(1)

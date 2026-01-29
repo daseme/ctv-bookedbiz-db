@@ -56,14 +56,11 @@ DEPENDENCIES: openpyxl, tqdm, psutil, sqlite3
 
 import sys
 import argparse
-import gc
 import psutil
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Generator, Set, Dict, List, Tuple
-import pandas as pd
-import sqlite3
+from typing import Set, Dict
 
 # Add tqdm for progress bars
 from tqdm import tqdm
@@ -93,7 +90,9 @@ class EnhancedMarketSetupManager:
         print(f"🔍 Scanning Excel file for market codes: {excel_file}")
 
         try:
-            from src.services.import_integration_utilities import get_excel_worksheet_flexible
+            from src.services.import_integration_utilities import (
+                get_excel_worksheet_flexible,
+            )
 
             worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
             print(f"📄 Market scan using sheet: {sheet_name}")
@@ -195,12 +194,12 @@ class EnhancedMarketSetupManager:
 
             workbook.close()
 
-            print(f"\n✅ Excel scan complete:")
+            print("\n✅ Excel scan complete:")
             print(f"   📊 {total_rows:,} total spots analyzed")
             print(f"   🎯 {len(markets_data)} unique markets found")
 
             # Display market summary
-            print(f"\n📋 Market Summary:")
+            print("\n📋 Market Summary:")
             for market_code, data in tqdm(
                 sorted(markets_data.items()), desc="📋 Displaying markets", leave=False
             ):
@@ -246,7 +245,7 @@ class EnhancedMarketSetupManager:
                     f"   ✅ Created market: {market_code} ({market_name}) - ID: {market_id}"
                 )
 
-        print(f"✅ Market creation complete")
+        print("✅ Market creation complete")
         return existing_markets
 
     def setup_schedule_assignments(
@@ -256,7 +255,7 @@ class EnhancedMarketSetupManager:
         markets_with_schedules = self.get_markets_with_schedules()
         assignments_created = 0
 
-        print(f"🗓️  Setting up schedule assignments...")
+        print("🗓️  Setting up schedule assignments...")
 
         # Filter markets that need assignments
         markets_needing_assignments = [
@@ -300,7 +299,7 @@ class EnhancedMarketSetupManager:
 
     def execute_market_setup(self, excel_file: str) -> Dict:
         """Execute complete market setup process with enhanced progress tracking."""
-        print(f"🚀 Starting automatic market setup...")
+        print("🚀 Starting automatic market setup...")
         start_time = datetime.now()
 
         # Step 1: Scan Excel for markets
@@ -388,12 +387,17 @@ class SimpleHistoricalImporter:
         """
         try:
             import pandas as pd
-            
+
             # Try to read the main data sheet - handle multiple possible sheet names
-            sheet_names_to_try = ["Commercials", "Commercial Lines", "Sheet1", 0]  # 0 = first sheet
+            sheet_names_to_try = [
+                "Commercials",
+                "Commercial Lines",
+                "Sheet1",
+                0,
+            ]  # 0 = first sheet
             df = None
             sheet_used = None
-            
+
             for sheet_name in sheet_names_to_try:
                 try:
                     df = pd.read_excel(excel_file, sheet_name=sheet_name)
@@ -402,65 +406,81 @@ class SimpleHistoricalImporter:
                     break
                 except Exception:
                     continue
-            
+
             if df is None:
                 print("   ⚠️ Warning: Could not read any sheet from Excel file")
                 return
 
             # Get unique bill codes - try multiple possible column names
-            bill_code_columns = ['bill_code', 'Bill Code', 'Customer', 'Client', 'Advertiser', 'customer']
+            bill_code_columns = [
+                "bill_code",
+                "Bill Code",
+                "Customer",
+                "Client",
+                "Advertiser",
+                "customer",
+            ]
             bill_codes = []
             column_used = None
-            
+
             for col in bill_code_columns:
                 if col in df.columns:
                     bill_codes = df[col].dropna().unique().tolist()
                     column_used = col
                     break
-            
+
             if not bill_codes:
                 print("   ⚠️ Warning: No bill code column found in Excel file")
                 available_columns = list(df.columns)[:10]  # Show first 10 columns
                 print(f"   Available columns: {available_columns}")
                 return
-            
+
             # Clean and filter bill codes
             clean_bill_codes = []
             for bill_code in bill_codes:
-                if bill_code and str(bill_code).strip() and str(bill_code).strip().upper() != 'NAN':
+                if (
+                    bill_code
+                    and str(bill_code).strip()
+                    and str(bill_code).strip().upper() != "NAN"
+                ):
                     clean_bill_codes.append(str(bill_code).strip())
-            
+
             if clean_bill_codes:
                 # Add to raw_customer_inputs using tqdm for progress
                 current_time = datetime.now().isoformat()
                 added_count = 0
-                
+
                 with self.db.transaction() as conn:
-                    with tqdm(clean_bill_codes, desc="   🔧 Adding bill codes", unit=" codes") as pbar:
+                    with tqdm(
+                        clean_bill_codes, desc="   🔧 Adding bill codes", unit=" codes"
+                    ) as pbar:
                         for bill_code in pbar:
                             try:
-                                cursor = conn.execute("""
+                                cursor = conn.execute(
+                                    """
                                     INSERT OR IGNORE INTO raw_customer_inputs (raw_text, created_at)
                                     VALUES (?, ?)
-                                """, (bill_code, current_time))
-                                
+                                """,
+                                    (bill_code, current_time),
+                                )
+
                                 if cursor.rowcount > 0:
                                     added_count += 1
-                                    
-                            except Exception as e:
+
+                            except Exception:
                                 # Continue with other bill codes if one fails
                                 continue
-                
-                print(f"   ✅ Normalization system updated:")
+
+                print("   ✅ Normalization system updated:")
                 print(f"      Sheet: {sheet_used}, Column: {column_used}")
                 print(f"      Total bill codes found: {len(clean_bill_codes):,}")
                 print(f"      New bill codes added: {added_count:,}")
-                
+
                 if added_count == 0:
-                    print(f"      (All bill codes were already in system)")
+                    print("      (All bill codes were already in system)")
             else:
                 print("   ⚠️ Warning: No valid bill codes found after cleaning")
-        
+
         except Exception as e:
             print(f"   ⚠️ Warning: Could not update raw_customer_inputs: {e}")
             # Don't fail the entire import if this step fails
@@ -480,7 +500,7 @@ class SimpleHistoricalImporter:
         start_time = datetime.now()
         batch_id = f"simple_historical_{int(start_time.timestamp())}"
 
-        print(f"Production Sales Data Import Starting...")
+        print("Production Sales Data Import Starting...")
         print(f"Excel file: {excel_file}")
         print(f"Expected year: {expected_year}")
         print(f"Closed by: {closed_by}")
@@ -501,13 +521,13 @@ class SimpleHistoricalImporter:
         try:
             # Step 1: Market setup (if enabled)
             if auto_setup_markets and not dry_run:
-                print(f"🏗️  STEP 1: Automatic Market Setup")
+                print("🏗️  STEP 1: Automatic Market Setup")
                 market_setup_result = self.market_manager.execute_market_setup(
                     excel_file
                 )
                 results["market_setup"] = market_setup_result
 
-                print(f"📊 Market Setup Results:")
+                print("📊 Market Setup Results:")
                 print(
                     f"   🎯 Markets found in Excel: {market_setup_result['markets_found']}"
                 )
@@ -524,18 +544,20 @@ class SimpleHistoricalImporter:
 
             # Step 1.5: CRITICAL FIX - Update normalization system
             if not dry_run:
-                print(f"🔧 STEP 1.5: Updating normalization system with new bill codes...")
+                print(
+                    "🔧 STEP 1.5: Updating normalization system with new bill codes..."
+                )
                 self._ensure_bill_codes_in_raw_inputs(excel_file)
                 print()
 
             # Step 2: Historical data import (includes language from Excel)
-            print(f"📦 STEP 2: Historical Data Import")
+            print("📦 STEP 2: Historical Data Import")
             print(
-                f"   🔤 Language data will be read directly from Excel Language column"
+                "   🔤 Language data will be read directly from Excel Language column"
             )
 
             if dry_run:
-                print(f"🔍 DRY RUN - No changes would be made")
+                print("🔍 DRY RUN - No changes would be made")
                 summary = get_excel_import_summary(excel_file, self.db.db_path)
                 results["import_result"] = {
                     "would_import": True,
@@ -575,8 +597,8 @@ def display_production_preview(
     skip_closed: bool = False,
 ):
     """Display comprehensive preview."""
-    print(f"Production Import Preview")
-    print(f"=" * 70)
+    print("Production Import Preview")
+    print("=" * 70)
     print(f"Excel file: {excel_file}")
     print(f"Expected year: {expected_year}")
     print(f"Auto-setup markets: {auto_setup}")
@@ -593,7 +615,10 @@ def display_production_preview(
             market_manager = EnhancedMarketSetupManager(db_connection)
 
             # Quick scan for preview (flexible sheet selection)
-            from src.services.import_integration_utilities import get_excel_worksheet_flexible
+            from src.services.import_integration_utilities import (
+                get_excel_worksheet_flexible,
+            )
+
             worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
             print(f"📄 Preview using sheet: {sheet_name}")
 
@@ -605,7 +630,7 @@ def display_production_preview(
             existing_markets = market_manager.get_existing_markets()
             missing_markets = set(excel_markets.keys()) - set(existing_markets.keys())
 
-            print(f"🏗️  Market Setup Preview:")
+            print("🏗️  Market Setup Preview:")
             print(f"   📊 Markets in Excel: {len(excel_markets)}")
             print(f"   ✅ Already exist: {len(existing_markets)}")
             print(f"   🏗️  Will create: {len(missing_markets)}")
@@ -618,28 +643,35 @@ def display_production_preview(
         # Show import preview
         summary = get_excel_import_summary(excel_file, db_path)
 
-        print(f"📦 Import Preview:")
+        print("📦 Import Preview:")
         print(f"   📅 Months found: {len(summary['months_in_excel'])}")
-        print(f"   📊 Existing DB records to replace: {summary['total_existing_spots_affected']:,}")
+        print(
+            f"   📊 Existing DB records to replace: {summary['total_existing_spots_affected']:,}"
+        )
         print(f"   📄 Rows in Excel (est.): {summary.get('total_rows_in_excel', 0):,}")
         print(f"   🔒 Closed months: {len(summary['closed_months'])}")
         print(f"   📂 Open months: {len(summary['open_months'])}")
 
         if skip_closed:
-            print(f"   🎯 Mode: WEEKLY_UPDATE (will skip {len(summary['closed_months'])} closed months)")
+            print(
+                f"   🎯 Mode: WEEKLY_UPDATE (will skip {len(summary['closed_months'])} closed months)"
+            )
         else:
-            print(f"   🎯 Mode: HISTORICAL (will process all months, replace existing data)")
+            print(
+                "   🎯 Mode: HISTORICAL (will process all months, replace existing data)"
+            )
 
         print("")
-        print(f"🔤 Language Handling:")
-        print(f"   📋 Language data will be read directly from Excel Language column")
-        print(f"   🎯 No complex processing needed - simple and reliable")
-        print(f"   ✅ Language assignments handled automatically during import")
+        print("🔤 Language Handling:")
+        print("   📋 Language data will be read directly from Excel Language column")
+        print("   🎯 No complex processing needed - simple and reliable")
+        print("   ✅ Language assignments handled automatically during import")
 
         db_connection.close()
 
     except Exception as e:
         print(f"❌ Error generating preview: {e}")
+
 
 def main():
     """Simple main function - language comes from Excel directly."""
@@ -704,8 +736,8 @@ Features:
         sys.exit(1)
 
     try:
-        print(f"Production Sales Data Import Tool")
-        print(f"=" * 60)
+        print("Production Sales Data Import Tool")
+        print("=" * 60)
 
         # Display production preview
         display_production_preview(
@@ -714,7 +746,7 @@ Features:
 
         # Get confirmation unless forced or dry run
         if not args.dry_run and not args.force:
-            print(f"\n🚨 CONFIRMATION REQUIRED")
+            print("\n🚨 CONFIRMATION REQUIRED")
             action_list = [
                 "Import historical data and close months",
                 "Use language data directly from Excel",
@@ -722,17 +754,17 @@ Features:
             if args.auto_setup:
                 action_list.insert(0, "Create missing markets and schedule assignments")
 
-            print(f"This will:")
+            print("This will:")
             for i, action in enumerate(action_list, 1):
                 print(f"  {i}. {action}")
 
             response = (
-                input(f"\nProceed with import? (type 'yes' to confirm): ")
+                input("\nProceed with import? (type 'yes' to confirm): ")
                 .strip()
                 .lower()
             )
             if response != "yes":
-                print(f"❌ Import cancelled by user")
+                print("❌ Import cancelled by user")
                 sys.exit(0)
 
         # Execute simple import
@@ -750,11 +782,11 @@ Features:
             )
 
             # Display results
-            print(f"\n" + "=" * 70)
+            print("\n" + "=" * 70)
             print(f"PRODUCTION IMPORT {'PREVIEW' if args.dry_run else 'COMPLETED'}")
-            print(f"=" * 70)
+            print("=" * 70)
 
-            print(f"📊 Overall Results:")
+            print("📊 Overall Results:")
             print(f"  Success: {'✅' if results['success'] else '❌'}")
             print(f"  Duration: {results['duration_seconds']:.2f} seconds")
             print(f"  Batch ID: {results['batch_id']}")
@@ -762,7 +794,7 @@ Features:
             # Market setup results
             if results["market_setup"]:
                 setup = results["market_setup"]
-                print(f"\n🏗️  Market Setup Results:")
+                print("\n🏗️  Market Setup Results:")
                 print(f"  Markets found: {setup['markets_found']}")
                 print(f"  New markets created: {setup.get('markets_created', 0)}")
                 print(f"  Schedule assignments created: {setup['assignments_created']}")
@@ -771,7 +803,7 @@ Features:
             # Import results
             if results["import_result"]:
                 import_res = results["import_result"]
-                print(f"\n📦 Import Results:")
+                print("\n📦 Import Results:")
                 if not args.dry_run and hasattr(import_res, "success"):
                     print(f"  Records deleted: {import_res.records_deleted:,}")
                     print(f"  Records imported: {import_res.records_imported:,}")
@@ -788,18 +820,18 @@ Features:
                     print(f"  Months found: {import_res.get('months_found', 0)}")
 
             if results["error_messages"]:
-                print(f"\n❌ Errors:")
+                print("\n❌ Errors:")
                 for error in results["error_messages"]:
                     print(f"  • {error}")
                 sys.exit(1)
 
             if results["success"] and not args.dry_run:
-                print(f"\nClosed data import completed successfully.")
-                print(f"Next steps:")
-                print(f"  - All closed data is imported and protected")
-                print(f"  - Markets and schedules are configured")
-                print(f"  - Language data imported directly from Excel")
-                print(f"  - Database is ready for reporting and analysis")
+                print("\nClosed data import completed successfully.")
+                print("Next steps:")
+                print("  - All closed data is imported and protected")
+                print("  - Markets and schedules are configured")
+                print("  - Language data imported directly from Excel")
+                print("  - Database is ready for reporting and analysis")
 
         finally:
             db_connection.close()

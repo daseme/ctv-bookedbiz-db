@@ -4,7 +4,6 @@ Quick verification script for Language Block schema deployment
 """
 
 import sys
-import sqlite3
 from pathlib import Path
 
 # Add src to path

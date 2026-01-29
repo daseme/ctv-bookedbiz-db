@@ -2,7 +2,7 @@
 """Repository for customer matching data access - extends existing normalization patterns."""
 
 from __future__ import annotations
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any
 import sqlite3
 from contextlib import contextmanager
 
@@ -11,7 +11,6 @@ from ..models.customer_matching import (
     CustomerMatchFilters,
     MatchSuggestion,
     CustomerMatchStatus,
-    MatchMethod,
 )
 
 

@@ -5,7 +5,9 @@ Load customer name matches into review queue.
 """
 
 from __future__ import annotations
-import argparse, json, sqlite3
+import argparse
+import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -16,9 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.services.customer_matching.blocking_matcher import (
     analyze_customer_names,
     summarize,
-    normalize_business_name,
     NORMALIZATION_CONFIG,
-    HIGH_CONF,
 )
 
 

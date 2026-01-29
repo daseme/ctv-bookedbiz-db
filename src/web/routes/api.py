@@ -5,13 +5,12 @@ Provides JSON responses for AJAX calls and data export.
 """
 
 import logging
-from flask import Blueprint, request
+from flask import Blueprint
 from datetime import date, datetime, timedelta
 
 from src.services.container import get_container
 from src.web.utils.request_helpers import (
     extract_report_filters,
-    get_year_parameter,
     create_success_response,
     create_error_response,
     handle_service_error,
@@ -20,7 +19,6 @@ from src.web.utils.request_helpers import (
     handle_request_errors,
     get_export_format,
     create_csv_response,
-    get_pagination_parameters,
 )
 
 logger = logging.getLogger(__name__)

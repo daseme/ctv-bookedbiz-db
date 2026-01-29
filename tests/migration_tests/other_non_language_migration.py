@@ -229,7 +229,7 @@ def test_other_non_language_migration(year="2024"):
         print(f"   Execution Time: {result.execution_time:.3f}s")
 
         # 3. Compare with documented results
-        print(f"\n3. Validation Against Your Guide:")
+        print("\n3. Validation Against Your Guide:")
         documented_other_non_language_total = 58733.77  # From your guide
         difference = abs(result.revenue - documented_other_non_language_total)
 
@@ -238,31 +238,31 @@ def test_other_non_language_migration(year="2024"):
         print(f"   Difference: ${difference:,.2f}")
 
         if difference < 1.0:
-            print(f"   ✅ PERFECT MATCH! (Difference < $1.00)")
+            print("   ✅ PERFECT MATCH! (Difference < $1.00)")
             perfect_match = True
         else:
             print(f"   ❌ DIFFERENCE FOUND! (Difference: ${difference:,.2f})")
             perfect_match = False
 
         # 4. Analyze patterns
-        print(f"\n4. Miscellaneous Non-Language Analysis:")
+        print("\n4. Miscellaneous Non-Language Analysis:")
         patterns = analyze_other_non_language_patterns(year, conn)
 
-        print(f"   Top Customers (needing investigation):")
+        print("   Top Customers (needing investigation):")
         for customer, spots, revenue, avg_rate in patterns["customer_breakdown"][:5]:
             pct = (revenue / result.revenue) * 100 if result.revenue > 0 else 0
             print(
                 f"   {customer:<30}: ${revenue:>10,.2f} ({spots:>3,} spots, ${avg_rate:>6.2f} avg) {pct:>5.1f}%"
             )
 
-        print(f"\n   Spot Type Breakdown:")
+        print("\n   Spot Type Breakdown:")
         for spot_type, spots, revenue, avg_rate in patterns["spot_type_breakdown"]:
             pct = (revenue / result.revenue) * 100 if result.revenue > 0 else 0
             print(
                 f"   {spot_type:<12}: ${revenue:>10,.2f} ({spots:>3,} spots, ${avg_rate:>6.2f} avg) {pct:>5.1f}%"
             )
 
-        print(f"\n   Agency Breakdown:")
+        print("\n   Agency Breakdown:")
         for agency, spots, revenue, avg_rate in patterns["agency_breakdown"][:5]:
             pct = (revenue / result.revenue) * 100 if result.revenue > 0 else 0
             print(
@@ -270,22 +270,20 @@ def test_other_non_language_migration(year="2024"):
             )
 
         # 5. Strategic insights
-        print(f"\n5. Strategic Insights:")
+        print("\n5. Strategic Insights:")
+        print("   • No Language Assignment: These spots lack programming grid coverage")
         print(
-            f"   • No Language Assignment: These spots lack programming grid coverage"
+            "   • Investigation Required: Identify why these spots have no language assignment"
         )
         print(
-            f"   • Investigation Required: Identify why these spots have no language assignment"
-        )
-        print(
-            f"   • Potential Grid Gaps: May indicate missing programming schedule coverage"
+            "   • Potential Grid Gaps: May indicate missing programming schedule coverage"
         )
         print(
             f"   • Revenue Impact: Small but consistent revenue stream ({result.revenue / 4076255.94 * 100:.1f}% of total)"
         )
 
         # 6. Show generated query
-        print(f"\n6. Generated Query:")
+        print("\n6. Generated Query:")
         builder = OtherNonLanguageQueryBuilder(year)
         builder.add_no_language_assignment_condition().exclude_prd_svc_spots().exclude_nkb_spots()
         print("   " + builder.build_select_revenue_query().replace("\n", "\n   "))
@@ -305,7 +303,7 @@ if __name__ == "__main__":
     success = test_other_non_language_migration("2024")
 
     if success:
-        print(f"\n✅ Other Non-Language Migration Test Complete!")
-        print(f"Ready for Overnight Shopping category!")
+        print("\n✅ Other Non-Language Migration Test Complete!")
+        print("Ready for Overnight Shopping category!")
     else:
-        print(f"\n❌ Migration test failed - investigate before proceeding!")
+        print("\n❌ Migration test failed - investigate before proceeding!")
