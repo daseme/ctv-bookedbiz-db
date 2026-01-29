@@ -42,13 +42,13 @@ def test_complete_revenue_breakdown(year="2024"):
 
     # 3. Calculate total
     calculated_total = base_result.revenue + dr_result.revenue
-    print(f"\n3. Calculated Total:")
+    print("\n3. Calculated Total:")
     print(f"   Base Revenue: ${base_result.revenue:,.2f}")
     print(f"   + Direct Response: ${dr_result.revenue:,.2f}")
     print(f"   = Total: ${calculated_total:,.2f}")
 
     # 4. Verify against actual database total
-    print(f"\n4. Database Verification:")
+    print("\n4. Database Verification:")
 
     # Query for actual total (all spots, just base filters)
     total_builder = BaseQueryBuilder(year)
@@ -60,18 +60,18 @@ def test_complete_revenue_breakdown(year="2024"):
 
     # 5. Check for perfect reconciliation
     difference = abs(calculated_total - total_result.revenue)
-    print(f"\n5. Reconciliation Check:")
+    print("\n5. Reconciliation Check:")
     print(f"   Calculated: ${calculated_total:,.2f}")
     print(f"   Database: ${total_result.revenue:,.2f}")
     print(f"   Difference: ${difference:,.2f}")
 
     if difference < 0.01:
-        print(f"   ✅ PERFECT RECONCILIATION! (Difference < $0.01)")
+        print("   ✅ PERFECT RECONCILIATION! (Difference < $0.01)")
     else:
         print(f"   ❌ RECONCILIATION ISSUE! (Difference: ${difference:,.2f})")
 
     # 6. Show the split breakdown
-    print(f"\n6. Revenue Split:")
+    print("\n6. Revenue Split:")
     base_pct = (base_result.revenue / total_result.revenue) * 100
     dr_pct = (dr_result.revenue / total_result.revenue) * 100
 
@@ -94,7 +94,7 @@ def test_complete_revenue_breakdown(year="2024"):
 def compare_with_your_documented_results():
     """Compare with the results documented in your guide"""
 
-    print(f"\n🔍 Comparing with Your Documented Results:")
+    print("\n🔍 Comparing with Your Documented Results:")
     print("=" * 60)
 
     # Your documented totals from the guide
@@ -102,7 +102,7 @@ def compare_with_your_documented_results():
     documented_direct_response = 354506.93
     documented_expected_base = documented_total - documented_direct_response
 
-    print(f"From your Revenue-Querying-By-Language-Guide.md:")
+    print("From your Revenue-Querying-By-Language-Guide.md:")
     print(f"   Total Revenue: ${documented_total:,.2f}")
     print(f"   Direct Response: ${documented_direct_response:,.2f}")
     print(f"   Expected Base: ${documented_expected_base:,.2f}")
@@ -110,7 +110,7 @@ def compare_with_your_documented_results():
     # Test our results
     results = test_complete_revenue_breakdown("2024")
 
-    print(f"\nOur BaseQueryBuilder Results:")
+    print("\nOur BaseQueryBuilder Results:")
     print(f"   Base Revenue: ${results['base_revenue']:,.2f}")
     print(f"   Direct Response: ${results['direct_response']:,.2f}")
     print(f"   Total: ${results['database_total']:,.2f}")
@@ -120,7 +120,7 @@ def compare_with_your_documented_results():
     dr_diff = abs(results["direct_response"] - documented_direct_response)
     total_diff = abs(results["database_total"] - documented_total)
 
-    print(f"\nValidation Against Your Guide:")
+    print("\nValidation Against Your Guide:")
     print(
         f"   Base Query Difference: ${base_diff:,.2f} {'✅' if base_diff < 1.0 else '❌'}"
     )
@@ -132,36 +132,36 @@ def compare_with_your_documented_results():
     )
 
     if base_diff < 1.0 and dr_diff < 1.0 and total_diff < 1.0:
-        print(f"\n🎉 PERFECT MATCH! BaseQueryBuilder is working exactly as expected!")
+        print("\n🎉 PERFECT MATCH! BaseQueryBuilder is working exactly as expected!")
     else:
-        print(f"\n⚠️  Some differences found - may need investigation")
+        print("\n⚠️  Some differences found - may need investigation")
 
 
 def show_query_examples():
     """Show the actual queries being generated"""
 
-    print(f"\n📋 Generated Query Examples:")
+    print("\n📋 Generated Query Examples:")
     print("=" * 60)
 
     # Base query
     base_builder = BaseQueryBuilder("2024")
     base_builder.apply_standard_filters().exclude_worldlink()
 
-    print(f"\n1. Base Query (Excludes WorldLink):")
+    print("\n1. Base Query (Excludes WorldLink):")
     print(base_builder.build_select_revenue_query())
 
     # Direct Response query
     dr_builder = DirectResponseQueryBuilder("2024")
     dr_builder.add_worldlink_conditions()
 
-    print(f"\n2. Direct Response Query (Only WorldLink):")
+    print("\n2. Direct Response Query (Only WorldLink):")
     print(dr_builder.build_select_revenue_query())
 
     # Total query
     total_builder = BaseQueryBuilder("2024")
     total_builder.apply_standard_filters()
 
-    print(f"\n3. Total Query (All Revenue):")
+    print("\n3. Total Query (All Revenue):")
     print(total_builder.build_select_revenue_query())
 
 
@@ -179,5 +179,5 @@ if __name__ == "__main__":
     # Show query examples
     show_query_examples()
 
-    print(f"\n✅ Test Complete!")
-    print(f"BaseQueryBuilder is working correctly and ready for full migration!")
+    print("\n✅ Test Complete!")
+    print("BaseQueryBuilder is working correctly and ready for full migration!")

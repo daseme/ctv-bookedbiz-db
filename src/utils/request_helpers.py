@@ -5,10 +5,9 @@ Provides parameter extraction, validation, and response formatting.
 """
 
 import logging
-from typing import Dict, Any, Optional, Union, List
-from flask import request, jsonify, Response
-from datetime import date, datetime
-from decimal import Decimal
+from typing import Dict, Any, Optional, List
+from flask import request, Response
+from datetime import date
 import json
 
 from src.models.report_data import ReportFilters

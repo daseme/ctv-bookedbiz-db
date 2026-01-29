@@ -4,7 +4,7 @@ Provides centralized service registration and resolution with support
 for singleton and factory patterns.
 """
 
-from typing import Dict, Any, Callable, TypeVar, Type, Optional
+from typing import Dict, Any, Callable, TypeVar, Optional
 import logging
 from functools import wraps
 

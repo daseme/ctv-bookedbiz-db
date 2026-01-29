@@ -949,7 +949,6 @@ class ReportDataService:
             metadata=metadata,
         )
 
-
     def get_quarterly_performance_data(
         self, filters: Optional["ReportFilters"] = None
     ) -> "QuarterlyPerformanceReportData":
@@ -1071,14 +1070,16 @@ class ReportDataService:
             all_sectors = []
             total_revenue = Decimal("0")
             for row in all_sectors_rows:
-                all_sectors.append({
-                    "sector_name": row[0],
-                    "sector_group": row[1],
-                    "customer_count": int(row[2] or 0),
-                    "total_revenue": float(row[3] or 0),
-                    "spot_count": int(row[4] or 0),
-                    "avg_rate": float(row[5] or 0),
-                })
+                all_sectors.append(
+                    {
+                        "sector_name": row[0],
+                        "sector_group": row[1],
+                        "customer_count": int(row[2] or 0),
+                        "total_revenue": float(row[3] or 0),
+                        "spot_count": int(row[4] or 0),
+                        "avg_rate": float(row[5] or 0),
+                    }
+                )
                 total_revenue += Decimal(str(row[3] or 0))
 
             # 2. Get sector groups aggregated
@@ -1103,17 +1104,23 @@ class ReportDataService:
             sector_groups = []
             for row in groups_rows:
                 group_revenue = float(row[2] or 0)
-                market_share = round((group_revenue / float(total_revenue) * 100), 1) if total_revenue > 0 else 0
-                
-                sector_groups.append({
-                    "group_name": row[0],
-                    "customer_count": int(row[1] or 0),
-                    "total_revenue": group_revenue,
-                    "spot_count": int(row[3] or 0),
-                    "avg_rate": float(row[4] or 0),
-                    "market_share_pct": market_share,
-                    "top_customers": [],
-                })
+                market_share = (
+                    round((group_revenue / float(total_revenue) * 100), 1)
+                    if total_revenue > 0
+                    else 0
+                )
+
+                sector_groups.append(
+                    {
+                        "group_name": row[0],
+                        "customer_count": int(row[1] or 0),
+                        "total_revenue": group_revenue,
+                        "spot_count": int(row[3] or 0),
+                        "avg_rate": float(row[4] or 0),
+                        "market_share_pct": market_share,
+                        "top_customers": [],
+                    }
+                )
 
             # 3. Get top customers per sector group
             top_customers_query = f"""
@@ -1138,7 +1145,7 @@ class ReportDataService:
 
             group_customers = {}
             top_customers_by_sector = []
-            
+
             for row in customer_rows:
                 group_name = row[0]
                 customer_data = {
@@ -1149,12 +1156,12 @@ class ReportDataService:
                     "spot_count": int(row[4] or 0),
                     "avg_rate": float(row[5] or 0),
                 }
-                
+
                 if group_name not in group_customers:
                     group_customers[group_name] = []
                 if len(group_customers[group_name]) < 5:
                     group_customers[group_name].append(customer_data)
-                
+
                 top_customers_by_sector.append(customer_data)
 
             for group in sector_groups:
@@ -1189,8 +1196,14 @@ class ReportDataService:
                 "unassigned_customers": unassigned_customers,
                 "assigned_revenue": assigned_revenue,
                 "unassigned_revenue": unassigned_revenue,
-                "assigned_percentage": round((assigned_revenue / total_rev * 100), 1) if total_rev > 0 else 0,
-                "unassigned_percentage": round((unassigned_revenue / total_rev * 100), 1) if total_rev > 0 else 0,
+                "assigned_percentage": round((assigned_revenue / total_rev * 100), 1)
+                if total_rev > 0
+                else 0,
+                "unassigned_percentage": round(
+                    (unassigned_revenue / total_rev * 100), 1
+                )
+                if total_rev > 0
+                else 0,
             }
 
         finally:
@@ -1375,7 +1388,6 @@ class ReportDataService:
 
     def _get_default_container(self):
         """Get default container if none provided"""
-        from src.services.container import get_container
 
         return get_container()
 
@@ -1389,7 +1401,6 @@ class ReportDataService:
         self, revenue_data: List["CustomerMonthlyRow"], revenue_field: str
     ) -> Dict[str, Any]:
         """Calculate revenue statistics from processed data with new customer counts"""
-        from src.utils.template_formatters import calculate_statistics
 
         rows_for_stats = []
         new_customer_count = 0
@@ -1538,7 +1549,6 @@ class ReportDataService:
         finally:
             conn.close()
 
-
     # ============================================================================
     # Factory Functions
     # ============================================================================
@@ -1565,16 +1575,15 @@ from src.models.report_data import (
     ReportFilters,
     MonthlyRevenueReportData,
     AEPerformanceReportData,
-    QuarterlyPerformanceReportData,  
-    SectorPerformanceReportData,     
-    QuarterlyData,                   
-    SectorData,                      
-    CustomerSectorData,              
+    QuarterlyPerformanceReportData,
+    SectorPerformanceReportData,
+    QuarterlyData,
+    SectorData,
+    CustomerSectorData,
     CustomerMonthlyRow,
     AEPerformanceData,
     ReportMetadata,
     MonthStatus,
     create_month_status_from_closure_data,
 )
-from src.services.container import get_container
 from src.utils.template_formatters import calculate_statistics

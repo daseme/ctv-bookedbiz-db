@@ -8,8 +8,8 @@ import sys
 import sqlite3
 import logging
 from pathlib import Path
-from datetime import datetime, date
-from typing import List, Set, Optional
+from datetime import date
+from typing import List, Optional
 from dataclasses import dataclass
 
 # Add src to path for imports

@@ -8,9 +8,7 @@ Validates that the decay system works correctly with real-time adjustments.
 import os
 import sys
 import tempfile
-import time
 import json
-from datetime import datetime, timedelta
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
@@ -213,7 +211,7 @@ def test_pipeline_decay_system():
         if analytics and "monthly_summaries" in analytics:
             monthly_summary = analytics["monthly_summaries"].get(month)
             if monthly_summary:
-                print(f"✅ Analytics generated:")
+                print("✅ Analytics generated:")
                 print(
                     f"   Decay rate per day: {monthly_summary['decay_rate_per_day']:.2f}"
                 )
@@ -255,7 +253,7 @@ def test_pipeline_decay_system():
                     print("✅ Calibration baseline reset correctly")
                     print(f"✅ New baseline: {new_calibration:,}")
                 else:
-                    print(f"❌ Calibration reset failed")
+                    print("❌ Calibration reset failed")
                     print(f"   Calibrated: {decay_summary['calibrated_pipeline']}")
                     print(f"   Current: {decay_summary['current_pipeline']}")
                     return False
@@ -281,7 +279,7 @@ def test_pipeline_decay_system():
                     break
 
             if test_month_summary:
-                print(f"✅ Test month summary found:")
+                print("✅ Test month summary found:")
                 print(
                     f"   Current pipeline: {test_month_summary['current_pipeline']:,}"
                 )

@@ -8,8 +8,6 @@ Run this first to validate that your enhanced services work properly.
 import os
 import sys
 import tempfile
-import threading
-import time
 import json
 from concurrent.futures import ThreadPoolExecutor
 

@@ -103,9 +103,8 @@ Key Insights Available:
 
 import sqlite3
 import argparse
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
-import json
 
 
 class ProgrammingIntelligenceDashboard:
@@ -335,7 +334,7 @@ class ProgrammingIntelligenceDashboard:
         unique_years = set(year_parts)
 
         print(f"\nUnique year parts found: {sorted(unique_years)}")
-        print(f"Expected years: 24, 25, 26")
+        print("Expected years: 24, 25, 26")
 
         if "00" in unique_years:
             print(

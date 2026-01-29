@@ -5,7 +5,6 @@ Handles the "Agency:Customer" format from Excel bill codes with robust error han
 
 import logging
 from typing import Optional, Tuple, List
-import re
 
 logger = logging.getLogger(__name__)
 

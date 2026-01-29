@@ -23,7 +23,7 @@ import os
 import logging
 from typing import Dict, Any, Optional
 
-from flask import Flask, request, Blueprint, render_template, jsonify
+from flask import Flask, request, render_template, jsonify
 
 # --- module logger first (fixes early-use bug in optional imports) ---
 logger = logging.getLogger(__name__)
@@ -211,10 +211,7 @@ def configure_blueprint_services(app: Flask) -> None:
 
 def register_common_error_handlers(app: Flask) -> None:
     def _is_api_path(p: str) -> bool:
-        return (
-            p.startswith("/api/")
-            or p.startswith("/health/")
-        )
+        return p.startswith("/api/") or p.startswith("/health/")
 
     @app.errorhandler(404)
     def not_found_error(error):
@@ -262,10 +259,7 @@ def register_common_error_handlers(app: Flask) -> None:
     @app.errorhandler(400)
     def bad_request_error(error):
         logger.warning("400: %s %s - %s", request.method, request.path, error)
-        if (
-            request.path.startswith("/api/")
-            or request.path.startswith("/health/")
-        ):
+        if request.path.startswith("/api/") or request.path.startswith("/health/"):
             return jsonify(
                 {
                     "success": False,
@@ -281,10 +275,7 @@ def register_common_error_handlers(app: Flask) -> None:
         logger.warning(
             "403: %s %s from %s", request.method, request.path, request.remote_addr
         )
-        if (
-            request.path.startswith("/api/")
-            or request.path.startswith("/health/")
-        ):
+        if request.path.startswith("/api/") or request.path.startswith("/health/"):
             return jsonify(
                 {
                     "success": False,
@@ -298,10 +289,7 @@ def register_common_error_handlers(app: Flask) -> None:
     @app.errorhandler(503)
     def service_unavailable_error(error):
         logger.error("503: %s %s", request.method, request.path)
-        if (
-            request.path.startswith("/api/")
-            or request.path.startswith("/health/")
-        ):
+        if request.path.startswith("/api/") or request.path.startswith("/health/"):
             return jsonify(
                 {
                     "success": False,
@@ -437,10 +425,7 @@ def configure_security_headers(app: Flask) -> None:
                 "style-src 'self' 'unsafe-inline'"
             )
 
-        if (
-            path.startswith("/api/")
-            or path.startswith("/health/")
-        ):
+        if path.startswith("/api/") or path.startswith("/health/"):
             response.headers["Access-Control-Allow-Origin"] = "*"
             response.headers["Access-Control-Allow-Methods"] = (
                 "GET, POST, PUT, DELETE, OPTIONS"
@@ -500,7 +485,6 @@ def get_blueprint_info() -> Dict[str, Any]:
                     "/health/metrics - System performance metrics",
                 ],
             },
-
         ],
         "total_blueprints": 5,
         "features": {

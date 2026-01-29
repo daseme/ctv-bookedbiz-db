@@ -7,7 +7,7 @@ from flask import Flask, render_template, jsonify, request
 import os
 import sys
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict
 
 # Add project root to path for imports
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))

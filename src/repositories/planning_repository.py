@@ -54,35 +54,35 @@ class PlanningRepository(BaseService):
                     END,
                     entity_name
             """)
-            
+
             return [self._row_to_revenue_entity(row) for row in cursor.fetchall()]
 
     def get_revenue_entity_by_name(self, name: str) -> Optional[RevenueEntity]:
         """Get revenue entity by name."""
         with self.safe_connection() as conn:
             cursor = conn.execute(
-                "SELECT * FROM revenue_entities WHERE entity_name = ?",
-                (name,)
+                "SELECT * FROM revenue_entities WHERE entity_name = ?", (name,)
             )
             row = cursor.fetchone()
             return self._row_to_revenue_entity(row) if row else None
 
     def upsert_revenue_entity(
-        self, 
-        entity_name: str, 
-        entity_type: EntityType = EntityType.AE
+        self, entity_name: str, entity_type: EntityType = EntityType.AE
     ) -> RevenueEntity:
         """Insert or update a revenue entity."""
         with self.safe_transaction() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 INSERT INTO revenue_entities (entity_name, entity_type)
                 VALUES (?, ?)
                 ON CONFLICT(entity_name) DO UPDATE SET
                     entity_type = excluded.entity_type,
                     is_active = 1
                 RETURNING entity_id, entity_name, entity_type, is_active, notes
-            """, (entity_name, entity_type.value))
-            
+            """,
+                (entity_name, entity_type.value),
+            )
+
             row = cursor.fetchone()
             return self._row_to_revenue_entity(row)
 
@@ -90,7 +90,8 @@ class PlanningRepository(BaseService):
         """Get revenue from sales_person values not in revenue_entities."""
         with self.safe_connection() as conn:
             year_suffix = str(year)[2:]
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT 
                     s.sales_person,
                     COUNT(*) AS spot_count,
@@ -104,120 +105,125 @@ class PlanningRepository(BaseService):
                   AND s.sales_person != ''
                 GROUP BY s.sales_person
                 ORDER BY total_revenue DESC
-            """, (f"%-{year_suffix}",))
-            
+            """,
+                (f"%-{year_suffix}",),
+            )
+
             return [dict(row) for row in cursor.fetchall()]
 
     # =========================================================================
     # Budget Data
     # =========================================================================
 
-    def get_budget(
-        self, 
-        ae_name: str, 
-        year: int, 
-        month: int
-    ) -> Optional[Decimal]:
+    def get_budget(self, ae_name: str, year: int, month: int) -> Optional[Decimal]:
         """Get budget amount for an AE/year/month."""
         with self.safe_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT budget_amount
                 FROM budget
                 WHERE ae_name = ? AND year = ? AND month = ?
-            """, (ae_name, year, month))
-            
+            """,
+                (ae_name, year, month),
+            )
+
             row = cursor.fetchone()
             return Decimal(str(row["budget_amount"])) if row else None
 
     def get_budgets_for_periods(
-        self, 
-        ae_name: str, 
-        periods: List[PlanningPeriod]
+        self, ae_name: str, periods: List[PlanningPeriod]
     ) -> Dict[PlanningPeriod, Decimal]:
         """Get budget amounts for multiple periods."""
         if not periods:
             return {}
-        
+
         with self.safe_connection() as conn:
             placeholders = ",".join(["(?, ?)" for _ in periods])
             params = []
             for p in periods:
                 params.extend([p.year, p.month])
-            
-            cursor = conn.execute(f"""
+
+            cursor = conn.execute(
+                f"""
                 SELECT year, month, budget_amount
                 FROM budget
                 WHERE ae_name = ? AND (year, month) IN ({placeholders})
-            """, [ae_name] + params)
-            
+            """,
+                [ae_name] + params,
+            )
+
             result = {}
             for row in cursor.fetchall():
                 period = PlanningPeriod(year=row["year"], month=row["month"])
                 result[period] = Decimal(str(row["budget_amount"]))
-            
+
             return result
 
     # =========================================================================
     # Forecast Data
     # =========================================================================
 
-    def get_forecast(
-        self, 
-        ae_name: str, 
-        year: int, 
-        month: int
-    ) -> Optional[Decimal]:
+    def get_forecast(self, ae_name: str, year: int, month: int) -> Optional[Decimal]:
         """Get forecast amount for an AE/year/month."""
         with self.safe_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT forecast_amount, updated_date, updated_by
                 FROM forecast
                 WHERE ae_name = ? AND year = ? AND month = ?
-            """, (ae_name, year, month))
-            
+            """,
+                (ae_name, year, month),
+            )
+
             row = cursor.fetchone()
             return Decimal(str(row["forecast_amount"])) if row else None
 
     def get_forecast_with_metadata(
-        self, 
-        ae_name: str, 
-        year: int, 
-        month: int
+        self, ae_name: str, year: int, month: int
     ) -> Optional[Dict[str, Any]]:
         """Get forecast with update metadata."""
         with self.safe_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT forecast_amount, updated_date, updated_by, notes
                 FROM forecast
                 WHERE ae_name = ? AND year = ? AND month = ?
-            """, (ae_name, year, month))
-            
+            """,
+                (ae_name, year, month),
+            )
+
             row = cursor.fetchone()
             if not row:
                 return None
-            
+
             return {
                 "amount": Decimal(str(row["forecast_amount"])),
-                "updated_date": datetime.fromisoformat(row["updated_date"]) if row["updated_date"] else None,
+                "updated_date": datetime.fromisoformat(row["updated_date"])
+                if row["updated_date"]
+                else None,
                 "updated_by": row["updated_by"],
-                "notes": row["notes"]
+                "notes": row["notes"],
             }
 
     def save_forecast(self, update: ForecastUpdate) -> ForecastChange:
         """Save a forecast update and record history."""
         with self.safe_transaction() as conn:
             # Get previous amount for history
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT forecast_amount
                 FROM forecast
                 WHERE ae_name = ? AND year = ? AND month = ?
-            """, (update.ae_name, update.year, update.month))
-            
+            """,
+                (update.ae_name, update.year, update.month),
+            )
+
             row = cursor.fetchone()
             previous_amount = Decimal(str(row["forecast_amount"])) if row else None
-            
+
             # Upsert forecast
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO forecast (ae_name, year, month, forecast_amount, updated_by, notes)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ae_name, year, month) DO UPDATE SET
@@ -225,35 +231,40 @@ class PlanningRepository(BaseService):
                     updated_date = CURRENT_TIMESTAMP,
                     updated_by = excluded.updated_by,
                     notes = excluded.notes
-            """, (
-                update.ae_name, 
-                update.year, 
-                update.month, 
-                float(update.new_amount),
-                update.updated_by,
-                update.notes
-            ))
-            
+            """,
+                (
+                    update.ae_name,
+                    update.year,
+                    update.month,
+                    float(update.new_amount),
+                    update.updated_by,
+                    update.notes,
+                ),
+            )
+
             # Record history
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO forecast_history 
                 (ae_name, year, month, previous_amount, new_amount, changed_by, session_notes)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                update.ae_name,
-                update.year,
-                update.month,
-                float(previous_amount) if previous_amount else None,
-                float(update.new_amount),
-                update.updated_by,
-                update.notes
-            ))
-            
+            """,
+                (
+                    update.ae_name,
+                    update.year,
+                    update.month,
+                    float(previous_amount) if previous_amount else None,
+                    float(update.new_amount),
+                    update.updated_by,
+                    update.notes,
+                ),
+            )
+
             logger.info(
                 f"Forecast updated: {update.ae_name} {update.year}-{update.month:02d} "
                 f"from {previous_amount} to {update.new_amount}"
             )
-            
+
             return ForecastChange(
                 ae_name=update.ae_name,
                 period=update.period,
@@ -261,101 +272,110 @@ class PlanningRepository(BaseService):
                 new_amount=Money(update.new_amount),
                 changed_date=datetime.now(),
                 changed_by=update.updated_by,
-                session_notes=update.notes
+                session_notes=update.notes,
             )
 
     def delete_forecast(self, ae_name: str, year: int, month: int) -> bool:
         """Delete a forecast override (reverts to budget)."""
         with self.safe_transaction() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 DELETE FROM forecast
                 WHERE ae_name = ? AND year = ? AND month = ?
-            """, (ae_name, year, month))
-            
+            """,
+                (ae_name, year, month),
+            )
+
             deleted = cursor.rowcount > 0
             if deleted:
                 logger.info(f"Forecast deleted: {ae_name} {year}-{month:02d}")
-            
+
             return deleted
 
-# =========================================================================
+    # =========================================================================
     # Booked Revenue (from spots) - Updated for WorldLink handling
     # =========================================================================
 
-    def get_booked_revenue(
-        self, 
-        ae_name: str, 
-        year: int, 
-        month: int
-    ) -> Decimal:
+    def get_booked_revenue(self, ae_name: str, year: int, month: int) -> Decimal:
         """Get booked revenue for an AE/year/month from spots.
-        
+
         Special handling:
         - WorldLink: Match on bill_code LIKE 'WorldLink:%'
         - House: Exclude WorldLink bill_codes (they belong to WorldLink entity)
         """
         with self.safe_connection() as conn:
             period = PlanningPeriod(year=year, month=month)
-            
+
             if ae_name == "WorldLink":
                 # WorldLink revenue is identified by bill_code prefix, not sales_person
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT COALESCE(SUM(gross_rate), 0) AS booked
                     FROM spots
                     WHERE bill_code LIKE 'WorldLink:%'
                       AND broadcast_month = ?
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                """, (period.broadcast_month,))
+                """,
+                    (period.broadcast_month,),
+                )
             elif ae_name == "House":
                 # House revenue excludes WorldLink bill_codes
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT COALESCE(SUM(gross_rate), 0) AS booked
                     FROM spots
                     WHERE sales_person = ?
                       AND broadcast_month = ?
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                       AND bill_code NOT LIKE 'WorldLink:%'
-                """, (ae_name, period.broadcast_month))
+                """,
+                    (ae_name, period.broadcast_month),
+                )
             else:
                 # Standard AE lookup by sales_person
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT COALESCE(SUM(gross_rate), 0) AS booked
                     FROM spots
                     WHERE sales_person = ?
                       AND broadcast_month = ?
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                """, (ae_name, period.broadcast_month))
-            
+                """,
+                    (ae_name, period.broadcast_month),
+                )
+
             row = cursor.fetchone()
             return Decimal(str(row["booked"]))
 
     def get_booked_revenue_for_periods(
-        self, 
-        ae_name: str, 
-        periods: List[PlanningPeriod]
+        self, ae_name: str, periods: List[PlanningPeriod]
     ) -> Dict[PlanningPeriod, Decimal]:
         """Get booked revenue for multiple periods.
-        
+
         Special handling for WorldLink and House entities.
         """
         if not periods:
             return {}
-        
+
         with self.safe_connection() as conn:
             broadcast_months = [p.broadcast_month for p in periods]
             placeholders = ",".join(["?" for _ in broadcast_months])
-            
+
             if ae_name == "WorldLink":
-                cursor = conn.execute(f"""
+                cursor = conn.execute(
+                    f"""
                     SELECT broadcast_month, COALESCE(SUM(gross_rate), 0) AS booked
                     FROM spots
                     WHERE bill_code LIKE 'WorldLink:%'
                       AND broadcast_month IN ({placeholders})
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                     GROUP BY broadcast_month
-                """, broadcast_months)
+                """,
+                    broadcast_months,
+                )
             elif ae_name == "House":
-                cursor = conn.execute(f"""
+                cursor = conn.execute(
+                    f"""
                     SELECT broadcast_month, COALESCE(SUM(gross_rate), 0) AS booked
                     FROM spots
                     WHERE sales_person = ?
@@ -363,35 +383,39 @@ class PlanningRepository(BaseService):
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                       AND bill_code NOT LIKE 'WorldLink:%'
                     GROUP BY broadcast_month
-                """, [ae_name] + broadcast_months)
+                """,
+                    [ae_name] + broadcast_months,
+                )
             else:
-                cursor = conn.execute(f"""
+                cursor = conn.execute(
+                    f"""
                     SELECT broadcast_month, COALESCE(SUM(gross_rate), 0) AS booked
                     FROM spots
                     WHERE sales_person = ?
                       AND broadcast_month IN ({placeholders})
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                     GROUP BY broadcast_month
-                """, [ae_name] + broadcast_months)
-            
+                """,
+                    [ae_name] + broadcast_months,
+                )
+
             result = {}
             for row in cursor.fetchall():
                 period = PlanningPeriod.from_broadcast_month(row["broadcast_month"])
                 result[period] = Decimal(str(row["booked"]))
-            
+
             # Fill in zeros for periods with no spots
             for p in periods:
                 if p not in result:
                     result[p] = Decimal("0")
-            
+
             return result
 
     def get_all_booked_revenue(
-        self, 
-        periods: List[PlanningPeriod]
+        self, periods: List[PlanningPeriod]
     ) -> Dict[str, Dict[PlanningPeriod, Decimal]]:
         """Get booked revenue for all AEs across periods.
-        
+
         This method handles the special cases:
         - WorldLink: Aggregated from bill_code LIKE 'WorldLink:%'
         - House: Excludes WorldLink bill_codes
@@ -399,15 +423,16 @@ class PlanningRepository(BaseService):
         """
         if not periods:
             return {}
-        
+
         with self.safe_connection() as conn:
             broadcast_months = [p.broadcast_month for p in periods]
             placeholders = ",".join(["?" for _ in broadcast_months])
-            
+
             result: Dict[str, Dict[PlanningPeriod, Decimal]] = {}
-            
+
             # 1. Get standard AE revenue (excluding House for now)
-            cursor = conn.execute(f"""
+            cursor = conn.execute(
+                f"""
                 SELECT 
                     sales_person,
                     broadcast_month, 
@@ -418,18 +443,21 @@ class PlanningRepository(BaseService):
                   AND sales_person IS NOT NULL
                   AND sales_person != 'House'
                 GROUP BY sales_person, broadcast_month
-            """, broadcast_months)
-            
+            """,
+                broadcast_months,
+            )
+
             for row in cursor.fetchall():
                 ae_name = row["sales_person"]
                 period = PlanningPeriod.from_broadcast_month(row["broadcast_month"])
-                
+
                 if ae_name not in result:
                     result[ae_name] = {}
                 result[ae_name][period] = Decimal(str(row["booked"]))
-            
+
             # 2. Get House revenue (excluding WorldLink bill_codes)
-            cursor = conn.execute(f"""
+            cursor = conn.execute(
+                f"""
                 SELECT 
                     broadcast_month, 
                     COALESCE(SUM(gross_rate), 0) AS booked
@@ -439,16 +467,19 @@ class PlanningRepository(BaseService):
                   AND sales_person = 'House'
                   AND bill_code NOT LIKE 'WorldLink:%'
                 GROUP BY broadcast_month
-            """, broadcast_months)
-            
+            """,
+                broadcast_months,
+            )
+
             for row in cursor.fetchall():
                 period = PlanningPeriod.from_broadcast_month(row["broadcast_month"])
                 if "House" not in result:
                     result["House"] = {}
                 result["House"][period] = Decimal(str(row["booked"]))
-            
+
             # 3. Get WorldLink revenue (from bill_code prefix)
-            cursor = conn.execute(f"""
+            cursor = conn.execute(
+                f"""
                 SELECT 
                     broadcast_month, 
                     COALESCE(SUM(gross_rate), 0) AS booked
@@ -457,35 +488,37 @@ class PlanningRepository(BaseService):
                   AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                   AND bill_code LIKE 'WorldLink:%'
                 GROUP BY broadcast_month
-            """, broadcast_months)
-            
+            """,
+                broadcast_months,
+            )
+
             for row in cursor.fetchall():
                 period = PlanningPeriod.from_broadcast_month(row["broadcast_month"])
                 if "WorldLink" not in result:
                     result["WorldLink"] = {}
                 result["WorldLink"][period] = Decimal(str(row["booked"]))
-            
+
             return result
 
     def get_booked_detail(
-        self,
-        entity: RevenueEntity,
-        period: PlanningPeriod,
-        limit: int = 50
+        self, entity: RevenueEntity, period: PlanningPeriod, limit: int = 50
     ) -> List[Dict[str, Any]]:
         """
         Get detailed breakdown of booked revenue by customer for an entity/period.
-        
+
         Args:
             entity: Revenue entity (AE, House, WorldLink, etc.)
             period: Planning period (year/month)
             limit: Max rows to return
-            
+
         Returns:
             List of dicts with customer_name, agency_name, revenue, spot_count
         """
         # Build WHERE clause based on entity type
-        if entity.entity_type == EntityType.AGENCY and entity.entity_name == "WorldLink":
+        if (
+            entity.entity_type == EntityType.AGENCY
+            and entity.entity_name == "WorldLink"
+        ):
             # WorldLink: bill_code starts with 'WL:' or 'WORLDLINK:'
             entity_filter = """
                 (s.bill_code LIKE 'WL:%' OR s.bill_code LIKE 'WORLDLINK:%')
@@ -525,35 +558,32 @@ class PlanningRepository(BaseService):
             cursor = conn.execute(query, params)
             results = []
             for row in cursor.fetchall():
-                results.append({
-                    "customer_name": row[0] or "Unknown",
-                    "agency_name": row[1],
-                    "sector_code": row[2],
-                    "sector_name": row[3],
-                    "revenue": float(row[4] or 0),
-                    "spot_count": int(row[5] or 0)
-                })
+                results.append(
+                    {
+                        "customer_name": row[0] or "Unknown",
+                        "agency_name": row[1],
+                        "sector_code": row[2],
+                        "sector_name": row[3],
+                        "revenue": float(row[4] or 0),
+                        "spot_count": int(row[5] or 0),
+                    }
+                )
             return results
 
     # =========================================================================
     # Combined Planning Data
     # =========================================================================
 
-
     def get_planning_row(
-        self, 
-        entity: RevenueEntity, 
-        period: PlanningPeriod
+        self, entity: RevenueEntity, period: PlanningPeriod
     ) -> PlanningRow:
         """Get complete planning data for one entity and period."""
         budget = self.get_budget(entity.entity_name, period.year, period.month)
         forecast_data = self.get_forecast_with_metadata(
             entity.entity_name, period.year, period.month
         )
-        booked = self.get_booked_revenue(
-            entity.entity_name, period.year, period.month
-        )
-        
+        booked = self.get_booked_revenue(entity.entity_name, period.year, period.month)
+
         # Forecast defaults to budget if not overridden
         if forecast_data:
             forecast_amount = forecast_data["amount"]
@@ -563,7 +593,7 @@ class PlanningRepository(BaseService):
             forecast_amount = budget or Decimal("0")
             forecast_updated = None
             forecast_updated_by = None
-        
+
         return PlanningRow(
             entity=entity,
             period=period,
@@ -571,19 +601,16 @@ class PlanningRepository(BaseService):
             forecast_entered=Money(forecast_amount),  # ← CHANGED from forecast=
             booked=Money(booked),
             forecast_updated=forecast_updated,
-            forecast_updated_by=forecast_updated_by
+            forecast_updated_by=forecast_updated_by,
         )
 
     def get_forecast_history(
-        self, 
-        ae_name: str, 
-        year: int, 
-        month: int,
-        limit: int = 10
+        self, ae_name: str, year: int, month: int, limit: int = 10
     ) -> List[ForecastChange]:
         """Get forecast change history for an AE/period."""
         with self.safe_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT 
                     ae_name, year, month, 
                     previous_amount, new_amount,
@@ -592,86 +619,92 @@ class PlanningRepository(BaseService):
                 WHERE ae_name = ? AND year = ? AND month = ?
                 ORDER BY changed_date DESC
                 LIMIT ?
-            """, (ae_name, year, month, limit))
-            
+            """,
+                (ae_name, year, month, limit),
+            )
+
             result = []
             for row in cursor.fetchall():
-                result.append(ForecastChange(
-                    ae_name=row["ae_name"],
-                    period=PlanningPeriod(year=row["year"], month=row["month"]),
-                    previous_amount=Money(Decimal(str(row["previous_amount"]))) if row["previous_amount"] else None,
-                    new_amount=Money(Decimal(str(row["new_amount"]))),
-                    changed_date=datetime.fromisoformat(row["changed_date"]),
-                    changed_by=row["changed_by"],
-                    session_notes=row["session_notes"]
-                ))
-            
+                result.append(
+                    ForecastChange(
+                        ae_name=row["ae_name"],
+                        period=PlanningPeriod(year=row["year"], month=row["month"]),
+                        previous_amount=Money(Decimal(str(row["previous_amount"])))
+                        if row["previous_amount"]
+                        else None,
+                        new_amount=Money(Decimal(str(row["new_amount"]))),
+                        changed_date=datetime.fromisoformat(row["changed_date"]),
+                        changed_by=row["changed_by"],
+                        session_notes=row["session_notes"],
+                    )
+                )
+
             return result
 
-# ============================================================================
-# Add these methods to src/repositories/planning_repository.py
-# ============================================================================
+    # ============================================================================
+    # Add these methods to src/repositories/planning_repository.py
+    # ============================================================================
 
     # =========================================================================
     # Sellable Days Adjustments
     # =========================================================================
 
-    def get_sellable_days_adjustment(
-        self, 
-        year: int, 
-        month: int
-    ) -> Optional[tuple]:
+    def get_sellable_days_adjustment(self, year: int, month: int) -> Optional[tuple]:
         """
         Get sellable days adjustment for a month.
-        
+
         Returns:
             Tuple of (adjustment: int, reason: str|None) or None if no adjustment
         """
         with self.safe_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT adjustment, reason
                 FROM sellable_days_adjustments
                 WHERE year = ? AND month = ?
-            """, (year, month))
-            
+            """,
+                (year, month),
+            )
+
             row = cursor.fetchone()
             if row:
                 return (row["adjustment"], row["reason"])
             return None
-    
-    def get_all_sellable_days_adjustments(
-        self, 
-        year: int
-    ) -> Dict[int, tuple]:
+
+    def get_all_sellable_days_adjustments(self, year: int) -> Dict[int, tuple]:
         """
         Get all adjustments for a year.
-        
+
         Returns:
             Dict mapping month -> (adjustment, reason)
         """
         with self.safe_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT month, adjustment, reason
                 FROM sellable_days_adjustments
                 WHERE year = ?
-            """, (year,))
-            
+            """,
+                (year,),
+            )
+
             return {
                 row["month"]: (row["adjustment"], row["reason"])
                 for row in cursor.fetchall()
             }
-    
+
     def save_sellable_days_adjustment(
         self,
         year: int,
         month: int,
         adjustment: int,
         reason: Optional[str] = None,
-        updated_by: Optional[str] = None
+        updated_by: Optional[str] = None,
     ) -> None:
         """Save or update a sellable days adjustment."""
         with self.safe_transaction() as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO sellable_days_adjustments 
                     (year, month, adjustment, reason, updated_by, updated_date)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -680,65 +713,73 @@ class PlanningRepository(BaseService):
                     reason = excluded.reason,
                     updated_by = excluded.updated_by,
                     updated_date = CURRENT_TIMESTAMP
-            """, (year, month, adjustment, reason, updated_by))
-            
-            logger.info(f"Sellable days adjustment saved: {year}-{month:02d} = {adjustment}")
+            """,
+                (year, month, adjustment, reason, updated_by),
+            )
+
+            logger.info(
+                f"Sellable days adjustment saved: {year}-{month:02d} = {adjustment}"
+            )
 
     # =========================================================================
     # Booked Revenue by Effective Date (for burn-down pace)
     # =========================================================================
 
     def get_booked_mtd_by_effective_date(
-        self,
-        broadcast_month: str,
-        as_of_date: date
+        self, broadcast_month: str, as_of_date: date
     ) -> Decimal:
         """
         Get booked revenue for spots in a broadcast month,
         where effective_date <= as_of_date.
-        
+
         This measures sales velocity: how fast we're filling the month.
-        
+
         Args:
             broadcast_month: e.g., "Jan-26"
             as_of_date: Count spots loaded on or before this date
-            
+
         Returns:
             Total gross_rate for matching spots
         """
         with self.safe_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT COALESCE(SUM(gross_rate), 0) AS booked
                 FROM spots
                 WHERE broadcast_month = ?
                   AND effective_date <= ?
                   AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-            """, (broadcast_month, as_of_date.isoformat()))
-            
+            """,
+                (broadcast_month, as_of_date.isoformat()),
+            )
+
             row = cursor.fetchone()
             return Decimal(str(row["booked"]))
-    
+
     def get_company_totals_for_period(
-        self,
-        period: 'PlanningPeriod'
+        self, period: "PlanningPeriod"
     ) -> Dict[str, Decimal]:
         """
         Get company-wide totals for a period.
-        
+
         Returns:
             Dict with 'budget', 'forecast', 'booked' totals
         """
         with self.safe_connection() as conn:
             # Budget total
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT COALESCE(SUM(budget_amount), 0) AS total
                 FROM budget
                 WHERE year = ? AND month = ?
-            """, (period.year, period.month))
+            """,
+                (period.year, period.month),
+            )
             budget_total = Decimal(str(cursor.fetchone()["total"]))
-            
+
             # Forecast total (with fallback to budget per AE)
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT COALESCE(SUM(
                     COALESCE(f.forecast_amount, b.budget_amount)
                 ), 0) AS total
@@ -748,22 +789,27 @@ class PlanningRepository(BaseService):
                     AND f.year = b.year 
                     AND f.month = b.month
                 WHERE b.year = ? AND b.month = ?
-            """, (period.year, period.month))
+            """,
+                (period.year, period.month),
+            )
             forecast_total = Decimal(str(cursor.fetchone()["total"]))
-            
+
             # Booked total (all revenue for the broadcast month)
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT COALESCE(SUM(gross_rate), 0) AS total
                 FROM spots
                 WHERE broadcast_month = ?
                   AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-            """, (period.broadcast_month,))
+            """,
+                (period.broadcast_month,),
+            )
             booked_total = Decimal(str(cursor.fetchone()["total"]))
-            
+
             return {
                 "budget": budget_total,
                 "forecast": forecast_total,
-                "booked": booked_total
+                "booked": booked_total,
             }
 
     # =========================================================================
@@ -777,5 +823,5 @@ class PlanningRepository(BaseService):
             entity_name=row["entity_name"],
             entity_type=EntityType(row["entity_type"]),
             is_active=bool(row["is_active"]),
-            notes=row["notes"]
+            notes=row["notes"],
         )

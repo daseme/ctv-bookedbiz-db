@@ -12,7 +12,10 @@ Run:
 """
 
 from __future__ import annotations
-import os, json, sqlite3, argparse
+import os
+import json
+import sqlite3
+import argparse
 from functools import wraps
 from datetime import datetime
 from flask import Flask, request, redirect, url_for, render_template_string, abort

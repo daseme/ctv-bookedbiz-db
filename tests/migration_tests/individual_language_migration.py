@@ -15,7 +15,6 @@ This category includes:
 import sqlite3
 from query_builders import (
     IndividualLanguageQueryBuilder,
-    BaseQueryBuilder,
     validate_query_migration,
 )
 
@@ -141,7 +140,7 @@ def test_individual_language_migration(year="2024"):
         )
 
         # 3. Compare with documented results
-        print(f"\n3. Validation Against Your Guide:")
+        print("\n3. Validation Against Your Guide:")
         documented_individual_total = 2424212.16  # From your guide
         difference = abs(
             detailed_results["total_revenue"] - documented_individual_total
@@ -152,12 +151,12 @@ def test_individual_language_migration(year="2024"):
         print(f"   Difference: ${difference:,.2f}")
 
         if difference < 1.0:
-            print(f"   ✅ PERFECT MATCH! (Difference < $1.00)")
+            print("   ✅ PERFECT MATCH! (Difference < $1.00)")
         else:
             print(f"   ❌ DIFFERENCE FOUND! (Difference: ${difference:,.2f})")
 
         # 4. Show top languages
-        print(f"\n4. Top Languages by Revenue:")
+        print("\n4. Top Languages by Revenue:")
         top_languages = sorted(
             detailed_results["languages"], key=lambda x: x["revenue"], reverse=True
         )[:5]
@@ -167,7 +166,7 @@ def test_individual_language_migration(year="2024"):
             print(f"   {i}. {lang['language']}: ${lang['revenue']:,.2f} ({pct:.1f}%)")
 
         # 5. Show generated query
-        print(f"\n5. Generated Query:")
+        print("\n5. Generated Query:")
         builder = IndividualLanguageQueryBuilder(year)
         builder.add_individual_language_conditions()
         print("   " + builder.build_select_revenue_query().replace("\n", "\n   "))
@@ -239,15 +238,15 @@ def show_chinese_combination_effect(year="2024"):
             0,
         )
 
-        print(f"\n   Validation:")
+        print("\n   Validation:")
         print(f"   Manual calculation: ${combined_total:,.2f}")
         print(f"   Builder result: ${chinese_from_full:,.2f}")
         print(f"   Difference: ${abs(combined_total - chinese_from_full):,.2f}")
 
         if abs(combined_total - chinese_from_full) < 0.01:
-            print(f"   ✅ Chinese combination working correctly!")
+            print("   ✅ Chinese combination working correctly!")
         else:
-            print(f"   ❌ Chinese combination issue!")
+            print("   ❌ Chinese combination issue!")
 
     finally:
         conn.close()
@@ -265,7 +264,7 @@ if __name__ == "__main__":
         # Show Chinese combination effect
         show_chinese_combination_effect("2024")
 
-        print(f"\n✅ Individual Language Migration Test Complete!")
-        print(f"Ready to proceed with next category migration!")
+        print("\n✅ Individual Language Migration Test Complete!")
+        print("Ready to proceed with next category migration!")
     else:
-        print(f"\n❌ Migration test failed - investigate before proceeding!")
+        print("\n❌ Migration test failed - investigate before proceeding!")

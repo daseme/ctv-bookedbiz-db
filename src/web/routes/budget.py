@@ -4,9 +4,8 @@ Budget management routes - handles budget CRUD operations and UI
 """
 
 import logging
-from flask import Blueprint, render_template, request, jsonify
-from datetime import date, datetime
-import json
+from flask import Blueprint, render_template, request
+from datetime import date
 
 from src.services.container import get_container
 from src.web.utils.request_helpers import (

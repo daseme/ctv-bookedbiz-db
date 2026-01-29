@@ -221,7 +221,7 @@ def test_prd_svc_migration(year="2024"):
         print(f"   Execution Time: {svc_result.execution_time:.3f}s")
 
         # 5. Compare with documented results
-        print(f"\n5. Validation Against Your Guide:")
+        print("\n5. Validation Against Your Guide:")
         documented_prd_total = 52592.29  # From your guide
         documented_svc_total = 12000.00  # From your guide
 
@@ -240,23 +240,23 @@ def test_prd_svc_migration(year="2024"):
         svc_match = svc_difference < 1.0
 
         if prd_match and svc_match:
-            print(f"   ✅ BOTH PERFECT MATCHES! (Differences < $1.00)")
+            print("   ✅ BOTH PERFECT MATCHES! (Differences < $1.00)")
             perfect_match = True
         elif prd_match:
-            print(f"   ✅ PRD PERFECT MATCH, ❌ SVC difference found")
+            print("   ✅ PRD PERFECT MATCH, ❌ SVC difference found")
             perfect_match = False
         elif svc_match:
-            print(f"   ❌ PRD difference found, ✅ SVC PERFECT MATCH")
+            print("   ❌ PRD difference found, ✅ SVC PERFECT MATCH")
             perfect_match = False
         else:
-            print(f"   ❌ DIFFERENCES FOUND in both categories")
+            print("   ❌ DIFFERENCES FOUND in both categories")
             perfect_match = False
 
         # 6. Analyze patterns
-        print(f"\n6. PRD and SVC Analysis:")
+        print("\n6. PRD and SVC Analysis:")
         patterns = analyze_prd_svc_patterns(year, conn)
 
-        print(f"   Branded Content (PRD) Breakdown:")
+        print("   Branded Content (PRD) Breakdown:")
         if patterns["prd_breakdown"]:
             for category, customer, bill_code, spots, revenue in patterns[
                 "prd_breakdown"
@@ -267,7 +267,7 @@ def test_prd_svc_migration(year="2024"):
         else:
             print("   No PRD spots found")
 
-        print(f"\n   Services (SVC) Breakdown:")
+        print("\n   Services (SVC) Breakdown:")
         if patterns["svc_breakdown"]:
             for category, customer, bill_code, spots, revenue in patterns[
                 "svc_breakdown"
@@ -279,13 +279,13 @@ def test_prd_svc_migration(year="2024"):
             print("   No SVC spots found")
 
         # 7. Strategic insights
-        print(f"\n7. Strategic Insights:")
+        print("\n7. Strategic Insights:")
         print(
-            f"   • PRD (Branded Content): Internal production work, not traditional advertising"
+            "   • PRD (Branded Content): Internal production work, not traditional advertising"
         )
-        print(f"   • SVC (Services): Station services and announcements")
+        print("   • SVC (Services): Station services and announcements")
         print(
-            f"   • No Language Assignment: These don't target specific language audiences"
+            "   • No Language Assignment: These don't target specific language audiences"
         )
         print(
             f"   • Revenue Contribution: PRD {prd_result.revenue / 4076255.94 * 100:.1f}%, SVC {svc_result.revenue / 4076255.94 * 100:.1f}% of total"
@@ -295,14 +295,14 @@ def test_prd_svc_migration(year="2024"):
         )
 
         # 8. Show generated queries
-        print(f"\n8. Generated Queries:")
+        print("\n8. Generated Queries:")
 
-        print(f"   PRD Query:")
+        print("   PRD Query:")
         prd_builder = BrandedContentQueryBuilder(year)
         prd_builder.add_no_language_assignment_condition().add_prd_spot_type_condition()
         print("   " + prd_builder.build_select_revenue_query().replace("\n", "\n   "))
 
-        print(f"\n   SVC Query:")
+        print("\n   SVC Query:")
         svc_builder = ServicesQueryBuilder(year)
         svc_builder.add_no_language_assignment_condition().add_svc_spot_type_condition()
         print("   " + svc_builder.build_select_revenue_query().replace("\n", "\n   "))
@@ -322,7 +322,7 @@ if __name__ == "__main__":
     success = test_prd_svc_migration("2024")
 
     if success:
-        print(f"\n✅ PRD and SVC Migration Test Complete!")
-        print(f"All revenue categories migrated successfully!")
+        print("\n✅ PRD and SVC Migration Test Complete!")
+        print("All revenue categories migrated successfully!")
     else:
-        print(f"\n❌ Migration test failed - investigate before proceeding!")
+        print("\n❌ Migration test failed - investigate before proceeding!")

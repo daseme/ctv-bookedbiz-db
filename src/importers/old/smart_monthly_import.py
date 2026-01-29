@@ -9,7 +9,7 @@ import argparse
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import List, Set, Dict, Any
+from typing import List, Dict, Any
 from dataclasses import dataclass
 from tqdm import tqdm
 
@@ -17,7 +17,7 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from src.database.connection import DatabaseConnection
-from src.services.month_closure_service import MonthClosureService, MonthClosureError
+from src.services.month_closure_service import MonthClosureService
 from src.services.broadcast_month_import_service import BroadcastMonthImportService
 from src.utils.broadcast_month_utils import extract_broadcast_months_from_excel
 from src.services.base_service import BaseService
@@ -114,7 +114,7 @@ class SmartFilteredImporter(BaseService):
         Returns:
             Analysis results dict
         """
-        print(f"Phase 1: Analyzing Excel structure...")
+        print("Phase 1: Analyzing Excel structure...")
 
         from openpyxl import load_workbook
         from src.utils.broadcast_month_utils import BroadcastMonthParser
@@ -191,7 +191,7 @@ class SmartFilteredImporter(BaseService):
             "target_months": target_months,
         }
 
-        print(f"Analysis complete:")
+        print("Analysis complete:")
         print(f"   Total rows: {total_rows:,}")
         print(f"   Months found: {len(month_stats)} {sorted(month_stats.keys())}")
         print(f"   Target months: {len(target_months)} {target_months}")
@@ -213,7 +213,7 @@ class SmartFilteredImporter(BaseService):
         Returns:
             Path to filtered Excel file
         """
-        print(f"Phase 2: Creating filtered Excel...")
+        print("Phase 2: Creating filtered Excel...")
 
         from openpyxl import load_workbook, Workbook
         from src.utils.broadcast_month_utils import BroadcastMonthParser
@@ -357,14 +357,14 @@ class SmartFilteredImporter(BaseService):
                 result.success = True
                 return result
 
-            print(f"\nImport Plan:")
+            print("\nImport Plan:")
             print(f"  • Skip {len(analysis['closed_months'])} already-closed months")
             print(
                 f"  • Import {len(analysis['open_months'])} open months: {analysis['open_months']}"
             )
 
             if dry_run:
-                print(f"\nDRY RUN - No changes would be made")
+                print("\nDRY RUN - No changes would be made")
                 result.success = True
                 return result
 
@@ -375,13 +375,13 @@ class SmartFilteredImporter(BaseService):
             temp_path = Path(temp_excel)
 
             try:
-                print(f"\nStarting two-phase filtering process...")
+                print("\nStarting two-phase filtering process...")
                 filtered_file = self.create_filtered_excel(
                     excel_file, analysis["open_months"], temp_excel
                 )
 
                 # Step 3: Import filtered data
-                print(f"\nStep 3: Importing filtered data...")
+                print("\nStep 3: Importing filtered data...")
                 import_result = self.import_service.execute_month_replacement(
                     filtered_file,
                     "HISTORICAL" if close_imported_months else "MANUAL",
@@ -396,7 +396,7 @@ class SmartFilteredImporter(BaseService):
                         import_result.closed_months if close_imported_months else []
                     )
 
-                    print(f"Filtered import successful!")
+                    print("Filtered import successful!")
                     print(f"   Records imported: {result.records_imported:,}")
                     print(
                         f"   Months imported: {len(result.months_imported)} {result.months_imported}"
@@ -413,7 +413,7 @@ class SmartFilteredImporter(BaseService):
                 # Clean up temporary file
                 if temp_path.exists():
                     temp_path.unlink()
-                    print(f"Cleaned up temporary file")
+                    print("Cleaned up temporary file")
 
             result.success = (
                 import_result.success if "import_result" in locals() else False
@@ -484,12 +484,12 @@ Examples:
         print(f"Database not found: {args.db_path}")
         sys.exit(1)
 
-    print(f"Smart Filtered Import Tool")
+    print("Smart Filtered Import Tool")
     print(f"Excel file: {args.excel_file}")
     print(f"Target year: {args.year}")
     print(f"Closed by: {args.closed_by}")
     if args.dry_run:
-        print(f"Mode: DRY RUN")
+        print("Mode: DRY RUN")
     print("=" * 60)
 
     # Execute filtered import
@@ -506,11 +506,11 @@ Examples:
         )
 
         # Display results
-        print(f"\n" + "=" * 60)
+        print("\n" + "=" * 60)
         print(f"SMART FILTERED IMPORT {'PREVIEW' if args.dry_run else 'COMPLETED'}")
-        print(f"=" * 60)
+        print("=" * 60)
 
-        print(f"Results:")
+        print("Results:")
         print(f"  Success: {'✓' if result.success else '✗'}")
         print(f"  Duration: {result.duration_seconds:.2f} seconds")
         print(f"  Total months in Excel: {result.total_months_in_excel}")
@@ -532,18 +532,18 @@ Examples:
             print(f"\nClosed: {result.months_closed}")
 
         if result.error_messages:
-            print(f"\nErrors:")
+            print("\nErrors:")
             for error in result.error_messages:
                 print(f"  • {error}")
 
         if result.success and not args.dry_run:
-            print(f"\nSmart import completed successfully!")
-            print(f"Only new/open months were imported - closed months were protected")
+            print("\nSmart import completed successfully!")
+            print("Only new/open months were imported - closed months were protected")
 
         sys.exit(0 if result.success else 1)
 
     except KeyboardInterrupt:
-        print(f"\nImport cancelled by user")
+        print("\nImport cancelled by user")
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}")

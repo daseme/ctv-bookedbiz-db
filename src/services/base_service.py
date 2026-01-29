@@ -10,8 +10,8 @@ import logging
 import functools
 from pathlib import Path
 from contextlib import contextmanager
-from typing import Optional, Any, Callable, TypeVar, Union
-from abc import ABC, abstractmethod
+from typing import Optional, Any, Callable, TypeVar
+from abc import ABC
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -307,7 +307,7 @@ def transaction_required(func: F) -> F:
     def wrapper(self: BaseService, *args, **kwargs):
         if not isinstance(self, BaseService):
             raise TransactionError(
-                f"@transaction_required can only be used on BaseService methods"
+                "@transaction_required can only be used on BaseService methods"
             )
 
         with self.safe_transaction() as conn:
@@ -346,7 +346,7 @@ def auto_transaction(func: F) -> F:
     def wrapper(self: BaseService, *args, **kwargs):
         if not isinstance(self, BaseService):
             raise TransactionError(
-                f"@auto_transaction can only be used on BaseService methods"
+                "@auto_transaction can only be used on BaseService methods"
             )
 
         if self.in_transaction:
@@ -386,9 +386,7 @@ def read_only(func: F) -> F:
     @functools.wraps(func)
     def wrapper(self: BaseService, *args, **kwargs):
         if not isinstance(self, BaseService):
-            raise TransactionError(
-                f"@read_only can only be used on BaseService methods"
-            )
+            raise TransactionError("@read_only can only be used on BaseService methods")
 
         # If already in transaction, use existing connection
         if self.in_transaction:

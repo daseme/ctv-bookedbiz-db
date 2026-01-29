@@ -8,7 +8,7 @@ import sqlite3
 import sys
 import os
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import List
 
 
 def connect_to_database(db_path: str) -> sqlite3.Connection:

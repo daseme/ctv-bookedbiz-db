@@ -6,21 +6,17 @@ Uses dependency injection and delegates to service layer.
 
 import logging
 from flask import Blueprint, render_template, request, jsonify, Response
+from flask_login import current_user
 import io
 import csv
-from datetime import date
+import traceback
+from datetime import date, datetime
+from decimal import Decimal
 from src.services.container import get_container
 from src.models.report_data import ReportFilters
 from src.services.report_data_service import YearRange
-from src.services.management_performance_service import ManagementPerformanceService
-from src.services.ae_dashboard_service import AEDashboardService
 from src.web.utils.request_helpers import (
-    extract_report_filters,
     get_year_parameter,
-    create_json_response,
-    create_success_response,
-    create_error_response,
-    handle_service_error,
     safe_get_service,
     log_requests,
     handle_request_errors,
@@ -138,7 +134,7 @@ def revenue_dashboard_customer():
                 if row.get("month") == "09" and "bvk" in row.get("customer", "").lower()
             ]
 
-            logger.info(f"RAW DATABASE QUERY RESULTS")
+            logger.info("RAW DATABASE QUERY RESULTS")
             logger.info(f"September BVK rows: {len(bvk_september)}")
 
             total_raw = 0
@@ -150,7 +146,7 @@ def revenue_dashboard_customer():
                 )
 
             logger.info(f"Raw total: ${total_raw}")
-            logger.info(f"Expected: $4,107.35")
+            logger.info("Expected: $4,107.35")
             logger.info(f"Difference: ${4107.35 - total_raw}")
 
         except Exception as e:
@@ -207,7 +203,9 @@ def customer_sector_manager():
         logger.error(f"Error rendering customer sector manager: {e}")
         return render_template("error_500.html"), 500
 
+
 # Add this to src/web/routes/reports.py
+
 
 @reports_bp.route("/ae-dashboard")
 @log_requests
@@ -218,32 +216,34 @@ def ae_dashboard():
         # Get services
         container = get_container()
         ae_service = safe_get_service(container, "ae_dashboard_service")
-        
+
         # Extract parameters
         year = get_year_parameter(default_year=date.today().year)
         ae_filter = request.args.get("ae_filter", "").strip()
-        
+
         # Convert "everyone" to None for service
         if ae_filter == "everyone" or not ae_filter:
             ae_filter = None
-        
+
         # Get dashboard data
-        logger.info(f"Generating AE dashboard for year {year}, AE filter: {ae_filter or 'Everyone'}")
+        logger.info(
+            f"Generating AE dashboard for year {year}, AE filter: {ae_filter or 'Everyone'}"
+        )
         dashboard_data = ae_service.get_dashboard_data(year, ae_filter)
-        
+
         # Prepare template context
         template_data = {
             "title": "Account Management Dashboard",
             "data": dashboard_data.to_dict(),
         }
-        
+
         logger.info(
             f"AE Dashboard generated: {len(dashboard_data.customers)} customers, "
             f"${dashboard_data.total_ytd_2024:,.0f} total revenue"
         )
-        
+
         return render_template("ae-dashboard.html", **template_data)
-        
+
     except Exception as e:
         logger.error(f"Error generating AE dashboard: {e}", exc_info=True)
         return render_template(
@@ -251,123 +251,450 @@ def ae_dashboard():
             message=f"Error generating AE dashboard: {str(e)}",
         ), 500
 
+
+# ============================================================================
+# AE Personal Dashboard (for logged-in AE users)
+# ============================================================================
+
+
+@reports_bp.route("/ae-dashboard-personal")
+@handle_request_errors
+@log_requests
+def ae_dashboard_personal():
+    """AE Personal Dashboard - Shows monthly booked revenue, forecast, and budget for logged-in AE.
+
+    For admins/management: allows selecting any AE via ?ae= parameter.
+    For AE users: shows their own dashboard.
+    """
+    if not current_user.is_authenticated:
+        from flask import redirect, url_for
+
+        return redirect(url_for("user_management.login"))
+
+    try:
+        container = get_container()
+        planning_service = safe_get_service(container, "planning_service")
+        budget_service = safe_get_service(container, "budget_service")
+
+        if not planning_service or not hasattr(planning_service, "repository"):
+            raise ValueError("Planning service not available")
+
+        # Get year from query parameter or default to current year
+        current_year = request.args.get("year", type=int) or date.today().year
+
+        # Get account revenue date range filters
+        account_start_date = request.args.get("account_start_date", "").strip()
+        account_end_date = request.args.get("account_end_date", "").strip()
+
+        # Get available years from database
+        available_years = []
+        try:
+            db_connection = container.get("database_connection")
+            conn = db_connection.connect()
+            try:
+                cursor = conn.execute("""
+                    SELECT DISTINCT CAST('20' || SUBSTR(broadcast_month, -2) AS INTEGER) as year
+                    FROM spots
+                    WHERE broadcast_month IS NOT NULL 
+                      AND broadcast_month <> ''
+                      AND SUBSTR(broadcast_month, -2) IS NOT NULL
+                    ORDER BY year DESC
+                """)
+                available_years = [
+                    row[0] for row in cursor.fetchall() if row[0] is not None
+                ]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Could not get available years: {e}")
+            # Fallback to default range
+            available_years = list(range(2021, 2027))
+
+        # Determine which AE to show
+        # Admins/management can select an AE, AE users see their own
+        is_admin_or_management = current_user.role.value in ["admin", "management"]
+        selected_ae = request.args.get("ae", "").strip()
+
+        # Determine which AE to show
+        ae_name = (
+            selected_ae
+            if (is_admin_or_management and selected_ae)
+            else current_user.full_name
+        )
+        if not ae_name or not ae_name.strip():
+            raise ValueError(f"Cannot determine AE name for user {current_user.email}")
+
+        logger.info(
+            f"Loading dashboard for AE: {ae_name}, User: {current_user.email}, Role: {current_user.role.value}"
+        )
+
+        # Get revenue entities list for dropdown (admins/management only)
+        ae_list = []
+        if is_admin_or_management:
+            try:
+                entities = planning_service.get_revenue_entities()
+                ae_list = [entity.entity_name for entity in entities]
+            except Exception as e:
+                logger.warning(f"Could not get revenue entities list: {e}")
+
+        # Helper function to calculate percentage
+        def calc_pct(numerator, denominator):
+            return float((numerator / denominator) * 100) if denominator > 0 else 0.0
+
+        # Get monthly data for all 12 months
+        monthly_data = []
+        total_booked = Decimal("0")
+        total_forecast = Decimal("0")
+        total_budget = Decimal("0")
+        repo = planning_service.repository
+
+        for month_num in range(1, 13):
+            # Get booked revenue
+            try:
+                booked_revenue = repo.get_booked_revenue(
+                    ae_name, current_year, month_num
+                ) or Decimal("0")
+            except Exception as e:
+                logger.warning(
+                    f"Could not get booked revenue for {ae_name} {current_year}-{month_num:02d}: {e}"
+                )
+                booked_revenue = Decimal("0")
+
+            # Get budget
+            try:
+                budget = repo.get_budget(ae_name, current_year, month_num) or Decimal(
+                    "0"
+                )
+            except Exception:
+                try:
+                    budget = Decimal(
+                        str(
+                            budget_service.get_monthly_budget(
+                                ae_name, f"{current_year}-{month_num:02d}"
+                            )
+                        )
+                    )
+                except:
+                    budget = Decimal("0")
+
+            # Get forecast_entered (defaults to budget if not set)
+            try:
+                forecast_data = repo.get_forecast_with_metadata(
+                    ae_name, current_year, month_num
+                )
+                forecast_entered = (
+                    forecast_data["amount"]
+                    if forecast_data
+                    else (budget if budget > 0 else Decimal("0"))
+                )
+            except Exception:
+                try:
+                    forecast_entered = repo.get_forecast(
+                        ae_name, current_year, month_num
+                    ) or (budget if budget > 0 else Decimal("0"))
+                except:
+                    forecast_entered = budget if budget > 0 else Decimal("0")
+
+            # Calculate effective forecast = max(forecast_entered, booked) to match planning tool
+            forecast = max(forecast_entered, booked_revenue)
+
+            monthly_data.append(
+                {
+                    "month": month_num,
+                    "month_name": datetime(current_year, month_num, 1).strftime("%B"),
+                    "month_str": f"{current_year}-{month_num:02d}",
+                    "booked_revenue": float(booked_revenue),
+                    "forecast": float(forecast),
+                    "budget": float(budget),
+                    "forecast_vs_budget_pct": calc_pct(forecast, budget),
+                    "booked_vs_budget_pct": calc_pct(booked_revenue, budget),
+                    "booked_vs_forecast_pct": calc_pct(booked_revenue, forecast),
+                }
+            )
+
+            total_booked += booked_revenue
+            total_forecast += forecast
+            total_budget += budget
+
+        # Get account revenue data grouped by sector
+        account_revenue_by_sector = {}
+        total_account_revenue = Decimal("0")
+        total_account_count = 0
+        account_revenue_sectors = []
+        try:
+            db_connection = container.get("database_connection")
+            conn = db_connection.connect()
+            try:
+                # Build date filter for account revenue
+                date_filter = ""
+                query_params = [ae_name]
+
+                if account_start_date and account_end_date:
+                    date_filter = "AND s.air_date >= ? AND s.air_date <= ?"
+                    query_params.extend([account_start_date, account_end_date])
+                elif account_start_date:
+                    date_filter = "AND s.air_date >= ?"
+                    query_params.append(account_start_date)
+                elif account_end_date:
+                    date_filter = "AND s.air_date <= ?"
+                    query_params.append(account_end_date)
+                else:
+                    # Default to full year if no date range specified
+                    date_filter = "AND SUBSTR(s.broadcast_month, -2) = ?"
+                    query_params.append(str(current_year)[-2:])
+
+                cursor = conn.execute(
+                    f"""
+                    SELECT 
+                        COALESCE(c.normalized_name, s.bill_code, 'Unknown') AS customer_name,
+                        COALESCE(sec.sector_name, 'Unknown') AS sector,
+                        ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue
+                    FROM spots s
+                    LEFT JOIN customers c ON s.customer_id = c.customer_id
+                    LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
+                    WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))
+                        {date_filter}
+                        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                        AND COALESCE(s.gross_rate, 0) > 0
+                    GROUP BY 
+                        COALESCE(c.normalized_name, s.bill_code, 'Unknown'),
+                        COALESCE(sec.sector_name, 'Unknown')
+                    ORDER BY sector, total_revenue DESC
+                """,
+                    query_params,
+                )
+
+                for row in cursor.fetchall():
+                    sector = row[1]
+                    revenue = float(row[2])
+
+                    if sector not in account_revenue_by_sector:
+                        account_revenue_by_sector[sector] = {
+                            "sector": sector,
+                            "accounts": [],
+                            "total_revenue": 0.0,
+                        }
+
+                    account_revenue_by_sector[sector]["accounts"].append(
+                        {"customer_name": row[0], "total_revenue": revenue}
+                    )
+                    account_revenue_by_sector[sector]["total_revenue"] += revenue
+                    total_account_revenue += Decimal(str(revenue))
+                    total_account_count += 1
+
+                # Sort accounts within each sector by revenue (already done in SQL, but ensure it)
+                for sector_data in account_revenue_by_sector.values():
+                    sector_data["accounts"].sort(
+                        key=lambda x: x["total_revenue"], reverse=True
+                    )
+                    # total_revenue is already float from accumulation
+
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Could not get account revenue data: {e}")
+
+        # Convert to sorted list (sectors alphabetically)
+        account_revenue_sectors = sorted(
+            account_revenue_by_sector.values(), key=lambda x: x["sector"]
+        )
+
+        # Check if this is an AJAX request for account revenue data only
+        if (
+            request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            and request.args.get("ajax") == "account_revenue"
+        ):
+            return jsonify(
+                {
+                    "account_revenue_sectors": account_revenue_sectors,
+                    "total_account_revenue": float(total_account_revenue),
+                    "total_account_count": total_account_count,
+                    "totals": {"budget": float(total_budget)},
+                }
+            )
+
+        return render_template(
+            "ae-dashboard-personal.html",
+            **{
+                "title": "My Dashboard"
+                if not is_admin_or_management
+                else "AE Dashboard",
+                "ae_name": ae_name,
+                "year": current_year,
+                "monthly_data": monthly_data,
+                "is_admin_or_management": is_admin_or_management,
+                "ae_list": ae_list,
+                "selected_ae": selected_ae
+                if (is_admin_or_management and selected_ae)
+                else "",
+                "totals": {
+                    "booked": float(total_booked),
+                    "forecast": float(total_forecast),
+                    "budget": float(total_budget),
+                    "forecast_vs_budget_pct": calc_pct(total_forecast, total_budget),
+                    "booked_vs_budget_pct": calc_pct(total_booked, total_budget),
+                    "booked_vs_forecast_pct": calc_pct(total_booked, total_forecast),
+                },
+                "account_revenue_sectors": account_revenue_sectors,
+                "total_account_revenue": float(total_account_revenue),
+                "total_account_count": total_account_count,
+                "available_years": available_years,
+                "account_start_date": account_start_date,
+                "account_end_date": account_end_date,
+            },
+        )
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error generating AE personal dashboard: {e}\n{error_trace}")
+        try:
+            return render_template(
+                "error_500.html", message=f"Error generating dashboard: {str(e)}"
+            ), 500
+        except Exception:
+            from flask import current_app
+
+            debug_mode = current_app.config.get("DEBUG", False)
+            return jsonify(
+                {
+                    "error": "Internal server error",
+                    "message": str(e),
+                    "traceback": error_trace if debug_mode else None,
+                }
+            ), 500
+
+
 # ============================================================================
 # Management Performance Report
 # ============================================================================
 
-@reports_bp.route('/management-performance')
-@reports_bp.route('/management-performance/<int:year>')
+
+@reports_bp.route("/management-performance")
+@reports_bp.route("/management-performance/<int:year>")
 def management_performance(year: int = None):
     """
     Management Performance Report - Company and entity quarterly performance.
     """
     from datetime import date
     from src.services.container import get_container
-    
+
     container = get_container()
-    service = container.get('management_performance_service')
-    
+    service = container.get("management_performance_service")
+
     if year is None:
         year = date.today().year
-    
+
     # Get pacing mode from query param (default to budget)
-    pacing_mode = request.args.get('pacing', 'budget')
-    if pacing_mode not in ('budget', 'forecast'):
-        pacing_mode = 'budget'
-    
+    pacing_mode = request.args.get("pacing", "budget")
+    if pacing_mode not in ("budget", "forecast"):
+        pacing_mode = "budget"
+
     report_data = service.get_management_report(year, pacing_mode)
-    
-    return render_template(
-        'management-performance.html',
-        report=report_data
-    )
+
+    return render_template("management-performance.html", report=report_data)
 
 
-@reports_bp.route('/management-performance/csv/<int:year>')
+@reports_bp.route("/management-performance/csv/<int:year>")
 def management_performance_csv(year: int):
     """Export management performance data as CSV."""
     import csv
     import io
     from src.services.container import get_container
-    
+
     container = get_container()
-    service = container.get('management_performance_service')
-    
+    service = container.get("management_performance_service")
+
     report_data = service.get_management_report(year)
-    
+
     output = io.StringIO()
     writer = csv.writer(output)
-    
+
     # Header
-    writer.writerow(['Entity', 'Quarter', 'Booked', 'Budget', 'Pacing', 'Budget %', 'YoY %'])
-    
+    writer.writerow(
+        ["Entity", "Quarter", "Booked", "Budget", "Pacing", "Budget %", "YoY %"]
+    )
+
     # Company totals
     for q in report_data.company.quarterly:
         yoy = f"{q.yoy_change_pct:.1f}%" if q.yoy_change_pct is not None else "New"
-        writer.writerow([
-            'COMPANY TOTAL', q.quarter_label, 
-            float(q.booked), float(q.budget), float(q.pacing),
-            f"{q.budget_pacing_pct:.1f}%", yoy
-        ])
-    
+        writer.writerow(
+            [
+                "COMPANY TOTAL",
+                q.quarter_label,
+                float(q.booked),
+                float(q.budget),
+                float(q.pacing),
+                f"{q.budget_pacing_pct:.1f}%",
+                yoy,
+            ]
+        )
+
     # Entity data
     for entity in report_data.entities:
         for q in entity.quarterly:
             yoy = f"{q.yoy_change_pct:.1f}%" if q.yoy_change_pct is not None else "New"
-            writer.writerow([
-                entity.entity_name, q.quarter_label,
-                float(q.booked), float(q.budget), float(q.pacing),
-                f"{q.budget_pacing_pct:.1f}%", yoy
-            ])
-    
+            writer.writerow(
+                [
+                    entity.entity_name,
+                    q.quarter_label,
+                    float(q.booked),
+                    float(q.budget),
+                    float(q.pacing),
+                    f"{q.budget_pacing_pct:.1f}%",
+                    yoy,
+                ]
+            )
+
     output.seek(0)
     return Response(
         output.getvalue(),
-        mimetype='text/csv',
-        headers={'Content-Disposition': f'attachment; filename=management_performance_{year}.csv'}
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=management_performance_{year}.csv"
+        },
     )
 
 
-@reports_bp.route('/planning/api/booked-detail')
+@reports_bp.route("/planning/api/booked-detail")
 def api_booked_detail():
     """Get detailed breakdown of booked revenue by customer."""
-    entity = request.args.get('entity')
-    year = request.args.get('year', type=int)
-    month = request.args.get('month', type=int)
-    limit = request.args.get('limit', default=50, type=int)
-    
+    entity = request.args.get("entity")
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    limit = request.args.get("limit", default=50, type=int)
+
     # Validate required params
     if not entity:
-        return jsonify({"success": False, "error": "Missing required parameter: entity"}), 400
+        return jsonify(
+            {"success": False, "error": "Missing required parameter: entity"}
+        ), 400
     if not year:
-        return jsonify({"success": False, "error": "Missing required parameter: year"}), 400
+        return jsonify(
+            {"success": False, "error": "Missing required parameter: year"}
+        ), 400
     if not month or month < 1 or month > 12:
-        return jsonify({"success": False, "error": "Invalid month parameter (1-12)"}), 400
-    
+        return jsonify(
+            {"success": False, "error": "Invalid month parameter (1-12)"}
+        ), 400
+
     try:
         # Get service from container (same pattern as your other routes)
         container = get_container()
-        service = container.get('planning_service')
-        
+        service = container.get("planning_service")
+
         result = service.get_booked_detail(entity, year, month, limit)
-        
+
         if result is None:
-            return jsonify({
-                "success": False, 
-                "error": f"Entity not found: {entity}"
-            }), 404
-        
-        return jsonify({
-            "success": True,
-            "data": result
-        })
-        
+            return jsonify(
+                {"success": False, "error": f"Entity not found: {entity}"}
+            ), 404
+
+        return jsonify({"success": True, "data": result})
+
     except Exception as e:
         logger.error(f"Error fetching booked detail: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @reports_bp.route("/report1")
 @log_requests
@@ -461,7 +788,6 @@ def performance_story_report():
         return render_template("error_500.html", message="Error generating report"), 500
 
 
-
 @reports_bp.route("/report4")
 @log_requests
 @handle_request_errors
@@ -475,7 +801,7 @@ def quarterly_sectors_report():
 
         # Get sector data
         sector_data = report_service.get_sector_performance_data(filters)
-        
+
         # Get available years for dropdown
         available_years = report_service.repository.get_available_years()
 
@@ -484,12 +810,15 @@ def quarterly_sectors_report():
             title="Quarterly Performance with Sector Analysis",
             data=sector_data,
             selected_year=year,
-            available_years=available_years
+            available_years=available_years,
         )
 
     except Exception as e:
         logger.error(f"Error generating report4: {e}", exc_info=True)
-        return render_template("error_500.html", message=f"Error generating report: {str(e)}"), 500
+        return render_template(
+            "error_500.html", message=f"Error generating report: {str(e)}"
+        ), 500
+
 
 @reports_bp.route("/market-analysis")
 @log_requests
@@ -501,7 +830,7 @@ def market_analysis_report():
         service = safe_get_service(container, "market_analysis_service")
 
         year = request.args.get("year", str(date.today().year))
-        
+
         logger.info(f"Generating market analysis report for year {year}")
         data = service.get_market_analysis_data(year)
 
@@ -529,11 +858,11 @@ def market_analysis_export(report_type: str):
         service = safe_get_service(container, "market_analysis_service")
 
         year = request.args.get("year", str(date.today().year))
-        
+
         logger.info(f"Exporting market analysis {report_type} for year {year}")
-        
+
         data = service.get_csv_data(year, report_type)
-        
+
         if not data:
             return "No data available", 404
 
@@ -549,7 +878,7 @@ def market_analysis_export(report_type: str):
             mimetype="text/csv",
             headers={
                 "Content-Disposition": f"attachment; filename=market_analysis_{report_type}_{year}.csv"
-            }
+            },
         )
         return response
 

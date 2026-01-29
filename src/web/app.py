@@ -16,7 +16,6 @@ from src.services.container import ServiceCreationError
 from src.services.factory import initialize_services
 from src.config.settings import get_settings
 from src.web.blueprints import initialize_blueprints
-from src.web.routes.planning import planning_bp
 from src.web.utils.auth import login_manager
 
 logger = logging.getLogger(__name__)
@@ -102,7 +101,6 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.info("User management blueprint registered successfully")
     except Exception as e:
         logger.error(f"Failed to register user management blueprint: {e}")
-
 
     # Initialize decay system check (non-blocking) - FIXED for newer Flask
     def check_decay_system():

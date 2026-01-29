@@ -4,11 +4,9 @@ Unit tests for the ReportDataService.
 """
 
 import pytest
-import tempfile
-import sqlite3
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from decimal import Decimal
-from datetime import date, datetime
+from datetime import date
 
 from src.services.report_data_service import ReportDataService
 from src.models.report_data import (

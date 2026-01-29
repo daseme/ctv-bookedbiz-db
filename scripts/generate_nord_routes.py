@@ -1,5 +1,4 @@
 import os
-import re
 
 TEMPLATE_DIR = "src/web/templates"
 OUTPUT_FILE = "src/web/auto_generated_nord_routes.py"

@@ -186,7 +186,7 @@ class BasicLanguageBlockTest:
             result = self.service.assign_single_spot(spot_id)
 
             if result.success:
-                print(f"✅ Assignment successful!")
+                print("✅ Assignment successful!")
                 print(f"   Customer Intent: {result.customer_intent.value}")
                 print(f"   Schedule ID: {result.schedule_id}")
                 print(f"   Block ID: {result.block_id}")
@@ -224,14 +224,14 @@ class BasicLanguageBlockTest:
         try:
             results = self.service.test_assignment(limit)
 
-            print(f"📊 Batch Test Results:")
+            print("📊 Batch Test Results:")
             print(f"   Spots Tested: {results['spots_tested']}")
             print(f"   Success Rate: {results['success_rate']:.1%}")
             print(f"   Stats: {results['stats']}")
 
             # Show sample assignments
             if results["spot_details"]:
-                print(f"\n📋 Sample Assignments:")
+                print("\n📋 Sample Assignments:")
                 for detail in results["spot_details"][:5]:  # Show first 5
                     block_info = detail["block_name"] or "No Coverage"
                     attention = " ⚠️" if detail["requires_attention"] else ""
@@ -295,7 +295,7 @@ class BasicLanguageBlockTest:
 
     def run_all_tests(self):
         """Run complete test suite"""
-        print(f"🧪 Starting Language Block Service Integration Test")
+        print("🧪 Starting Language Block Service Integration Test")
         print(f"Database: {self.db_path}")
         print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 60)

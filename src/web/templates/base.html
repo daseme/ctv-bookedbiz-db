@@ -522,6 +522,12 @@
             </a>
             <div class="top-nav-actions">
                 {% if current_user.is_authenticated %}
+                {% if current_user.role.value in ['AE', 'management', 'admin'] %}
+                <a href="/reports/ae-dashboard-personal" 
+                   style="color: var(--nord6); text-decoration: none; margin-right: 16px; font-size: 14px; font-weight: 500;">
+                    📊 {% if current_user.role.value == 'AE' %}My Dashboard{% else %}AE Dashboard{% endif %}
+                </a>
+                {% endif %}
                 <a href="{{ url_for('user_management.profile') }}" 
                    style="color: var(--nord6); text-decoration: none; margin-right: 16px; font-size: 14px; font-weight: 500;">
                     👤 {{ current_user.first_name }}

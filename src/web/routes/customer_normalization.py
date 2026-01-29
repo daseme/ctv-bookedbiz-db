@@ -1,7 +1,6 @@
 # src/web/routes/customer_normalization.py
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Dict, Any
 import sqlite3
 from flask import Blueprint, current_app, render_template, request, jsonify
 

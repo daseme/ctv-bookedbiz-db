@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 # Add this to the TOP of your src/services/factory.py file
 
 import traceback
-import os
 
 
 def debug_container_registration(container):
@@ -60,7 +59,9 @@ def debug_container_registration(container):
 
     print("=" * 60 + "\n")
 
+
 # Add these functions to src/services/factory.py
+
 
 def create_ae_dashboard_service():
     """Create AEDashboardService with enhanced error handling."""
@@ -86,13 +87,13 @@ def create_ae_dashboard_service():
                         "total_ytd_2024": 0,
                         "total_ytd_2023": 0,
                         "ae_list": [],
-                        "sector_list": []
+                        "sector_list": [],
                     }
 
             return MockAEDashboardService()
 
         container = get_container()
-        
+
         # Get database connection
         try:
             db_connection = container.get("database_connection")
@@ -149,7 +150,9 @@ def _validate_ae_dashboard_service_health(service) -> None:
 
     except Exception as e:
         logger.error(f"AE dashboard service health validation failed: {e}")
-        raise ServiceCreationError(f"AE dashboard service health check failed: {e}") from e
+        raise ServiceCreationError(
+            f"AE dashboard service health check failed: {e}"
+        ) from e
 
 
 def configure_container_from_environment():
@@ -253,7 +256,9 @@ def initialize_services():
         print("✅ budget_service registered")
 
         print("🔧 Registering ae_dashboard_service...")
-        container.register_singleton("ae_dashboard_service", create_ae_dashboard_service)
+        container.register_singleton(
+            "ae_dashboard_service", create_ae_dashboard_service
+        )
         print("✅ ae_dashboard_service registered")
 
         print("🔧 Registering planning_service...")
@@ -261,11 +266,15 @@ def initialize_services():
         print("✅ planning_service registered")
 
         print("🔧 Registering market_analysis_service...")
-        container.register_singleton("market_analysis_service", create_market_analysis_service)
+        container.register_singleton(
+            "market_analysis_service", create_market_analysis_service
+        )
         print("✅ market_analysis_service registered")
 
         print("🔧 Registering management_performance_service...")
-        container.register_singleton('management_performance_service', create_management_performance_service)
+        container.register_singleton(
+            "management_performance_service", create_management_performance_service
+        )
         print("✅ management_performance_service registered")
 
         print("🔧 Registering user_service...")
@@ -281,8 +290,10 @@ def initialize_services():
     except Exception as e:
         print(f"💥 Service initialization failed: {e}")
         import traceback
+
         traceback.print_exc()
         raise
+
 
 def register_default_services():
     """Register all default services with the container with enhanced error handling."""
@@ -305,19 +316,20 @@ def register_default_services():
         logger.debug("Registered report_data_service")
 
         # ADD THIS LINE:
-        container.register_singleton("ae_dashboard_service", create_ae_dashboard_service)
+        container.register_singleton(
+            "ae_dashboard_service", create_ae_dashboard_service
+        )
         logger.debug("Registered ae_dashboard_service")
 
         container.register_singleton("planning_service", create_planning_service)
         logger.debug("Registered planning_service")
-
-
 
         logger.info("Registered all default services with container")
 
     except Exception as e:
         logger.error(f"Failed to register services: {e}")
         raise ServiceCreationError(f"Service registration failed: {e}") from e
+
 
 def emergency_register_report_service(container):
     """Emergency registration of report_data_service for Railway"""
@@ -332,7 +344,7 @@ def emergency_register_report_service(container):
         # Try to get database connection
         try:
             from src.database.connection import DatabaseConnection
-            
+
             container = get_container()
             db_path = container.get_config("DB_PATH", "data/database/production.db")
             db_connection = DatabaseConnection(db_path)
@@ -477,13 +489,14 @@ def create_database_connection(db_path: Optional[str] = None):
         logger.error(f"Failed to create database connection: {e}")
         raise ServiceCreationError(f"Database connection creation failed: {e}") from e
 
+
 def create_planning_service():
     """Create PlanningService with database connection."""
     try:
         from src.services.planning_service import PlanningService
-        
+
         container = get_container()
-        
+
         # Get database connection
         try:
             db_connection = container.get("database_connection")
@@ -493,19 +506,20 @@ def create_planning_service():
             raise ServiceCreationError(
                 "PlanningService requires database connection"
             ) from e
-        
+
         # Create service
         service = PlanningService(db_connection)
-        
+
         logger.info("PlanningService created successfully")
         return service
-        
+
     except ImportError as e:
         logger.error(f"Failed to import PlanningService: {e}")
         raise ServiceCreationError(f"Could not import PlanningService: {e}") from e
     except Exception as e:
         logger.error(f"Failed to create planning service: {e}")
         raise ServiceCreationError(f"Planning service creation failed: {e}") from e
+
 
 def create_budget_service():
     """Create BudgetService with enhanced error handling."""
@@ -702,10 +716,11 @@ def _validate_report_service_health(service) -> None:
         logger.error(f"Report service health validation failed: {e}")
         raise ServiceCreationError(f"Report service health check failed: {e}") from e
 
+
 def create_market_analysis_service():
     """Create MarketAnalysisService instance."""
     from src.services.market_analysis_service import MarketAnalysisService
-    
+
     try:
         container = get_container()
         db_connection = container.get("database_connection")
@@ -714,10 +729,12 @@ def create_market_analysis_service():
         logger.warning(f"Database connection issue for market analysis service: {e}")
         # Fallback to direct connection
         import sqlite3
+
         db_path = "data/database/production.db"
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return MarketAnalysisService(conn)
+
 
 def create_management_performance_service():
     """Create ManagementPerformanceService instance."""
@@ -726,16 +743,19 @@ def create_management_performance_service():
         db_connection = container.get("database_connection")
         return ManagementPerformanceService(db_connection)
     except Exception as e:
-        logger.warning(f"Database connection issue for management performance service: {e}")
+        logger.warning(
+            f"Database connection issue for management performance service: {e}"
+        )
         raise
+
 
 def create_user_service():
     """Create UserService with database connection."""
     try:
         from src.services.user_service import UserService
-        
+
         container = get_container()
-        
+
         # Get database connection
         try:
             db_connection = container.get("database_connection")
@@ -745,19 +765,20 @@ def create_user_service():
             raise ServiceCreationError(
                 "UserService requires database connection"
             ) from e
-        
+
         # Create service
         service = UserService(db_connection)
-        
+
         logger.info("UserService created successfully")
         return service
-        
+
     except ImportError as e:
         logger.error(f"Failed to import UserService: {e}")
         raise ServiceCreationError(f"Could not import UserService: {e}") from e
     except Exception as e:
         logger.error(f"Failed to create user service: {e}")
         raise ServiceCreationError(f"User service creation failed: {e}") from e
+
 
 def register_critical_services(container):
     """Register only the most critical services for Railway"""

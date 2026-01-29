@@ -10,7 +10,7 @@ import argparse
 import sqlite3
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Set
+from typing import Dict
 
 # Add tqdm for progress bars
 from tqdm import tqdm
@@ -318,7 +318,7 @@ class EnhancedWeeklyImporter:
         batch_id = f"enhanced_weekly_{int(start_time.timestamp())}"
 
         # Clean header without excessive printing
-        tqdm.write(f"🔄 Enhanced Weekly Update Starting")
+        tqdm.write("🔄 Enhanced Weekly Update Starting")
         tqdm.write(f"📁 File: {Path(excel_file).name}")
         tqdm.write(f"🔧 Auto-setup: {auto_setup_markets} | Dry run: {dry_run}")
         tqdm.write(f"🆔 Batch ID: {batch_id}")
@@ -337,7 +337,7 @@ class EnhancedWeeklyImporter:
         try:
             # Step 1: Market setup (if enabled)
             if auto_setup_markets and not dry_run:
-                tqdm.write(f"🏗️  STEP 1: Automatic Market Setup")
+                tqdm.write("🏗️  STEP 1: Automatic Market Setup")
                 market_setup_result = self.market_manager.execute_weekly_market_setup(
                     excel_file
                 )
@@ -349,14 +349,14 @@ class EnhancedWeeklyImporter:
                         f"📊 Setup: {market_setup_result['markets_created']} markets, {market_setup_result['schedules_created']} assignments"
                     )
                 else:
-                    tqdm.write(f"📊 Setup: No new markets needed")
+                    tqdm.write("📊 Setup: No new markets needed")
                 tqdm.write("")
 
             # Step 2: Weekly data import with progress tracking
-            tqdm.write(f"📦 STEP 2: Weekly Data Import")
+            tqdm.write("📦 STEP 2: Weekly Data Import")
 
             if dry_run:
-                tqdm.write(f"🔍 DRY RUN - No changes would be made")
+                tqdm.write("🔍 DRY RUN - No changes would be made")
                 summary = get_excel_import_summary(excel_file, self.db.db_path)
                 results["import_result"] = {
                     "would_import": True,
@@ -373,7 +373,7 @@ class EnhancedWeeklyImporter:
 
                 # Step 3: Language Assignment Processing
                 if import_result.success:
-                    tqdm.write(f"\n🎯 STEP 3: Language Assignment Processing")
+                    tqdm.write("\n🎯 STEP 3: Language Assignment Processing")
                     language_result = self._process_language_assignments(batch_id)
                     results["language_assignment"] = language_result
 
@@ -485,7 +485,7 @@ class EnhancedWeeklyImporter:
                 language_result["categorized"] = len(uncategorized_spots)
                 tqdm.write(f"✅ Categorized {len(uncategorized_spots):,} spots")
             else:
-                tqdm.write(f"✅ No uncategorized spots found")
+                tqdm.write("✅ No uncategorized spots found")
 
             # Step 3b: Process all categories with progress
             orchestrator = LanguageProcessingOrchestrator(conn)
@@ -504,7 +504,7 @@ class EnhancedWeeklyImporter:
             language_result["success"] = True
 
             # Clean summary
-            tqdm.write(f"✅ Language assignment complete:")
+            tqdm.write("✅ Language assignment complete:")
             tqdm.write(f"   🎯 Processed: {language_result['processed']:,}")
             tqdm.write(
                 f"   🔤 Language assigned: {language_result['language_assigned']:,}"
@@ -536,8 +536,8 @@ class EnhancedWeeklyImporter:
 
 def display_enhanced_weekly_preview(excel_file: str, db_path: str, auto_setup: bool):
     """Display what the enhanced weekly update would do."""
-    tqdm.write(f"📋 Enhanced Weekly Update Preview")
-    tqdm.write(f"=" * 60)
+    tqdm.write("📋 Enhanced Weekly Update Preview")
+    tqdm.write("=" * 60)
     tqdm.write(f"📁 File: {Path(excel_file).name}")
     tqdm.write(f"🔧 Auto-setup: {auto_setup}")
     tqdm.write("")
@@ -551,7 +551,7 @@ def display_enhanced_weekly_preview(excel_file: str, db_path: str, auto_setup: b
             new_markets = market_manager.scan_excel_for_new_markets(excel_file)
 
             if new_markets:
-                tqdm.write(f"🏗️  Market Setup Preview:")
+                tqdm.write("🏗️  Market Setup Preview:")
                 tqdm.write(
                     f"   🆕 New markets: {len(new_markets)} ({', '.join(sorted(new_markets.keys()))})"
                 )
@@ -562,11 +562,11 @@ def display_enhanced_weekly_preview(excel_file: str, db_path: str, auto_setup: b
 
         # Language assignment preview
         if can_proceed:
-            tqdm.write(f"🎯 Language Assignment Preview:")
+            tqdm.write("🎯 Language Assignment Preview:")
             tqdm.write(
-                f"   📋 All spots will be categorized and processed automatically"
+                "   📋 All spots will be categorized and processed automatically"
             )
-            tqdm.write(f"   🔤 Business rules applied, manual review flagged as needed")
+            tqdm.write("   🔤 Business rules applied, manual review flagged as needed")
 
         db_connection.close()
         return can_proceed
@@ -578,7 +578,7 @@ def display_enhanced_weekly_preview(excel_file: str, db_path: str, auto_setup: b
 
 def display_weekly_update_preview(excel_file: str, db_path: str):
     """Display what the weekly update would do (original functionality)."""
-    tqdm.write(f"📦 Weekly Update Preview:")
+    tqdm.write("📦 Weekly Update Preview:")
 
     try:
         # Get Excel summary
@@ -588,12 +588,12 @@ def display_weekly_update_preview(excel_file: str, db_path: str):
         validation = validate_excel_for_import(excel_file, "WEEKLY_UPDATE", db_path)
 
         if validation.is_valid:
-            tqdm.write(f"   ✅ Weekly update allowed")
+            tqdm.write("   ✅ Weekly update allowed")
             tqdm.write(
                 f"   📊 {summary['total_existing_spots_affected']:,} spots across {len(summary['months_in_excel'])} months"
             )
         else:
-            tqdm.write(f"   ❌ Weekly update BLOCKED")
+            tqdm.write("   ❌ Weekly update BLOCKED")
             tqdm.write(f"      Reason: {validation.error_message}")
             tqdm.write(f"      Solution: {validation.suggested_action}")
             return False
@@ -623,7 +623,7 @@ def get_user_confirmation(
     if force:
         return True
 
-    tqdm.write(f"🚨 CONFIRMATION REQUIRED")
+    tqdm.write("🚨 CONFIRMATION REQUIRED")
     actions = [
         f"REPLACE {total_spots:,} existing spots",
         f"Update {open_months} open months",
@@ -634,13 +634,13 @@ def get_user_confirmation(
     if new_markets > 0:
         actions.insert(0, f"Create {new_markets} new markets")
 
-    tqdm.write(f"This will:")
+    tqdm.write("This will:")
     for action in actions:
         tqdm.write(f"  • {action}")
 
     while True:
         response = (
-            input(f"\nProceed with enhanced weekly update? (yes/no): ").strip().lower()
+            input("\nProceed with enhanced weekly update? (yes/no): ").strip().lower()
         )
         if response in ["yes", "y"]:
             return True
@@ -716,11 +716,11 @@ Enhanced Features:
         sys.exit(1)
 
     try:
-        print(f"🔄 Enhanced Weekly Update Tool")
+        print("🔄 Enhanced Weekly Update Tool")
         print(f"📁 File: {Path(args.excel_file).name}")
         print(f"🗃️  Database: {Path(args.db_path).name}")
         if args.dry_run:
-            print(f"🔍 Mode: DRY RUN (no changes will be made)")
+            print("🔍 Mode: DRY RUN (no changes will be made)")
         print()
 
         # Display enhanced preview and validate
@@ -729,11 +729,11 @@ Enhanced Features:
         )
 
         if not can_proceed:
-            print(f"\n❌ Weekly update cannot proceed due to validation errors")
-            print(f"💡 Common solutions:")
-            print(f"  • Remove closed month data from Excel file")
-            print(f"  • Use historical import mode for closed months")
-            print(f"  • Check if months need to be manually closed first")
+            print("\n❌ Weekly update cannot proceed due to validation errors")
+            print("💡 Common solutions:")
+            print("  • Remove closed month data from Excel file")
+            print("  • Use historical import mode for closed months")
+            print("  • Check if months need to be manually closed first")
             sys.exit(1)
 
         # Get confirmation unless forced or dry run
@@ -757,7 +757,7 @@ Enhanced Features:
             )
 
             if not confirmed:
-                print(f"❌ Weekly update cancelled by user")
+                print("❌ Weekly update cancelled by user")
                 sys.exit(0)
 
         # Execute the enhanced update
@@ -772,12 +772,12 @@ Enhanced Features:
             # Display clean final results
             print(f"\n{'=' * 60}")
             if args.dry_run:
-                print(f"🔍 ENHANCED WEEKLY UPDATE DRY RUN COMPLETED")
+                print("🔍 ENHANCED WEEKLY UPDATE DRY RUN COMPLETED")
             else:
-                print(f"🎉 ENHANCED WEEKLY UPDATE COMPLETED")
+                print("🎉 ENHANCED WEEKLY UPDATE COMPLETED")
             print(f"{'=' * 60}")
 
-            print(f"📊 Results Summary:")
+            print("📊 Results Summary:")
             print(f"  Status: {'✅ Success' if results['success'] else '❌ Failed'}")
             print(f"  Duration: {results['duration_seconds']:.1f} seconds")
 
@@ -810,19 +810,19 @@ Enhanced Features:
                     print(f"  Review needed: {lang_res['flagged_for_review']:,}")
 
             if results["error_messages"]:
-                print(f"\n❌ Errors:")
+                print("\n❌ Errors:")
                 for error in results["error_messages"]:
                     print(f"  • {error}")
                 sys.exit(1)
 
             if results["success"] and not args.dry_run:
-                print(f"\n✅ Update completed successfully!")
+                print("\n✅ Update completed successfully!")
                 if (
                     results["language_assignment"]
                     and results["language_assignment"]["flagged_for_review"] > 0
                 ):
                     print(
-                        f"💡 Next: Review flagged spots with 'uv run python cli/assign_languages.py --review-required'"
+                        "💡 Next: Review flagged spots with 'uv run python cli/assign_languages.py --review-required'"
                     )
 
         finally:
@@ -832,7 +832,7 @@ Enhanced Features:
         print(f"❌ Import error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        print(f"\n❌ Weekly update cancelled by user")
+        print("\n❌ Weekly update cancelled by user")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Unexpected error: {e}")

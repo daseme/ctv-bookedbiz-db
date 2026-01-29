@@ -7,13 +7,11 @@ Enhanced with unattended mode for automated daily processing of combined Commerc
 
 from __future__ import annotations
 import sys
-import os
 import argparse
-import sqlite3
 import logging
 from pathlib import Path
 from datetime import datetime, date
-from typing import Dict, Set, List, Optional, Any, Protocol, Tuple
+from typing import Dict, Set, List, Optional, Protocol, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 import logging.handlers
@@ -340,7 +338,7 @@ class MultiSheetPreviewGenerator:
                 new_markets_detected=0,  # Could enhance this later
             )
 
-        except Exception as e:
+        except Exception:
             # Return empty preview on error
             return MultiSheetPreview(
                 total_spots=0,
@@ -816,80 +814,115 @@ class ImportService:
         """
         try:
             import pandas as pd
-            
+
             # Try to read the main data sheet - handle multiple possible sheet names
-            sheet_names_to_try = ["Commercials", "Commercial Lines", "Sheet1", 0]  # 0 = first sheet
+            sheet_names_to_try = [
+                "Commercials",
+                "Commercial Lines",
+                "Sheet1",
+                0,
+            ]  # 0 = first sheet
             df = None
             sheet_used = None
-            
+
             for sheet_name in sheet_names_to_try:
                 try:
                     df = pd.read_excel(excel_file, sheet_name=sheet_name)
                     sheet_used = sheet_name
-                    self.progress_reporter.write(f"📄 Reading bill codes from sheet: {sheet_name}")
+                    self.progress_reporter.write(
+                        f"📄 Reading bill codes from sheet: {sheet_name}"
+                    )
                     break
                 except Exception:
                     continue
-            
+
             if df is None:
-                self.progress_reporter.write("⚠️ Warning: Could not read any sheet from Excel file")
+                self.progress_reporter.write(
+                    "⚠️ Warning: Could not read any sheet from Excel file"
+                )
                 return
 
             # Get unique bill codes - try multiple possible column names
-            bill_code_columns = ['bill_code', 'Bill Code', 'Customer', 'Client', 'Advertiser', 'customer']
+            bill_code_columns = [
+                "bill_code",
+                "Bill Code",
+                "Customer",
+                "Client",
+                "Advertiser",
+                "customer",
+            ]
             bill_codes = []
             column_used = None
-            
+
             for col in bill_code_columns:
                 if col in df.columns:
                     bill_codes = df[col].dropna().unique().tolist()
                     column_used = col
                     break
-            
+
             if not bill_codes:
-                self.progress_reporter.write("⚠️ Warning: No bill code column found in Excel file")
+                self.progress_reporter.write(
+                    "⚠️ Warning: No bill code column found in Excel file"
+                )
                 available_columns = list(df.columns)[:10]  # Show first 10 columns
                 self.progress_reporter.write(f"Available columns: {available_columns}")
                 return
-            
+
             # Clean and filter bill codes
             clean_bill_codes = []
             for bill_code in bill_codes:
-                if bill_code and str(bill_code).strip() and str(bill_code).strip().upper() != 'NAN':
+                if (
+                    bill_code
+                    and str(bill_code).strip()
+                    and str(bill_code).strip().upper() != "NAN"
+                ):
                     clean_bill_codes.append(str(bill_code).strip())
-            
+
             if clean_bill_codes:
                 # Add to raw_customer_inputs
                 current_time = datetime.now().isoformat()
                 added_count = 0
-                
+
                 with self.broadcast_service.db_connection.transaction() as conn:
                     for bill_code in clean_bill_codes:
                         try:
-                            cursor = conn.execute("""
+                            cursor = conn.execute(
+                                """
                                 INSERT OR IGNORE INTO raw_customer_inputs (raw_text, created_at)
                                 VALUES (?, ?)
-                            """, (bill_code, current_time))
-                            
+                            """,
+                                (bill_code, current_time),
+                            )
+
                             if cursor.rowcount > 0:
                                 added_count += 1
-                                
-                        except Exception as e:
+
+                        except Exception:
                             # Continue with other bill codes if one fails
                             continue
-                
-                self.progress_reporter.write(f"✅ Normalization system updated:")
-                self.progress_reporter.write(f"   Sheet: {sheet_used}, Column: {column_used}")
-                self.progress_reporter.write(f"   Total bill codes found: {len(clean_bill_codes)}")
+
+                self.progress_reporter.write("✅ Normalization system updated:")
+                self.progress_reporter.write(
+                    f"   Sheet: {sheet_used}, Column: {column_used}"
+                )
+                self.progress_reporter.write(
+                    f"   Total bill codes found: {len(clean_bill_codes)}"
+                )
                 self.progress_reporter.write(f"   New bill codes added: {added_count}")
-                
+
                 if added_count == 0:
-                    self.progress_reporter.write(f"   (All bill codes were already in system)")
+                    self.progress_reporter.write(
+                        "   (All bill codes were already in system)"
+                    )
             else:
-                self.progress_reporter.write("⚠️ Warning: No valid bill codes found after cleaning")
-        
+                self.progress_reporter.write(
+                    "⚠️ Warning: No valid bill codes found after cleaning"
+                )
+
         except Exception as e:
-            self.progress_reporter.write(f"⚠️ Warning: Could not update raw_customer_inputs: {e}")
+            self.progress_reporter.write(
+                f"⚠️ Warning: Could not update raw_customer_inputs: {e}"
+            )
             # Don't fail the entire import if this step fails
 
     def execute_import_with_progress(
@@ -899,7 +932,9 @@ class ImportService:
         start_time = datetime.now()
 
         # CRITICAL FIX: Ensure bill codes are in raw_customer_inputs BEFORE import
-        self.progress_reporter.write("🔧 Step 1: Updating normalization system with new bill codes...")
+        self.progress_reporter.write(
+            "🔧 Step 1: Updating normalization system with new bill codes..."
+        )
         self.ensure_bill_codes_in_raw_inputs(excel_file)
 
         # Get summary first for progress setup
@@ -909,7 +944,9 @@ class ImportService:
                 str(excel_file), self.broadcast_service.db_connection.db_path
             )
         except Exception as e:
-            self.progress_reporter.write(f"⚠️ Warning: Could not get import summary: {e}")
+            self.progress_reporter.write(
+                f"⚠️ Warning: Could not get import summary: {e}"
+            )
             summary = {"months_in_excel": [], "total_existing_spots_affected": 0}
 
         # Create a progress bar for the overall import
@@ -957,7 +994,9 @@ class ImportService:
         try:
             sheet_breakdown = self.spot_repository.get_sheet_source_breakdown(batch_id)
         except Exception as e:
-            self.progress_reporter.write(f"⚠️ Warning: Could not get sheet breakdown: {e}")
+            self.progress_reporter.write(
+                f"⚠️ Warning: Could not get sheet breakdown: {e}"
+            )
             sheet_breakdown = {}
 
         # Convert to our domain model
@@ -972,25 +1011,33 @@ class ImportService:
         )
 
         if result.success:
-            self.progress_reporter.write(f"✅ Import completed successfully:")
-            self.progress_reporter.write(f"   Records imported: {result.records_imported:,}")
-            self.progress_reporter.write(f"   Records deleted: {result.records_deleted:,}")
+            self.progress_reporter.write("✅ Import completed successfully:")
+            self.progress_reporter.write(
+                f"   Records imported: {result.records_imported:,}"
+            )
+            self.progress_reporter.write(
+                f"   Records deleted: {result.records_deleted:,}"
+            )
             self.progress_reporter.write(f"   Net change: {result.net_change:+,}")
-            self.progress_reporter.write(f"   Duration: {result.duration_seconds:.1f} seconds")
-            
+            self.progress_reporter.write(
+                f"   Duration: {result.duration_seconds:.1f} seconds"
+            )
+
             # Enhanced: Show multi-sheet breakdown
             if result.has_multisheet_data:
-                self.progress_reporter.write(f"📊 Multi-sheet breakdown:")
+                self.progress_reporter.write("📊 Multi-sheet breakdown:")
                 for sheet_source, count in result.sheet_breakdown.items():
                     self.progress_reporter.write(f"   {sheet_source}: {count:,} spots")
-            
+
             # Show months processed
             if result.months_processed:
-                self.progress_reporter.write(f"📅 Months processed: {', '.join(result.months_processed)}")
-                
+                self.progress_reporter.write(
+                    f"📅 Months processed: {', '.join(result.months_processed)}"
+                )
+
         else:
-            self.progress_reporter.write(f"❌ Import failed!")
-            if hasattr(import_result, 'error_message') and import_result.error_message:
+            self.progress_reporter.write("❌ Import failed!")
+            if hasattr(import_result, "error_message") and import_result.error_message:
                 self.progress_reporter.write(f"   Error: {import_result.error_message}")
 
         return result
@@ -1002,7 +1049,9 @@ class ImportService:
                 str(excel_file), self.broadcast_service.db_connection.db_path
             )
         except Exception as e:
-            self.progress_reporter.write(f"⚠️ Warning: Could not get import summary: {e}")
+            self.progress_reporter.write(
+                f"⚠️ Warning: Could not get import summary: {e}"
+            )
             summary = {"months_in_excel": [], "total_existing_spots_affected": 0}
 
         # Try to get sheet breakdown for dry run
@@ -1019,11 +1068,13 @@ class ImportService:
                     break
                 except Exception:
                     continue
-                    
+
             # If we found data, also try to simulate the normalization update
             if sheet_breakdown:
-                self.progress_reporter.write(f"🔍 DRY RUN: Would update normalization system")
-                
+                self.progress_reporter.write(
+                    "🔍 DRY RUN: Would update normalization system"
+                )
+
                 # Show what bill codes would be added
                 df = None
                 for sheet_name in sheet_names_to_try:
@@ -1032,17 +1083,27 @@ class ImportService:
                         break
                     except Exception:
                         continue
-                
+
                 if df is not None:
-                    bill_code_columns = ['bill_code', 'Bill Code', 'Customer', 'Client', 'Advertiser']
+                    bill_code_columns = [
+                        "bill_code",
+                        "Bill Code",
+                        "Customer",
+                        "Client",
+                        "Advertiser",
+                    ]
                     for col in bill_code_columns:
                         if col in df.columns:
                             unique_codes = df[col].dropna().nunique()
-                            self.progress_reporter.write(f"   Found {unique_codes} unique bill codes in column '{col}'")
+                            self.progress_reporter.write(
+                                f"   Found {unique_codes} unique bill codes in column '{col}'"
+                            )
                             break
-                    
+
         except Exception as e:
-            self.progress_reporter.write(f"⚠️ Warning: Could not analyze Excel for dry run: {e}")
+            self.progress_reporter.write(
+                f"⚠️ Warning: Could not analyze Excel for dry run: {e}"
+            )
 
         return ImportResult(
             success=True,
@@ -1061,38 +1122,46 @@ class ImportService:
         """
         try:
             import pandas as pd
-            
+
             # Read the main sheet (adjust sheet name as needed)
-            df = pd.read_excel(excel_file, sheet_name="Commercials")  # or your main sheet
-            
+            df = pd.read_excel(
+                excel_file, sheet_name="Commercials"
+            )  # or your main sheet
+
             # Get unique bill codes
-            if 'bill_code' in df.columns:
-                bill_codes = df['bill_code'].dropna().unique().tolist()
+            if "bill_code" in df.columns:
+                bill_codes = df["bill_code"].dropna().unique().tolist()
             else:
                 # Try alternative column names
-                bill_code_columns = ['Bill Code', 'Customer', 'Client', 'Advertiser']
+                bill_code_columns = ["Bill Code", "Customer", "Client", "Advertiser"]
                 bill_codes = []
                 for col in bill_code_columns:
                     if col in df.columns:
                         bill_codes = df[col].dropna().unique().tolist()
                         break
-            
+
             if bill_codes:
                 # Add to raw_customer_inputs
                 current_time = datetime.now().isoformat()
-                
+
                 with self.broadcast_service.db_connection.transaction() as conn:
                     for bill_code in bill_codes:
-                        conn.execute("""
+                        conn.execute(
+                            """
                             INSERT OR IGNORE INTO raw_customer_inputs (raw_text, created_at)
                             VALUES (?, ?)
-                        """, (str(bill_code).strip(), current_time))
-                
-                self.progress_reporter.write(f"Added {len(bill_codes)} bill codes to normalization system")
-            
-        except Exception as e:
-            self.progress_reporter.write(f"Warning: Could not update raw_customer_inputs: {e}")
+                        """,
+                            (str(bill_code).strip(), current_time),
+                        )
 
+                self.progress_reporter.write(
+                    f"Added {len(bill_codes)} bill codes to normalization system"
+                )
+
+        except Exception as e:
+            self.progress_reporter.write(
+                f"Warning: Could not update raw_customer_inputs: {e}"
+            )
 
     def simulate_import(self, excel_file: Path) -> ImportResult:
         """Simulate import for dry run with multi-sheet preview"""
@@ -1140,8 +1209,8 @@ class DailyUpdatePreviewService:
     def display_enhanced_daily_preview(self, config: DailyUpdateConfig) -> bool:
         """Display what the enhanced multi-sheet daily update would do"""
         if not config.unattended:
-            self.progress_reporter.write(f"Enhanced Multi-Sheet Daily Update Preview")
-            self.progress_reporter.write(f"=" * 60)
+            self.progress_reporter.write("Enhanced Multi-Sheet Daily Update Preview")
+            self.progress_reporter.write("=" * 60)
             self.progress_reporter.write(f"File: {config.excel_file.name}")
             self.progress_reporter.write(f"Auto-setup: {config.auto_setup_markets}")
             self.progress_reporter.write("")
@@ -1153,7 +1222,7 @@ class DailyUpdatePreviewService:
             )
 
             if preview.has_worldlink_data:
-                self.progress_reporter.write(f"Multi-Sheet Data Detected:")
+                self.progress_reporter.write("Multi-Sheet Data Detected:")
                 self.progress_reporter.write(f"   {preview.summary_line}")
                 self.progress_reporter.write("")
 
@@ -1166,16 +1235,16 @@ class DailyUpdatePreviewService:
 
             # Language assignment preview (only for interactive mode)
             if can_proceed and not config.unattended:
-                self.progress_reporter.write(f"Language Assignment Preview:")
+                self.progress_reporter.write("Language Assignment Preview:")
                 self.progress_reporter.write(
-                    f"   Languages assigned directly from Excel language column"
+                    "   Languages assigned directly from Excel language column"
                 )
                 self.progress_reporter.write(
-                    f"   Simple and reliable - no complex categorization needed"
+                    "   Simple and reliable - no complex categorization needed"
                 )
                 if preview.has_worldlink_data:
                     self.progress_reporter.write(
-                        f"   WorldLink and Commercial data processed identically"
+                        "   WorldLink and Commercial data processed identically"
                     )
 
             return can_proceed
@@ -1194,7 +1263,7 @@ class DailyUpdatePreviewService:
             new_markets = scanner.scan_for_new_markets(excel_file, existing_markets)
 
             if new_markets:
-                self.progress_reporter.write(f"Market Setup Preview:")
+                self.progress_reporter.write("Market Setup Preview:")
                 self.progress_reporter.write(
                     f"   New markets: {len(new_markets)} ({', '.join(sorted(new_markets.keys()))})"
                 )
@@ -1206,7 +1275,7 @@ class DailyUpdatePreviewService:
         self, excel_file: Path, preview: MultiSheetPreview
     ) -> bool:
         """Display enhanced import preview with multi-sheet information"""
-        self.progress_reporter.write(f"Daily Update Preview:")
+        self.progress_reporter.write("Daily Update Preview:")
 
         try:
             # Get Excel summary
@@ -1218,7 +1287,7 @@ class DailyUpdatePreviewService:
             )
 
             if validation.is_valid:
-                self.progress_reporter.write(f"   Daily update allowed")
+                self.progress_reporter.write("   Daily update allowed")
                 self.progress_reporter.write(
                     f"   {summary['total_existing_spots_affected']:,} spots across {len(summary['months_in_excel'])} months"
                 )
@@ -1229,7 +1298,7 @@ class DailyUpdatePreviewService:
                         f"   Sheet breakdown: {preview.summary_line}"
                     )
             else:
-                self.progress_reporter.write(f"   Daily update BLOCKED")
+                self.progress_reporter.write("   Daily update BLOCKED")
                 self.progress_reporter.write(
                     f"      Reason: {validation.error_message}"
                 )
@@ -1294,18 +1363,18 @@ class DailyUpdateCLI:
             # Enhanced header for multi-sheet processing
             if config.unattended:
                 self.progress_reporter.write(
-                    f"Enhanced Multi-Sheet Daily Update Tool - UNATTENDED MODE"
+                    "Enhanced Multi-Sheet Daily Update Tool - UNATTENDED MODE"
                 )
                 self.progress_reporter.write(f"File: {config.excel_file.name}")
                 self.progress_reporter.write(f"Database: {config.db_path.name}")
-                self.progress_reporter.write(f"Sheets: Commercials + Worldlink Lines")
+                self.progress_reporter.write("Sheets: Commercials + Worldlink Lines")
             else:
-                print(f"Enhanced Multi-Sheet Daily Update Tool")
+                print("Enhanced Multi-Sheet Daily Update Tool")
                 print(f"File: {config.excel_file.name}")
                 print(f"Database: {config.db_path.name}")
-                print(f"Processing: Commercials + Worldlink Lines sheets")
+                print("Processing: Commercials + Worldlink Lines sheets")
                 if config.dry_run:
-                    print(f"Mode: DRY RUN (no changes will be made)")
+                    print("Mode: DRY RUN (no changes will be made)")
                 print()
 
             # Display enhanced preview and validate
@@ -1322,7 +1391,7 @@ class DailyUpdateCLI:
             if not config.dry_run and not config.force and not config.unattended:
                 confirmed = self._get_confirmation(config)
                 if not confirmed:
-                    self.progress_reporter.write(f"Daily update cancelled by user")
+                    self.progress_reporter.write("Daily update cancelled by user")
                     return 0
 
             # Create enhanced services with dependency injection
@@ -1360,7 +1429,7 @@ class DailyUpdateCLI:
             self._log_error(error_msg)
             return 1
         except KeyboardInterrupt:
-            self._log_error(f"Daily update cancelled by user")
+            self._log_error("Daily update cancelled by user")
             return 1
         except Exception as e:
             error_msg = f"Unexpected error: {e}"
@@ -1461,7 +1530,7 @@ class DailyUpdateCLI:
         if force or unattended:
             return True
 
-        tqdm.write(f"CONFIRMATION REQUIRED")
+        tqdm.write("CONFIRMATION REQUIRED")
         actions = [
             f"REPLACE {total_spots:,} existing spots",
             f"Update {open_months} open months",
@@ -1476,13 +1545,13 @@ class DailyUpdateCLI:
         if new_markets > 0:
             actions.insert(-1, f"Create {new_markets} new markets")
 
-        tqdm.write(f"This will:")
+        tqdm.write("This will:")
         for action in actions:
             tqdm.write(f"  • {action}")
 
         while True:
             response = (
-                input(f"\nProceed with enhanced multi-sheet daily update? (yes/no): ")
+                input("\nProceed with enhanced multi-sheet daily update? (yes/no): ")
                 .strip()
                 .lower()
             )
@@ -1497,17 +1566,17 @@ class DailyUpdateCLI:
         """Display validation error help"""
         if unattended:
             self.progress_reporter.write(
-                f"Enhanced daily update cannot proceed due to validation errors"
+                "Enhanced daily update cannot proceed due to validation errors"
             )
             self.progress_reporter.write(
-                f"Solutions: Remove closed month data from Excel file OR use historical import mode"
+                "Solutions: Remove closed month data from Excel file OR use historical import mode"
             )
         else:
-            print(f"\nEnhanced daily update cannot proceed due to validation errors")
-            print(f"Common solutions:")
-            print(f"  • Remove closed month data from Excel file")
-            print(f"  • Use historical import mode for closed months")
-            print(f"  • Check if months need to be manually closed first")
+            print("\nEnhanced daily update cannot proceed due to validation errors")
+            print("Common solutions:")
+            print("  • Remove closed month data from Excel file")
+            print("  • Use historical import mode for closed months")
+            print("  • Check if months need to be manually closed first")
 
 
 # Import other classes unchanged but with enhanced logging
@@ -1575,9 +1644,6 @@ class LanguageAssignmentService:
                 return result
 
             # Process spots directly - import only what we need
-            from src.services.language_assignment_service import (
-                LanguageAssignmentService,
-            )
             from src.database.language_assignment_queries import (
                 LanguageAssignmentQueries,
             )
@@ -1665,7 +1731,7 @@ class DailyUpdateOrchestrator:
         try:
             # Step 1: Market setup (if enabled)
             if config.auto_setup_markets and not config.dry_run:
-                self.progress_reporter.write(f"STEP 1: Automatic Market Setup")
+                self.progress_reporter.write("STEP 1: Automatic Market Setup")
                 result.market_setup = (
                     self.market_setup_service.execute_daily_market_setup(
                         config.excel_file
@@ -1675,10 +1741,10 @@ class DailyUpdateOrchestrator:
                 self.progress_reporter.write("")
 
             # Step 2: Enhanced multi-sheet data import
-            self.progress_reporter.write(f"STEP 2: Enhanced Multi-Sheet Data Import")
+            self.progress_reporter.write("STEP 2: Enhanced Multi-Sheet Data Import")
 
             if config.dry_run:
-                self.progress_reporter.write(f"DRY RUN - No changes would be made")
+                self.progress_reporter.write("DRY RUN - No changes would be made")
                 result.import_result = self.import_service.simulate_import(
                     config.excel_file
                 )
@@ -1697,7 +1763,7 @@ class DailyUpdateOrchestrator:
                 and result.import_result.success
                 and not config.dry_run
             ):
-                self.progress_reporter.write(f"STEP 3: Language Assignment Processing")
+                self.progress_reporter.write("STEP 3: Language Assignment Processing")
                 result.language_assignment = (
                     self.language_service.process_languages_directly(batch_id)
                 )
@@ -1715,9 +1781,9 @@ class DailyUpdateOrchestrator:
 
     def _display_update_header(self, config: DailyUpdateConfig, batch_id: str) -> None:
         """Display enhanced header for multi-sheet processing"""
-        self.progress_reporter.write(f"Enhanced Multi-Sheet Daily Update Starting")
+        self.progress_reporter.write("Enhanced Multi-Sheet Daily Update Starting")
         self.progress_reporter.write(f"File: {config.excel_file.name}")
-        self.progress_reporter.write(f"Processing: Commercials + Worldlink Lines data")
+        self.progress_reporter.write("Processing: Commercials + Worldlink Lines data")
         self.progress_reporter.write(
             f"Auto-setup: {config.auto_setup_markets} | Dry run: {config.dry_run}"
         )
@@ -1740,15 +1806,15 @@ class DailyUpdateResultsPresenter:
 
         if dry_run:
             self.progress_reporter.write(
-                f"ENHANCED MULTI-SHEET DAILY UPDATE DRY RUN COMPLETED"
+                "ENHANCED MULTI-SHEET DAILY UPDATE DRY RUN COMPLETED"
             )
         else:
-            self.progress_reporter.write(f"ENHANCED MULTI-SHEET DAILY UPDATE COMPLETED")
+            self.progress_reporter.write("ENHANCED MULTI-SHEET DAILY UPDATE COMPLETED")
 
         if not unattended:
             self.progress_reporter.write(f"{'=' * 60}")
 
-        self.progress_reporter.write(f"Results Summary:")
+        self.progress_reporter.write("Results Summary:")
         self.progress_reporter.write(
             f"  Status: {'SUCCESS' if result.success else 'FAILED'}"
         )
@@ -1775,7 +1841,7 @@ class DailyUpdateResultsPresenter:
 
                 # Show multi-sheet breakdown if available
                 if import_res.has_multisheet_data:
-                    self.progress_reporter.write(f"  Sheet sources:")
+                    self.progress_reporter.write("  Sheet sources:")
                     for sheet_source, count in import_res.sheet_breakdown.items():
                         self.progress_reporter.write(
                             f"    {sheet_source}: {count:,} spots"
@@ -1793,20 +1859,20 @@ class DailyUpdateResultsPresenter:
                 )
 
         if result.error_messages:
-            self.progress_reporter.write(f"ERRORS:")
+            self.progress_reporter.write("ERRORS:")
             for error in result.error_messages:
                 self.progress_reporter.write(f"  • {error}")
 
         if result.success and not dry_run:
             self.progress_reporter.write(
-                f"Enhanced multi-sheet update completed successfully!"
+                "Enhanced multi-sheet update completed successfully!"
             )
             if (
                 result.language_assignment
                 and result.language_assignment.flagged_for_review > 0
             ):
                 self.progress_reporter.write(
-                    f"Next: Review flagged spots with 'uv run python cli/assign_languages.py --review-required'"
+                    "Next: Review flagged spots with 'uv run python cli/assign_languages.py --review-required'"
                 )
 
 

@@ -10,7 +10,6 @@ separates legitimate language targeting from broad-reach campaigns.
 import sqlite3
 import os
 from datetime import datetime
-from collections import defaultdict
 
 
 def generate_enhanced_language_block_report():
@@ -67,7 +66,7 @@ def generate_enhanced_language_block_report():
                 )
 
         # 2. NEW: Business Pattern Analysis
-        print(f"\n🧠 BUSINESS PATTERN ANALYSIS")
+        print("\n🧠 BUSINESS PATTERN ANALYSIS")
         print("-" * 40)
 
         # WorldLink Infomercials
@@ -238,7 +237,7 @@ def generate_enhanced_language_block_report():
             )
 
         # 3. NEW: Edge Case Status Analysis
-        print(f"\n🚨 EDGE CASE STATUS ANALYSIS")
+        print("\n🚨 EDGE CASE STATUS ANALYSIS")
         print("-" * 40)
 
         edge_case_status_query = """
@@ -273,7 +272,7 @@ def generate_enhanced_language_block_report():
             )
 
         # 4. Language-Specific Performance (Real Language Targeting)
-        print(f"\n🌐 LANGUAGE-SPECIFIC PERFORMANCE")
+        print("\n🌐 LANGUAGE-SPECIFIC PERFORMANCE")
         print("-" * 45)
 
         language_performance_query = """
@@ -314,7 +313,7 @@ def generate_enhanced_language_block_report():
                 )
 
         # 5. Top Language Blocks (Real Performance)
-        print(f"\n🏆 TOP PERFORMING LANGUAGE BLOCKS")
+        print("\n🏆 TOP PERFORMING LANGUAGE BLOCKS")
         print("-" * 45)
 
         block_performance_query = """
@@ -352,7 +351,7 @@ def generate_enhanced_language_block_report():
                 print()
 
         # 6. Programming Grid Analysis
-        print(f"\n📅 PROGRAMMING GRID ANALYSIS")
+        print("\n📅 PROGRAMMING GRID ANALYSIS")
         print("-" * 35)
 
         # Grid coverage analysis
@@ -388,7 +387,7 @@ def generate_enhanced_language_block_report():
                 )
 
         # 7. Customer Intelligence
-        print(f"\n👥 CUSTOMER INTELLIGENCE")
+        print("\n👥 CUSTOMER INTELLIGENCE")
         print("-" * 30)
 
         # Top customers by category
@@ -429,7 +428,7 @@ def generate_enhanced_language_block_report():
                 )
 
         # 8. Key Insights (Updated)
-        print(f"\n💡 KEY INSIGHTS & STRATEGIC RECOMMENDATIONS")
+        print("\n💡 KEY INSIGHTS & STRATEGIC RECOMMENDATIONS")
         print("-" * 50)
 
         # Calculate real penetration

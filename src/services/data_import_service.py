@@ -6,7 +6,7 @@ import logging
 
 from ..repositories.interfaces import SpotRepository, CustomerRepository
 from ..repositories.sqlite_repositories import ReferenceDataRepository
-from ..models.entities import Spot, Customer
+from ..models.entities import Spot
 from ..database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
