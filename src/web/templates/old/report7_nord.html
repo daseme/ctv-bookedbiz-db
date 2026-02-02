@@ -6,7 +6,7 @@
 {% block header_subtitle %}Geographic and demographic analysis (Nord Theme){% endblock %}
 
 {% block extra_styles %}
-{% include "nord_base.html" %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/shared/nord-enhanced.css') }}">
 <style>
 /* Nord Market-Language Report Specific Styles */
 .nord-market-controls {

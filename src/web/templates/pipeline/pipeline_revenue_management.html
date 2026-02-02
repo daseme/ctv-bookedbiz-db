@@ -14,7 +14,7 @@
 
 {% block extra_styles %}
 <!-- Include Nord CSS Module -->
-{% include 'nord_base.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/shared/nord-enhanced.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline-decay-theme.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline-components.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline-modals.css') }}">

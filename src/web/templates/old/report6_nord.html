@@ -6,7 +6,7 @@
 {% block header_subtitle %}Multi-language market analysis (Nord Theme){% endblock %}
 
 {% block extra_styles %}
-{% include "nord_base.html" %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/shared/nord-enhanced.css') }}">
 <style>
 /* Nord Language Report Specific Styles */
 .nord-language-controls {

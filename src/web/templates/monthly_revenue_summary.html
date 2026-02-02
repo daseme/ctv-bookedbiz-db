@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block extra_styles %}
-{% include "nord_base.html" %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/shared/nord-enhanced.css') }}">
 {% endblock %}
 
 {% block content %}
