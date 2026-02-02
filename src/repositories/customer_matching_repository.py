@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import List, Optional, Dict, Any
 import sqlite3
 from contextlib import contextmanager
+from src.utils.query_builders import CustomerNormalizationQueryBuilder
 
 from ..models.customer_matching import (
     CustomerMatchCandidate,
@@ -99,7 +100,7 @@ class CustomerMatchingRepository:
             us.months_active,
             us.revenue_types_raw
         FROM unmatched_spots us
-        LEFT JOIN v_customer_normalization_audit vcna ON vcna.raw_text = us.bill_code
+        {CustomerNormalizationQueryBuilder.build_customer_join("us", "vcna")}
         """
 
         where_clauses = []
