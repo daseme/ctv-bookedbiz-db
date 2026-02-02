@@ -12,6 +12,8 @@ Previously it was:
 This change simplifies the business logic and moves all Internal Ad Sales spots
 into the Language-Targeted Advertising category.
 
+Uses shared utilities from src/utils/ to eliminate code duplication.
+
 Key changes:
 - Language-Targeted Advertising now includes ALL Internal Ad Sales spots
 - Other/Review Required category no longer includes Internal Ad Sales spots with unusual spot types
@@ -28,6 +30,9 @@ from dataclasses import dataclass
 
 # Ensure relative imports resolve if needed
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import shared utilities
+from utils.date_range_utils import DateRangeUtils
 
 
 @dataclass
@@ -68,32 +73,12 @@ class UpdatedUnifiedAnalysisEngine:
     # ---------------- Year helpers ----------------
 
     def parse_year_range(self, year_input: str) -> Tuple[List[str], List[str]]:
-        """
-        Parse year input "2024" or "2023-2024" -> (["2023","2024"], ["23","24"])
-        """
-        if "-" in year_input:
-            start_year, end_year = year_input.split("-")
-            start_year = int(start_year)
-            end_year = int(end_year)
-            if start_year > end_year:
-                raise ValueError(
-                    f"Start year {start_year} cannot be greater than end year {end_year}"
-                )
-            full_years = [str(y) for y in range(start_year, end_year + 1)]
-            suffixes = [y[-2:] for y in full_years]
-        else:
-            full_years = [year_input]
-            suffixes = [year_input[-2:]]
-        return full_years, suffixes
+        """Parse year input using shared utility."""
+        return DateRangeUtils.parse_year_range(year_input)
 
     def build_year_filter(self, suffixes: List[str]) -> Tuple[str, List[str]]:
-        if len(suffixes) == 1:
-            return "s.broadcast_month LIKE ?", [f"%-{suffixes[0]}"]
-        conds, params = [], []
-        for suf in suffixes:
-            conds.append("s.broadcast_month LIKE ?")
-            params.append(f"%-{suf}")
-        return f"({' OR '.join(conds)})", params
+        """Build year filter using shared utility."""
+        return DateRangeUtils.build_year_filter(suffixes)
 
     # ---------------- Base totals ----------------
 

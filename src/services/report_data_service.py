@@ -12,6 +12,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from dataclasses import dataclass
 from enum import Enum
+from src.utils.query_builders import CustomerNormalizationQueryBuilder, BroadcastMonthQueryBuilder
 
 # ============================================================================
 # Domain Models (updated with new customer tracking)
@@ -138,6 +139,23 @@ class RevenueQueryBuilder:
         """.strip()
 
     @staticmethod
+    def build_year_filter(
+        year_suffixes: List[str],
+        month_column: str = "s.broadcast_month"
+    ) -> Tuple[str, List[str]]:
+        """
+        Build SQL filter for multiple year suffixes using shared utility.
+        
+        Args:
+            year_suffixes: List of 2-digit year suffixes like ["23", "24"]
+            month_column: Column name for broadcast month (default: "s.broadcast_month")
+            
+        Returns:
+            Tuple of (sql_condition, parameters)
+        """
+        return BroadcastMonthQueryBuilder.build_year_filter(year_suffixes, "broadcast_month", "s")
+
+    @staticmethod
     def build_ae_normalization() -> str:
         """Build AE normalization expression"""
         return """
@@ -215,7 +233,7 @@ class SQLiteRevenueRepository:
         current_year_query = f"""
             SELECT DISTINCT audit.normalized_name AS customer
             FROM spots s
-            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            {CustomerNormalizationQueryBuilder.build_customer_join()}
             WHERE s.broadcast_month LIKE ?
             AND audit.normalized_name IS NOT NULL
             AND {base}
@@ -224,7 +242,7 @@ class SQLiteRevenueRepository:
         previous_years_query = f"""
             SELECT DISTINCT audit.normalized_name AS customer
             FROM spots s
-            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            {CustomerNormalizationQueryBuilder.build_customer_join()}
             WHERE s.broadcast_month NOT LIKE ?
             AND s.broadcast_month IS NOT NULL
             AND s.broadcast_month <> ''
@@ -269,7 +287,7 @@ class SQLiteRevenueRepository:
                 ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS gross_revenue,
                 ROUND(SUM(COALESCE(s.station_net, 0)), 2) AS net_revenue
             FROM spots s
-            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            {CustomerNormalizationQueryBuilder.build_customer_join()}
             LEFT JOIN customers c ON audit.customer_id = c.customer_id
             LEFT JOIN agencies a ON s.agency_id = a.agency_id
             LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
@@ -505,7 +523,7 @@ class SQLiteRevenueRepository:
                 COUNT(*) AS spot_count,
                 ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue
             FROM spots s
-            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            {CustomerNormalizationQueryBuilder.build_customer_join()}
             LEFT JOIN customers c ON audit.customer_id = c.customer_id
             LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
             WHERE s.broadcast_month LIKE ?
@@ -1132,7 +1150,7 @@ class ReportDataService:
                     COUNT(*) AS spot_count,
                     ROUND(AVG(COALESCE(s.gross_rate, 0)), 2) AS avg_rate
                 FROM spots s
-                LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+                {CustomerNormalizationQueryBuilder.build_customer_join()}
                 LEFT JOIN customers c ON audit.customer_id = c.customer_id
                 LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
                 WHERE s.broadcast_month LIKE ?
@@ -1259,26 +1277,13 @@ class ReportDataService:
                             ELSE TRIM(s.sales_person)
                         END AS ae,
                         COALESCE(sect.sector_name, 'Unknown') AS sector,
-                        CASE 
-                            WHEN s.broadcast_month LIKE 'Jan-%' THEN '01'
-                            WHEN s.broadcast_month LIKE 'Feb-%' THEN '02'
-                            WHEN s.broadcast_month LIKE 'Mar-%' THEN '03'
-                            WHEN s.broadcast_month LIKE 'Apr-%' THEN '04'
-                            WHEN s.broadcast_month LIKE 'May-%' THEN '05'
-                            WHEN s.broadcast_month LIKE 'Jun-%' THEN '06'
-                            WHEN s.broadcast_month LIKE 'Jul-%' THEN '07'
-                            WHEN s.broadcast_month LIKE 'Aug-%' THEN '08'
-                            WHEN s.broadcast_month LIKE 'Sep-%' THEN '09'
-                            WHEN s.broadcast_month LIKE 'Oct-%' THEN '10'
-                            WHEN s.broadcast_month LIKE 'Nov-%' THEN '11'
-                            WHEN s.broadcast_month LIKE 'Dec-%' THEN '12'
-                        END AS month_num,
+                        {RevenueQueryBuilder.build_broadcast_month_case("s.broadcast_month")} AS month_num,
                         COALESCE(s.revenue_type, 'Regular') AS revenue_type,
                         COALESCE(s.gross_rate, 0) AS gross_revenue,
                         COALESCE(s.station_net, 0) AS net_revenue
                     FROM spots s
                     LEFT JOIN customers c ON s.customer_id = c.customer_id
-                    LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+                    {CustomerNormalizationQueryBuilder.build_customer_join()}
                     LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
                     WHERE s.broadcast_month LIKE ?
                     AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)

@@ -9,6 +9,7 @@ import logging
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 from src.services.base_service import BaseService
+from src.utils.query_builders import CustomerNormalizationQueryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +234,7 @@ class AEDashboardService(BaseService):
                 MIN(CASE WHEN COALESCE(s.gross_rate, 0) > 0
                     THEN '20' || SUBSTR(s.broadcast_month, -2) END) as first_year
             FROM spots s
-            LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+            {CustomerNormalizationQueryBuilder.build_customer_join()}
             LEFT JOIN customers c ON COALESCE(audit.customer_id, s.customer_id) = c.customer_id
             LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
             WHERE SUBSTR(s.broadcast_month, -2) IN (?, ?)

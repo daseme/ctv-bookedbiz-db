@@ -3,6 +3,7 @@
 from flask import Blueprint, request, jsonify
 from src.services.container import get_container
 import logging
+from src.utils.query_builders import CustomerNormalizationQueryBuilder
 
 customer_sector_bp = Blueprint(
     "customer_sector_api", __name__, url_prefix="/api/customer-sector"
@@ -1453,7 +1454,7 @@ def debug_customer_full_flow(customer_id):
                 ELSE 'unresolved'
             END AS resolution_status
         FROM spots s
-        LEFT JOIN v_customer_normalization_audit audit ON audit.raw_text = s.bill_code
+        {CustomerNormalizationQueryBuilder.build_customer_join()}
         LEFT JOIN customers c ON audit.customer_id = c.customer_id
         LEFT JOIN agencies a ON s.agency_id = a.agency_id
         LEFT JOIN sectors sect ON c.sector_id = sect.sector_id

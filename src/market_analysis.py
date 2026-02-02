@@ -7,6 +7,8 @@ Updated to query spots.language_code directly instead of using the
 spot_language_assignments table. This eliminates sync issues after
 month closures and simplifies the data model.
 
+Uses shared utilities from src/utils/ to eliminate code duplication.
+
 Key Changes from Previous Version:
 - Queries spots.language_code directly (no JOIN to spot_language_assignments)
 - Applies language grouping logic in SQL
@@ -21,6 +23,10 @@ from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import shared utilities
+from utils.date_range_utils import DateRangeUtils
+from utils.language_constants import LanguageConstants
 
 
 @dataclass
@@ -70,21 +76,6 @@ class MarketAnalysisEngine:
     """
 
     # Language code to group mapping
-    LANGUAGE_GROUPS = {
-        "M": "Chinese",  # Mandarin
-        "C": "Chinese",  # Cantonese
-        "M/C": "Chinese",  # Mandarin/Cantonese
-        "V": "Vietnamese",
-        "T": "Filipino",  # Tagalog
-        "K": "Korean",
-        "J": "Japanese",
-        "SA": "South Asian",
-        "HM": "Hmong",
-        "E": "English",
-        "EN": "English",
-        "ENG": "English",
-        "P": "Portuguese",
-    }
 
     def __init__(self, db_path: str = "data/database/production.db"):
         self.db_path = db_path
@@ -132,30 +123,12 @@ class MarketAnalysisEngine:
         """
 
     def parse_year_range(self, year_input: str) -> Tuple[List[str], List[str]]:
-        """Parse year input to handle both single years and ranges."""
-        if "-" in year_input and len(year_input) > 4:
-            start_year, end_year = year_input.split("-")
-            start_year = int(start_year)
-            end_year = int(end_year)
-            if start_year > end_year:
-                raise ValueError(
-                    f"Start year {start_year} cannot be greater than end year {end_year}"
-                )
-            full_years = [str(year) for year in range(start_year, end_year + 1)]
-            year_suffixes = [year[-2:] for year in full_years]
-        else:
-            full_years = [year_input]
-            year_suffixes = [year_input[-2:]]
-        return full_years, year_suffixes
+        """Parse year input using shared utility."""
+        return DateRangeUtils.parse_year_range(year_input)
 
     def build_year_filter(self, year_suffixes: List[str]) -> Tuple[str, List[str]]:
-        """Build SQL filter for multiple year suffixes."""
-        if len(year_suffixes) == 1:
-            return "s.broadcast_month LIKE ?", [f"%-{year_suffixes[0]}"]
-        else:
-            conditions = ["s.broadcast_month LIKE ?" for _ in year_suffixes]
-            params = [f"%-{suffix}" for suffix in year_suffixes]
-            return f"({' OR '.join(conditions)})", params
+        """Build year filter using shared utility."""
+        return DateRangeUtils.build_year_filter(year_suffixes)
 
     def get_language_performance_summary(
         self, year_input: str = "2024"
@@ -688,7 +661,7 @@ This report analyzes **Internal Ad Sales (COM/BNS spots)** which represents the 
         for code, data in sorted(
             codes.items(), key=lambda x: x[1]["revenue"], reverse=True
         ):
-            group = self.LANGUAGE_GROUPS.get(code.upper(), "Other")
+            group = LanguageConstants.get_language_group(code.upper())
             table += (
                 f"| {code} | {data['spots']:,} | ${data['revenue']:,.2f} | {group} |\n"
             )

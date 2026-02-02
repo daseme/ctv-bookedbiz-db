@@ -125,5 +125,16 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
+### Rule 11: Understand Business Context for Data Constants
+**Context**: P language code had inconsistent mapping (Portuguese vs Punjabi) during consolidation  
+**Pattern**: Asian language television company context:
+- All languages are Asian except English
+- P = Punjabi (South Asian), not Portuguese
+- Language mappings are business logic, not technical data
+
+**Action**: Always verify business context when consolidating data constants.
+
+---
+
 **Last Updated**: 2026-02-02  
-**Session Context**: Phase 1 cleanup removing 9,000+ lines of dead code across old directories, orphaned templates, and unused imports.
+**Session Context**: Phase 1 cleanup removing 9,000+ lines of dead code across old directories, orphaned templates, and unused imports. Phase 2 Step 1 consolidating 115 lines of duplicate utilities.
