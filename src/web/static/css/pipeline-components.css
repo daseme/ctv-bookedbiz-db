@@ -1,3 +1,7 @@
+/* Pipeline Container Components */
+/* Import shared Nord variables */
+@import url('shared/_variables.css');
+
 /* Pipeline Container */
 .pipeline-container {
     max-width: 1400px;

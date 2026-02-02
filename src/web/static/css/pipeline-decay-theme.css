@@ -1,17 +1,8 @@
 /* Enhanced Nord Theme with Decay Indicators */
-:root {
-    /* Existing Nord colors */
-    --nord0: #2e3440; --nord1: #3b4252; --nord2: #434c5e; --nord3: #4c566a;
-    --nord4: #d8dee9; --nord5: #e5e9f0; --nord6: #eceff4;
-    --nord7: #8fbcbb; --nord8: #88c0d0; --nord9: #81a1c1; --nord10: #5e81ac;
-    --nord11: #bf616a; --nord12: #d08770; --nord13: #ebcb8b; --nord14: #a3be8c; --nord15: #b48ead;
-    
-    /* New decay-specific colors */
-    --decay-positive: var(--nord14); /* Green for beneficial decay */
-    --decay-negative: var(--nord11); /* Red for problematic decay */
-    --decay-neutral: var(--nord8);   /* Blue for neutral decay */
-    --calibration-color: var(--nord15); /* Purple for calibration events */
-}
+/* Import shared Nord variables */
+@import url('shared/_variables.css');
+
+/* Decay-specific colors already included in shared variables */
 
 /* Decay Status Indicator */
 .decay-indicator {

@@ -3,6 +3,9 @@
    Nord Theme Integration
    ============================================================================= */
 
+/* Import shared Nord variables */
+@import url('shared/_variables.css');
+
 /* -----------------------------------------------------------------------------
    Bootstrap-like Grid System (since base.html doesn't include Bootstrap)
    ----------------------------------------------------------------------------- */
@@ -462,34 +465,7 @@
 .progress-bar.bg-warning { background: var(--nord13); }
 .progress-bar.bg-danger { background: var(--nord11); }
 
-/* -----------------------------------------------------------------------------
-   Nord Color Variables (matching base theme)
-   ----------------------------------------------------------------------------- */
-:root {
-  /* Polar Night */
-  --nord0: #2e3440;
-  --nord1: #3b4252;
-  --nord2: #434c5e;
-  --nord3: #4c566a;
-  
-  /* Snow Storm */
-  --nord4: #d8dee9;
-  --nord5: #e5e9f0;
-  --nord6: #eceff4;
-  
-  /* Frost */
-  --nord7: #8fbcbb;
-  --nord8: #88c0d0;
-  --nord9: #81a1c1;
-  --nord10: #5e81ac;
-  
-  /* Aurora */
-  --nord11: #bf616a; /* Red */
-  --nord12: #d08770; /* Orange */
-  --nord13: #ebcb8b; /* Yellow */
-  --nord14: #a3be8c; /* Green */
-  --nord15: #b48ead; /* Purple */
-}
+/* Nord variables now imported from shared/_variables.css */
 
 /* -----------------------------------------------------------------------------
    Layout & Structure
