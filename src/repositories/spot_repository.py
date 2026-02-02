@@ -657,7 +657,7 @@ class SpotRepository:
 
     def _calculate_cutoff_month(self, months_back: int) -> str:
         """Helper to calculate cutoff month for trending queries"""
-        from datetime import datetime, timedelta
+        from datetime import datetime
         from dateutil.relativedelta import relativedelta
         
         # Get current month

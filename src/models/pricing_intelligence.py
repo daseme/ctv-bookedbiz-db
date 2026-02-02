@@ -4,7 +4,6 @@ Immutable dataclasses for pricing trend metrics.
 """
 from dataclasses import dataclass
 from typing import Optional
-from decimal import Decimal
 
 
 @dataclass(frozen=True)

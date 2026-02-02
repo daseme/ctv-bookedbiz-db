@@ -6,7 +6,7 @@ Supports configurable time period selection via URL parameters.
 """
 
 import logging
-from flask import Blueprint, render_template, request, jsonify, url_for
+from flask import Blueprint, render_template, request, jsonify
 from src.services.container import get_container
 from src.services.pricing_analysis_service import (
     DRILL_PATHS,
