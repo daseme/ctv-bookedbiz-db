@@ -17,7 +17,6 @@ This category includes:
 import sqlite3
 from query_builders import (
     ChinesePrimeTimeQueryBuilder,
-    BaseQueryBuilder,
     validate_query_migration,
 )
 
@@ -216,7 +215,7 @@ def test_chinese_prime_time_migration(year="2024"):
         print(f"   Execution Time: {result.execution_time:.3f}s")
 
         # 3. Compare with documented results
-        print(f"\n3. Validation Against Your Guide:")
+        print("\n3. Validation Against Your Guide:")
         documented_chinese_prime_total = 699550.49  # From your guide
         difference = abs(result.revenue - documented_chinese_prime_total)
 
@@ -225,17 +224,17 @@ def test_chinese_prime_time_migration(year="2024"):
         print(f"   Difference: ${difference:,.2f}")
 
         if difference < 1.0:
-            print(f"   ✅ PERFECT MATCH! (Difference < $1.00)")
+            print("   ✅ PERFECT MATCH! (Difference < $1.00)")
             perfect_match = True
         else:
             print(f"   ❌ DIFFERENCE FOUND! (Difference: ${difference:,.2f})")
             perfect_match = False
 
         # 4. Analyze patterns
-        print(f"\n4. Chinese Prime Time Analysis:")
+        print("\n4. Chinese Prime Time Analysis:")
         patterns = analyze_chinese_prime_time_patterns(year, conn)
 
-        print(f"   Day Type Breakdown:")
+        print("   Day Type Breakdown:")
         weekday_total = 0
         weekend_total = 0
 
@@ -250,7 +249,7 @@ def test_chinese_prime_time_migration(year="2024"):
             else:
                 weekend_total = revenue
 
-        print(f"\n   Language Code Breakdown (Top 5):")
+        print("\n   Language Code Breakdown (Top 5):")
         for i, (lang_code, spots, revenue, spot_pct) in enumerate(
             patterns["language_breakdown"][:5]
         ):
@@ -260,7 +259,7 @@ def test_chinese_prime_time_migration(year="2024"):
             )
 
         # 5. Show strategic insights
-        print(f"\n5. Strategic Insights:")
+        print("\n5. Strategic Insights:")
         print(
             f"   • Weekday Prime Time: ${weekday_total:,.2f} ({weekday_total / result.revenue * 100:.1f}%)"
         )
@@ -268,14 +267,12 @@ def test_chinese_prime_time_migration(year="2024"):
             f"   • Weekend Prime Time: ${weekend_total:,.2f} ({weekend_total / result.revenue * 100:.1f}%)"
         )
         print(
-            f"   • Cross-audience strategy: Multi-language spots targeting Chinese viewing hours"
+            "   • Cross-audience strategy: Multi-language spots targeting Chinese viewing hours"
         )
-        print(
-            f"   • Premium time slot: Higher rates during Chinese cultural prime time"
-        )
+        print("   • Premium time slot: Higher rates during Chinese cultural prime time")
 
         # 6. Show generated query
-        print(f"\n6. Generated Query:")
+        print("\n6. Generated Query:")
         builder = ChinesePrimeTimeQueryBuilder(year)
         builder.add_chinese_prime_time_conditions().add_multi_language_conditions()
         print("   " + builder.build_select_revenue_query().replace("\n", "\n   "))
@@ -295,7 +292,7 @@ if __name__ == "__main__":
     success = test_chinese_prime_time_migration("2024")
 
     if success:
-        print(f"\n✅ Chinese Prime Time Migration Test Complete!")
-        print(f"Ready to proceed with next category migration!")
+        print("\n✅ Chinese Prime Time Migration Test Complete!")
+        print("Ready to proceed with next category migration!")
     else:
-        print(f"\n❌ Migration test failed - investigate before proceeding!")
+        print("\n❌ Migration test failed - investigate before proceeding!")

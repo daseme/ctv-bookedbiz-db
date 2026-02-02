@@ -8,7 +8,6 @@ from typing import Dict, Any, Optional
 from flask import request, Response
 from datetime import date
 import json
-from functools import wraps
 
 from src.models.report_data import ReportFilters
 from src.utils.template_formatters import serialize_for_javascript

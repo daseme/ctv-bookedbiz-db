@@ -260,7 +260,7 @@ def test_overnight_shopping_migration(year="2024"):
         print(f"   Execution Time: {result.execution_time:.3f}s")
 
         # 3. Compare with documented results
-        print(f"\n3. Validation Against Your Guide:")
+        print("\n3. Validation Against Your Guide:")
         documented_overnight_shopping_total = 66700.00  # From your guide
         difference = abs(result.revenue - documented_overnight_shopping_total)
 
@@ -269,17 +269,17 @@ def test_overnight_shopping_migration(year="2024"):
         print(f"   Difference: ${difference:,.2f}")
 
         if difference < 1.0:
-            print(f"   ✅ PERFECT MATCH! (Difference < $1.00)")
+            print("   ✅ PERFECT MATCH! (Difference < $1.00)")
             perfect_match = True
         else:
             print(f"   ❌ DIFFERENCE FOUND! (Difference: ${difference:,.2f})")
             perfect_match = False
 
         # 4. Analyze patterns
-        print(f"\n4. Overnight Shopping Programming Analysis:")
+        print("\n4. Overnight Shopping Programming Analysis:")
         patterns = analyze_overnight_shopping_patterns(year, conn)
 
-        print(f"   Time Period Breakdown:")
+        print("   Time Period Breakdown:")
         for time_period, spots, revenue, avg_rate, earliest, latest in patterns[
             "time_breakdown"
         ]:
@@ -289,14 +289,14 @@ def test_overnight_shopping_migration(year="2024"):
             )
             print(f"   {'':>21}  Time range: {earliest} - {latest}")
 
-        print(f"\n   Day of Week Breakdown (7-day operation):")
+        print("\n   Day of Week Breakdown (7-day operation):")
         for day, spots, revenue, avg_rate in patterns["day_breakdown"]:
             pct = (revenue / result.revenue) * 100 if result.revenue > 0 else 0
             print(
                 f"   {day:<9}: ${revenue:>10,.2f} ({spots:>3,} spots, ${avg_rate:>6.2f} avg) {pct:>5.1f}%"
             )
 
-        print(f"\n   Customer/Bill Code Breakdown:")
+        print("\n   Customer/Bill Code Breakdown:")
         for customer, bill_code, spots, revenue in patterns["customer_breakdown"]:
             pct = (revenue / result.revenue) * 100 if result.revenue > 0 else 0
             print(
@@ -304,21 +304,21 @@ def test_overnight_shopping_migration(year="2024"):
             )
 
         # 5. Strategic insights
-        print(f"\n5. Strategic Insights:")
-        print(f"   • NKB:Shop LC Programming: Dedicated shopping channel content")
-        print(f"   • 7-Day Operation: Consistent programming across all days")
+        print("\n5. Strategic Insights:")
+        print("   • NKB:Shop LC Programming: Dedicated shopping channel content")
+        print("   • 7-Day Operation: Consistent programming across all days")
         print(
-            f"   • Early Morning Focus: Programming starts at 6:00:00+ (note time periods)"
+            "   • Early Morning Focus: Programming starts at 6:00:00+ (note time periods)"
         )
         print(
-            f"   • Separate Business Model: Shopping channel vs. traditional advertising"
+            "   • Separate Business Model: Shopping channel vs. traditional advertising"
         )
         print(
             f"   • Revenue Contribution: {result.revenue / 4076255.94 * 100:.1f}% of total revenue"
         )
 
         # 6. Show generated query
-        print(f"\n6. Generated Query:")
+        print("\n6. Generated Query:")
         builder = OvernightShoppingQueryBuilder(year)
         builder.add_no_language_assignment_condition().exclude_prd_svc_spots().include_only_nkb_spots()
         print("   " + builder.build_select_revenue_query().replace("\n", "\n   "))
@@ -338,7 +338,7 @@ if __name__ == "__main__":
     success = test_overnight_shopping_migration("2024")
 
     if success:
-        print(f"\n✅ Overnight Shopping Migration Test Complete!")
-        print(f"Ready for Branded Content (PRD) category!")
+        print("\n✅ Overnight Shopping Migration Test Complete!")
+        print("Ready for Branded Content (PRD) category!")
     else:
-        print(f"\n❌ Migration test failed - investigate before proceeding!")
+        print("\n❌ Migration test failed - investigate before proceeding!")

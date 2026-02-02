@@ -48,31 +48,31 @@ def main():
             # Show current population summary
             summary = populator.get_population_summary()
             print(f"\n{'=' * 60}")
-            print(f"STANDARD GRID POPULATION SUMMARY")
+            print("STANDARD GRID POPULATION SUMMARY")
             print(f"{'=' * 60}")
             print(f"Total Blocks: {summary['total_blocks']}")
             print(f"Days with Blocks: {summary['days_with_blocks']}")
             print(f"Markets Covered: {summary['market_coverage']}")
 
             if summary["language_distribution"]:
-                print(f"\nLanguage Distribution:")
+                print("\nLanguage Distribution:")
                 for lang_code, info in summary["language_distribution"].items():
                     print(f"  {lang_code} ({info['name']}): {info['blocks']} blocks")
 
         elif args.validate_only:
             # Validate existing population
             print(f"\n{'=' * 60}")
-            print(f"VALIDATING STANDARD GRID POPULATION")
+            print("VALIDATING STANDARD GRID POPULATION")
             print(f"{'=' * 60}")
 
             validation_result = populator.validate_coverage()
 
             if validation_result["success"]:
-                print(f"✅ Validation successful!")
+                print("✅ Validation successful!")
                 print(f"   Total blocks: {validation_result['total_blocks']}")
 
                 if "language_distribution" in validation_result:
-                    print(f"   Language distribution:")
+                    print("   Language distribution:")
                     for lang_code, info in validation_result["language_distribution"][
                         "distribution"
                     ].items():
@@ -80,20 +80,20 @@ def main():
                             f"     {lang_code}: {info['blocks']} blocks ({info['percentage']}%)"
                         )
             else:
-                print(f"❌ Validation failed!")
+                print("❌ Validation failed!")
                 for error in validation_result["errors"]:
                     print(f"   • {error}")
 
         else:
             # Populate Standard Grid
             print(f"\n{'=' * 60}")
-            print(f"STANDARD GRID LANGUAGE BLOCK POPULATION")
+            print("STANDARD GRID LANGUAGE BLOCK POPULATION")
             print(f"{'=' * 60}")
 
             result = populator.populate_standard_grid_blocks()
 
             if result["success"]:
-                print(f"✅ Population successful!")
+                print("✅ Population successful!")
                 print(f"   Blocks created: {result['blocks_created']}")
                 print(f"   Days processed: {result['days_processed']}")
 
@@ -104,7 +104,7 @@ def main():
                     )
 
                     if "language_distribution" in val_result:
-                        print(f"   Language distribution:")
+                        print("   Language distribution:")
                         for lang_code, info in val_result["language_distribution"][
                             "distribution"
                         ].items():
@@ -112,7 +112,7 @@ def main():
                                 f"     {lang_code}: {info['blocks']} blocks ({info['percentage']}%)"
                             )
             else:
-                print(f"❌ Population failed!")
+                print("❌ Population failed!")
                 for error in result["errors"]:
                     print(f"   • {error}")
                 sys.exit(1)

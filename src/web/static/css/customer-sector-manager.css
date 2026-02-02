@@ -3,8 +3,8 @@
  * Nord Theme Implementation with Enhanced UI Components
  * ============================================================================ */
 
-/* Import Nord base variables - assumes these exist in your codebase */
-@import url('nord-variables.css');
+/* Import shared Nord variables */
+@import url('shared/_variables.css');
 
 /* ============================================================================
  * Component Root & Layout

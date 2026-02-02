@@ -316,7 +316,7 @@ if __name__ == "__main__":
         print("Run: python scripts/setup_database.py --db-path {args.database}")
         sys.exit(1)
 
-    print(f"Testing Basic Import Service")
+    print("Testing Basic Import Service")
     print(f"Excel file: {args.excel_file}")
     print(f"Database: {args.database}")
     if args.limit:
@@ -326,7 +326,7 @@ if __name__ == "__main__":
     try:
         result = import_excel_to_database(args.excel_file, args.database, args.limit)
 
-        print(f"\nImport Results:")
+        print("\nImport Results:")
         print(f"  Success: {result.success}")
         print(f"  Duration: {result.duration_seconds:.2f} seconds")
         print(f"  Spots processed: {result.spots_processed}")
@@ -338,14 +338,14 @@ if __name__ == "__main__":
         print(f"  Processing errors: {result.processing_errors}")
 
         if result.errors:
-            print(f"\nErrors:")
+            print("\nErrors:")
             for error in result.errors:
                 print(f"  - {error}")
 
         if result.success:
-            print(f"\n✅ Import completed successfully!")
+            print("\n✅ Import completed successfully!")
         else:
-            print(f"\n❌ Import failed!")
+            print("\n❌ Import failed!")
             sys.exit(1)
 
     except Exception as e:

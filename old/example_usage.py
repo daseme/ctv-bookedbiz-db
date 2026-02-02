@@ -32,16 +32,16 @@ def main():
         f"Reconciliation: {'✅ Perfect' if result.reconciliation_perfect else '❌ Issues'}"
     )
 
-    print(f"\nTop 3 Categories:")
+    print("\nTop 3 Categories:")
     for i, cat in enumerate(result.categories[:3], 1):
         print(f"  {i}. {cat.name}: ${cat.revenue:,.2f} ({cat.percentage:.1f}%)")
 
-    print(f"\nStrategic Insights:")
+    print("\nStrategic Insights:")
     insights = result.strategic_insights
     print(f"  • Chinese Strategy Total: ${insights['chinese_strategy_total']:,.2f}")
     print(f"  • Cross-Audience Revenue: ${insights['cross_audience_revenue']:,.2f}")
 
-    print(f"\nTop Languages:")
+    print("\nTop Languages:")
     for i, lang in enumerate(insights["top_languages"][:3], 1):
         print(f"  {i}. {lang['language']}: ${lang['revenue']:,.2f}")
 

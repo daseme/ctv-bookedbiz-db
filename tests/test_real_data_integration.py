@@ -7,15 +7,14 @@ Tests that our service container works with actual data.
 import pytest
 import sys
 import os
-from datetime import date
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from services.container import get_container, reset_container, ServiceCreationError
-from services.factory import initialize_services, configure_container_from_environment
-from config.settings import get_settings, reset_settings
+from services.container import get_container, reset_container
+from services.factory import initialize_services
+from config.settings import reset_settings
 
 
 class TestRealDataIntegration:

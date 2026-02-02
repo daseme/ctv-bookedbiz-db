@@ -6,7 +6,6 @@ Handles all 29 columns with robust error handling, progress tracking, and timing
 
 import sys
 import sqlite3
-import logging
 import time
 from pathlib import Path
 from datetime import datetime, date
@@ -515,31 +514,31 @@ class ProductionExcelImporter:
     def _print_final_results(self, results: ImportResults):
         """Print comprehensive final results."""
         print(f"\n{'=' * 60}")
-        print(f"🎉 PRODUCTION IMPORT COMPLETED")
+        print("🎉 PRODUCTION IMPORT COMPLETED")
         print(f"{'=' * 60}")
-        print(f"📊 Performance Metrics:")
+        print("📊 Performance Metrics:")
         print(f"  Duration: {results.duration_seconds:.2f} seconds")
         print(f"  Processing Rate: {results.records_per_second:,.0f} records/second")
-        print(f"")
-        print(f"📈 Import Results:")
+        print("")
+        print("📈 Import Results:")
         print(f"  Total Records: {results.total_records:,}")
         print(f"  Successfully Imported: {results.records_imported:,}")
         print(f"  Skipped: {results.records_skipped:,}")
         print(
             f"  Success Rate: {(results.records_imported / results.total_records) * 100:.1f}%"
         )
-        print(f"")
-        print(f"🏢 Data Creation:")
+        print("")
+        print("🏢 Data Creation:")
         print(f"  New Agencies: {results.new_agencies_created}")
         print(f"  New Customers: {results.new_customers_created}")
         print(f"  Customer Names Normalized: {results.customers_normalized}")
 
         if results.records_skipped > 0:
-            print(f"\n⚠️  Error Analysis:")
+            print("\n⚠️  Error Analysis:")
             print(f"  Total Errors: {results.records_skipped}")
 
             if results.error_summary:
-                print(f"  Error Types:")
+                print("  Error Types:")
                 for error_type, count in sorted(
                     results.error_summary.items(), key=lambda x: x[1], reverse=True
                 ):
@@ -547,7 +546,7 @@ class ProductionExcelImporter:
                     print(f"    {error_type}: {count} ({percentage:.1f}%)")
 
             if results.errors:
-                print(f"\n  Sample Errors (first 5):")
+                print("\n  Sample Errors (first 5):")
                 for error in results.errors[:5]:
                     print(f"    • {error}")
 
@@ -571,10 +570,10 @@ def main():
     results = importer.import_excel_file(args.excel_file, args.limit)
 
     if results.success:
-        print(f"\n✅ Import completed successfully!")
+        print("\n✅ Import completed successfully!")
         sys.exit(0)
     else:
-        print(f"\n❌ Import failed!")
+        print("\n❌ Import failed!")
         for error in results.errors:
             print(f"  {error}")
         sys.exit(1)

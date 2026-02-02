@@ -11,7 +11,7 @@ from datetime import datetime
 import logging
 import sys
 from pathlib import Path
-from typing import Tuple, Optional, List, Dict
+from typing import Optional, List, Dict
 from dataclasses import dataclass
 
 
@@ -62,8 +62,13 @@ class CommercialLogConfig:
     """Configuration for commercial log processing"""
 
     # Required sheets to process (in order)
-    REQUIRED_SHEETS = ["Commercials", "Worldlink Lines", "Add to booked business", "Pending"]
-    
+    REQUIRED_SHEETS = [
+        "Commercials",
+        "Worldlink Lines",
+        "Add to booked business",
+        "Pending",
+    ]
+
     # Source and destination paths
     SOURCE_FILE = "/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx"
     DESTINATION_DIR = "/opt/apps/ctv-bookedbiz-db/data/raw/daily"

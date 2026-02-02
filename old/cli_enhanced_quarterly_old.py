@@ -20,7 +20,6 @@ import sqlite3
 import os
 import argparse
 from datetime import datetime
-from collections import defaultdict
 from typing import Optional, List, Union, Tuple, Dict, Any
 
 # =============================================================================
@@ -583,7 +582,7 @@ def display_performance_overview(data: Dict[str, Any]) -> None:
 
 def display_language_performance(languages_data: List[Tuple]) -> None:
     """Display language performance analysis"""
-    print(f"\n🌐 LANGUAGE PERFORMANCE ANALYSIS")
+    print("\n🌐 LANGUAGE PERFORMANCE ANALYSIS")
     print("-" * 40)
     print(
         f"{'Language':15} {'Blocks':>7} {'Revenue':>12} {'Spots':>8} {'Revenue/Spot':>12} {'Avg Revenue':>12}"
@@ -628,7 +627,7 @@ def display_top_blocks(blocks_data: List[Tuple], limit: int = 15) -> None:
 
 def display_market_performance(markets_data: List[Tuple]) -> None:
     """Display market performance"""
-    print(f"\n🏢 MARKET PERFORMANCE")
+    print("\n🏢 MARKET PERFORMANCE")
     print("-" * 25)
     print(
         f"{'Market':15} {'Code':6} {'Blocks':>7} {'Languages':>10} {'Revenue':>12} {'Spots':>8} {'Avg/Block':>10}"
@@ -651,7 +650,7 @@ def display_market_performance(markets_data: List[Tuple]) -> None:
 
 def display_time_slot_performance(timeslots_data: List[Tuple]) -> None:
     """Display time slot performance"""
-    print(f"\n⏰ TIME SLOT PERFORMANCE")
+    print("\n⏰ TIME SLOT PERFORMANCE")
     print("-" * 30)
     print(
         f"{'Time Slot':15} {'Blocks':>7} {'Revenue':>12} {'Spots':>8} {'Revenue/Block':>13} {'Avg Revenue':>12}"
@@ -673,7 +672,7 @@ def display_time_slot_performance(timeslots_data: List[Tuple]) -> None:
 
 def display_comprehensive_blocks(processed_data: Dict[str, Any]) -> None:
     """Display comprehensive block performance"""
-    print(f"\n📈 COMPREHENSIVE BLOCK PERFORMANCE ANALYSIS")
+    print("\n📈 COMPREHENSIVE BLOCK PERFORMANCE ANALYSIS")
     print("-" * 55)
 
     if not processed_data["blocks"]:
@@ -712,7 +711,7 @@ def display_comprehensive_blocks(processed_data: Dict[str, Any]) -> None:
 
     # Display summary
     summary = processed_data["summary"]
-    print(f"\n📊 PERFORMANCE SUMMARY:")
+    print("\n📊 PERFORMANCE SUMMARY:")
     print(f"   • Total Language Blocks: {summary['total_blocks']}")
     print(
         f"   • Unused Blocks: {summary['unused_count']} ({summary['unused_percentage']:.1f}%)"
@@ -727,7 +726,7 @@ def display_comprehensive_blocks(processed_data: Dict[str, Any]) -> None:
 
 def display_bottom_blocks(processed_data: Dict[str, Any]) -> None:
     """Display bottom performing blocks"""
-    print(f"\n📉 BOTTOM 15 DAYTIME/PRIMETIME LANGUAGE BLOCKS")
+    print("\n📉 BOTTOM 15 DAYTIME/PRIMETIME LANGUAGE BLOCKS")
     print("-" * 55)
     print(
         "Criteria: Day through primetime hours (6 AM - 11 PM) • Must have revenue > $0 • Must have spots assigned"
@@ -765,31 +764,31 @@ def display_bottom_blocks(processed_data: Dict[str, Any]) -> None:
 
     # Display summary
     summary = processed_data["summary"]
-    print(f"\n📊 BOTTOM 15 SUMMARY:")
+    print("\n📊 BOTTOM 15 SUMMARY:")
     print(f"   • Total Revenue: ${summary['total_revenue']:,.0f}")
     print(f"   • Total Spots: {summary['total_spots']:,}")
     print(f"   • Average Revenue/Spot: ${summary['avg_revenue_per_spot']:.2f}")
     print(f"   • Combined Monthly Revenue: ${summary['monthly_revenue']:,.0f}")
 
-    print(f"\n🔍 PRIMARY ISSUES IDENTIFIED:")
+    print("\n🔍 PRIMARY ISSUES IDENTIFIED:")
     for issue, count in processed_data["issues"].items():
         if count > 0:
             percentage = (count / 15) * 100
             print(f"   • {issue}: {count} blocks ({percentage:.1f}%)")
 
-    print(f"\n💡 IMMEDIATE ACTIONS FOR BOTTOM 15:")
-    print(f"   🎯 ELIMINATE: Blocks with <$1,000 total revenue and <$20/spot")
-    print(f"   🔄 CONSOLIDATE: Merge blocks in same time slots with similar issues")
-    print(f"   📈 IMPROVE: Focus sales efforts on single-customer blocks")
-    print(f"   ⏰ REALLOCATE: Move successful programming to these time slots")
-    print(f"   📋 ANALYZE: Review programming content quality for poor $/spot blocks")
+    print("\n💡 IMMEDIATE ACTIONS FOR BOTTOM 15:")
+    print("   🎯 ELIMINATE: Blocks with <$1,000 total revenue and <$20/spot")
+    print("   🔄 CONSOLIDATE: Merge blocks in same time slots with similar issues")
+    print("   📈 IMPROVE: Focus sales efforts on single-customer blocks")
+    print("   ⏰ REALLOCATE: Move successful programming to these time slots")
+    print("   📋 ANALYZE: Review programming content quality for poor $/spot blocks")
 
 
 def display_key_insights(
     insights_data: Dict[str, Any], year_filter: Optional[Union[str, List[str]]]
 ) -> None:
     """Display key insights"""
-    print(f"\n💡 KEY INSIGHTS & RECOMMENDATIONS")
+    print("\n💡 KEY INSIGHTS & RECOMMENDATIONS")
     print("-" * 40)
 
     most_profitable = insights_data["most_profitable_language"]
@@ -797,12 +796,12 @@ def display_key_insights(
     period = insights_data["analysis_period"]
 
     if most_profitable:
-        print(f"🔸 Most Profitable Language:")
+        print("🔸 Most Profitable Language:")
         print(f"   {most_profitable[0]} generating ${most_profitable[1]:.2f} per spot")
         print(f"   ({most_profitable[2]:,} spots analyzed)")
 
     if busiest_slot:
-        print(f"\n🔸 Busiest Time Slot:")
+        print("\n🔸 Busiest Time Slot:")
         print(f"   {busiest_slot[0]} with {busiest_slot[1]:,} spots")
 
     if period:

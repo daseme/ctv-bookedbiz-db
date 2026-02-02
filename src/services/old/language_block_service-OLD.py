@@ -12,7 +12,7 @@ Place this file in: src/services/language_block_service.py
 import logging
 import sqlite3
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -694,13 +694,13 @@ def test_language_block_service(db_connection, limit: int = 10):
     service = LanguageBlockService(db_connection)
     results = service.test_assignment(limit)
 
-    print(f"Test Results:")
+    print("Test Results:")
     print(f"- Spots tested: {results['spots_tested']}")
     print(f"- Success rate: {results['success_rate']:.1%}")
     print(f"- Stats: {results['stats']}")
 
     if results["spot_details"]:
-        print(f"\nSample assignments:")
+        print("\nSample assignments:")
         for detail in results["spot_details"][:3]:  # Show first 3
             print(
                 f"  Spot {detail['spot_id']} ({detail['bill_code']}): {detail['customer_intent']} -> {detail['block_name'] or 'No block'}"

@@ -71,7 +71,9 @@ class UserRepository(BaseService):
             cursor = conn.execute(query)
             return [self._row_to_user(row) for row in cursor.fetchall()]
 
-    def get_users_by_role(self, role: UserRole, include_inactive: bool = False) -> List[User]:
+    def get_users_by_role(
+        self, role: UserRole, include_inactive: bool = False
+    ) -> List[User]:
         """Get all users with a specific role."""
         with self.safe_connection() as conn:
             query = """
@@ -82,7 +84,7 @@ class UserRepository(BaseService):
                 ORDER BY last_name, first_name
             """
             params = [role.value]
-            
+
             cursor = conn.execute(query, params)
             return [self._row_to_user(row) for row in cursor.fetchall()]
 
@@ -110,7 +112,7 @@ class UserRepository(BaseService):
                 )
                 user_id = cursor.lastrowid
                 conn.commit()
-                
+
                 # Fetch the created user
                 return self.get_user_by_id(user_id)
             except sqlite3.IntegrityError as e:
@@ -135,42 +137,42 @@ class UserRepository(BaseService):
         with self.safe_transaction() as conn:
             updates = []
             params = []
-            
+
             if first_name is not None:
                 updates.append("first_name = ?")
                 params.append(first_name)
-            
+
             if last_name is not None:
                 updates.append("last_name = ?")
                 params.append(last_name)
-            
+
             if email is not None:
                 updates.append("email = ?")
                 params.append(email.lower())
-            
+
             if password_hash is not None:
                 updates.append("password_hash = ?")
                 params.append(password_hash)
-            
+
             if role is not None:
                 updates.append("role = ?")
                 params.append(role.value)
-            
+
             if not updates:
                 # No updates to make
                 return self.get_user_by_id(user_id)
-            
+
             # Always update the updated_date
             updates.append("updated_date = ?")
             params.append(datetime.now().isoformat())
-            
+
             params.append(user_id)
-            
+
             try:
                 conn.execute(
                     f"""
                     UPDATE users
-                    SET {', '.join(updates)}
+                    SET {", ".join(updates)}
                     WHERE user_id = ?
                     """,
                     params,
@@ -221,7 +223,7 @@ class UserRepository(BaseService):
         """Convert database row to User model."""
         if row is None:
             return None
-        
+
         # Parse datetime strings
         created_date = None
         if row["created_date"]:
@@ -229,21 +231,21 @@ class UserRepository(BaseService):
                 created_date = datetime.fromisoformat(row["created_date"])
             except (ValueError, TypeError):
                 pass
-        
+
         last_login = None
         if row["last_login"]:
             try:
                 last_login = datetime.fromisoformat(row["last_login"])
             except (ValueError, TypeError):
                 pass
-        
+
         updated_date = None
         if row["updated_date"]:
             try:
                 updated_date = datetime.fromisoformat(row["updated_date"])
             except (ValueError, TypeError):
                 pass
-        
+
         return User(
             user_id=row["user_id"],
             first_name=row["first_name"],

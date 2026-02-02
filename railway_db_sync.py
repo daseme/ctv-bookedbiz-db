@@ -8,8 +8,8 @@ import tempfile
 from typing import Optional, List
 
 import dropbox
-from dropbox.exceptions import AuthError, ApiError
-from dropbox.files import FileMetadata, FolderMetadata
+from dropbox.exceptions import ApiError
+from dropbox.files import FileMetadata
 
 
 # ==== Pure helpers ============================================================
@@ -179,7 +179,7 @@ def restore_database() -> bool:
     )
     os.close(fd)
     try:
-        print(f"⬇️  Downloading to temp file...")
+        print("⬇️  Downloading to temp file...")
         dbx.files_download_to_file(tmp_path, src_path)
         atomic_replace(tmp_path, local_path)
         final_size = os.path.getsize(local_path)

@@ -1,3 +1,7 @@
+/* Pipeline Modal Styles */
+/* Import shared Nord variables */
+@import url('shared/_variables.css');
+
 /* Modal Styles */
 .modal {
     display: none;

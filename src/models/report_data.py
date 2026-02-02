@@ -4,7 +4,7 @@ Data models for report generation.
 Provides structured data transfer objects for all report types.
 """
 
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional
 from datetime import date, datetime
 from decimal import Decimal
 from dataclasses import dataclass, asdict, field

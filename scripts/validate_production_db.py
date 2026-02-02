@@ -15,7 +15,7 @@ import sqlite3
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional
+from typing import List, Optional
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -36,8 +36,8 @@ except (PermissionError, OSError):
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=handlers
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=handlers,
 )
 logger = logging.getLogger(__name__)
 
@@ -51,19 +51,18 @@ EXPECTED_SPOT_COUNTS = {
 
 # Database path
 DB_PATH = os.getenv(
-    "DB_PATH",
-    str(PROJECT_ROOT / "data" / "database" / "production.db")
+    "DB_PATH", str(PROJECT_ROOT / "data" / "database" / "production.db")
 )
 
 
 class DatabaseValidator:
     """Validates production database integrity and data accuracy."""
-    
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         self.errors: List[str] = []
         self.warnings: List[str] = []
-        
+
     def validate_database_integrity(self) -> bool:
         """Check SQLite database integrity using PRAGMA integrity_check."""
         logger.info("Checking database integrity...")
@@ -73,7 +72,7 @@ class DatabaseValidator:
             cursor.execute("PRAGMA integrity_check")
             result = cursor.fetchone()
             conn.close()
-            
+
             if result and result[0] == "ok":
                 logger.info("✅ Database integrity check passed")
                 return True
@@ -87,16 +86,16 @@ class DatabaseValidator:
             logger.error(error_msg)
             self.errors.append(error_msg)
             return False
-    
+
     def validate_spot_counts(self) -> bool:
         """Validate spot counts for closed years (2021-2024)."""
         logger.info("Validating spot counts for closed years...")
         all_valid = True
-        
+
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
+
             for year, expected_count in EXPECTED_SPOT_COUNTS.items():
                 # Query spots by broadcast_month format (MMM-YY)
                 year_suffix = year[-2:]  # Get last 2 digits (21, 22, 23, 24)
@@ -108,9 +107,11 @@ class DatabaseValidator:
                 """
                 cursor.execute(query, (f"%-{year_suffix}",))
                 actual_count = cursor.fetchone()[0]
-                
+
                 if actual_count == expected_count:
-                    logger.info(f"✅ {year}: {actual_count:,} spots (expected: {expected_count:,})")
+                    logger.info(
+                        f"✅ {year}: {actual_count:,} spots (expected: {expected_count:,})"
+                    )
                 else:
                     error_msg = (
                         f"❌ {year}: Expected {expected_count:,} spots, "
@@ -120,24 +121,24 @@ class DatabaseValidator:
                     logger.error(error_msg)
                     self.errors.append(error_msg)
                     all_valid = False
-            
+
             conn.close()
             return all_valid
-            
+
         except Exception as e:
             error_msg = f"❌ Spot count validation error: {str(e)}"
             logger.error(error_msg)
             self.errors.append(error_msg)
             return False
-    
+
     def validate_closed_months(self) -> bool:
         """Validate that all 12 months are closed for each year."""
         logger.info("Validating closed months for 2021-2024...")
-        
+
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
+
             # Get all closed months
             cursor.execute("""
                 SELECT broadcast_month 
@@ -149,17 +150,29 @@ class DatabaseValidator:
                 ORDER BY broadcast_month
             """)
             closed_months = {row[0] for row in cursor.fetchall()}
-            
+
             # Expected months for each year
-            months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-            years = ['21', '22', '23', '24']
-            
+            months = [
+                "Jan",
+                "Feb",
+                "Mar",
+                "Apr",
+                "May",
+                "Jun",
+                "Jul",
+                "Aug",
+                "Sep",
+                "Oct",
+                "Nov",
+                "Dec",
+            ]
+            years = ["21", "22", "23", "24"]
+
             all_valid = True
             for year_suffix in years:
                 expected_months = {f"{month}-{year_suffix}" for month in months}
                 missing_months = expected_months - closed_months
-                
+
                 if missing_months:
                     error_msg = (
                         f"❌ Year 20{year_suffix}: Missing closed months: "
@@ -170,50 +183,52 @@ class DatabaseValidator:
                     all_valid = False
                 else:
                     logger.info(f"✅ Year 20{year_suffix}: All 12 months are closed")
-            
+
             conn.close()
             return all_valid
-            
+
         except Exception as e:
             error_msg = f"❌ Closed months validation error: {str(e)}"
             logger.error(error_msg)
             self.errors.append(error_msg)
             return False
-    
+
     def run_all_validations(self) -> bool:
         """Run all validation checks."""
         logger.info("=" * 80)
-        logger.info(f"Starting database validation: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(
+            f"Starting database validation: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
         logger.info(f"Database: {self.db_path}")
         logger.info("=" * 80)
-        
+
         results = []
         results.append(("Database Integrity", self.validate_database_integrity()))
         results.append(("Spot Counts (2021-2024)", self.validate_spot_counts()))
         results.append(("Closed Months", self.validate_closed_months()))
-        
+
         logger.info("=" * 80)
         logger.info("Validation Summary:")
         for check_name, passed in results:
             status = "✅ PASSED" if passed else "❌ FAILED"
             logger.info(f"  {check_name}: {status}")
         logger.info("=" * 80)
-        
+
         all_passed = all(result[1] for result in results)
-        
+
         if all_passed:
             logger.info("✅ All validations passed!")
         else:
             logger.error(f"❌ Validation failed with {len(self.errors)} error(s)")
             for error in self.errors:
                 logger.error(f"  - {error}")
-        
+
         return all_passed
 
 
 class NotificationSender:
     """Sends email notifications on validation failure."""
-    
+
     @staticmethod
     def send_email(
         smtp_server: str,
@@ -224,51 +239,51 @@ class NotificationSender:
         message: str,
         use_tls: bool = True,
         username: Optional[str] = None,
-        password: Optional[str] = None
+        password: Optional[str] = None,
     ) -> bool:
         """Send email notification via SMTP."""
         if not recipient_emails:
             logger.warning("No recipient emails configured")
             return False
-        
+
         try:
             import smtplib
             from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
-            
+
             # Create message
             msg = MIMEMultipart()
-            msg['From'] = sender_email
-            msg['To'] = ', '.join(recipient_emails)
-            msg['Subject'] = subject
-            
+            msg["From"] = sender_email
+            msg["To"] = ", ".join(recipient_emails)
+            msg["Subject"] = subject
+
             # Add body
-            msg.attach(MIMEText(message, 'plain'))
-            
+            msg.attach(MIMEText(message, "plain"))
+
             # Send email
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 if use_tls:
                     server.starttls()
-                
+
                 if username and password:
                     server.login(username, password)
-                
+
                 server.send_message(msg)
-            
+
             logger.info(f"Email notification sent to {', '.join(recipient_emails)}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to send email notification: {e}")
             return False
-    
+
     @classmethod
     def send_notifications(cls, errors: List[str], all_passed: bool) -> None:
         """Send email notification if validation failed."""
         if all_passed:
             logger.info("All validations passed - no notifications sent")
             return
-        
+
         # Build email message
         subject = "🚨 CTV Database Validation Failed"
         message = "Database validation failed!\n\n"
@@ -277,25 +292,29 @@ class NotificationSender:
             message += f"{i}. {error}\n"
         message += f"\nTimestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         message += f"\nDatabase: {DB_PATH}"
-        
+
         # Get email settings from environment
         smtp_server = os.getenv("SMTP_SERVER", "localhost")
         smtp_port = int(os.getenv("SMTP_PORT", "25"))
         sender_email = os.getenv("SMTP_SENDER_EMAIL", "noreply@ctv.local")
         recipient_emails = [
-            email.strip() 
+            email.strip()
             for email in os.getenv("SMTP_RECIPIENT_EMAILS", "").split(",")
             if email.strip()
         ]
         use_tls = os.getenv("SMTP_USE_TLS", "false").lower() == "true"
         smtp_username = os.getenv("SMTP_USERNAME")
         smtp_password = os.getenv("SMTP_PASSWORD")
-        
+
         if not recipient_emails:
-            logger.warning("No recipient emails configured - skipping email notification")
-            logger.warning("Set SMTP_RECIPIENT_EMAILS environment variable to enable email notifications")
+            logger.warning(
+                "No recipient emails configured - skipping email notification"
+            )
+            logger.warning(
+                "Set SMTP_RECIPIENT_EMAILS environment variable to enable email notifications"
+            )
             return
-        
+
         # Send email
         logger.info(f"Sending email notification to {', '.join(recipient_emails)}...")
         cls.send_email(
@@ -307,7 +326,7 @@ class NotificationSender:
             message=message,
             use_tls=use_tls,
             username=smtp_username,
-            password=smtp_password
+            password=smtp_password,
         )
 
 
@@ -317,11 +336,11 @@ def main():
     if not os.path.exists(DB_PATH):
         logger.error(f"Database not found: {DB_PATH}")
         sys.exit(1)
-    
+
     # Run validations
     validator = DatabaseValidator(DB_PATH)
     all_passed = validator.run_all_validations()
-    
+
     # Send notifications if validation failed
     if not all_passed:
         NotificationSender.send_notifications(validator.errors, all_passed)
@@ -333,4 +352,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

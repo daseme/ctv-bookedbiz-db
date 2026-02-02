@@ -17,7 +17,7 @@ Key Changes from Previous Version:
 import sqlite3
 import sys
 import os
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 @dataclass
 class LanguageResult:
     """Result structure for language analysis"""
+
     name: str
     revenue: float
     percentage: float
@@ -38,6 +39,7 @@ class LanguageResult:
 @dataclass
 class MarketLanguageResult:
     """Result structure for market-language cross-tabulation"""
+
     language: str
     market: str
     revenue: float
@@ -52,6 +54,7 @@ class MarketLanguageResult:
 @dataclass
 class MarketSummary:
     """Result structure for market summary"""
+
     market: str
     revenue: float
     percentage_of_total: float
@@ -68,19 +71,19 @@ class MarketAnalysisEngine:
 
     # Language code to group mapping
     LANGUAGE_GROUPS = {
-        'M': 'Chinese',      # Mandarin
-        'C': 'Chinese',      # Cantonese
-        'M/C': 'Chinese',    # Mandarin/Cantonese
-        'V': 'Vietnamese',
-        'T': 'Filipino',     # Tagalog
-        'K': 'Korean',
-        'J': 'Japanese',
-        'SA': 'South Asian',
-        'HM': 'Hmong',
-        'E': 'English',
-        'EN': 'English',
-        'ENG': 'English',
-        'P': 'Portuguese',
+        "M": "Chinese",  # Mandarin
+        "C": "Chinese",  # Cantonese
+        "M/C": "Chinese",  # Mandarin/Cantonese
+        "V": "Vietnamese",
+        "T": "Filipino",  # Tagalog
+        "K": "Korean",
+        "J": "Japanese",
+        "SA": "South Asian",
+        "HM": "Hmong",
+        "E": "English",
+        "EN": "English",
+        "ENG": "English",
+        "P": "Portuguese",
     }
 
     def __init__(self, db_path: str = "data/database/production.db"):
@@ -135,7 +138,9 @@ class MarketAnalysisEngine:
             start_year = int(start_year)
             end_year = int(end_year)
             if start_year > end_year:
-                raise ValueError(f"Start year {start_year} cannot be greater than end year {end_year}")
+                raise ValueError(
+                    f"Start year {start_year} cannot be greater than end year {end_year}"
+                )
             full_years = [str(year) for year in range(start_year, end_year + 1)]
             year_suffixes = [year[-2:] for year in full_years]
         else:
@@ -152,7 +157,9 @@ class MarketAnalysisEngine:
             params = [f"%-{suffix}" for suffix in year_suffixes]
             return f"({' OR '.join(conditions)})", params
 
-    def get_language_performance_summary(self, year_input: str = "2024") -> List[LanguageResult]:
+    def get_language_performance_summary(
+        self, year_input: str = "2024"
+    ) -> List[LanguageResult]:
         """Get language performance summary querying spots.language_code directly."""
         full_years, year_suffixes = self.parse_year_range(year_input)
         year_filter, year_params = self.build_year_filter(year_suffixes)
@@ -187,22 +194,28 @@ class MarketAnalysisEngine:
         for row in cursor.fetchall():
             language, revenue, paid_spots, bonus_spots, total_spots = row
             total_revenue += revenue
-            results.append(LanguageResult(
-                name=language,
-                revenue=revenue,
-                percentage=0,
-                paid_spots=paid_spots,
-                bonus_spots=bonus_spots,
-                total_spots=total_spots,
-                avg_per_spot=revenue / total_spots if total_spots > 0 else 0,
-            ))
+            results.append(
+                LanguageResult(
+                    name=language,
+                    revenue=revenue,
+                    percentage=0,
+                    paid_spots=paid_spots,
+                    bonus_spots=bonus_spots,
+                    total_spots=total_spots,
+                    avg_per_spot=revenue / total_spots if total_spots > 0 else 0,
+                )
+            )
 
         for result in results:
-            result.percentage = (result.revenue / total_revenue) * 100 if total_revenue > 0 else 0
+            result.percentage = (
+                (result.revenue / total_revenue) * 100 if total_revenue > 0 else 0
+            )
 
         return results
 
-    def get_language_market_breakdown(self, year_input: str = "2024") -> List[MarketLanguageResult]:
+    def get_language_market_breakdown(
+        self, year_input: str = "2024"
+    ) -> List[MarketLanguageResult]:
         """Get language performance broken down by market."""
         full_years, year_suffixes = self.parse_year_range(year_input)
         year_filter, year_params = self.build_year_filter(year_suffixes)
@@ -248,23 +261,29 @@ class MarketAnalysisEngine:
                 market_totals[market] = 0
             market_totals[market] += revenue
 
-            results.append(MarketLanguageResult(
-                language=language,
-                market=market,
-                revenue=revenue,
-                percentage_of_language=0,
-                percentage_of_market=0,
-                paid_spots=paid_spots,
-                bonus_spots=bonus_spots,
-                total_spots=total_spots,
-                avg_per_spot=revenue / total_spots if total_spots > 0 else 0,
-            ))
+            results.append(
+                MarketLanguageResult(
+                    language=language,
+                    market=market,
+                    revenue=revenue,
+                    percentage_of_language=0,
+                    percentage_of_market=0,
+                    paid_spots=paid_spots,
+                    bonus_spots=bonus_spots,
+                    total_spots=total_spots,
+                    avg_per_spot=revenue / total_spots if total_spots > 0 else 0,
+                )
+            )
 
         for result in results:
             if language_totals[result.language] > 0:
-                result.percentage_of_language = (result.revenue / language_totals[result.language]) * 100
+                result.percentage_of_language = (
+                    result.revenue / language_totals[result.language]
+                ) * 100
             if market_totals[result.market] > 0:
-                result.percentage_of_market = (result.revenue / market_totals[result.market]) * 100
+                result.percentage_of_market = (
+                    result.revenue / market_totals[result.market]
+                ) * 100
 
         return results
 
@@ -278,7 +297,11 @@ class MarketAnalysisEngine:
         for item in market_language_data:
             market = item.market
             if market not in market_data:
-                market_data[market] = {"revenue": 0, "languages": {}, "unique_languages": 0}
+                market_data[market] = {
+                    "revenue": 0,
+                    "languages": {},
+                    "unique_languages": 0,
+                }
 
             market_data[market]["revenue"] += item.revenue
             market_data[market]["languages"][item.language] = item.revenue
@@ -286,16 +309,26 @@ class MarketAnalysisEngine:
 
         results = []
         for market, data in market_data.items():
-            top_language = max(data["languages"].items(), key=lambda x: x[1]) if data["languages"] else ("Unknown", 0)
+            top_language = (
+                max(data["languages"].items(), key=lambda x: x[1])
+                if data["languages"]
+                else ("Unknown", 0)
+            )
 
-            results.append(MarketSummary(
-                market=market,
-                revenue=data["revenue"],
-                percentage_of_total=(data["revenue"] / total_revenue) * 100 if total_revenue > 0 else 0,
-                top_language=top_language[0],
-                top_language_percentage=(top_language[1] / data["revenue"]) * 100 if data["revenue"] > 0 else 0,
-                unique_languages=len(data["languages"]),
-            ))
+            results.append(
+                MarketSummary(
+                    market=market,
+                    revenue=data["revenue"],
+                    percentage_of_total=(data["revenue"] / total_revenue) * 100
+                    if total_revenue > 0
+                    else 0,
+                    top_language=top_language[0],
+                    top_language_percentage=(top_language[1] / data["revenue"]) * 100
+                    if data["revenue"] > 0
+                    else 0,
+                    unique_languages=len(data["languages"]),
+                )
+            )
 
         results.sort(key=lambda x: x.revenue, reverse=True)
         return results
@@ -306,37 +339,47 @@ class MarketAnalysisEngine:
         year_filter, year_params = self.build_year_filter(year_suffixes)
 
         cursor = self.db_connection.cursor()
-        
+
         # Total gross (excluding Trade)
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT SUM(COALESCE(gross_rate, 0))
             FROM spots s
             WHERE {year_filter}
             AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-        """, year_params)
+        """,
+            year_params,
+        )
         total_gross = cursor.fetchone()[0] or 0
 
         # Internal Ad Sales only
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT SUM(COALESCE(gross_rate, 0))
             FROM spots s
             WHERE {year_filter}
             AND revenue_type = 'Internal Ad Sales'
-        """, year_params)
+        """,
+            year_params,
+        )
         internal_ad_sales = cursor.fetchone()[0] or 0
 
         # Internal Ad Sales + COM/BNS (what the report analyzes)
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT SUM(COALESCE(gross_rate, 0))
             FROM spots s
             WHERE {year_filter}
             AND revenue_type = 'Internal Ad Sales'
             AND spot_type IN ('COM', 'BNS')
-        """, year_params)
+        """,
+            year_params,
+        )
         report_scope = cursor.fetchone()[0] or 0
 
         # Other revenue types breakdown
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT revenue_type, SUM(COALESCE(gross_rate, 0)) as revenue
             FROM spots s
             WHERE {year_filter}
@@ -344,7 +387,9 @@ class MarketAnalysisEngine:
             AND revenue_type != 'Internal Ad Sales'
             GROUP BY revenue_type
             ORDER BY revenue DESC
-        """, year_params)
+        """,
+            year_params,
+        )
         other_types = {row[0]: row[1] for row in cursor.fetchall()}
 
         return {
@@ -355,7 +400,9 @@ class MarketAnalysisEngine:
             "other_revenue_types": other_types,
         }
 
-    def get_language_code_distribution(self, year_input: str = "2024") -> Dict[str, Any]:
+    def get_language_code_distribution(
+        self, year_input: str = "2024"
+    ) -> Dict[str, Any]:
         """Get raw language code distribution for diagnostics."""
         full_years, year_suffixes = self.parse_year_range(year_input)
         year_filter, year_params = self.build_year_filter(year_suffixes)
@@ -397,7 +444,11 @@ class MarketAnalysisEngine:
     def generate_market_analysis_report(self, year_input: str = "2024") -> str:
         """Generate comprehensive market analysis report."""
         full_years, year_suffixes = self.parse_year_range(year_input)
-        year_display = f"{full_years[0]}-{full_years[-1]}" if len(full_years) > 1 else full_years[0]
+        year_display = (
+            f"{full_years[0]}-{full_years[-1]}"
+            if len(full_years) > 1
+            else full_years[0]
+        )
 
         language_summary = self.get_language_performance_summary(year_input)
         market_breakdown = self.get_language_market_breakdown(year_input)
@@ -405,12 +456,22 @@ class MarketAnalysisEngine:
         code_distribution = self.get_language_code_distribution(year_input)
         revenue_context = self.get_revenue_context(year_input)
 
-        language_table = self._format_language_summary_table(language_summary, year_display)
-        market_breakdown_table = self._format_market_breakdown_table(market_breakdown, year_display)
-        market_summary_table = self._format_market_summary_table(market_summary, year_display)
-        code_table = self._format_code_distribution_table(code_distribution, year_display)
+        language_table = self._format_language_summary_table(
+            language_summary, year_display
+        )
+        market_breakdown_table = self._format_market_breakdown_table(
+            market_breakdown, year_display
+        )
+        market_summary_table = self._format_market_summary_table(
+            market_summary, year_display
+        )
+        code_table = self._format_code_distribution_table(
+            code_distribution, year_display
+        )
         context_table = self._format_revenue_context(revenue_context, year_display)
-        insights = self._generate_market_insights(language_summary, market_breakdown, market_summary)
+        insights = self._generate_market_insights(
+            language_summary, market_breakdown, market_summary
+        )
 
         return f"""# Market Analysis Report - {year_display}
 
@@ -441,7 +502,9 @@ class MarketAnalysisEngine:
 {self._generate_methodology()}
 """
 
-    def _format_language_summary_table(self, results: List[LanguageResult], year_display: str) -> str:
+    def _format_language_summary_table(
+        self, results: List[LanguageResult], year_display: str
+    ) -> str:
         """Format language summary table."""
         if not results:
             return f"""## 🌐 Language Performance Summary
@@ -470,7 +533,9 @@ class MarketAnalysisEngine:
 
         return table
 
-    def _format_market_breakdown_table(self, results: List[MarketLanguageResult], year_display: str) -> str:
+    def _format_market_breakdown_table(
+        self, results: List[MarketLanguageResult], year_display: str
+    ) -> str:
         """Format market breakdown table."""
         if not results:
             return f"""## 📍 Language Performance by Market
@@ -498,15 +563,23 @@ class MarketAnalysisEngine:
         for language, markets in language_data.items():
             language_totals[language] = sum(r.revenue for r in markets.values())
 
-        sorted_languages = sorted(language_totals.items(), key=lambda x: x[1], reverse=True)
+        sorted_languages = sorted(
+            language_totals.items(), key=lambda x: x[1], reverse=True
+        )
 
-        table = f"""## 📍 Language Performance by Market
+        table = (
+            f"""## 📍 Language Performance by Market
 ### Revenue Distribution ({year_display})
 *Note: CHI, CMP, and MSP markets consolidated into CMP*
 
-| Language | """ + " | ".join(market_order) + """ | Total |
-|----------|""" + "|".join(["-" * max(len(m), 8) for m in market_order]) + """|-------|
+| Language | """
+            + " | ".join(market_order)
+            + """ | Total |
+|----------|"""
+            + "|".join(["-" * max(len(m), 8) for m in market_order])
+            + """|-------|
 """
+        )
 
         for language, total_revenue in sorted_languages:
             row = f"| {language} | "
@@ -519,7 +592,11 @@ class MarketAnalysisEngine:
             row += f"${total_revenue:,.0f} |"
             table += row + "\n"
 
-        table += "|----------|" + "|".join(["-" * max(len(m), 8) for m in market_order]) + "|-------|\n"
+        table += (
+            "|----------|"
+            + "|".join(["-" * max(len(m), 8) for m in market_order])
+            + "|-------|\n"
+        )
         total_row = "| **TOTAL** | "
         for market in market_order:
             total_row += f"**${market_totals[market]:,.0f}** | "
@@ -529,7 +606,9 @@ class MarketAnalysisEngine:
 
         return table
 
-    def _format_revenue_context(self, context: Dict[str, Any], year_display: str) -> str:
+    def _format_revenue_context(
+        self, context: Dict[str, Any], year_display: str
+    ) -> str:
         """Format revenue context section showing what's included vs excluded."""
         total = context["total_gross"]
         internal = context["internal_ad_sales"]
@@ -546,7 +625,7 @@ This report analyzes **Internal Ad Sales (COM/BNS spots)** which represents the 
 | Category | Revenue | % of Total |
 |----------|---------|------------|
 | **Total Gross Revenue** | ${total:,.2f} | 100.0% |
-| Internal Ad Sales | ${internal:,.2f} | {internal/total*100:.1f}% |
+| Internal Ad Sales | ${internal:,.2f} | {internal / total * 100:.1f}% |
 | **This Report (Internal Ad Sales COM/BNS)** | **${scope:,.2f}** | **{pct_of_total:.1f}%** |
 
 ### Revenue Not Included in This Report
@@ -554,7 +633,9 @@ This report analyzes **Internal Ad Sales (COM/BNS spots)** which represents the 
 | Revenue Type | Amount | Notes |
 |--------------|--------|-------|
 """
-        for rev_type, amount in sorted(other_types.items(), key=lambda x: x[1], reverse=True):
+        for rev_type, amount in sorted(
+            other_types.items(), key=lambda x: x[1], reverse=True
+        ):
             notes = {
                 "Direct Response Sales": "National direct response advertising",
                 "Paid Programming": "Infomercials and paid content",
@@ -571,7 +652,9 @@ This report analyzes **Internal Ad Sales (COM/BNS spots)** which represents the 
 
         return table
 
-    def _format_market_summary_table(self, results: List[MarketSummary], year_display: str) -> str:
+    def _format_market_summary_table(
+        self, results: List[MarketSummary], year_display: str
+    ) -> str:
         """Format market summary table."""
         if not results:
             return ""
@@ -588,7 +671,9 @@ This report analyzes **Internal Ad Sales (COM/BNS spots)** which represents the 
 
         return table
 
-    def _format_code_distribution_table(self, code_data: Dict[str, Any], year_display: str) -> str:
+    def _format_code_distribution_table(
+        self, code_data: Dict[str, Any], year_display: str
+    ) -> str:
         """Format raw language code distribution table."""
         codes = code_data.get("codes", {})
         if not codes:
@@ -600,14 +685,20 @@ This report analyzes **Internal Ad Sales (COM/BNS spots)** which represents the 
 | Code | Spots | Revenue | Group |
 |------|-------|---------|-------|
 """
-        for code, data in sorted(codes.items(), key=lambda x: x[1]["revenue"], reverse=True):
+        for code, data in sorted(
+            codes.items(), key=lambda x: x[1]["revenue"], reverse=True
+        ):
             group = self.LANGUAGE_GROUPS.get(code.upper(), "Other")
-            table += f"| {code} | {data['spots']:,} | ${data['revenue']:,.2f} | {group} |\n"
+            table += (
+                f"| {code} | {data['spots']:,} | ${data['revenue']:,.2f} | {group} |\n"
+            )
 
         table += f"\n**Total**: {code_data['total_spots']:,} spots, ${code_data['total_revenue']:,.2f} revenue\n"
         return table
 
-    def _generate_market_insights(self, language_summary, market_breakdown, market_summary) -> str:
+    def _generate_market_insights(
+        self, language_summary, market_breakdown, market_summary
+    ) -> str:
         """Generate key insights."""
         if not language_summary or not market_summary:
             return "## 📊 Key Insights\n\n*Insufficient data to generate insights*\n"
@@ -617,10 +708,16 @@ This report analyzes **Internal Ad Sales (COM/BNS spots)** which represents the 
         top_market = market_summary[0] if market_summary else None
 
         cmp_market = next((m for m in market_summary if m.market == "CMP"), None)
-        cmp_info = f"CMP (CHI+CMP+MSP): ${cmp_market.revenue:,.0f} ({cmp_market.percentage_of_total:.1f}%)" if cmp_market else "CMP data not found"
+        cmp_info = (
+            f"CMP (CHI+CMP+MSP): ${cmp_market.revenue:,.0f} ({cmp_market.percentage_of_total:.1f}%)"
+            if cmp_market
+            else "CMP data not found"
+        )
 
         top_2_revenue = sum(r.revenue for r in market_summary[:2])
-        concentration = (top_2_revenue / total_revenue) * 100 if total_revenue > 0 else 0
+        concentration = (
+            (top_2_revenue / total_revenue) * 100 if total_revenue > 0 else 0
+        )
 
         return f"""## 📊 Key Insights
 
@@ -686,11 +783,21 @@ def main():
         description="Market Analysis - Direct Language Code Query",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--year", default="2025", help="Year(s) to analyze (e.g., 2025 or 2024-2025)")
+    parser.add_argument(
+        "--year", default="2025", help="Year(s) to analyze (e.g., 2025 or 2024-2025)"
+    )
     parser.add_argument("--output", metavar="FILE", help="Save report to file")
-    parser.add_argument("--db-path", default="data/database/production.db", help="Database path")
-    parser.add_argument("--language-summary-only", action="store_true", help="Show only language summary")
-    parser.add_argument("--codes-only", action="store_true", help="Show only raw code distribution")
+    parser.add_argument(
+        "--db-path", default="data/database/production.db", help="Database path"
+    )
+    parser.add_argument(
+        "--language-summary-only",
+        action="store_true",
+        help="Show only language summary",
+    )
+    parser.add_argument(
+        "--codes-only", action="store_true", help="Show only raw code distribution"
+    )
 
     args = parser.parse_args()
 
@@ -701,13 +808,17 @@ def main():
                 print(f"\n🌐 Language Performance ({args.year}):")
                 print("=" * 60)
                 for r in results:
-                    print(f"{r.name}: ${r.revenue:,.2f} ({r.percentage:.1f}%) - {r.total_spots:,} spots")
+                    print(
+                        f"{r.name}: ${r.revenue:,.2f} ({r.percentage:.1f}%) - {r.total_spots:,} spots"
+                    )
 
             elif args.codes_only:
                 data = engine.get_language_code_distribution(args.year)
                 print(f"\n🔤 Language Code Distribution ({args.year}):")
                 print("=" * 60)
-                for code, info in sorted(data["codes"].items(), key=lambda x: x[1]["revenue"], reverse=True):
+                for code, info in sorted(
+                    data["codes"].items(), key=lambda x: x[1]["revenue"], reverse=True
+                ):
                     print(f"{code}: {info['spots']:,} spots, ${info['revenue']:,.2f}")
 
             else:
@@ -722,6 +833,7 @@ def main():
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

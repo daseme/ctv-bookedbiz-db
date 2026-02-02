@@ -21,7 +21,6 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime, date, timedelta
 from typing import List, Set, Optional, Dict, Any, Callable
-from dataclasses import dataclass
 
 from tqdm import tqdm
 
@@ -102,6 +101,7 @@ EXCEL_COLUMN_POSITIONS = {
 # Context Managers
 # ============================================================================
 
+
 @contextlib.contextmanager
 def suppress_verbose_logging():
     """Context manager to suppress verbose logging during import operations."""
@@ -142,6 +142,7 @@ def suppress_stdout_stderr():
 # Value Objects
 # ============================================================================
 
+
 class SourceFileFormatter:
     """Value object for creating standardized source file tracking strings."""
 
@@ -160,13 +161,16 @@ class SourceFileFormatter:
 # Pure Functions for Normalization
 # ============================================================================
 
+
 def build_revenue_type_normalizer() -> Callable[[Optional[str]], Optional[str]]:
     """Pure normalizer: A&O variants → 'Internal Ad Sales'; else passthrough."""
+
     def _norm(v: Optional[str]) -> Optional[str]:
         if v is None:
             return None
         key = re.sub(r"[\s\./-]+", "", v.lower()).replace("&", "and")
         return "Internal Ad Sales" if key in {"ao", "aando"} else v
+
     return _norm
 
 
@@ -174,13 +178,20 @@ def build_spot_type_normalizer() -> Callable[[Optional[str]], str]:
     """Pure normalizer for CHECK constraint on spots.spot_type."""
     allowed = {"AV", "BB", "BNS", "COM", "CRD", "PKG", "PRD", "PRG", "SVC", ""}
     aliases = {
-        "SPOT": "COM", "COMMERCIAL": "COM", "BONUS": "BNS",
-        "PKG": "PKG", "PROD": "PRD", "PROGRAM": "PRG", "SERVICE": "SVC",
+        "SPOT": "COM",
+        "COMMERCIAL": "COM",
+        "BONUS": "BNS",
+        "PKG": "PKG",
+        "PROD": "PRD",
+        "PROGRAM": "PRG",
+        "SERVICE": "SVC",
     }
+
     def _norm(v: Optional[str]) -> str:
         x = (v or "").strip().upper()
         x = aliases.get(x, x)
         return x if x in allowed else ""
+
     return _norm
 
 
@@ -188,8 +199,10 @@ def build_spot_type_normalizer() -> Callable[[Optional[str]], str]:
 # Custom Exception
 # ============================================================================
 
+
 class BroadcastMonthImportError(Exception):
     """Raised when there's an error with import operations."""
+
     pass
 
 
@@ -197,30 +210,31 @@ class BroadcastMonthImportError(Exception):
 # Service Implementation
 # ============================================================================
 
+
 class BroadcastMonthImportService(BaseService):
     """
     Service for managing broadcast month imports.
-    
+
     Orchestrates the complete import workflow with clear separation between:
     - Analysis: Examining Excel file contents
     - Classification: Determining closed vs open months
     - Filtering: Applying preservation and skip rules
     - Execution: Delete, import, validate within transaction
     """
-    
+
     def __init__(self, db_connection: DatabaseConnection):
         super().__init__(db_connection)
-        
+
         # Dependencies
         self.closure_service = MonthClosureService(db_connection)
         self.parser = BroadcastMonthParser()
         self.alias_service = EntityAliasService(db_connection)
         self.batch_resolver = BatchEntityResolver(db_connection)
-        
+
         # Repositories
         self._spot_repo = SpotRepository()
         self._batch_repo = ImportBatchRepository()
-        
+
         # Normalizers
         self._normalize_revenue_type = build_revenue_type_normalizer()
         self._normalize_spot_type = build_spot_type_normalizer()
@@ -267,7 +281,7 @@ class BroadcastMonthImportService(BaseService):
     # ========================================================================
     # Main Orchestrator
     # ========================================================================
-    
+
     def execute_month_replacement(
         self,
         excel_file: str,
@@ -277,22 +291,24 @@ class BroadcastMonthImportService(BaseService):
     ) -> ImportResult:
         """
         Orchestrates the complete import workflow.
-        
+
         Each step delegates to a focused method with single responsibility.
         """
         start_time = datetime.now()
         batch_id = self._generate_batch_id(import_mode, start_time)
         result = ImportResult.create_empty(batch_id, import_mode)
-        
+
         try:
             # Step 1: Analyze Excel file
             excel_analysis = self._analyze_excel_file(excel_file)
             if not excel_analysis.has_data:
-                raise BroadcastMonthImportError("No broadcast months found in Excel file")
-            
+                raise BroadcastMonthImportError(
+                    "No broadcast months found in Excel file"
+                )
+
             # Step 2: Classify months by closure status
             month_classification = self._classify_months(excel_analysis.display_months)
-            
+
             # Step 3: Build import context
             context = ImportContext(
                 batch_id=batch_id,
@@ -302,36 +318,36 @@ class BroadcastMonthImportService(BaseService):
                 closed_by=closed_by,
                 dry_run=dry_run,
             )
-            
+
             # Step 4: Determine which months to process based on mode
             filter_result = self._determine_months_to_process(context)
             if filter_result is None:
                 result.success = True
                 return result
-            
+
             context.filter_result = filter_result
             result.broadcast_months_affected = context.months_to_process
-            
+
             # Step 5: Validate mode-specific requirements
             validation_error = self._validate_import_mode_requirements(context)
             if validation_error:
                 result.add_error(validation_error)
                 return result
-            
+
             tqdm.write(
                 f"Processing {len(context.months_to_process)} months: "
                 f"{', '.join(sorted(context.months_to_process))}"
             )
-            
+
             # Step 6: Handle dry run
             if dry_run:
                 tqdm.write("DRY RUN - No changes will be made")
                 result.success = True
                 return result
-            
+
             # Step 7: Execute the actual import
             result = self._execute_import_workflow(context, result)
-            
+
         except BroadcastMonthImportError:
             raise
         except Exception as e:
@@ -339,76 +355,76 @@ class BroadcastMonthImportService(BaseService):
             tqdm.write(f"❌ {error_msg}")
             result.add_error(error_msg)
             self._fail_import_batch(batch_id, str(e))
-        
+
         result.duration_seconds = (datetime.now() - start_time).total_seconds()
         return result
 
     # ========================================================================
     # Step 1: Excel Analysis
     # ========================================================================
-    
+
     def _analyze_excel_file(self, excel_file: str) -> ExcelAnalysis:
         """Analyze Excel file to extract months and record counts."""
         tqdm.write(f"Analyzing Excel file: {Path(excel_file).name}")
-        
+
         with suppress_verbose_logging():
             display_months = list(extract_display_months_from_excel(excel_file))
-        
+
         tqdm.write(
-            f"Found {len(display_months)} months: "
-            f"{', '.join(sorted(display_months))}"
+            f"Found {len(display_months)} months: {', '.join(sorted(display_months))}"
         )
-        
+
         month_counts = self._count_excel_records_by_month(excel_file)
-        
+
         return ExcelAnalysis.from_file(
             file_path=excel_file,
             display_months=display_months,
-            month_counts=month_counts
+            month_counts=month_counts,
         )
-    
+
     def _count_excel_records_by_month(self, excel_file: str) -> Dict[str, int]:
         """Count records per broadcast month in the Excel file."""
         month_counts: Dict[str, int] = {}
-        
+
         try:
             with suppress_verbose_logging(), suppress_stdout_stderr():
-                worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
-            
+                worksheet, sheet_name, workbook = get_excel_worksheet_flexible(
+                    excel_file
+                )
+
             month_col_indices = [
-                k for k, v in EXCEL_COLUMN_POSITIONS.items() 
-                if v == "broadcast_month"
+                k for k, v in EXCEL_COLUMN_POSITIONS.items() if v == "broadcast_month"
             ]
             if not month_col_indices:
                 workbook.close()
                 return month_counts
             month_col = month_col_indices[0]
-            
+
             for row in worksheet.iter_rows(min_row=2, values_only=True):
                 if not any(row):
                     continue
-                
+
                 month_value = row[month_col] if month_col < len(row) else None
                 if not month_value:
                     continue
-                
+
                 display_month = self._parse_month_value(month_value)
                 if display_month:
                     month_counts[display_month] = month_counts.get(display_month, 0) + 1
-            
+
             workbook.close()
-            
+
         except Exception as e:
             tqdm.write(f"Warning: Could not count Excel records by month: {e}")
-        
+
         return month_counts
-    
+
     def _parse_month_value(self, month_value: Any) -> Optional[str]:
         """Parse a month cell value into display format (e.g., 'Dec-25')."""
         try:
             bm_date: Optional[date] = None
-            
-            if hasattr(month_value, 'date'):
+
+            if hasattr(month_value, "date"):
                 bm_date = month_value.date()
             elif isinstance(month_value, str):
                 for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"]:
@@ -419,10 +435,10 @@ class BroadcastMonthImportService(BaseService):
                         continue
             elif isinstance(month_value, date):
                 bm_date = month_value
-            
+
             if bm_date is None:
                 return None
-            
+
             return bm_date.strftime("%b-%y")
         except Exception:
             return None
@@ -430,12 +446,12 @@ class BroadcastMonthImportService(BaseService):
     # ========================================================================
     # Step 2: Month Classification
     # ========================================================================
-    
+
     def _classify_months(self, display_months: List[str]) -> MonthClassification:
         """Classify months into closed vs open."""
         closed_months = self.closure_service.get_closed_months(display_months)
         open_months = [m for m in display_months if m not in closed_months]
-        
+
         if closed_months:
             tqdm.write(
                 f"Closed months: {len(closed_months)} "
@@ -443,115 +459,109 @@ class BroadcastMonthImportService(BaseService):
             )
         if open_months:
             tqdm.write(
-                f"Open months: {len(open_months)} "
-                f"({', '.join(sorted(open_months))})"
+                f"Open months: {len(open_months)} ({', '.join(sorted(open_months))})"
             )
-        
+
         return MonthClassification(
-            closed_months=list(closed_months),
-            open_months=open_months
+            closed_months=list(closed_months), open_months=open_months
         )
 
     # ========================================================================
     # Step 4: Month Filtering (Mode-Specific)
     # ========================================================================
-    
+
     def _determine_months_to_process(
-        self, 
-        context: ImportContext
+        self, context: ImportContext
     ) -> Optional[MonthFilterResult]:
         """Determine which months to process based on import mode."""
         if context.is_weekly_update_mode:
             return self._filter_months_for_weekly_update(context)
-        
+
         return MonthFilterResult(
             months_to_process=context.excel_analysis.display_months,
             preserved_months={},
-            skipped_previous_month=None
+            skipped_previous_month=None,
         )
-    
+
     def _filter_months_for_weekly_update(
-        self, 
-        context: ImportContext
+        self, context: ImportContext
     ) -> Optional[MonthFilterResult]:
         """Apply WEEKLY_UPDATE filtering rules."""
         classification = context.month_classification
         excel_analysis = context.excel_analysis
-        
+
         if classification.has_closed:
             tqdm.write(
                 f"WEEKLY_UPDATE: Auto-skipping "
                 f"{len(classification.closed_months)} closed months"
             )
-        
+
         if classification.all_closed:
             tqdm.write("No open months to import - all months are closed")
             return None
-        
+
         working_months = list(classification.open_months)
-        
+
         tqdm.write("Analyzing Excel data by month for preservation check...")
         preserved = self._identify_months_to_preserve(
-            working_months, 
-            excel_analysis.month_record_counts
+            working_months, excel_analysis.month_record_counts
         )
-        
+
         if preserved:
             self._log_preserved_months(preserved)
             working_months = [m for m in working_months if m not in preserved]
-        
+
         skipped_previous = self._check_previous_month_skip(
-            working_months, 
-            excel_analysis.month_record_counts
+            working_months, excel_analysis.month_record_counts
         )
-        
+
         if skipped_previous:
             working_months = [m for m in working_months if m != skipped_previous]
-        
+
         if not working_months:
-            tqdm.write("✅ No months to update after filtering - existing data protected")
+            tqdm.write(
+                "✅ No months to update after filtering - existing data protected"
+            )
             return None
-        
+
         tqdm.write(
             f"Proceeding with {len(working_months)} month(s): "
             f"{', '.join(sorted(working_months))}"
         )
-        
+
         return MonthFilterResult(
             months_to_process=working_months,
             preserved_months=preserved,
-            skipped_previous_month=skipped_previous
+            skipped_previous_month=skipped_previous,
         )
-    
+
     def _identify_months_to_preserve(
-        self, 
-        open_months: List[str], 
-        excel_month_counts: Dict[str, int]
+        self, open_months: List[str], excel_month_counts: Dict[str, int]
     ) -> Dict[str, PreservedMonth]:
         """Identify months that should be preserved."""
         preserved: Dict[str, PreservedMonth] = {}
-        
+
         with self.safe_connection() as conn:
             for month in open_months:
                 excel_count = excel_month_counts.get(month, 0)
-                
+
                 if excel_count > 0:
                     tqdm.write(f"   {month}: {excel_count:,} records in Excel")
                 else:
                     tqdm.write(f"   {month}: NO DATA in Excel")
-                    
+
                     summary = self._spot_repo.get_month_summary(month, conn)
-                    
+
                     if summary.has_data:
                         preserved[month] = PreservedMonth(
                             month=month,
                             existing_count=summary.count,
                             existing_revenue=summary.gross_revenue,
-                            reason='No data in Excel - preserving existing'
+                            reason="No data in Excel - preserving existing",
                         )
-        
+
         return preserved
-    
+
     def _log_preserved_months(self, preserved: Dict[str, PreservedMonth]) -> None:
         """Log information about months being preserved."""
         tqdm.write(
@@ -563,28 +573,25 @@ class BroadcastMonthImportService(BaseService):
                 f"   {pm.month}: {pm.existing_count:,} existing records, "
                 f"${pm.existing_revenue:,.2f} revenue - PRESERVED"
             )
-    
+
     def _check_previous_month_skip(
-        self, 
-        open_months: List[str], 
-        excel_month_counts: Dict[str, int]
+        self, open_months: List[str], excel_month_counts: Dict[str, int]
     ) -> Optional[str]:
         """Check if previous calendar month should be skipped."""
         previous_month = self._get_previous_calendar_month()
         current_month = date.today().strftime("%b-%y")
-        
+
         if previous_month not in open_months:
             return None
-        
+
         excel_count = excel_month_counts.get(previous_month, 0)
-        
+
         with self.safe_connection() as conn:
             summary = self._spot_repo.get_month_summary(previous_month, conn)
-        
+
         tqdm.write(f"⚠️  SKIPPING PREVIOUS MONTH: {previous_month}")
         tqdm.write(
-            f"   Excel has {excel_count:,} records "
-            f"(likely stray MC operational data)"
+            f"   Excel has {excel_count:,} records (likely stray MC operational data)"
         )
         tqdm.write(
             f"   Preserving {summary.count:,} existing records, "
@@ -594,48 +601,47 @@ class BroadcastMonthImportService(BaseService):
             f"   Reason: Once in {current_month}, previous month data "
             f"is not authoritative"
         )
-        
+
         return previous_month
-    
-    def _get_previous_calendar_month(self, reference_date: Optional[date] = None) -> str:
+
+    def _get_previous_calendar_month(
+        self, reference_date: Optional[date] = None
+    ) -> str:
         """Get the previous calendar month in display format."""
         if reference_date is None:
             reference_date = date.today()
-        
+
         first_of_month = reference_date.replace(day=1)
         last_of_previous = first_of_month - timedelta(days=1)
-        
+
         return last_of_previous.strftime("%b-%y")
 
     # ========================================================================
     # Step 5: Mode Validation
     # ========================================================================
-    
+
     def _validate_import_mode_requirements(
-        self, 
-        context: ImportContext
+        self, context: ImportContext
     ) -> Optional[str]:
         """Validate mode-specific requirements."""
         if context.is_historical_mode and not context.closed_by:
             return "HISTORICAL mode requires --closed-by parameter"
-        
+
         if context.is_manual_mode and context.month_classification.has_closed:
             closed = context.month_classification.closed_months
             return (
                 f"Manual import contains closed months: {closed}. "
                 f"Use --force to override or filter the Excel file."
             )
-        
+
         return None
 
     # ========================================================================
     # Step 7: Execute Import Transaction
     # ========================================================================
-    
+
     def _execute_import_workflow(
-        self, 
-        context: ImportContext, 
-        result: ImportResult
+        self, context: ImportContext, result: ImportResult
     ) -> ImportResult:
         """Execute the actual import within a transaction."""
         # Build entity cache for performance
@@ -648,30 +654,30 @@ class BroadcastMonthImportService(BaseService):
             f"✅ Cache ready: {cache_stats['cache_size']} entities "
             f"pre-resolved ({cache_stats['batch_resolved']} found)"
         )
-        
+
         # Create batch record
         self._create_import_batch(
             context.batch_id,
             context.import_mode,
             context.excel_analysis.file_path,
-            context.months_to_process
+            context.months_to_process,
         )
-        
+
         try:
             with self.safe_transaction() as conn:
                 # Delete existing data
                 result.records_deleted = self._delete_months_with_progress(
                     context.months_to_process, conn
                 )
-                
+
                 # Import new data
                 result.records_imported = self._import_excel_data_with_progress(
                     context.excel_analysis.file_path,
                     context.batch_id,
                     conn,
-                    context.months_to_process
+                    context.months_to_process,
                 )
-                
+
                 # Log net change
                 if context.is_weekly_update_mode:
                     tqdm.write(
@@ -679,98 +685,87 @@ class BroadcastMonthImportService(BaseService):
                         f"{result.records_deleted:,} deleted "
                         f"(net: {result.net_change:+,})"
                     )
-                
+
                 # Validate and correct customer alignment
                 self._validate_and_correct_customers(context.batch_id, conn)
-                
+
                 # Close months for HISTORICAL mode
                 if context.is_historical_mode:
                     result.closed_months = self._close_months(
-                        context.months_to_process,
-                        context.closed_by,
-                        conn
+                        context.months_to_process, context.closed_by, conn
                     )
-                
+
                 # Complete batch record
                 self._complete_import_batch(context.batch_id, result, conn)
-                
+
                 result.success = True
                 tqdm.write("✅ Import completed successfully")
-                
+
         except Exception as e:
             error_msg = f"Transaction failed: {str(e)}"
             tqdm.write(f"❌ {error_msg}")
             result.add_error(error_msg)
             self._fail_import_batch(context.batch_id, str(e))
             raise BroadcastMonthImportError(error_msg)
-        
+
         return result
-    
+
     def _delete_months_with_progress(
-        self, 
-        months: List[str], 
-        conn: sqlite3.Connection
+        self, months: List[str], conn: sqlite3.Connection
     ) -> int:
         """Delete existing data for specified months with progress tracking."""
         if not months:
             return 0
-        
+
         summaries = self._spot_repo.get_month_summaries(months, conn)
         total_to_delete = sum(s.count for s in summaries.values())
-        
+
         if total_to_delete == 0:
             tqdm.write("No existing records to delete")
             return 0
-        
+
         with tqdm(
-            total=total_to_delete, 
-            desc="Deleting existing records", 
-            unit=" records"
+            total=total_to_delete, desc="Deleting existing records", unit=" records"
         ) as pbar:
             deleted = 0
             for month in months:
                 count = summaries[month].count
                 if count > 0:
                     cursor = conn.execute(
-                        "DELETE FROM spots WHERE broadcast_month = ?",
-                        (month,)
+                        "DELETE FROM spots WHERE broadcast_month = ?", (month,)
                     )
                     deleted += cursor.rowcount
                     pbar.update(cursor.rowcount)
                     pbar.set_description(f"Deleted {deleted:,}/{total_to_delete:,}")
-        
+
         tqdm.write(f"Deleted {total_to_delete:,} existing records")
         return total_to_delete
-    
+
     def _validate_and_correct_customers(
-        self, 
-        batch_id: str, 
-        conn: sqlite3.Connection
+        self, batch_id: str, conn: sqlite3.Connection
     ) -> None:
         """Validate customer alignment and auto-correct if needed."""
         tqdm.write("Validating customer alignment...")
-        
+
         validation = self._spot_repo.validate_customer_alignment(batch_id, conn)
-        
+
         if validation.is_valid:
             tqdm.write("✅ Customer alignment validation passed")
             return
-        
+
         tqdm.write("⚠️ Customer alignment issues detected:")
         tqdm.write(
             f"   {validation.mismatch_count} mismatches affecting "
             f"{validation.total_spots_affected:,} spots"
         )
-        tqdm.write(
-            f"   Revenue affected: ${validation.total_revenue_affected:,.2f}"
-        )
-        
+        tqdm.write(f"   Revenue affected: ${validation.total_revenue_affected:,.2f}")
+
         tqdm.write("🔧 Auto-correcting customer_id mismatches...")
         corrections = self._spot_repo.correct_customer_mismatches(batch_id, conn)
         tqdm.write(f"   Corrected {corrections} records")
-        
+
         validation = self._spot_repo.validate_customer_alignment(batch_id, conn)
-        
+
         if validation.is_valid:
             tqdm.write("✅ All customer_id mismatches corrected")
         else:
@@ -778,20 +773,17 @@ class BroadcastMonthImportService(BaseService):
                 f"Failed to correct {validation.mismatch_count} "
                 f"customer alignment issues"
             )
-    
+
     def _close_months(
-        self, 
-        months: List[str], 
-        closed_by: Optional[str], 
-        conn: sqlite3.Connection
+        self, months: List[str], closed_by: Optional[str], conn: sqlite3.Connection
     ) -> List[str]:
         """Close months for HISTORICAL mode."""
         closed: List[str] = []
-        
+
         if not closed_by:
             logger.warning("closed_by is None, skipping month closure")
             return closed
-        
+
         with tqdm(total=len(months), desc="Closing months", unit=" months") as pbar:
             for month in months:
                 try:
@@ -804,7 +796,7 @@ class BroadcastMonthImportService(BaseService):
                     tqdm.write(f"Failed to close month {month}: {e}")
                 finally:
                     pbar.update(1)
-        
+
         tqdm.write(f"Closed {len(closed)} months")
         return closed
 
@@ -813,11 +805,11 @@ class BroadcastMonthImportService(BaseService):
     # ========================================================================
 
     def _import_excel_data_with_progress(
-        self, 
-        excel_file: str, 
-        batch_id: str, 
+        self,
+        excel_file: str,
+        batch_id: str,
         conn: sqlite3.Connection,
-        allowed_months: List[str]
+        allowed_months: List[str],
     ) -> int:
         """
         Import Excel data using fixed column positions with progress tracking.
@@ -836,7 +828,9 @@ class BroadcastMonthImportService(BaseService):
 
         try:
             with suppress_verbose_logging(), suppress_stdout_stderr():
-                worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
+                worksheet, sheet_name, workbook = get_excel_worksheet_flexible(
+                    excel_file
+                )
                 tqdm.write(f"Using sheet: {sheet_name}")
 
             total_records = worksheet.max_row - 1
@@ -861,7 +855,8 @@ class BroadcastMonthImportService(BaseService):
 
                         # Get broadcast_month
                         month_col_index = [
-                            k for k, v in EXCEL_COLUMN_POSITIONS.items()
+                            k
+                            for k, v in EXCEL_COLUMN_POSITIONS.items()
                             if v == "broadcast_month"
                         ]
                         if not month_col_index:
@@ -914,7 +909,10 @@ class BroadcastMonthImportService(BaseService):
                                         spot_data[field_name] = str(val).strip()
 
                                 elif field_name in [
-                                    "gross_rate", "station_net", "spot_value", "broker_fees"
+                                    "gross_rate",
+                                    "station_net",
+                                    "spot_value",
+                                    "broker_fees",
                                 ]:
                                     try:
                                         spot_data[field_name] = float(val)
@@ -930,8 +928,8 @@ class BroadcastMonthImportService(BaseService):
                                         spot_data[field_name] = str(val).strip()
 
                                 elif field_name == "revenue_type":
-                                    spot_data[field_name] = self._normalize_revenue_type(
-                                        str(val).strip()
+                                    spot_data[field_name] = (
+                                        self._normalize_revenue_type(str(val).strip())
                                     )
 
                                 elif field_name == "spot_type":
@@ -942,8 +940,10 @@ class BroadcastMonthImportService(BaseService):
                                 elif field_name != "broadcast_month":
                                     spot_data[field_name] = str(val).strip()
 
-                        spot_data["source_file"] = SourceFileFormatter.format_source_file(
-                            filename, sheet_source
+                        spot_data["source_file"] = (
+                            SourceFileFormatter.format_source_file(
+                                filename, sheet_source
+                            )
                         )
 
                         if "market_name" in spot_data:
@@ -972,7 +972,9 @@ class BroadcastMonthImportService(BaseService):
                         if "language_id" not in spot_data:
                             spot_data["language_id"] = 1
 
-                        if not spot_data.get("bill_code") or not spot_data.get("air_date"):
+                        if not spot_data.get("bill_code") or not spot_data.get(
+                            "air_date"
+                        ):
                             skipped_count += 1
                             continue
 
@@ -983,7 +985,7 @@ class BroadcastMonthImportService(BaseService):
 
                         conn.execute(
                             f"INSERT INTO spots ({field_names}) VALUES ({placeholders})",
-                            values
+                            values,
                         )
                         imported_count += 1
 
@@ -993,7 +995,9 @@ class BroadcastMonthImportService(BaseService):
                     except Exception as row_error:
                         skipped_count += 1
                         if skipped_count <= 5:
-                            tqdm.write(f"Row {row_num} error: {str(row_error)[:100]}...")
+                            tqdm.write(
+                                f"Row {row_num} error: {str(row_error)[:100]}..."
+                            )
                         continue
 
             workbook.close()
@@ -1001,13 +1005,13 @@ class BroadcastMonthImportService(BaseService):
             # Log completion statistics
             final_stats = self.batch_resolver.get_performance_stats()
             tqdm.write(f"Import complete: {imported_count:,} records imported")
-            tqdm.write(f"Entity resolution performance:")
+            tqdm.write("Entity resolution performance:")
             tqdm.write(f"   Cache hit rate: {final_stats['cache_hit_rate_percent']}%")
             tqdm.write(f"   Total lookups: {final_stats['total_lookups']:,}")
             tqdm.write(f"   Cache hits: {final_stats['cache_hits']:,}")
 
             if sheet_source_stats:
-                tqdm.write(f"Sheet breakdown:")
+                tqdm.write("Sheet breakdown:")
                 for sheet, count in sorted(sheet_source_stats.items()):
                     tqdm.write(f"   {sheet}: {count:,} records")
 
@@ -1029,7 +1033,9 @@ class BroadcastMonthImportService(BaseService):
     # Entity Lookup Methods
     # ========================================================================
 
-    def _lookup_market_id(self, market_name: str, conn: sqlite3.Connection) -> Optional[int]:
+    def _lookup_market_id(
+        self, market_name: str, conn: sqlite3.Connection
+    ) -> Optional[int]:
         """Look up market_id from market name or code."""
         if not market_name:
             return None
@@ -1058,11 +1064,7 @@ class BroadcastMonthImportService(BaseService):
         return f"{import_mode.lower()}_{int(timestamp.timestamp())}"
 
     def _create_import_batch(
-        self, 
-        batch_id: str, 
-        import_mode: str, 
-        source_file: str, 
-        months: List[str]
+        self, batch_id: str, import_mode: str, source_file: str, months: List[str]
     ) -> Optional[int]:
         """Create import batch record."""
         try:
@@ -1083,10 +1085,7 @@ class BroadcastMonthImportService(BaseService):
             raise BroadcastMonthImportError(error_msg)
 
     def _complete_import_batch(
-        self, 
-        batch_id: str, 
-        result: ImportResult, 
-        conn: sqlite3.Connection
+        self, batch_id: str, result: ImportResult, conn: sqlite3.Connection
     ) -> None:
         """Mark import batch as completed with statistics."""
         try:
@@ -1147,17 +1146,19 @@ class BroadcastMonthImportService(BaseService):
                         months_affected = eval(months_str) if months_str else []
                     except Exception:
                         months_affected = []
-                    
-                    history.append({
-                        "batch_id": row[0],
-                        "import_mode": row[1],
-                        "source_file": row[2],
-                        "import_date": row[3],
-                        "status": row[4],
-                        "records_imported": row[5] or 0,
-                        "records_deleted": row[6] or 0,
-                        "months_affected": months_affected,
-                    })
+
+                    history.append(
+                        {
+                            "batch_id": row[0],
+                            "import_mode": row[1],
+                            "source_file": row[2],
+                            "import_date": row[3],
+                            "status": row[4],
+                            "records_imported": row[5] or 0,
+                            "records_deleted": row[6] or 0,
+                            "months_affected": months_affected,
+                        }
+                    )
 
                 return history
 
@@ -1193,6 +1194,7 @@ class BroadcastMonthImportService(BaseService):
 # ============================================================================
 # Convenience Functions
 # ============================================================================
+
 
 def execute_import(
     excel_file: str,
@@ -1288,12 +1290,12 @@ if __name__ == "__main__":
             if not args.excel_file:
                 print("Error: excel_file required")
                 sys.exit(1)
-                
+
             result = service.execute_month_replacement(
                 args.excel_file, args.mode, args.closed_by, args.dry_run
             )
 
-            print(f"\nImport Results:")
+            print("\nImport Results:")
             print(f"  Status: {'Success' if result.success else 'Failed'}")
             print(f"  Batch ID: {result.batch_id}")
             print(f"  Mode: {result.import_mode}")

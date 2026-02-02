@@ -33,51 +33,51 @@ def create_admin_user():
     print("CTV Booked Biz - Admin User Creation")
     print("=" * 60)
     print()
-    
+
     # Get database path
     settings = get_settings()
     db_path = settings.database.db_path
-    
+
     # Check if database exists
     if not os.path.exists(db_path):
         print(f"❌ Error: Database not found at {db_path}")
         print("   Please run the migration script first:")
         print("   sqlite3 data/database/production.db < sql/user_management_tables.sql")
         return False
-    
+
     # Get user input
     print("Please provide the following information:")
     print()
-    
+
     first_name = input("First Name: ").strip()
     if not first_name:
         print("❌ Error: First name is required")
         return False
-    
+
     last_name = input("Last Name: ").strip()
     if not last_name:
         print("❌ Error: Last name is required")
         return False
-    
+
     email = input("Email: ").strip().lower()
     if not email or "@" not in email:
         print("❌ Error: Valid email is required")
         return False
-    
+
     password = input("Password (min 8 characters): ").strip()
     if not password or len(password) < 8:
         print("❌ Error: Password must be at least 8 characters")
         return False
-    
+
     confirm_password = input("Confirm Password: ").strip()
     if password != confirm_password:
         print("❌ Error: Passwords do not match")
         return False
-    
+
     # Create database connection
     try:
         db_connection = DatabaseConnection(db_path)
-        
+
         # Check if users table exists
         with db_connection.connect() as conn:
             cursor = conn.execute(
@@ -86,31 +86,30 @@ def create_admin_user():
             if not cursor.fetchone():
                 print("❌ Error: Users table not found")
                 print("   Please run the migration script first:")
-                print("   sqlite3 data/database/production.db < sql/user_management_tables.sql")
+                print(
+                    "   sqlite3 data/database/production.db < sql/user_management_tables.sql"
+                )
                 return False
-            
+
             # Check if email already exists
-            cursor = conn.execute(
-                "SELECT user_id FROM users WHERE email = ?",
-                (email,)
-            )
+            cursor = conn.execute("SELECT user_id FROM users WHERE email = ?", (email,))
             if cursor.fetchone():
                 print(f"❌ Error: Email {email} is already registered")
                 return False
-        
+
         # Create user
         password_hash = generate_password_hash(password)
-        
+
         with db_connection.transaction() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO users (first_name, last_name, email, password_hash, role)
                 VALUES (?, ?, ?, ?, 'admin')
                 """,
-                (first_name, last_name, email, password_hash)
+                (first_name, last_name, email, password_hash),
             )
             user_id = cursor.lastrowid
-        
+
         print()
         print("=" * 60)
         print("✅ Admin user created successfully!")
@@ -118,16 +117,17 @@ def create_admin_user():
         print(f"   User ID: {user_id}")
         print(f"   Name: {first_name} {last_name}")
         print(f"   Email: {email}")
-        print(f"   Role: admin")
+        print("   Role: admin")
         print()
         print("You can now log in at: http://localhost:5000/users/login")
         print()
-        
+
         return True
-        
+
     except Exception as e:
         print(f"❌ Error creating user: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

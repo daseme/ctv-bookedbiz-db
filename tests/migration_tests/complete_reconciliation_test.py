@@ -46,8 +46,8 @@ def run_complete_reconciliation_test(year="2024"):
 
     print(f"🚀 COMPLETE REVENUE RECONCILIATION TEST for {year}")
     print("=" * 70)
-    print(f"Testing all 8 revenue categories with BaseQueryBuilder")
-    print(f"Expected total: $4,076,255.94")
+    print("Testing all 8 revenue categories with BaseQueryBuilder")
+    print("Expected total: $4,076,255.94")
     print("=" * 70)
 
     # Connect to database
@@ -59,7 +59,7 @@ def run_complete_reconciliation_test(year="2024"):
         total_builder.apply_standard_filters()
         total_result = total_builder.execute_revenue_query(conn)
 
-        print(f"\n📊 CATEGORY BREAKDOWN:")
+        print("\n📊 CATEGORY BREAKDOWN:")
         print(f"{'Category':<30} {'Revenue':<15} {'Spots':<8} {'%':<8} {'Status'}")
         print("-" * 70)
 
@@ -68,7 +68,7 @@ def run_complete_reconciliation_test(year="2024"):
         category_total_spots = 0
 
         # 1. Individual Language Blocks
-        print(f"1. Individual Language Blocks:", end=" ")
+        print("1. Individual Language Blocks:", end=" ")
         individual_data = get_individual_language_revenue(year, conn)
         individual_revenue = individual_data["total_revenue"]
         individual_spots = individual_data["total_spots"]
@@ -82,7 +82,7 @@ def run_complete_reconciliation_test(year="2024"):
         category_total_spots += individual_spots
 
         # 2. Chinese Prime Time
-        print(f"2. Chinese Prime Time:", end=" ")
+        print("2. Chinese Prime Time:", end=" ")
         chinese_result = get_chinese_prime_time_revenue(year, conn)
         chinese_pct = (chinese_result.revenue / total_result.revenue) * 100
         print(
@@ -94,7 +94,7 @@ def run_complete_reconciliation_test(year="2024"):
         category_total_spots += chinese_result.spot_count
 
         # 3. Multi-Language (Cross-Audience)
-        print(f"3. Multi-Language (Cross-Audience):", end=" ")
+        print("3. Multi-Language (Cross-Audience):", end=" ")
         multi_result = get_multi_language_revenue(year, conn)
         multi_pct = (multi_result.revenue / total_result.revenue) * 100
         print(
@@ -106,7 +106,7 @@ def run_complete_reconciliation_test(year="2024"):
         category_total_spots += multi_result.spot_count
 
         # 4. Direct Response
-        print(f"4. Direct Response:", end=" ")
+        print("4. Direct Response:", end=" ")
         dr_result = get_direct_response_revenue(year, conn)
         dr_pct = (dr_result.revenue / total_result.revenue) * 100
         print(
@@ -118,7 +118,7 @@ def run_complete_reconciliation_test(year="2024"):
         category_total_spots += dr_result.spot_count
 
         # 5. Other Non-Language
-        print(f"5. Other Non-Language:", end=" ")
+        print("5. Other Non-Language:", end=" ")
         other_result = get_other_non_language_revenue(year, conn)
         other_pct = (other_result.revenue / total_result.revenue) * 100
         print(
@@ -130,7 +130,7 @@ def run_complete_reconciliation_test(year="2024"):
         category_total_spots += other_result.spot_count
 
         # 6. Overnight Shopping
-        print(f"6. Overnight Shopping:", end=" ")
+        print("6. Overnight Shopping:", end=" ")
         shopping_result = get_overnight_shopping_revenue(year, conn)
         shopping_pct = (shopping_result.revenue / total_result.revenue) * 100
         print(
@@ -142,7 +142,7 @@ def run_complete_reconciliation_test(year="2024"):
         category_total_spots += shopping_result.spot_count
 
         # 7. Branded Content (PRD)
-        print(f"7. Branded Content (PRD):", end=" ")
+        print("7. Branded Content (PRD):", end=" ")
         prd_result = get_branded_content_revenue(year, conn)
         prd_pct = (prd_result.revenue / total_result.revenue) * 100
         print(
@@ -154,7 +154,7 @@ def run_complete_reconciliation_test(year="2024"):
         category_total_spots += prd_result.spot_count
 
         # 8. Services (SVC)
-        print(f"8. Services (SVC):", end=" ")
+        print("8. Services (SVC):", end=" ")
         svc_result = get_services_revenue(year, conn)
         svc_pct = (svc_result.revenue / total_result.revenue) * 100
         print(
@@ -177,7 +177,7 @@ def run_complete_reconciliation_test(year="2024"):
         difference = abs(category_total_revenue - total_result.revenue)
         spot_difference = abs(category_total_spots - total_result.spot_count)
 
-        print(f"\n🔍 RECONCILIATION ANALYSIS:")
+        print("\n🔍 RECONCILIATION ANALYSIS:")
         print(
             f"{'Metric':<25} {'Categories':<15} {'Database':<15} {'Difference':<15} {'Status'}"
         )
@@ -196,22 +196,22 @@ def run_complete_reconciliation_test(year="2024"):
         print(f"{'Error Percentage':<25} {error_pct:>26.6f}%")
 
         # Final result
-        print(f"\n🎯 FINAL RECONCILIATION RESULT:")
+        print("\n🎯 FINAL RECONCILIATION RESULT:")
         if difference < 1.0 and spot_difference == 0:
-            print(f"✅ PERFECT RECONCILIATION ACHIEVED!")
+            print("✅ PERFECT RECONCILIATION ACHIEVED!")
             print(f"   • Revenue difference: ${difference:.2f} (< $1.00)")
             print(f"   • Spot difference: {spot_difference} (perfect match)")
             print(f"   • Error rate: {error_pct:.6f}% (essentially zero)")
             perfect_reconciliation = True
         else:
-            print(f"❌ RECONCILIATION ISSUES FOUND:")
+            print("❌ RECONCILIATION ISSUES FOUND:")
             print(f"   • Revenue difference: ${difference:.2f}")
             print(f"   • Spot difference: {spot_difference}")
             print(f"   • Error rate: {error_pct:.6f}%")
             perfect_reconciliation = False
 
         # Strategic insights summary
-        print(f"\n📈 STRATEGIC INSIGHTS SUMMARY:")
+        print("\n📈 STRATEGIC INSIGHTS SUMMARY:")
         print(
             f"   • Language-Specific Revenue: ${individual_revenue:,.2f} ({individual_pct:.1f}%)"
         )
@@ -222,22 +222,22 @@ def run_complete_reconciliation_test(year="2024"):
             f"   • Chinese Strategy Total: ${individual_data['languages'][1]['revenue'] + chinese_result.revenue:,.2f}"
         )  # Chinese individual + Chinese prime time
         print(
-            f"   • Filipino Cross-Audience Leadership: Confirmed in Multi-Language category"
+            "   • Filipino Cross-Audience Leadership: Confirmed in Multi-Language category"
         )
         print(f"   • Direct Response: ${dr_result.revenue:,.2f} ({dr_pct:.1f}%)")
-        print(f"   • Shopping vs Advertising: Clear separation maintained")
+        print("   • Shopping vs Advertising: Clear separation maintained")
 
         # BaseQueryBuilder success metrics
-        print(f"\n🏆 BASEquerybuilder SUCCESS METRICS:")
-        print(f"   • Categories migrated: 8/8 (100%)")
+        print("\n🏆 BASEquerybuilder SUCCESS METRICS:")
+        print("   • Categories migrated: 8/8 (100%)")
         print(
             f"   • Revenue reconciliation: {'Perfect' if perfect_reconciliation else 'Issues found'}"
         )
-        print(f"   • Business rule consistency: Achieved")
+        print("   • Business rule consistency: Achieved")
         print(
-            f"   • Complexity handling: Chinese Prime Time, Multi-Language exclusions working"
+            "   • Complexity handling: Chinese Prime Time, Multi-Language exclusions working"
         )
-        print(f"   • Evolution ready: Foundation established for new business rules")
+        print("   • Evolution ready: Foundation established for new business rules")
 
         return {
             "perfect_reconciliation": perfect_reconciliation,
@@ -255,7 +255,7 @@ def run_complete_reconciliation_test(year="2024"):
 def test_individual_categories():
     """Test each category individually first"""
 
-    print(f"🧪 PRE-RECONCILIATION: Testing Individual Categories")
+    print("🧪 PRE-RECONCILIATION: Testing Individual Categories")
     print("=" * 60)
 
     conn = sqlite3.connect("data/database/production.db")
@@ -272,7 +272,7 @@ def test_individual_categories():
         for category, test_file in tests:
             print(f"\n{category}:")
             print(f"   Run: uv run python {test_file}")
-            print(f"   Expected: Perfect validation")
+            print("   Expected: Perfect validation")
 
         return all_passed
 
@@ -288,21 +288,21 @@ if __name__ == "__main__":
     results = run_complete_reconciliation_test("2024")
 
     if results["perfect_reconciliation"]:
-        print(f"\n🎉 SUCCESS! BaseQueryBuilder migration is COMPLETE!")
-        print(f"All 8 revenue categories working perfectly with:")
+        print("\n🎉 SUCCESS! BaseQueryBuilder migration is COMPLETE!")
+        print("All 8 revenue categories working perfectly with:")
         print(f"   • Perfect reconciliation: ${results['difference']:.2f} difference")
         print(f"   • Error rate: {results['error_percentage']:.6f}%")
         print(f"   • Total revenue: ${results['total_revenue']:,.2f}")
-        print(f"   • Foundation ready for business rule evolution")
+        print("   • Foundation ready for business rule evolution")
 
-        print(f"\n🎯 NEXT STEPS:")
-        print(f"   • Replace legacy queries with BaseQueryBuilder")
-        print(f"   • Add new categories using established patterns")
-        print(f"   • Implement business rule configuration")
-        print(f"   • Build automated reconciliation monitoring")
+        print("\n🎯 NEXT STEPS:")
+        print("   • Replace legacy queries with BaseQueryBuilder")
+        print("   • Add new categories using established patterns")
+        print("   • Implement business rule configuration")
+        print("   • Build automated reconciliation monitoring")
 
     else:
-        print(f"\n❌ RECONCILIATION ISSUES FOUND")
+        print("\n❌ RECONCILIATION ISSUES FOUND")
         print(f"   • Revenue difference: ${results['difference']:.2f}")
         print(f"   • Error rate: {results['error_percentage']:.6f}%")
-        print(f"   • Investigation required before proceeding")
+        print("   • Investigation required before proceeding")
