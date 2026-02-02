@@ -1259,20 +1259,7 @@ class ReportDataService:
                             ELSE TRIM(s.sales_person)
                         END AS ae,
                         COALESCE(sect.sector_name, 'Unknown') AS sector,
-                        CASE 
-                            WHEN s.broadcast_month LIKE 'Jan-%' THEN '01'
-                            WHEN s.broadcast_month LIKE 'Feb-%' THEN '02'
-                            WHEN s.broadcast_month LIKE 'Mar-%' THEN '03'
-                            WHEN s.broadcast_month LIKE 'Apr-%' THEN '04'
-                            WHEN s.broadcast_month LIKE 'May-%' THEN '05'
-                            WHEN s.broadcast_month LIKE 'Jun-%' THEN '06'
-                            WHEN s.broadcast_month LIKE 'Jul-%' THEN '07'
-                            WHEN s.broadcast_month LIKE 'Aug-%' THEN '08'
-                            WHEN s.broadcast_month LIKE 'Sep-%' THEN '09'
-                            WHEN s.broadcast_month LIKE 'Oct-%' THEN '10'
-                            WHEN s.broadcast_month LIKE 'Nov-%' THEN '11'
-                            WHEN s.broadcast_month LIKE 'Dec-%' THEN '12'
-                        END AS month_num,
+                        {RevenueQueryBuilder.build_broadcast_month_case("s.broadcast_month")} AS month_num,
                         COALESCE(s.revenue_type, 'Regular') AS revenue_type,
                         COALESCE(s.gross_rate, 0) AS gross_revenue,
                         COALESCE(s.station_net, 0) AS net_revenue

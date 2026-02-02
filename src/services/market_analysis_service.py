@@ -7,6 +7,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from datetime import date
+from src.utils.language_constants import LanguageConstants
 
 logger = logging.getLogger(__name__)
 
@@ -31,21 +32,6 @@ class MarketAnalysisData:
 class MarketAnalysisService:
     """Service for market analysis data retrieval and formatting."""
 
-    LANGUAGE_GROUPS = {
-        "M": "Chinese",
-        "C": "Chinese",
-        "M/C": "Chinese",
-        "V": "Vietnamese",
-        "T": "Filipino",
-        "K": "Korean",
-        "J": "Japanese",
-        "SA": "South Asian",
-        "HM": "Hmong",
-        "E": "English",
-        "EN": "English",
-        "ENG": "English",
-        "P": "South Asian",  # Punjabi
-    }
 
     def __init__(self, db_connection):
         self.db = db_connection
@@ -336,7 +322,7 @@ class MarketAnalysisService:
         for row in rows:
             code, spots, revenue = row
             code = code if code else "EMPTY"
-            group = self.LANGUAGE_GROUPS.get(code, "Other")
+            group = LanguageConstants.get_language_group(code)
             codes.append(
                 {
                     "code": code,
