@@ -36,6 +36,11 @@
 - Zero context switching required from the user
 - Go fix failing CI tests without being told how
 
+## Git Workflow
+- Always commit atomically with descriptive messages
+- Stay on current branch (typically dev)
+- Don't push—leave that to user
+
 ## Project-Specific Context
 - DB access pattern: `db = container.get("database_connection")` then `with db.connection() as conn:`
 - All revenue queries exclude Trade: `WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)`
