@@ -10,64 +10,15 @@
 {% endblock %}
 
 {% block extra_styles %}
-<!-- Nord Theme Foundation -->
+<!-- Nord Enhanced Theme for Management Report -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/shared/nord-enhanced.css') }}">
 <style>
-/* Nord Color Palette */
+/* Management-specific Nord theme extensions */
 :root {
-    /* Nord Polar Night */
-    --nord0: #2e3440;
-    --nord1: #3b4252;
-    --nord2: #434c5e;
-    --nord3: #4c566a;
-    
-    /* Nord Snow Storm */
-    --nord4: #d8dee9;
-    --nord5: #e5e9f0;
-    --nord6: #eceff4;
-    
-    /* Nord Frost */
-    --nord7: #8fbcbb;  /* Frost Teal */
-    --nord8: #88c0d0;  /* Frost Light Blue */
-    --nord9: #81a1c1;  /* Frost Blue */
-    --nord10: #5e81ac; /* Frost Dark Blue */
-    
-    /* Nord Aurora */
-    --nord11: #bf616a; /* Aurora Red */
-    --nord12: #d08770; /* Aurora Orange */
-    --nord13: #ebcb8b; /* Aurora Yellow */
-    --nord14: #a3be8c; /* Aurora Green */
-    --nord15: #b48ead; /* Aurora Purple */
-    
-    /* Semantic Variables */
-    --bg-primary: var(--nord6);
-    --bg-secondary: var(--nord5);
-    --bg-tertiary: var(--nord4);
-    --text-primary: var(--nord0);
-    --text-secondary: var(--nord3);
-    --text-muted: var(--nord3);
-    --border-color: var(--nord4);
-    --shadow-color: rgba(46, 52, 64, 0.1);
-    
-    /* Accent Colors */
+    /* Management specific accent color */
     --accent-executive: var(--nord10);
-    --accent-success: var(--nord14);
-    --accent-warning: var(--nord13);
-    --accent-danger: var(--nord11);
-    --accent-info: var(--nord8);
 }
-
-/* Override base styles for Nord theme */
-body {
-    background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
-    color: var(--text-primary);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-
-/* Nord Navigation Bar Override */
-.top-nav {
-    background: linear-gradient(135deg, var(--nord0) 0%, var(--nord1) 100%) !important;
-    box-shadow: 0 2px 4px rgba(46, 52, 64, 0.3) !important;
-}
+/* Management report styling extends Nord Enhanced theme */
 
 .main-nav {
     background: var(--bg-secondary) !important;
@@ -439,8 +390,7 @@ body {
 }
 </style>
 
-<!-- Google Fonts for better typography -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Google Fonts already included in nord-enhanced.css -->
 {% endblock %}
 
 {% block content %}
