@@ -128,14 +128,6 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.info("Pricing analysis blueprint registered successfully")
     except Exception as e:
         logger.error(f"Failed to register pricing blueprint: {e}")
-
-    try:
-        from src.web.routes.reports import reports_bp
-        app.register_blueprint(reports_bp)
-        logger.info("Reports blueprint registered successfully")
-    except Exception as e:
-        logger.error(f"Failed to register reports blueprint: {e}")
-
     try:
         from src.web.routes.length_analysis import length_analysis_bp
         app.register_blueprint(length_analysis_bp)
