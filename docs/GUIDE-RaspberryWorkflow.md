@@ -1,13 +1,14 @@
-````markdown
 # Raspberry Pi Development Workflow (pi-ctv)
 
 ## Overview
+
 This document describes how the **CTV BookedBiz DB** web app is deployed and operated on **pi-ctv**, and how developers collaborate safely (code vs data vs service ownership).
 
 **Key idea:**  
-- **Code** lives in `/opt/apps/ctv-bookedbiz-db` (shared read/write for deploy group).  
-- **Runtime (production)** runs as `ctvbooked` via **systemd + uvicorn**.  
+- **Production code** lives in `/opt/apps/ctv-bookedbiz-db` (shared read/write for deploy group).  
+- **Production runtime** runs as `ctvbooked` via **systemd + uvicorn** on port 8000.  
 - **Production data** lives under `/var/lib/ctv-bookedbiz-db` (owned by `ctvbooked`).  
+- **Development** runs from user home directories on port 5100.  
 - The old `flaskapp.service` is **retired** and **masked**.
 
 ---
@@ -20,31 +21,41 @@ This document describes how the **CTV BookedBiz DB** web app is deployed and ope
 - **Network**: Tailscale VPN
 - **Repo**: GitHub `daseme/ctv-bookedbiz-db`
 - **Database**: SQLite
-- **Prod web server**: `uvicorn` (serving `src.web.asgi:app`)
+- **Web server**: `uvicorn` (serving `src.web.asgi:app`)
 - **Service manager**: systemd
 
-### Authoritative paths (current)
-- **App code (repo working tree):**
-  - `/opt/apps/ctv-bookedbiz-db`
-- **Production venv (systemd uses this):**
-  - `/opt/venvs/ctv-bookedbiz-db`
-- **Production database + processed data:**
-  - `/var/lib/ctv-bookedbiz-db/production.db`
-  - `/var/lib/ctv-bookedbiz-db/processed`
-- **Production env file:**
-  - `/etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env`
+### Port Allocation
 
-### Ports
-- **8000**: production web service (`ctv-bookedbiz-db.service`)
-- **5100**: not in use (reserved)
+| Port | Environment | Service | Owner |
+|------|-------------|---------|-------|
+| 8000 | Production | `ctv-bookedbiz-db.service` | system (ctvbooked) |
+| 5100 | Development | `spotops-dev.service` | user (daseme) |
+
+### Authoritative Paths
+
+#### Production
+- **App code**: `/opt/apps/ctv-bookedbiz-db`
+- **Venv**: `/opt/venvs/ctv-bookedbiz-db`
+- **Database**: `/var/lib/ctv-bookedbiz-db/production.db`
+- **Data**: `/var/lib/ctv-bookedbiz-db/processed`
+- **Env file**: `/etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env`
+
+#### Development
+- **App code**: `~/dev/ctv-bookedbiz-db`
+- **Venv**: `~/dev/ctv-bookedbiz-db/.venv`
+- **Database**: `~/dev/ctv-bookedbiz-db/.data/dev.db`
+- **Data**: `~/dev/ctv-bookedbiz-db/.data/processed`
+- **Logs**: `~/dev/logs/ctv-dev-uvicorn.out`
 
 ---
 
 ## Team Members / Accounts
-- **daseme**: primary maintainer, SSH access, can administer services
-- **jellee26**: collaborator (may require group membership to edit in `/opt/apps/...`)
 
-> Group policy is enforced via Linux groups and permissions; do not assume group membership—verify with `id <user>`.
+- **daseme**: primary maintainer, SSH access, can administer services
+- **jellee26**: collaborator (requires `apps-deploy` group membership)
+- **ctvbooked**: production runtime user (no login)
+
+> Group policy is enforced via Linux groups and permissions; verify with `id <user>`.
 
 ---
 
@@ -52,24 +63,19 @@ This document describes how the **CTV BookedBiz DB** web app is deployed and ope
 
 ### Code directory (`/opt/apps/ctv-bookedbiz-db`)
 - Owned by `ctvbooked:apps-deploy`
-- Permissions:
-  - directory: `2775` (setgid so new files inherit `apps-deploy`)
-  - files: group-readable; group-write enabled where needed for collaboration
+- Permissions: `2775` (setgid so new files inherit `apps-deploy`)
 
 **Validate:**
 ```bash
 stat -c "%U:%G %a %n" /opt/apps/ctv-bookedbiz-db
-stat -c "%U:%G %a %n" /opt/apps/ctv-bookedbiz-db/uv.lock
 stat -c "%U:%G %a %n" /opt/apps/ctv-bookedbiz-db/pyproject.toml
-````
+```
 
 ### Data directory (`/var/lib/ctv-bookedbiz-db`)
-
-* Owned by `ctvbooked:ctvbooked`
-* Production DB is not treated as a collaborative working file.
+- Owned by `ctvbooked:ctvbooked`
+- Production DB is not a collaborative working file
 
 **Validate:**
-
 ```bash
 sudo ls -ld /var/lib/ctv-bookedbiz-db /var/lib/ctv-bookedbiz-db/processed
 sudo ls -l /var/lib/ctv-bookedbiz-db/production.db
@@ -77,42 +83,167 @@ sudo ls -l /var/lib/ctv-bookedbiz-db/production.db
 
 ---
 
-## Production Service (Option A)
+## Production Service
 
 ### Service: `ctv-bookedbiz-db.service`
 
-**File:** `/etc/systemd/system/ctv-bookedbiz-db.service`
-**Runs as:** `ctvbooked`
+**File:** `/etc/systemd/system/ctv-bookedbiz-db.service`  
+**Runs as:** `ctvbooked`  
+**Port:** 8000  
 **Exec:** `/opt/venvs/ctv-bookedbiz-db/bin/uvicorn src.web.asgi:app --host 0.0.0.0 --port 8000`
 
-**Status / logs:**
+### Control commands
 
 ```bash
-sudo systemctl status ctv-bookedbiz-db.service --no-pager
-sudo journalctl -u ctv-bookedbiz-db.service -n 100 --no-pager
+# Status
+sudo systemctl status ctv-bookedbiz-db --no-pager
+
+# Restart (after code deploy)
+sudo systemctl restart ctv-bookedbiz-db
+
+# Logs (live)
+sudo journalctl -u ctv-bookedbiz-db -f
+
+# Logs (last 100 lines)
+sudo journalctl -u ctv-bookedbiz-db -n 100 --no-pager
 ```
 
-**Restart (after code deploy or config change):**
+### Verify running
 
 ```bash
-sudo systemctl restart ctv-bookedbiz-db.service
-```
-
-**Confirm port + basic HTTP behavior:**
-
-```bash
-sudo ss -lptn | egrep ':8000' || true
-curl -I http://127.0.0.1:8000/ || true
-# Expected: 302 Location: /reports/
+sudo ss -lptn | egrep ':8000'
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
+# Expected: 302
 ```
 
 ---
 
-## Legacy Service (Option B) — Retired
+## Development Server
+
+### Purpose
+Isolated dev instance for testing changes before production deployment. Uses separate database, data paths, and port.
+
+### Option A: Manual Start (quick testing)
+
+```bash
+cd ~/dev/ctv-bookedbiz-db
+source .venv/bin/activate
+export ENVIRONMENT=development
+export PORT=5100
+export DB_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/dev.db
+export DATA_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/processed
+mkdir -p "$DATA_PATH"
+
+> ~/dev/logs/ctv-dev-uvicorn.out
+nohup uvicorn src.web.asgi:app --host 0.0.0.0 --port "$PORT" \
+  > ~/dev/logs/ctv-dev-uvicorn.out 2>&1 &
+```
+
+**Verify:**
+```bash
+ss -lptn 'sport = :5100'
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5100/
+```
+
+**Stop:**
+```bash
+pkill -f "uvicorn src.web.asgi:app.*--port 5100"
+```
+
+**View logs:**
+```bash
+tail -f ~/dev/logs/ctv-dev-uvicorn.out
+```
+
+### Option B: systemd User Service (recommended)
+
+Persistent dev server management without orphan processes.
+
+#### Install service
+
+```bash
+mkdir -p ~/.config/systemd/user
+mkdir -p ~/dev/logs
+
+cat > ~/.config/systemd/user/spotops-dev.service << 'EOF'
+[Unit]
+Description=SpotOps Dev Server (port 5100)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/daseme/dev/ctv-bookedbiz-db
+Environment=ENVIRONMENT=development
+Environment=PORT=5100
+Environment=DB_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/dev.db
+Environment=DATA_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/processed
+ExecStartPre=/bin/mkdir -p /home/daseme/dev/ctv-bookedbiz-db/.data/processed
+ExecStart=/home/daseme/dev/ctv-bookedbiz-db/.venv/bin/uvicorn src.web.asgi:app --host 0.0.0.0 --port 5100
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable spotops-dev
+```
+
+#### Enable linger (keeps service running after logout)
+
+```bash
+sudo loginctl enable-linger daseme
+```
+
+Without linger, user services stop when you disconnect SSH.
+
+#### Control commands
+
+```bash
+# Start
+systemctl --user start spotops-dev
+
+# Stop
+systemctl --user stop spotops-dev
+
+# Restart (after code changes)
+systemctl --user restart spotops-dev
+
+# Status
+systemctl --user status spotops-dev
+
+# Logs (live)
+journalctl --user -u spotops-dev -f
+
+# Logs (last 100 lines)
+journalctl --user -u spotops-dev -n 100 --no-pager
+```
+
+#### Verify
+
+```bash
+systemctl --user is-active spotops-dev
+ss -lptn 'sport = :5100'
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5100/
+```
+
+#### Uninstall (if needed)
+
+```bash
+systemctl --user stop spotops-dev
+systemctl --user disable spotops-dev
+rm ~/.config/systemd/user/spotops-dev.service
+systemctl --user daemon-reload
+```
+
+---
+
+## Legacy Service (Retired)
 
 ### Service: `flaskapp.service`
 
-This service used `runserver.sh` and a repo-local `.venv`. It failed once `flask_login` was introduced (dependency drift) and is not the production path.
+Old Flask dev runner using `.venv` and `runserver.sh`. Incompatible with current dependency model.
 
 **State:** masked (cannot be started)
 
@@ -121,123 +252,114 @@ sudo systemctl status flaskapp.service --no-pager
 sudo systemctl is-enabled flaskapp.service || true
 ```
 
+> Never revive this service. If needed for reference, unmask explicitly and rename.
+
 ---
 
-## Dependency Management (Current)
+## Dependency Management
 
-### Source of truth
+### Tooling
+- **uv** is the single source of truth
+- `pyproject.toml` defines dependencies
+- `uv.lock` is committed and authoritative
 
-* `pyproject.toml` — declared dependencies
-* `uv.lock` — resolved, pinned dependency set
-
-### Recent fix applied
-
-* `flask-login==0.6.3` was added to `pyproject.toml`
-* `uv lock` was run successfully and `uv.lock` contains flask-login entries
-
-**Verify:**
+### Verify runtime venv has dependencies
 
 ```bash
-grep -n 'flask-login' pyproject.toml
-grep -nEi 'name = "flask-login"|flask-login' uv.lock | head
+# Production
+sudo -u ctvbooked -H /opt/venvs/ctv-bookedbiz-db/bin/python -c "import flask_login; print('ok')"
+
+# Development
+~/dev/ctv-bookedbiz-db/.venv/bin/python -c "import flask_login; print('ok')"
 ```
 
-### Verify runtime venv has the dependency
-
-Run as `ctvbooked` using the production venv:
+### Adding dependencies
 
 ```bash
-sudo -u ctvbooked -H bash -lc '
-/opt/venvs/ctv-bookedbiz-db/bin/python -c "import flask_login; print(\"flask_login ok\")"
-'
+cd /opt/apps/ctv-bookedbiz-db
+# Edit pyproject.toml
+uv lock
+uv sync --frozen  # in production venv context
+sudo systemctl restart ctv-bookedbiz-db
 ```
-
-> Installing/updating packages in `/opt/venvs/ctv-bookedbiz-db` must be done in a controlled way (preferably as `ctvbooked`) to avoid root-owned files and permission traps.
 
 ---
 
 ## Production Environment Variables
 
-### Env file
+**File:** `/etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env`
 
-`/etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env` contains:
-
-* `DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db`
-* `DATA_PATH=/var/lib/ctv-bookedbiz-db/processed`
-
-**Show key vars:**
-
-```bash
-sudo egrep -n '^(DATABASE_PATH|DATA_PATH|PORT)=' /etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env || true
+```env
+DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db
+DATA_PATH=/var/lib/ctv-bookedbiz-db/processed
 ```
 
-**Validate sqlite open as ctvbooked (with env loaded):**
+**Show key vars:**
+```bash
+sudo egrep -n '^(DATABASE_PATH|DATA_PATH|PORT)=' /etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env
+```
 
+**Validate DB access as ctvbooked:**
 ```bash
 sudo -u ctvbooked -H bash -lc '
-set -e
-set -a
-source /etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env
-set +a
-python3 - <<PY
-import os, sqlite3
-db=os.environ["DATABASE_PATH"]
-print("DATABASE_PATH=", db)
-con=sqlite3.connect(db)
-con.execute("select 1").fetchone()
-con.close()
-print("sqlite open ok")
-print("DATA_PATH=", os.environ.get("DATA_PATH"))
-PY
+set -a; source /etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env; set +a
+python3 -c "import os,sqlite3; sqlite3.connect(os.environ[\"DATABASE_PATH\"]).execute(\"select 1\"); print(\"sqlite ok\")"
 '
 ```
 
 ---
 
-## Daily Developer Workflow (pi-ctv)
+## Daily Developer Workflow
 
 ### Connect (Tailscale SSH)
 
 ```bash
-ssh daseme@<tailscale-ip-of-pi-ctv>
-# or
-ssh jellee26@<tailscale-ip-of-pi-ctv>
+ssh daseme@pi-ctv
 ```
 
-### Pull latest code
+### Development cycle
 
 ```bash
+# Pull latest to dev checkout
+cd ~/dev/ctv-bookedbiz-db
+git pull
+
+# Restart dev server
+systemctl --user restart spotops-dev
+
+# Watch logs
+journalctl --user -u spotops-dev -f
+
+# Test in browser
+# http://pi-ctv:5100/
+```
+
+### Deploy to production
+
+```bash
+# Pull to production code path
 cd /opt/apps/ctv-bookedbiz-db
 git pull
-```
 
-### Restart production service after changes that affect runtime
-
-```bash
-sudo systemctl restart ctv-bookedbiz-db.service
-sudo systemctl status ctv-bookedbiz-db.service --no-pager
-```
-
-### Watch logs during a test session
-
-```bash
-sudo journalctl -u ctv-bookedbiz-db.service -f
+# Restart production service
+sudo systemctl restart ctv-bookedbiz-db
+sudo systemctl status ctv-bookedbiz-db --no-pager
 ```
 
 ---
 
-## Moving files (Windows ↔ Pi)
+## File Transfer
 
 ### Windows → Pi (PowerShell)
 
 ```powershell
-scp "C:\Path\To\File.xlsx" daseme@raspberrypi:/opt/apps/ctv-bookedbiz-db/data/raw/File.xlsx
+scp "C:\Path\To\File.xlsx" daseme@pi-ctv:/home/daseme/dev/ctv-bookedbiz-db/.data/raw/
 ```
 
-### Pi → Windows (Tailscale file send)
+### Pi → Windows (Tailscale)
 
 ```bash
-sudo tailscale file cp "./data/raw/daily/Commercial Log 250912.xlsx" <your-windows-device-name>:
+tailscale file cp "./file.xlsx" <windows-device-name>:
 ```
 
 ---
@@ -246,103 +368,113 @@ sudo tailscale file cp "./data/raw/daily/Commercial Log 250912.xlsx" <your-windo
 
 ### Remote-SSH (recommended)
 
-* Use SSH into pi-ctv, open folder `/opt/apps/ctv-bookedbiz-db`
-* Use Python interpreter from the production venv if you want parity with runtime:
+- SSH into pi-ctv, open folder:
+  - Production: `/opt/apps/ctv-bookedbiz-db`
+  - Development: `~/dev/ctv-bookedbiz-db`
+- Python interpreter:
+  - Production: `/opt/venvs/ctv-bookedbiz-db/bin/python`
+  - Development: `~/dev/ctv-bookedbiz-db/.venv/bin/python`
 
-  * `/opt/venvs/ctv-bookedbiz-db/bin/python`
+### VS Code Tunnel
 
----
-
-## VS Code Remote Tunnel (pi-ctv)
-
-> This section describes a **user-level systemd service** named `code-tunnel.service`.
-> It must exist under the **developer account** (usually `daseme`) at:
-> `~/.config/systemd/user/code-tunnel.service`
-
-### Status / logs
+User-level systemd service at `~/.config/systemd/user/code-tunnel.service`
 
 ```bash
-systemctl --user status code-tunnel.service
-journalctl --user -u code-tunnel.service -n 50 --no-pager
-journalctl --user -u code-tunnel.service -f
+# Status
+systemctl --user status code-tunnel
+
+# Restart
+systemctl --user restart code-tunnel
+
+# Logs
+journalctl --user -u code-tunnel -f
 ```
 
-### Restart
-
-```bash
-systemctl --user restart code-tunnel.service
-```
-
-### Desktop usage
-
-* In VS Code, Remote Explorer → **Tunnels** → connect to `raspberrypi`
-* Open folder: `/opt/apps/ctv-bookedbiz-db`
+In VS Code: Remote Explorer → Tunnels → connect to `raspberrypi`
 
 ---
 
 ## Troubleshooting
 
-### App not reachable on 8000
+### Production not reachable on 8000
 
 ```bash
-sudo systemctl status ctv-bookedbiz-db.service --no-pager
-sudo journalctl -u ctv-bookedbiz-db.service -n 200 --no-pager
-sudo ss -lptn | egrep ':8000' || true
-curl -I http://127.0.0.1:8000/ || true
+sudo systemctl status ctv-bookedbiz-db --no-pager
+sudo journalctl -u ctv-bookedbiz-db -n 200 --no-pager
+sudo ss -lptn | egrep ':8000'
+curl -I http://127.0.0.1:8000/
 ```
 
-### Dependency import error in production
-
-Validate using production venv as `ctvbooked`:
+### Dev not reachable on 5100
 
 ```bash
-sudo -u ctvbooked -H /opt/venvs/ctv-bookedbiz-db/bin/python -c "import flask_login"
+systemctl --user status spotops-dev
+journalctl --user -u spotops-dev -n 100 --no-pager
+ss -lptn 'sport = :5100'
+curl -I http://127.0.0.1:5100/
+```
+
+### Port already in use
+
+```bash
+# Find what's holding the port
+sudo lsof -i :5100
+# Kill it
+kill -9 <PID>
+```
+
+### Dependency import error
+
+```bash
+# Production
+sudo -u ctvbooked -H /opt/venvs/ctv-bookedbiz-db/bin/python -c "import <module>"
+
+# Development
+~/dev/ctv-bookedbiz-db/.venv/bin/python -c "import <module>"
 ```
 
 ### Permission errors editing repo files
 
-Check ownership + mode:
-
 ```bash
 stat -c "%U:%G %a %n" /opt/apps/ctv-bookedbiz-db
-stat -c "%U:%G %a %n" /opt/apps/ctv-bookedbiz-db/pyproject.toml
 id
+# Ensure user is in apps-deploy group
 ```
 
 ---
 
 ## Quick Reference
 
-### Production service
+### Service Control
+
+| Environment | Start | Stop | Restart | Status |
+|-------------|-------|------|---------|--------|
+| Production | `sudo systemctl start ctv-bookedbiz-db` | `sudo systemctl stop ctv-bookedbiz-db` | `sudo systemctl restart ctv-bookedbiz-db` | `sudo systemctl status ctv-bookedbiz-db` |
+| Development | `systemctl --user start spotops-dev` | `systemctl --user stop spotops-dev` | `systemctl --user restart spotops-dev` | `systemctl --user status spotops-dev` |
+
+### Logs
 
 ```bash
-sudo systemctl status ctv-bookedbiz-db.service --no-pager
-sudo systemctl restart ctv-bookedbiz-db.service
-sudo journalctl -u ctv-bookedbiz-db.service -n 100 --no-pager
-sudo journalctl -u ctv-bookedbiz-db.service -f
+# Production
+sudo journalctl -u ctv-bookedbiz-db -f
+
+# Development
+journalctl --user -u spotops-dev -f
 ```
 
-### Verify running + reachable
+### Health Check
 
 ```bash
-sudo ss -lptn | egrep ':8000' || true
-curl -I http://127.0.0.1:8000/ || true
+# Production
+sudo ss -lptn | egrep ':8000' && curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
+
+# Development
+ss -lptn 'sport = :5100' && curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5100/
 ```
 
-### Env + DB sanity check
+### URLs
 
-```bash
-sudo egrep -n '^(DATABASE_PATH|DATA_PATH|PORT)=' /etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env || true
-sudo -u ctvbooked -H bash -lc 'set -a; source /etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env; set +a; python3 -c "import os,sqlite3; sqlite3.connect(os.environ[\"DATABASE_PATH\"]).execute(\"select 1\"); print(\"sqlite ok\")"'
-```
-
-### VS Code tunnel
-
-```bash
-systemctl --user status code-tunnel.service
-systemctl --user restart code-tunnel.service
-journalctl --user -u code-tunnel.service -f
-```
-
-```
-```
+| Environment | URL |
+|-------------|-----|
+| Production | `http://pi-ctv:8000/` |
+| Development | `http://pi-ctv:5100/` |
