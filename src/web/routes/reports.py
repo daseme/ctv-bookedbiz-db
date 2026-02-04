@@ -427,7 +427,7 @@ def ae_dashboard_personal():
             try:
                 # Build date filter for account revenue
                 date_filter = ""
-                query_params = [ae_name]
+                query_params = []
 
                 if account_start_date and account_end_date:
                     date_filter = "AND s.air_date >= ? AND s.air_date <= ?"
@@ -443,6 +443,20 @@ def ae_dashboard_personal():
                     date_filter = "AND SUBSTR(s.broadcast_month, -2) = ?"
                     query_params.append(str(current_year)[-2:])
 
+                # Build entity filter - special handling for WorldLink and House
+                entity_filter = ""
+                if ae_name == "WorldLink":
+                    # WorldLink revenue is identified by bill_code prefix, not sales_person
+                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
+                elif ae_name == "House":
+                    # House revenue excludes WorldLink bill_codes
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink:%'"
+                    query_params.insert(0, ae_name)
+                else:
+                    # Standard AE lookup by sales_person
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
+                    query_params.insert(0, ae_name)
+
                 cursor = conn.execute(
                     f"""
                     SELECT 
@@ -452,7 +466,7 @@ def ae_dashboard_personal():
                     FROM spots s
                     LEFT JOIN customers c ON s.customer_id = c.customer_id
                     LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
-                    WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))
+                    {entity_filter}
                         {date_filter}
                         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
                         AND COALESCE(s.gross_rate, 0) > 0
