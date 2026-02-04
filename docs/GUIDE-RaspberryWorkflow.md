@@ -8,7 +8,7 @@ This document describes how the **CTV BookedBiz DB** web app is deployed and ope
 - **Production code** lives in `/opt/apps/ctv-bookedbiz-db` (shared read/write for deploy group).  
 - **Production runtime** runs as `ctvbooked` via **systemd + uvicorn** on port 8000.  
 - **Production data** lives under `/var/lib/ctv-bookedbiz-db` (owned by `ctvbooked`).  
-- **Development** runs from user home directories on port 5100.  
+- **Development runtime** runs as `daseme` via **systemd + uvicorn** on port 5100.  
 - The old `flaskapp.service` is **retired** and **masked**.
 
 ---
@@ -26,10 +26,10 @@ This document describes how the **CTV BookedBiz DB** web app is deployed and ope
 
 ### Port Allocation
 
-| Port | Environment | Service | Owner |
-|------|-------------|---------|-------|
-| 8000 | Production | `ctv-bookedbiz-db.service` | system (ctvbooked) |
-| 5100 | Development | `spotops-dev.service` | user (daseme) |
+| Port | Environment | Service | User |
+|------|-------------|---------|------|
+| 8000 | Production | `ctv-bookedbiz-db.service` | ctvbooked |
+| 5100 | Development | `spotops-dev.service` | daseme |
 
 ### Authoritative Paths
 
@@ -39,13 +39,14 @@ This document describes how the **CTV BookedBiz DB** web app is deployed and ope
 - **Database**: `/var/lib/ctv-bookedbiz-db/production.db`
 - **Data**: `/var/lib/ctv-bookedbiz-db/processed`
 - **Env file**: `/etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env`
+- **Service file**: `/etc/systemd/system/ctv-bookedbiz-db.service`
 
 #### Development
 - **App code**: `~/dev/ctv-bookedbiz-db`
 - **Venv**: `~/dev/ctv-bookedbiz-db/.venv`
 - **Database**: `~/dev/ctv-bookedbiz-db/.data/dev.db`
 - **Data**: `~/dev/ctv-bookedbiz-db/.data/processed`
-- **Logs**: `~/dev/logs/ctv-dev-uvicorn.out`
+- **Service file**: `/etc/systemd/system/spotops-dev.service`
 
 ---
 
@@ -118,123 +119,101 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
 
 ---
 
-## Development Server
+## Development Service
 
-### Purpose
-Isolated dev instance for testing changes before production deployment. Uses separate database, data paths, and port.
+### Service: `spotops-dev.service`
 
-### Option A: Manual Start (quick testing)
+**File:** `/etc/systemd/system/spotops-dev.service`  
+**Runs as:** `daseme`  
+**Port:** 5100
 
-```bash
-cd ~/dev/ctv-bookedbiz-db
-source .venv/bin/activate
-export ENVIRONMENT=development
-export PORT=5100
-export DB_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/dev.db
-export DATA_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/processed
-mkdir -p "$DATA_PATH"
+### Service definition
 
-> ~/dev/logs/ctv-dev-uvicorn.out
-nohup uvicorn src.web.asgi:app --host 0.0.0.0 --port "$PORT" \
-  > ~/dev/logs/ctv-dev-uvicorn.out 2>&1 &
-```
-
-**Verify:**
-```bash
-ss -lptn 'sport = :5100'
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5100/
-```
-
-**Stop:**
-```bash
-pkill -f "uvicorn src.web.asgi:app.*--port 5100"
-```
-
-**View logs:**
-```bash
-tail -f ~/dev/logs/ctv-dev-uvicorn.out
-```
-
-### Option B: systemd User Service (recommended)
-
-Persistent dev server management without orphan processes.
-
-#### Install service
-
-```bash
-mkdir -p ~/.config/systemd/user
-mkdir -p ~/dev/logs
-
-cat > ~/.config/systemd/user/spotops-dev.service << 'EOF'
+```ini
 [Unit]
-Description=SpotOps Dev Server (port 5100)
+Description=SpotOps Dev Server
 After=network.target
 
 [Service]
 Type=simple
+User=daseme
 WorkingDirectory=/home/daseme/dev/ctv-bookedbiz-db
 Environment=ENVIRONMENT=development
 Environment=PORT=5100
 Environment=DB_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/dev.db
 Environment=DATA_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/processed
-ExecStartPre=/bin/mkdir -p /home/daseme/dev/ctv-bookedbiz-db/.data/processed
 ExecStart=/home/daseme/dev/ctv-bookedbiz-db/.venv/bin/uvicorn src.web.asgi:app --host 0.0.0.0 --port 5100
 Restart=on-failure
-RestartSec=5
 
 [Install]
-WantedBy=default.target
-EOF
-
-systemctl --user daemon-reload
-systemctl --user enable spotops-dev
+WantedBy=multi-user.target
 ```
 
-#### Enable linger (keeps service running after logout)
+### Control commands
 
 ```bash
-sudo loginctl enable-linger daseme
-```
+# Status
+sudo systemctl status spotops-dev --no-pager
 
-Without linger, user services stop when you disconnect SSH.
-
-#### Control commands
-
-```bash
 # Start
-systemctl --user start spotops-dev
+sudo systemctl start spotops-dev
 
 # Stop
-systemctl --user stop spotops-dev
+sudo systemctl stop spotops-dev
 
 # Restart (after code changes)
-systemctl --user restart spotops-dev
-
-# Status
-systemctl --user status spotops-dev
+sudo systemctl restart spotops-dev
 
 # Logs (live)
-journalctl --user -u spotops-dev -f
+sudo journalctl -u spotops-dev -f
 
 # Logs (last 100 lines)
-journalctl --user -u spotops-dev -n 100 --no-pager
+sudo journalctl -u spotops-dev -n 100 --no-pager
 ```
 
-#### Verify
+### Verify running
 
 ```bash
-systemctl --user is-active spotops-dev
 ss -lptn 'sport = :5100'
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5100/
+# Expected: 302
 ```
 
-#### Uninstall (if needed)
+### Install (if not already installed)
 
 ```bash
-systemctl --user stop spotops-dev
-systemctl --user disable spotops-dev
-rm ~/.config/systemd/user/spotops-dev.service
-systemctl --user daemon-reload
+sudo tee /etc/systemd/system/spotops-dev.service << 'EOF'
+[Unit]
+Description=SpotOps Dev Server
+After=network.target
+
+[Service]
+Type=simple
+User=daseme
+WorkingDirectory=/home/daseme/dev/ctv-bookedbiz-db
+Environment=ENVIRONMENT=development
+Environment=PORT=5100
+Environment=DB_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/dev.db
+Environment=DATA_PATH=/home/daseme/dev/ctv-bookedbiz-db/.data/processed
+ExecStart=/home/daseme/dev/ctv-bookedbiz-db/.venv/bin/uvicorn src.web.asgi:app --host 0.0.0.0 --port 5100
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable spotops-dev
+sudo systemctl start spotops-dev
+```
+
+### Uninstall (if needed)
+
+```bash
+sudo systemctl stop spotops-dev
+sudo systemctl disable spotops-dev
+sudo rm /etc/systemd/system/spotops-dev.service
+sudo systemctl daemon-reload
 ```
 
 ---
@@ -325,10 +304,10 @@ cd ~/dev/ctv-bookedbiz-db
 git pull
 
 # Restart dev server
-systemctl --user restart spotops-dev
+sudo systemctl restart spotops-dev
 
 # Watch logs
-journalctl --user -u spotops-dev -f
+sudo journalctl -u spotops-dev -f
 
 # Test in browser
 # http://pi-ctv:5100/
@@ -408,8 +387,8 @@ curl -I http://127.0.0.1:8000/
 ### Dev not reachable on 5100
 
 ```bash
-systemctl --user status spotops-dev
-journalctl --user -u spotops-dev -n 100 --no-pager
+sudo systemctl status spotops-dev --no-pager
+sudo journalctl -u spotops-dev -n 100 --no-pager
 ss -lptn 'sport = :5100'
 curl -I http://127.0.0.1:5100/
 ```
@@ -421,6 +400,8 @@ curl -I http://127.0.0.1:5100/
 sudo lsof -i :5100
 # Kill it
 kill -9 <PID>
+# Then restart service
+sudo systemctl restart spotops-dev
 ```
 
 ### Dependency import error
@@ -450,7 +431,7 @@ id
 | Environment | Start | Stop | Restart | Status |
 |-------------|-------|------|---------|--------|
 | Production | `sudo systemctl start ctv-bookedbiz-db` | `sudo systemctl stop ctv-bookedbiz-db` | `sudo systemctl restart ctv-bookedbiz-db` | `sudo systemctl status ctv-bookedbiz-db` |
-| Development | `systemctl --user start spotops-dev` | `systemctl --user stop spotops-dev` | `systemctl --user restart spotops-dev` | `systemctl --user status spotops-dev` |
+| Development | `sudo systemctl start spotops-dev` | `sudo systemctl stop spotops-dev` | `sudo systemctl restart spotops-dev` | `sudo systemctl status spotops-dev` |
 
 ### Logs
 
@@ -459,7 +440,7 @@ id
 sudo journalctl -u ctv-bookedbiz-db -f
 
 # Development
-journalctl --user -u spotops-dev -f
+sudo journalctl -u spotops-dev -f
 ```
 
 ### Health Check
