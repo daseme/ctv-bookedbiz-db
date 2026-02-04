@@ -49,7 +49,8 @@
         background: white;
         border-radius: 8px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: visible;
         margin-bottom: 24px;
     }
     
@@ -62,7 +63,7 @@
     .budget-table th {
         background: var(--nord0);
         color: var(--nord6);
-        padding: 12px 16px;
+        padding: 8px 10px;
         text-align: left;
         font-weight: 500;
         font-size: 11px;
@@ -75,15 +76,23 @@
     
     .budget-table th.number {
         text-align: right;
+        width: 70px;
+        min-width: 70px;
+        padding-left: 8px;
+        padding-right: 8px;
     }
     
     .budget-table td {
-        padding: 10px 16px;
+        padding: 6px 8px;
         border-bottom: 1px solid #e2e8f0;
     }
     
     .budget-table td.number {
         text-align: right;
+        width: 70px;
+        min-width: 70px;
+        padding-left: 8px;
+        padding-right: 8px;
     }
     
     .budget-table tr:hover {
@@ -91,7 +100,7 @@
     }
     
     .ae-name {
-        font-weight: 600;
+        font-weight: 500;
         color: var(--nord0);
     }
     
@@ -100,7 +109,7 @@
         padding: 2px 8px;
         border-radius: 4px;
         font-size: 10px;
-        font-weight: 600;
+        font-weight: 500;
         margin-left: 8px;
     }
     
@@ -108,12 +117,32 @@
     .ae-type.house { background: var(--nord14); color: white; }
     .ae-type.agency { background: var(--nord15); color: white; }
     
+    /* All table inputs: same border and appearance so none look "bolder" */
+    .budget-table input[type="text"],
+    .budget-table input[type="number"] {
+        -webkit-appearance: none;
+        appearance: none;
+        border: 1px solid #e2e8f0;
+        border-radius: 3px;
+        font-weight: 400;
+        box-sizing: border-box;
+        text-align: right;
+    }
+    
+    .budget-table input[type="number"]::-webkit-outer-spin-button,
+    .budget-table input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    
+    .budget-table input[type="number"] {
+        -moz-appearance: textfield;
+    }
+    
     .budget-input {
         width: 100%;
-        padding: 6px 8px;
-        border: 1px solid #e2e8f0;
-        border-radius: 4px;
-        font-size: 13px;
+        padding: 4px 6px;
+        font-size: 12px;
         text-align: right;
         font-variant-numeric: tabular-nums;
     }
@@ -129,19 +158,25 @@
         border-color: var(--nord13);
     }
     
-    .total-cell {
-        font-weight: 600;
+    .total-cell,
+    .budget-table td.sector-total {
+        font-weight: 400;
         color: var(--nord0);
+        text-align: right;
     }
     
     .totals-row {
         background: var(--nord5) !important;
-        font-weight: 600;
+        font-weight: 400;
     }
     
     .totals-row td {
         border-bottom: none;
-        padding: 14px 16px;
+        padding: 8px 10px;
+    }
+    
+    .totals-row td.number {
+        text-align: right;
     }
 
     /* Expandable Row Styles */
@@ -174,36 +209,47 @@
     
     /* Sector Rows */
     .sector-row {
-        background: #f8fafc;
+        background: #fafbfc;
     }
     
     .sector-row td {
-        padding: 6px 16px;
-        border-bottom: 1px solid #edf2f7;
+        padding: 6px 8px;
+        border-bottom: 1px solid #e8ecf0;
+    }
+    
+    .sector-row td:first-child {
+        border-left: 3px solid var(--nord10);
     }
     
     .sector-row:hover {
-        background: #edf2f7;
+        background: #f1f3f5;
     }
     
     .sector-name-cell {
-        padding-left: 48px !important;
+        padding: 4px 8px;
+        padding-left: 32px !important;
         font-size: 12px;
+        font-weight: 400;
         color: #4a5568;
     }
     
     .sector-name-cell .sector-code {
-        font-weight: 600;
+        font-weight: 400;
         color: var(--nord10);
         margin-right: 6px;
     }
     
+    .sector-row-descriptor {
+        font-size: 11px;
+        color: var(--nord3);
+        font-weight: 400;
+        margin-left: 8px;
+    }
+    
     .sector-input {
         width: 100%;
-        padding: 4px 6px;
-        border: 1px solid #e2e8f0;
-        border-radius: 3px;
-        font-size: 12px;
+        padding: 3px 5px;
+        font-size: 11px;
         text-align: right;
         font-variant-numeric: tabular-nums;
         background: white;
@@ -222,19 +268,24 @@
     
     /* Sector Total Row */
     .sector-total-row {
-        background: #edf2f7;
+        background: #eef1f4;
     }
     
     .sector-total-row td {
-        padding: 8px 16px;
-        font-weight: 600;
+        padding: 6px 8px;
+        font-weight: 400;
         font-size: 12px;
         border-bottom: 2px solid #e2e8f0;
     }
     
+    .sector-total-row td.number {
+        text-align: right;
+    }
+    
     .sector-total-row .total-label {
-        padding-left: 48px;
+        padding-left: 32px;
         color: #4a5568;
+        text-align: left;
     }
     
     /* Balance Indicators */
@@ -261,11 +312,12 @@
     }
     
     .add-sector-row td {
-        padding: 8px 16px;
+        padding: 6px 8px;
     }
     
     .add-sector-cell {
-        padding-left: 48px !important;
+        padding: 6px 8px;
+        padding-left: 32px !important;
     }
     
     .add-sector-select {
@@ -291,6 +343,38 @@
     
     .sector-row:hover .remove-sector-btn {
         opacity: 1;
+    }
+    
+    .sector-subrow {
+        background: #f8f9fa;
+    }
+    
+    .sector-subrow td {
+        padding: 4px 8px;
+        border-top: none;
+        font-size: 11px;
+    }
+    
+    .sector-subrow td:first-child {
+        border-left: 3px solid var(--nord10);
+    }
+    
+    /* Last row of each sector block: clearer separator between sectors */
+    .sector-subrow.sector-subrow-dollars {
+        border-bottom: 1px solid #cbd5e0;
+    }
+    
+    .sector-subrow td.number input {
+        width: 100%;
+        padding: 3px 5px;
+        font-size: 11px;
+    }
+    
+    .sector-subrow-label {
+        color: var(--nord10);
+        padding-left: 32px !important;
+        font-weight: 400;
+        font-style: italic;
     }
     
     /* Quick Fill Section */
@@ -531,10 +615,11 @@
 
 <!-- Budget Table -->
 <div class="budget-table-container">
+    <p class="table-hint" style="margin: 0 0 8px 0; font-size: 13px; color: var(--nord10);">Click <strong>▶</strong> to expand sectors. Under each sector: budget row, then <strong>New Accts</strong> and <strong>New $</strong> per month in the same columns.</p>
     <table class="budget-table" id="budgetTable">
         <thead>
             <tr>
-                <th style="width: 220px;">AE</th>
+                <th style="width: 160px;">AE</th>
                 <th class="number">Jan</th>
                 <th class="number">Feb</th>
                 <th class="number">Mar</th>
@@ -560,7 +645,7 @@
             <tr data-ae="{{ entity.entity_name }}" class="ae-row">
                 <td>
                     {% if has_sectors %}
-                    <span class="expand-toggle" onclick="toggleSectors('{{ ae_safe }}')" data-ae="{{ ae_safe }}">
+                    <span class="expand-toggle" onclick="toggleSectors('{{ ae_safe }}')" data-ae="{{ ae_safe }}" title="Click to expand sectors and edit New Accts / New $">
                         <span class="arrow">▶</span>
                         <span class="ae-name">{{ entity.entity_name }}</span>
                     </span>
@@ -586,12 +671,15 @@
             {% if has_sectors %}
             <!-- Sector Rows (hidden by default) -->
             {% if entity_exp %}
+            {% set new_accts_grid = entity_exp.new_accounts_grid() %}
+            {% set new_dollars_grid = entity_exp.new_dollars_grid() %}
             {% for sector_id, sector_code, sector_name in entity_exp.sectors_used() %}
             {% set grid = entity_exp.monthly_grid() %}
             <tr class="sector-row hidden-row" data-ae-parent="{{ ae_safe }}" data-sector="{{ sector_id }}">
                 <td class="sector-name-cell">
                     <span class="sector-code">{{ sector_code }}</span>
                     {{ sector_name }}
+                    <span class="sector-row-descriptor">· Sector forecast</span>
                     <button class="remove-sector-btn" onclick="removeSector('{{ entity.entity_name }}', {{ sector_id }})">✕</button>
                 </td>
                 {% for month in range(1, 13) %}
@@ -607,6 +695,40 @@
                 </td>
                 {% endfor %}
                 <td class="number sector-total" data-ae="{{ ae_safe }}" data-sector="{{ sector_id }}">$0</td>
+            </tr>
+            <tr class="sector-subrow sector-subrow-accts hidden-row" data-ae-parent="{{ ae_safe }}" data-sector="{{ sector_id }}">
+                <td class="sector-subrow-label">New accts</td>
+                {% for month in range(1, 13) %}
+                <td class="number">
+                    <input type="number"
+                           class="sector-new-accounts"
+                           data-ae="{{ entity.entity_name }}"
+                           data-sector="{{ sector_id }}"
+                           data-month="{{ month }}"
+                           min="0"
+                           value="{{ new_accts_grid.get(sector_id, {}).get(month) if new_accts_grid.get(sector_id, {}).get(month) is not none else '' }}"
+                           onchange="markSectorModified(this)"
+                           placeholder="0">
+                </td>
+                {% endfor %}
+                <td class="number"></td>
+            </tr>
+            <tr class="sector-subrow sector-subrow-dollars hidden-row" data-ae-parent="{{ ae_safe }}" data-sector="{{ sector_id }}">
+                <td class="sector-subrow-label">New $</td>
+                {% for month in range(1, 13) %}
+                <td class="number">
+                    <input type="text"
+                           class="sector-new-dollars"
+                           data-ae="{{ entity.entity_name }}"
+                           data-sector="{{ sector_id }}"
+                           data-month="{{ month }}"
+                           value="{{ '{:,.0f}'.format(new_dollars_grid.get(sector_id, {}).get(month) | float) if new_dollars_grid.get(sector_id, {}).get(month) is not none else '' }}"
+                           onchange="markSectorModified(this)"
+                           onkeydown="handleKeydown(event, this)"
+                           placeholder="0">
+                </td>
+                {% endfor %}
+                <td class="number"></td>
             </tr>
             {% endfor %}
             {% endif %}
@@ -1072,17 +1194,27 @@ async function saveAll() {
             const aeSafe = aeName.replace(/ /g, '-').replace(/'/g, '');
             const allExpectations = [];
             
-            // Collect all sector inputs for this AE
+            // Collect all sector inputs for this AE (amounts on sector row; new accts / new $ on sub-rows, same month columns)
             const sectorRows = document.querySelectorAll(`tr.sector-row[data-ae-parent="${aeSafe}"]`);
             sectorRows.forEach(row => {
                 const sectorId = parseInt(row.dataset.sector);
+                const acctsSubrow = document.querySelector(`tr.sector-subrow-accts[data-ae-parent="${aeSafe}"][data-sector="${sectorId}"]`);
+                const dollarsSubrow = document.querySelector(`tr.sector-subrow-dollars[data-ae-parent="${aeSafe}"][data-sector="${sectorId}"]`);
                 for (let m = 1; m <= 12; m++) {
-                    const input = row.querySelector(`input[data-month="${m}"]`);
-                    if (input) {
+                    const amountInput = row.querySelector(`input.sector-input[data-month="${m}"]`);
+                    const newAcctsInput = acctsSubrow ? acctsSubrow.querySelector(`input.sector-new-accounts[data-month="${m}"]`) : null;
+                    const newDollarsInput = dollarsSubrow ? dollarsSubrow.querySelector(`input.sector-new-dollars[data-month="${m}"]`) : null;
+                    if (amountInput) {
+                        const newAccountsForecast = newAcctsInput && newAcctsInput.value.trim() !== ''
+                            ? parseInt(newAcctsInput.value, 10) : null;
+                        const newDollarsForecast = newDollarsInput && newDollarsInput.value.trim() !== ''
+                            ? parseNumber(newDollarsInput.value) : null;
                         allExpectations.push({
                             sector_id: sectorId,
                             month: m,
-                            amount: parseNumber(input.value)
+                            amount: parseNumber(amountInput.value),
+                            new_accounts_forecast: newAccountsForecast,
+                            new_dollars_forecast: newDollarsForecast
                         });
                     }
                 }

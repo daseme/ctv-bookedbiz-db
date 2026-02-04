@@ -57,7 +57,9 @@ class SectorExpectationRepository(BaseService):
                     se.notes,
                     se.created_date,
                     se.updated_date,
-                    se.updated_by
+                    se.updated_by,
+                    COALESCE(se.new_accounts_forecast, 0) AS new_accounts_forecast,
+                    COALESCE(se.new_dollars_forecast, 0) AS new_dollars_forecast
                 FROM sector_expectations se
                 JOIN sectors s ON se.sector_id = s.sector_id
                 WHERE se.ae_name = ? AND se.year = ?
@@ -87,7 +89,9 @@ class SectorExpectationRepository(BaseService):
                     se.notes,
                     se.created_date,
                     se.updated_date,
-                    se.updated_by
+                    se.updated_by,
+                    COALESCE(se.new_accounts_forecast, 0) AS new_accounts_forecast,
+                    COALESCE(se.new_dollars_forecast, 0) AS new_dollars_forecast
                 FROM sector_expectations se
                 JOIN sectors s ON se.sector_id = s.sector_id
                 WHERE se.ae_name = ? AND se.year = ? AND se.month = ?
@@ -124,7 +128,9 @@ class SectorExpectationRepository(BaseService):
                     se.created_date,
                     se.updated_date,
                     se.updated_by,
-                    re.entity_type
+                    re.entity_type,
+                    COALESCE(se.new_accounts_forecast, 0) AS new_accounts_forecast,
+                    COALESCE(se.new_dollars_forecast, 0) AS new_dollars_forecast
                 FROM sector_expectations se
                 JOIN sectors s ON se.sector_id = s.sector_id
                 JOIN revenue_entities re ON se.ae_name = re.entity_name
@@ -168,7 +174,9 @@ class SectorExpectationRepository(BaseService):
                     se.notes,
                     se.created_date,
                     se.updated_date,
-                    se.updated_by
+                    se.updated_by,
+                    COALESCE(se.new_accounts_forecast, 0) AS new_accounts_forecast,
+                    COALESCE(se.new_dollars_forecast, 0) AS new_dollars_forecast
                 FROM sector_expectations se
                 JOIN sectors s ON se.sector_id = s.sector_id
                 WHERE se.sector_id = ? AND se.year = ?
@@ -215,27 +223,34 @@ class SectorExpectationRepository(BaseService):
                 (ae_name, year),
             )
 
-            # Insert new expectations
+            # Insert new expectations (including new_accounts_forecast, new_dollars_forecast when present)
             saved_count = 0
             for exp in expectations:
-                if exp.expected_amount > 0:  # Only save non-zero amounts
-                    conn.execute(
-                        """
-                        INSERT INTO sector_expectations 
-                        (ae_name, sector_id, year, month, expected_amount, notes, updated_by)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                        (
-                            ae_name,
-                            exp.sector_id,
-                            year,
-                            exp.month,
-                            float(exp.expected_amount),
-                            exp.notes,
-                            updated_by,
-                        ),
-                    )
-                    saved_count += 1
+                new_accts = getattr(exp, "new_accounts_forecast", None)
+                new_dollars = getattr(exp, "new_dollars_forecast", None)
+                if new_accts is None:
+                    new_accts = 0
+                if new_dollars is None:
+                    new_dollars = Decimal("0")
+                conn.execute(
+                    """
+                    INSERT INTO sector_expectations 
+                    (ae_name, sector_id, year, month, expected_amount, notes, updated_by, new_accounts_forecast, new_dollars_forecast)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        ae_name,
+                        exp.sector_id,
+                        year,
+                        exp.month,
+                        float(exp.expected_amount),
+                        exp.notes,
+                        updated_by,
+                        int(new_accts),
+                        float(new_dollars),
+                    ),
+                )
+                saved_count += 1
 
             logger.info(f"Saved {saved_count} sector expectations for {ae_name} {year}")
 
@@ -388,4 +403,6 @@ class SectorExpectationRepository(BaseService):
             if row["updated_date"]
             else None,
             updated_by=row["updated_by"] if "updated_by" in row.keys() else None,
+            new_accounts_forecast=int(row["new_accounts_forecast"]) if "new_accounts_forecast" in row.keys() else None,
+            new_dollars_forecast=Decimal(str(row["new_dollars_forecast"])) if "new_dollars_forecast" in row.keys() else None,
         )
