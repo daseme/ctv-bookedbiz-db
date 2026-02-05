@@ -1,0 +1,768 @@
+{% extends "base.html" %}
+
+{% block title %}Customer Aliases - SpotOps{% endblock %}
+{% block header_title %}Customer Aliases{% endblock %}
+{% block header_subtitle %}View customers and their associated bill code aliases{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+  .filter-bar input,.filter-bar select{padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px}
+  .filter-bar input[type="text"]{width:280px}
+  .filter-bar button{padding:8px 16px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0;background:#fff}
+  .filter-bar button:hover{background:#f8fafc}
+  .filter-bar .count{margin-left:auto;font-size:13px;color:#64748b}
+  
+  .alias-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+  .alias-table th{background:#f8fafc;padding:12px;text-align:left;font-weight:600;font-size:13px;border-bottom:1px solid #e2e8f0}
+  .alias-table th.sortable{cursor:pointer;user-select:none}
+  .alias-table th.sortable:hover{background:#f1f5f9}
+  .alias-table th .sort-arrow{margin-left:4px;color:#94a3b8;font-size:11px}
+  .alias-table th.sort-asc .sort-arrow::after{content:'▲'}
+  .alias-table th.sort-desc .sort-arrow::after{content:'▼'}
+  .alias-table th:not(.sort-asc):not(.sort-desc) .sort-arrow::after{content:'⇅'}
+  .alias-table td{padding:12px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+  .alias-table tr:hover{background:#fafafa}
+  .alias-table tr.expanded{background:#f0f9ff}
+  
+  .customer-name{font-weight:600;color:#0f172a}
+  .alias-badge{display:inline-block;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600}
+  .alias-badge.zero{background:#f1f5f9;color:#64748b}
+  
+  .revenue{text-align:right;font-weight:500}
+  .meta{font-size:12px;color:#94a3b8}
+  
+  .expand-btn{background:none;border:none;cursor:pointer;font-size:16px;color:#64748b;padding:4px 8px}
+  .expand-btn:hover{color:#0ea5e9}
+  
+  .detail-row{display:none}
+  .detail-row.active{display:table-row}
+  .detail-row td{padding:0;background:#f8fafc}
+  .detail-panel{padding:16px 24px;border-top:1px solid #e2e8f0}
+  
+  .detail-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .detail-header h3{margin:0;font-size:15px;font-weight:600;color:#334155;display:flex;align-items:center;gap:8px}
+  .detail-header .direct{font-size:13px;color:#64748b}
+  .rename-input{padding:4px 8px;border:1px solid #0ea5e9;border-radius:4px;font-size:15px;font-weight:600;width:320px}
+  .rename-input:focus{outline:none;border-color:#0284c7}
+  .btn-rename{padding:4px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;color:#64748b;font-size:12px;cursor:pointer}
+  .btn-rename:hover{background:#f8fafc;color:#334155}
+  .btn-save-rename{padding:4px 10px;background:#0ea5e9;border:1px solid #0284c7;border-radius:4px;color:#fff;font-size:12px;cursor:pointer}
+  .btn-save-rename:hover{background:#0284c7}
+  .btn-cancel-rename{padding:4px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;color:#64748b;font-size:12px;cursor:pointer}
+  
+  .alias-list{display:flex;flex-direction:column;gap:8px}
+  .alias-item{display:flex;align-items:center;gap:16px;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px}
+  .alias-item:hover{border-color:#cbd5e1}
+  .alias-item .name{flex:1;font-family:ui-monospace,monospace;font-size:13px;color:#334155}
+  .alias-item .stats{display:flex;gap:16px;font-size:12px;color:#64748b}
+  .alias-item .stats span{white-space:nowrap}
+  .alias-item .delete-btn{background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;font-size:14px}
+  .alias-item .delete-btn:hover{color:#ef4444}
+  
+  .no-aliases{color:#94a3b8;font-style:italic;font-size:13px}
+  .empty{text-align:center;padding:40px;color:#64748b}
+  
+  .detail-actions{margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;gap:12px;align-items:center}
+  .btn-merge{padding:8px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;color:#92400e;font-size:13px;cursor:pointer;font-weight:500}
+  .btn-merge:hover{background:#fde68a}
+  .merge-form{display:none;align-items:flex-start;gap:10px;flex:1;flex-wrap:wrap}
+  .merge-form.active{display:flex}
+  .merge-form input{padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;width:260px;font-size:13px}
+  .merge-form .btn-confirm{padding:8px 14px;background:#ef4444;border:1px solid #dc2626;border-radius:6px;color:#fff;font-size:13px;cursor:pointer}
+  .merge-form .btn-confirm:hover{background:#dc2626}
+  .merge-form .btn-cancel{padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;color:#64748b;font-size:13px;cursor:pointer}
+  .merge-target-info{font-size:12px;color:#64748b;margin-left:8px}
+  .merge-results{width:100%;margin-top:8px;display:none}
+  .merge-results.active{display:block}
+  .merge-result-item{padding:8px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between}
+  .merge-result-item:hover{background:#f0f9ff;border-color:#0ea5e9}
+  .merge-result-item.selected{background:#e0f2fe;border-color:#0ea5e9}
+  .merge-result-item .rev{color:#64748b;font-size:12px}
+
+  /* Address section */
+  .address-section{margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0}
+  .address-section h4{margin:0 0 8px 0;font-size:13px;font-weight:600;color:#64748b;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .address-section h4:hover{color:#334155}
+  .address-section .toggle-icon{font-size:11px}
+  .address-form{display:none;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .address-form.active{display:flex}
+  .address-form .field{display:flex;flex-direction:column;gap:4px}
+  .address-form label{font-size:11px;color:#64748b}
+  .address-form input{padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px}
+  .address-form input.wide{width:280px}
+  .address-form input.medium{width:140px}
+  .address-form input.small{width:80px}
+  .address-form .btn-save-address{padding:6px 12px;background:#0ea5e9;border:1px solid #0284c7;border-radius:4px;color:#fff;font-size:12px;cursor:pointer;align-self:flex-end}
+  .address-form .btn-save-address:hover{background:#0284c7}
+
+  /* Contacts section */
+  .contacts-section{margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0}
+  .contacts-section h4{margin:0 0 8px 0;font-size:13px;font-weight:600;color:#64748b;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .contacts-section h4:hover{color:#334155}
+  .contacts-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+  .contact-item{display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px}
+  .contact-item:hover{border-color:#cbd5e1}
+  .contact-item .contact-info{flex:1;display:flex;flex-direction:column;gap:2px}
+  .contact-item .contact-name{font-weight:600;font-size:13px;color:#0f172a}
+  .contact-item .contact-title{font-size:12px;color:#64748b}
+  .contact-item .contact-details{font-size:12px;color:#334155;display:flex;gap:12px;flex-wrap:wrap}
+  .contact-item .primary-badge{background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:6px}
+  .contact-item .contact-actions{display:flex;gap:4px}
+  .contact-item .contact-actions button{background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px;font-size:12px}
+  .contact-item .contact-actions button:hover{color:#0ea5e9}
+  .contact-item .contact-actions button.delete-contact:hover{color:#ef4444}
+  .add-contact-form{display:none;flex-wrap:wrap;gap:8px;margin-top:8px;padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px}
+  .add-contact-form.active{display:flex}
+  .add-contact-form input{padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px}
+  .add-contact-form input.name-field{width:180px}
+  .add-contact-form input.title-field{width:140px}
+  .add-contact-form input.email-field{width:200px}
+  .add-contact-form input.phone-field{width:140px}
+  .add-contact-form .form-actions{display:flex;gap:6px;align-items:center}
+  .add-contact-form .btn-add{padding:6px 12px;background:#0ea5e9;border:1px solid #0284c7;border-radius:4px;color:#fff;font-size:12px;cursor:pointer}
+  .add-contact-form .btn-cancel-add{padding:6px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;color:#64748b;font-size:12px;cursor:pointer}
+  .btn-show-add-contact{padding:6px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;color:#64748b;font-size:12px;cursor:pointer;margin-top:8px}
+  .btn-show-add-contact:hover{background:#f8fafc;color:#334155}
+  .no-contacts{color:#94a3b8;font-style:italic;font-size:13px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="filter-bar">
+  <input type="text" id="search" placeholder="Search customers...">
+  <select id="min-aliases">
+    <option value="0">All customers</option>
+    <option value="1" selected>Has aliases (≥1)</option>
+    <option value="2">Multiple aliases (≥2)</option>
+    <option value="5">Complex (≥5)</option>
+  </select>
+  <button id="refresh">↻ Refresh</button>
+  <span class="count" id="count"></span>
+</div>
+
+<table class="alias-table">
+  <thead>
+    <tr>
+      <th style="width:40px"></th>
+      <th class="sortable" data-sort="normalized_name">Customer (Normalized Name)<span class="sort-arrow"></span></th>
+      <th class="sortable" data-sort="alias_count" style="text-align:center">Aliases<span class="sort-arrow"></span></th>
+      <th class="sortable" data-sort="total_revenue" style="text-align:right">Total Revenue<span class="sort-arrow"></span></th>
+      <th class="sortable" data-sort="spot_count" style="text-align:right">Spots<span class="sort-arrow"></span></th>
+      <th class="sortable" data-sort="last_seen">Active Range<span class="sort-arrow"></span></th>
+    </tr>
+  </thead>
+  <tbody id="tbody">
+    <tr><td colspan="6" class="empty">Loading...</td></tr>
+  </tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const API = '/api/customer-aliases';
+  let expandedId = null;
+  let currentItems = [];
+  let sortField = 'alias_count';
+  let sortDir = 'desc';
+  
+  // ===== UTILITY FUNCTIONS =====
+  function esc(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  
+  function updateSortIndicators() {
+    document.querySelectorAll('.alias-table th.sortable').forEach(th => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.dataset.sort === sortField) {
+        th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+  }
+  
+  // ===== RENDER FUNCTIONS =====
+  function renderRow(item) {
+    const badgeClass = item.alias_count === 0 ? 'alias-badge zero' : 'alias-badge';
+    const dateRange = item.first_seen && item.last_seen 
+      ? `${item.first_seen.slice(0,10)} – ${item.last_seen.slice(0,10)}`
+      : '—';
+    
+    return `
+      <tr data-id="${item.customer_id}">
+        <td><button class="expand-btn" title="View aliases">▶</button></td>
+        <td><span class="customer-name">${esc(item.normalized_name)}</span></td>
+        <td style="text-align:center"><span class="${badgeClass}">${item.alias_count}</span></td>
+        <td class="revenue">$${item.total_revenue.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+        <td style="text-align:right">${item.spot_count.toLocaleString()}</td>
+        <td class="meta">${dateRange}</td>
+      </tr>
+      <tr class="detail-row" data-detail-for="${item.customer_id}">
+        <td colspan="6">
+          <div class="detail-panel">
+            <div class="loading">Loading aliases...</div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+  
+  function sortAndRender() {
+    const tbody = document.getElementById('tbody');
+    
+    if (!currentItems.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">No customers found</td></tr>';
+      return;
+    }
+    
+    const sorted = [...currentItems].sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+      
+      if (aVal == null) aVal = sortField === 'normalized_name' ? '' : 0;
+      if (bVal == null) bVal = sortField === 'normalized_name' ? '' : 0;
+      
+      if (sortField === 'normalized_name' || sortField === 'first_seen' || sortField === 'last_seen') {
+        aVal = String(aVal).toLowerCase();
+        bVal = String(bVal).toLowerCase();
+        if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      }
+      
+      return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+    
+    tbody.innerHTML = sorted.map(renderRow).join('');
+    attachHandlers();
+    updateSortIndicators();
+  }
+  
+  // ===== DATA LOADING =====
+  async function loadTable() {
+    const search = document.getElementById('search').value.trim();
+    const minAliases = document.getElementById('min-aliases').value;
+    
+    const r = await fetch(`${API}?search=${encodeURIComponent(search)}&min_aliases=${minAliases}`);
+    currentItems = await r.json();
+    
+    document.getElementById('count').textContent = `${currentItems.length} customers`;
+    expandedId = null;
+    sortAndRender();
+  }
+  
+  async function loadDetail(customerId, panel) {
+    panel.innerHTML = '<div class="loading">Loading...</div>';
+    
+    try {
+      const r = await fetch(`${API}/${customerId}`);
+      const data = await r.json();
+      
+      let aliasHtml = '';
+      if (data.aliases.length === 0) {
+        aliasHtml = '<div class="no-aliases">No aliases — bill_code matches normalized_name directly</div>';
+      } else {
+        aliasHtml = '<div class="alias-list">' + data.aliases.map(a => `
+          <div class="alias-item" data-alias-id="${a.alias_id}">
+            <span class="name">${esc(a.alias_name)}</span>
+            <div class="stats">
+              <span>$${a.revenue.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+              <span>${a.spot_count} spots</span>
+              <span title="${a.created_by}">${a.created_date ? a.created_date.slice(0,10) : '—'}</span>
+            </div>
+            <button class="delete-btn" title="Remove alias">✕</button>
+          </div>
+        `).join('') + '</div>';
+      }
+      
+      const directInfo = data.direct_spot_count > 0 
+        ? `Direct matches: $${data.direct_revenue.toLocaleString(undefined, {maximumFractionDigits:0})} (${data.direct_spot_count} spots)`
+        : 'No direct bill_code matches';
+      
+      // Load contacts
+      let contactsR, contactsData = [];
+      try {
+        contactsR = await fetch(`/api/contacts/customer/${customerId}`);
+        contactsData = await contactsR.json();
+      } catch (e) { contactsData = []; }
+
+      let contactsHtml = '';
+      if (contactsData.length === 0) {
+        contactsHtml = '<div class="no-contacts">No contacts yet</div>';
+      } else {
+        contactsHtml = '<div class="contacts-list">' + contactsData.map(c => `
+          <div class="contact-item" data-contact-id="${c.contact_id}">
+            <div class="contact-info">
+              <div class="contact-name">${esc(c.contact_name)}${c.is_primary ? '<span class="primary-badge">PRIMARY</span>' : ''}</div>
+              ${c.contact_title ? `<div class="contact-title">${esc(c.contact_title)}</div>` : ''}
+              <div class="contact-details">
+                ${c.email ? `<span>${esc(c.email)}</span>` : ''}
+                ${c.phone ? `<span>${esc(c.phone)}</span>` : ''}
+              </div>
+            </div>
+            <div class="contact-actions">
+              ${!c.is_primary ? `<button class="set-primary" title="Set as primary">*</button>` : ''}
+              <button class="delete-contact" title="Delete contact">x</button>
+            </div>
+          </div>
+        `).join('') + '</div>';
+      }
+
+      panel.innerHTML = `
+        <div class="detail-header">
+          <h3>
+            <span class="customer-name-display">${esc(data.normalized_name)}</span>
+            <button class="btn-rename">Rename</button>
+          </h3>
+          <span class="direct">${directInfo}</span>
+        </div>
+        ${aliasHtml}
+        <div class="address-section">
+          <h4 class="address-toggle"><span class="toggle-icon">+</span> Address</h4>
+          <div class="address-form">
+            <div class="field"><label>Address</label><input type="text" class="addr-address wide" value="${esc(data.address || '')}" placeholder="Street address"></div>
+            <div class="field"><label>City</label><input type="text" class="addr-city medium" value="${esc(data.city || '')}" placeholder="City"></div>
+            <div class="field"><label>State</label><input type="text" class="addr-state small" value="${esc(data.state || '')}" placeholder="ST"></div>
+            <div class="field"><label>ZIP</label><input type="text" class="addr-zip small" value="${esc(data.zip || '')}" placeholder="ZIP"></div>
+            <button class="btn-save-address">Save Address</button>
+          </div>
+        </div>
+        <div class="contacts-section">
+          <h4 class="contacts-toggle"><span class="toggle-icon">+</span> Contacts (${contactsData.length})</h4>
+          <div class="contacts-content" style="display:none">
+            ${contactsHtml}
+            <button class="btn-show-add-contact">+ Add Contact</button>
+            <div class="add-contact-form">
+              <input type="text" class="name-field" placeholder="Name *">
+              <input type="text" class="title-field" placeholder="Title">
+              <input type="email" class="email-field" placeholder="Email">
+              <input type="text" class="phone-field" placeholder="Phone">
+              <div class="form-actions">
+                <label><input type="checkbox" class="is-primary-check"> Primary</label>
+                <button class="btn-add">Add</button>
+                <button class="btn-cancel-add">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="detail-actions" data-customer-id="${customerId}" data-customer-name="${esc(data.normalized_name)}">
+          <button class="btn-merge">Merge into another customer...</button>
+          <div class="merge-form">
+            <input type="text" placeholder="Search target customer..." class="merge-search">
+            <input type="hidden" class="merge-target-id">
+            <span class="merge-target-info"></span>
+            <button class="btn-confirm" disabled>Merge</button>
+            <button class="btn-cancel">Cancel</button>
+            <div class="merge-results"></div>
+          </div>
+        </div>
+      `;
+
+      // Address toggle handler
+      const addrToggle = panel.querySelector('.address-toggle');
+      const addrForm = panel.querySelector('.address-form');
+      addrToggle.addEventListener('click', () => {
+        const isOpen = addrForm.classList.contains('active');
+        addrForm.classList.toggle('active');
+        addrToggle.querySelector('.toggle-icon').textContent = isOpen ? '+' : '-';
+      });
+
+      // Save address handler
+      panel.querySelector('.btn-save-address').addEventListener('click', async () => {
+        const btn = panel.querySelector('.btn-save-address');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try {
+          const r = await fetch(`${API}/${customerId}/address`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              address: panel.querySelector('.addr-address').value.trim() || null,
+              city: panel.querySelector('.addr-city').value.trim() || null,
+              state: panel.querySelector('.addr-state').value.trim() || null,
+              zip: panel.querySelector('.addr-zip').value.trim() || null
+            })
+          });
+          const result = await r.json();
+          if (!r.ok || !result.success) throw new Error(result.error || 'Save failed');
+          btn.textContent = 'Saved!';
+          setTimeout(() => { btn.textContent = 'Save Address'; btn.disabled = false; }, 1500);
+        } catch (e) {
+          alert('Error: ' + e.message);
+          btn.textContent = 'Save Address';
+          btn.disabled = false;
+        }
+      });
+
+      // Contacts toggle handler
+      const contactsToggle = panel.querySelector('.contacts-toggle');
+      const contactsContent = panel.querySelector('.contacts-content');
+      contactsToggle.addEventListener('click', () => {
+        const isOpen = contactsContent.style.display !== 'none';
+        contactsContent.style.display = isOpen ? 'none' : 'block';
+        contactsToggle.querySelector('.toggle-icon').textContent = isOpen ? '+' : '-';
+      });
+
+      // Show add contact form
+      const showAddBtn = panel.querySelector('.btn-show-add-contact');
+      const addForm = panel.querySelector('.add-contact-form');
+      showAddBtn.addEventListener('click', () => {
+        showAddBtn.style.display = 'none';
+        addForm.classList.add('active');
+        addForm.querySelector('.name-field').focus();
+      });
+
+      // Cancel add contact
+      panel.querySelector('.btn-cancel-add').addEventListener('click', () => {
+        addForm.classList.remove('active');
+        showAddBtn.style.display = '';
+        addForm.querySelectorAll('input').forEach(i => { if (i.type !== 'checkbox') i.value = ''; else i.checked = false; });
+      });
+
+      // Add contact
+      panel.querySelector('.btn-add').addEventListener('click', async () => {
+        const name = addForm.querySelector('.name-field').value.trim();
+        if (!name) { alert('Name is required'); return; }
+        const btn = panel.querySelector('.btn-add');
+        btn.disabled = true;
+        try {
+          const r = await fetch(`/api/contacts/customer/${customerId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              contact_name: name,
+              contact_title: addForm.querySelector('.title-field').value.trim() || null,
+              email: addForm.querySelector('.email-field').value.trim() || null,
+              phone: addForm.querySelector('.phone-field').value.trim() || null,
+              is_primary: addForm.querySelector('.is-primary-check').checked
+            })
+          });
+          const result = await r.json();
+          if (!r.ok || !result.success) throw new Error(result.error || 'Failed to add contact');
+          loadDetail(customerId, panel);
+        } catch (e) {
+          alert('Error: ' + e.message);
+          btn.disabled = false;
+        }
+      });
+
+      // Delete contact handlers
+      panel.querySelectorAll('.delete-contact').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const item = this.closest('.contact-item');
+          const contactId = item.dataset.contactId;
+          if (!confirm('Delete this contact?')) return;
+          item.style.opacity = '0.5';
+          const r = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
+          const result = await r.json();
+          if (result.success) {
+            item.remove();
+            const toggle = panel.querySelector('.contacts-toggle');
+            const count = panel.querySelectorAll('.contact-item').length;
+            toggle.innerHTML = `<span class="toggle-icon">-</span> Contacts (${count})`;
+          } else {
+            item.style.opacity = '1';
+            alert('Error: ' + (result.error || 'Failed'));
+          }
+        });
+      });
+
+      // Set primary contact handlers
+      panel.querySelectorAll('.set-primary').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const item = this.closest('.contact-item');
+          const contactId = item.dataset.contactId;
+          const r = await fetch(`/api/contacts/${contactId}/primary`, { method: 'POST' });
+          const result = await r.json();
+          if (result.success) {
+            loadDetail(customerId, panel);
+          } else {
+            alert('Error: ' + (result.error || 'Failed'));
+          }
+        });
+      });
+      
+      // Rename handler
+      const header = panel.querySelector('.detail-header h3');
+      const nameDisplay = header.querySelector('.customer-name-display');
+      const renameBtn = header.querySelector('.btn-rename');
+      
+      renameBtn.addEventListener('click', () => {
+        const currentName = nameDisplay.textContent;
+        header.innerHTML = `
+          <input type="text" class="rename-input" value="${esc(currentName)}">
+          <button class="btn-save-rename">Save</button>
+          <button class="btn-cancel-rename">Cancel</button>
+        `;
+        const input = header.querySelector('.rename-input');
+        const saveBtn = header.querySelector('.btn-save-rename');
+        const cancelBtn = header.querySelector('.btn-cancel-rename');
+        
+        input.focus();
+        input.select();
+        
+        cancelBtn.addEventListener('click', () => {
+          header.innerHTML = `
+            <span class="customer-name-display">${esc(currentName)}</span>
+            <button class="btn-rename">Rename</button>
+          `;
+          // Re-attach rename handler (recursive call via loadDetail refresh)
+          loadDetail(customerId, panel);
+        });
+        
+        saveBtn.addEventListener('click', async () => {
+          const newName = input.value.trim();
+          if (!newName) { alert('Name cannot be empty'); return; }
+          if (newName === currentName) { cancelBtn.click(); return; }
+          
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving...';
+          
+          try {
+            const r = await fetch(`${API}/${customerId}/rename`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ new_name: newName })
+            });
+            const result = await r.json();
+            
+            if (!r.ok || !result.success) throw new Error(result.error || 'Rename failed');
+            
+            // Update the row in the table
+            const row = document.querySelector(`tr[data-id="${customerId}"]`);
+            if (row) {
+              row.querySelector('.customer-name').textContent = newName;
+            }
+            
+            // Update detail panel
+            panel.querySelector('.detail-actions').dataset.customerName = newName;
+            header.innerHTML = `
+              <span class="customer-name-display">${esc(newName)}</span>
+              <button class="btn-rename">Rename</button>
+            `;
+            
+            // Re-attach handler
+            loadDetail(customerId, panel);
+            
+            if (result.alias_created) {
+              // Refresh to show new alias count
+              loadTable();
+            }
+          } catch (e) {
+            alert('Error: ' + e.message);
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+          }
+        });
+        
+        // Enter to save, Escape to cancel
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') saveBtn.click();
+          if (e.key === 'Escape') cancelBtn.click();
+        });
+      });
+      
+      // Attach delete handlers
+      panel.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const item = this.closest('.alias-item');
+          const aliasId = item.dataset.aliasId;
+          const aliasName = item.querySelector('.name').textContent;
+          
+          if (!confirm(`Remove alias "${aliasName}"?`)) return;
+          
+          item.style.opacity = '0.5';
+          const r = await fetch(`${API}/${aliasId}`, { method: 'DELETE' });
+          const result = await r.json();
+          
+          if (result.success) {
+            item.remove();
+            const badge = document.querySelector(`tr[data-id="${customerId}"] .alias-badge`);
+            const newCount = parseInt(badge.textContent) - 1;
+            badge.textContent = newCount;
+            if (newCount === 0) badge.className = 'alias-badge zero';
+          } else {
+            item.style.opacity = '1';
+            alert('Error: ' + (result.error || 'Failed to delete'));
+          }
+        });
+      });
+      
+      // Attach merge handlers
+      const actions = panel.querySelector('.detail-actions');
+      const mergeBtn = actions.querySelector('.btn-merge');
+      const mergeForm = actions.querySelector('.merge-form');
+      const mergeSearch = actions.querySelector('.merge-search');
+      const mergeTargetId = actions.querySelector('.merge-target-id');
+      const mergeTargetInfo = actions.querySelector('.merge-target-info');
+      const mergeResults = actions.querySelector('.merge-results');
+      const confirmBtn = actions.querySelector('.btn-confirm');
+      const cancelBtn = actions.querySelector('.btn-cancel');
+      
+      mergeBtn.addEventListener('click', () => {
+        mergeBtn.style.display = 'none';
+        mergeForm.classList.add('active');
+        mergeSearch.focus();
+      });
+      
+      cancelBtn.addEventListener('click', () => {
+        mergeForm.classList.remove('active');
+        mergeBtn.style.display = '';
+        mergeSearch.value = '';
+        mergeTargetId.value = '';
+        mergeTargetInfo.textContent = '';
+        mergeResults.innerHTML = '';
+        mergeResults.classList.remove('active');
+        confirmBtn.disabled = true;
+      });
+      
+      let mergeTimeout;
+      mergeSearch.addEventListener('input', () => {
+        clearTimeout(mergeTimeout);
+        mergeTargetId.value = '';
+        mergeTargetInfo.textContent = '';
+        mergeResults.innerHTML = '';
+        mergeResults.classList.remove('active');
+        confirmBtn.disabled = true;
+        
+        mergeTimeout = setTimeout(async () => {
+          const q = mergeSearch.value.trim();
+          if (q.length < 2) return;
+          
+          const r = await fetch(`/api/customer-resolution/search?q=${encodeURIComponent(q)}`);
+          const results = await r.json();
+          const filtered = results.filter(c => c.customer_id !== customerId);
+          
+          if (filtered.length === 0) {
+            mergeTargetInfo.textContent = 'No matches';
+          } else if (filtered.length === 1) {
+            // Auto-select single match
+            mergeTargetId.value = filtered[0].customer_id;
+            mergeTargetInfo.textContent = `→ ${filtered[0].normalized_name}`;
+            confirmBtn.disabled = false;
+          } else {
+            // Show list of matches
+            mergeTargetInfo.textContent = `${filtered.length} matches - click to select:`;
+            mergeResults.innerHTML = filtered.map(c => `
+              <div class="merge-result-item" data-id="${c.customer_id}" data-name="${esc(c.normalized_name)}">
+                <span>${esc(c.normalized_name)}</span>
+              </div>
+            `).join('');
+            mergeResults.classList.add('active');
+            
+            // Click handler for results
+            mergeResults.querySelectorAll('.merge-result-item').forEach(item => {
+              item.addEventListener('click', () => {
+                mergeResults.querySelectorAll('.merge-result-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                mergeTargetId.value = item.dataset.id;
+                mergeTargetInfo.textContent = `→ ${item.dataset.name}`;
+                confirmBtn.disabled = false;
+              });
+            });
+          }
+        }, 300);
+      });
+      
+      confirmBtn.addEventListener('click', async () => {
+        const targetId = mergeTargetId.value;
+        const sourceName = actions.dataset.customerName;
+        const targetName = mergeTargetInfo.textContent.replace('→ ', '');
+        
+        if (!targetId) return;
+        
+        if (!confirm(`MERGE CUSTOMERS\n\nMerge "${sourceName}" INTO "${targetName}"?\n\nAll spots and aliases will be moved.`)) return;
+        
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Merging...';
+        
+        try {
+          const r = await fetch('/api/customer-aliases/merge', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ source_id: customerId, target_id: parseInt(targetId) })
+          });
+          const result = await r.json();
+          
+          if (!r.ok || !result.success) throw new Error(result.error || 'Merge failed');
+          
+          alert(`✓ Merged!\n${result.spots_moved} spots moved\n${result.aliases_moved} aliases moved`);
+          loadTable();
+        } catch (e) {
+          alert('Error: ' + e.message);
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Merge';
+        }
+      });
+      
+    } catch (e) {
+      panel.innerHTML = `<div class="error">Error loading: ${e.message}</div>`;
+    }
+  }
+  
+  // ===== EVENT HANDLERS =====
+  function attachHandlers() {
+    document.querySelectorAll('.expand-btn').forEach(btn => {
+      btn.addEventListener('click', async function() {
+        const row = this.closest('tr');
+        const id = parseInt(row.dataset.id);
+        const detailRow = document.querySelector(`tr[data-detail-for="${id}"]`);
+        
+        if (expandedId === id) {
+          detailRow.classList.remove('active');
+          row.classList.remove('expanded');
+          this.textContent = '▶';
+          expandedId = null;
+          return;
+        }
+        
+        if (expandedId !== null) {
+          const prevDetail = document.querySelector(`tr[data-detail-for="${expandedId}"]`);
+          const prevRow = document.querySelector(`tr[data-id="${expandedId}"]`);
+          if (prevDetail) prevDetail.classList.remove('active');
+          if (prevRow) {
+            prevRow.classList.remove('expanded');
+            prevRow.querySelector('.expand-btn').textContent = '▶';
+          }
+        }
+        
+        row.classList.add('expanded');
+        this.textContent = '▼';
+        detailRow.classList.add('active');
+        expandedId = id;
+        
+        await loadDetail(id, detailRow.querySelector('.detail-panel'));
+      });
+    });
+  }
+  
+  function initSortHandlers() {
+    document.querySelectorAll('.alias-table th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (sortField === field) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortField = field;
+          sortDir = (field === 'normalized_name' || field === 'first_seen' || field === 'last_seen') ? 'asc' : 'desc';
+        }
+        expandedId = null;
+        sortAndRender();
+      });
+    });
+  }
+  
+  // ===== INIT =====
+  let searchTimeout;
+  document.getElementById('search').addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(loadTable, 300);
+  });
+  document.getElementById('min-aliases').addEventListener('change', loadTable);
+  document.getElementById('refresh').addEventListener('click', loadTable);
+  
+  initSortHandlers();
+  loadTable();
+})();
+</script>
+{% endblock %}
