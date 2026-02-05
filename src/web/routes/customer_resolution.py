@@ -85,3 +85,101 @@ def search_customers():
     if len(q) < 2:
         return jsonify([])
     return jsonify(_get_service().search_customers(q))
+
+
+@customer_resolution_bp.route("/api/customer-aliases/merge", methods=["POST"])
+def merge_customers():
+    """Merge source customer into target customer."""
+    data = request.json
+    source_id = data.get("source_id")
+    target_id = data.get("target_id")
+    
+    if not source_id or not target_id:
+        return jsonify({"success": False, "error": "source_id and target_id required"}), 400
+    
+    result = _get_service().merge_customers(
+        source_id=int(source_id),
+        target_id=int(target_id),
+        merged_by="web_user"
+    )
+    
+    if not result["success"]:
+        return jsonify(result), 400
+    return jsonify(result)
+
+@customer_resolution_bp.route("/customer-aliases")
+def aliases_page():
+    """Customer aliases management page."""
+    return render_template("customer_aliases.html")
+
+
+@customer_resolution_bp.route("/api/customer-aliases")
+def get_customers_with_aliases():
+    """List customers with alias counts."""
+    search = request.args.get("search", "").strip()
+    min_aliases = int(request.args.get("min_aliases", 0))
+    limit = int(request.args.get("limit", 200))
+    
+    items = _get_service().get_customers_with_aliases(
+        search=search,
+        min_aliases=min_aliases,
+        limit=limit
+    )
+    return jsonify(items)
+
+
+@customer_resolution_bp.route("/api/customer-aliases/<int:customer_id>")
+def get_customer_detail(customer_id: int):
+    """Get single customer with all aliases."""
+    result = _get_service().get_customer_aliases(customer_id)
+    if not result:
+        return jsonify({"error": "Customer not found"}), 404
+    return jsonify(result)
+
+
+@customer_resolution_bp.route("/api/customer-aliases/<int:alias_id>", methods=["DELETE"])
+def delete_alias(alias_id: int):
+    """Soft-delete an alias."""
+    result = _get_service().delete_alias(alias_id, deleted_by="web_user")
+    if not result["success"]:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@customer_resolution_bp.route("/api/customer-aliases/<int:customer_id>/rename", methods=["POST"])
+def rename_customer(customer_id: int):
+    """Rename a customer's normalized_name."""
+    data = request.json
+    new_name = data.get("new_name", "").strip()
+
+    if not new_name:
+        return jsonify({"success": False, "error": "new_name required"}), 400
+
+    result = _get_service().rename_customer(
+        customer_id=customer_id,
+        new_name=new_name,
+        renamed_by="web_user"
+    )
+
+    if not result["success"]:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@customer_resolution_bp.route("/api/customer-aliases/<int:customer_id>/address", methods=["PUT"])
+def update_customer_address(customer_id: int):
+    """Update customer address."""
+    data = request.json
+
+    result = _get_service().update_customer_address(
+        customer_id=customer_id,
+        address=data.get("address"),
+        city=data.get("city"),
+        state=data.get("state"),
+        zip_code=data.get("zip"),
+        updated_by="web_user"
+    )
+
+    if not result["success"]:
+        return jsonify(result), 400
+    return jsonify(result)

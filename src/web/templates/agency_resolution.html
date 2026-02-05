@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Customer Resolution - SpotOps{% endblock %}
-{% block header_title %}Customer Resolution{% endblock %}
-{% block header_subtitle %}Create customer records for unmatched bill codes{% endblock %}
+{% block title %}Agency Resolution - SpotOps{% endblock %}
+{% block header_title %}Agency Resolution{% endblock %}
+{% block header_subtitle %}Create agency records for unmatched agency names{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -12,26 +12,26 @@
   .stat .lbl{font-size:12px;color:#64748b;margin-top:2px}
   .stat.good{background:#ecfdf5;border-color:#34d399}
   .stat.warn{background:#fef3c7;border-color:#f59e0b}
-  
+
   .filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:center}
   .filter-bar input,.filter-bar select{padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px}
   .filter-bar button{padding:8px 16px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0;background:#fff}
   .filter-bar button:hover{background:#f8fafc}
-  
+
   .resolution-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
   .resolution-table th{background:#f8fafc;padding:12px;text-align:left;font-weight:600;font-size:13px;border-bottom:1px solid #e2e8f0}
   .resolution-table td{padding:12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
   .resolution-table tr:hover{background:#fafafa}
   .resolution-table tr.resolved{opacity:0.4;background:#f0fdf4}
-  
-  .bill-code{font-family:ui-monospace,monospace;font-size:13px;color:#334155}
+
+  .agency-raw{font-family:ui-monospace,monospace;font-size:13px;color:#334155}
   .normalized{font-size:13px;color:#0f172a}
   .normalized .diff{color:#0ea5e9;font-weight:500}
   .meta{font-size:11px;color:#94a3b8}
-  
+
   .revenue{font-weight:600;text-align:right}
   .revenue.negative{color:#ef4444}
-  
+
   .actions{display:flex;gap:6px}
   .actions button{padding:6px 12px;border-radius:5px;font-size:12px;cursor:pointer;border:1px solid}
   .btn-create{background:#0ea5e9;border-color:#0284c7;color:#fff}
@@ -39,12 +39,12 @@
   .btn-link{background:#fff;border-color:#e2e8f0;color:#334155}
   .btn-link:hover{background:#f8fafc}
   .btn-skip{background:transparent;border-color:transparent;color:#94a3b8}
-  
+
   .link-form{display:none;margin-top:8px}
   .link-form.active{display:flex;gap:8px;align-items:center}
   .link-form input{padding:6px 10px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px;width:200px}
   .normalized-input{padding:4px 8px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;width:300px}
-.normalized-input:focus{border-color:#0ea5e9;outline:none}
+  .normalized-input:focus{border-color:#0ea5e9;outline:none}
   .empty{text-align:center;padding:40px;color:#64748b}
 </style>
 {% endblock %}
@@ -53,22 +53,22 @@
 <div class="stats-row" id="stats"></div>
 
 <div class="filter-bar">
-  <input type="text" id="search" placeholder="Search bill codes...">
+  <input type="text" id="search" placeholder="Search agency names...">
   <select id="min-revenue">
     <option value="0">All revenue</option>
-    <option value="100">≥ $100</option>
-    <option value="500" selected>≥ $500</option>
-    <option value="1000">≥ $1,000</option>
-    <option value="5000">≥ $5,000</option>
+    <option value="100">$100+</option>
+    <option value="500" selected>$500+</option>
+    <option value="1000">$1,000+</option>
+    <option value="5000">$5,000+</option>
   </select>
-  <button id="refresh">↻ Refresh</button>
-  <a href="/customer-aliases">Customer Aliases</a>
+  <button id="refresh">Refresh</button>
+  <a href="/agency-aliases">Agency Aliases</a>
 </div>
 
 <table class="resolution-table">
   <thead>
     <tr>
-      <th style="width:35%">Bill Code → Normalized Name</th>
+      <th style="width:35%">Raw Agency Name - Normalized Name</th>
       <th style="width:15%">Revenue</th>
       <th style="width:10%">Spots</th>
       <th style="width:15%">Date Range</th>
@@ -84,8 +84,8 @@
 {% block scripts %}
 <script>
 (function() {
-  const API = '/api/customer-resolution';
-  
+  const API = '/api/agency-resolution';
+
   async function loadStats() {
     const r = await fetch(`${API}/stats`);
     const s = await r.json();
@@ -108,57 +108,56 @@
       </div>
     `;
   }
-  
+
   async function loadTable() {
     const minRev = document.getElementById('min-revenue').value;
     const search = document.getElementById('search').value.trim();
     const tbody = document.getElementById('tbody');
-    
+
     const r = await fetch(`${API}/unresolved?min_revenue=${minRev}`);
     let items = await r.json();
-    
+
     if (search) {
       const q = search.toLowerCase();
-      items = items.filter(i => 
-        i.bill_code.toLowerCase().includes(q) || 
+      items = items.filter(i =>
+        i.agency_raw.toLowerCase().includes(q) ||
         i.normalized_name.toLowerCase().includes(q)
       );
     }
-    
+
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">No unresolved bill codes found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">No unresolved agency names found</td></tr>';
       return;
     }
-    
+
     tbody.innerHTML = items.map(i => renderRow(i)).join('');
     attachHandlers();
   }
-  
+
   function renderRow(item) {
-    const isDifferent = item.bill_code !== item.normalized_name;
-    const normalizedDisplay = `<span class="diff">→</span> <input type="text" class="normalized-input" value="${esc(item.normalized_name)}">`;
-    
+    const normalizedDisplay = `<span class="diff">-></span> <input type="text" class="normalized-input" value="${esc(item.normalized_name)}">`;
+
     const revClass = item.revenue < 0 ? 'revenue negative' : 'revenue';
-    
+
     return `
-      <tr data-bill-code="${esc(item.bill_code)}" data-normalized="${esc(item.normalized_name)}">
+      <tr data-agency-raw="${esc(item.agency_raw)}" data-normalized="${esc(item.normalized_name)}">
         <td>
-          <div class="bill-code">${esc(item.bill_code)}</div>
+          <div class="agency-raw">${esc(item.agency_raw)}</div>
           <div class="normalized">${normalizedDisplay}</div>
         </td>
         <td class="${revClass}">$${item.revenue.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
         <td>${item.spot_count}</td>
-        <td class="meta">${item.first_seen || '?'} – ${item.last_seen || '?'}</td>
+        <td class="meta">${item.first_seen || '?'} - ${item.last_seen || '?'}</td>
         <td>
           <div class="actions">
-            <button class="btn-create" title="Create customer with normalized name">Create Customer</button>
-            <button class="btn-link" title="Link to different existing customer">Link...</button>
+            <button class="btn-create" title="Create agency with normalized name">Create Agency</button>
+            <button class="btn-link" title="Link to different existing agency">Link...</button>
             <button class="btn-skip" title="Skip for now">Skip</button>
           </div>
           <div class="link-form">
-            <input type="text" placeholder="Search customers..." list="cust-list-${esc(item.bill_code)}">
-            <datalist id="cust-list-${esc(item.bill_code)}"></datalist>
-            <input type="hidden" class="cust-id">
+            <input type="text" placeholder="Search agencies..." list="agency-list-${esc(item.agency_raw)}">
+            <datalist id="agency-list-${esc(item.agency_raw)}"></datalist>
+            <input type="hidden" class="agency-id">
             <button class="btn-create">Link</button>
             <button class="btn-skip">Cancel</button>
           </div>
@@ -166,20 +165,20 @@
       </tr>
     `;
   }
-  
+
   function attachHandlers() {
     // Create button
     document.querySelectorAll('.btn-create').forEach(btn => {
       if (btn.closest('.link-form')) return;
       btn.addEventListener('click', async function() {
         const row = this.closest('tr');
-        const billCode = row.dataset.billCode;
+        const agencyRaw = row.dataset.agencyRaw;
         const normalized = row.querySelector('.normalized-input').value.trim();
         if (!normalized) { alert('Normalized name cannot be empty'); return; }
-        await createCustomer(row, billCode, normalized);
+        await createAgency(row, agencyRaw, normalized);
       });
     });
-    
+
     // Link button (show form)
     document.querySelectorAll('.btn-link').forEach(btn => {
       btn.addEventListener('click', function() {
@@ -189,7 +188,7 @@
         row.querySelector('.link-form input[type="text"]').focus();
       });
     });
-    
+
     // Link form search
     document.querySelectorAll('.link-form input[type="text"]').forEach(input => {
       let timeout;
@@ -199,10 +198,10 @@
           const q = input.value.trim();
           if (q.length < 2) return;
           const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}`);
-          const customers = await r.json();
+          const agencies = await r.json();
           const dl = input.nextElementSibling;
-          dl.innerHTML = customers.map(c => 
-            `<option value="${esc(c.normalized_name)}" data-id="${c.customer_id}">`
+          dl.innerHTML = agencies.map(a =>
+            `<option value="${esc(a.agency_name)}" data-id="${a.agency_id}">`
           ).join('');
         }, 200);
       });
@@ -210,22 +209,22 @@
         const dl = input.nextElementSibling;
         const opt = dl.querySelector(`option[value="${input.value}"]`);
         if (opt) {
-          input.closest('.link-form').querySelector('.cust-id').value = opt.dataset.id;
+          input.closest('.link-form').querySelector('.agency-id').value = opt.dataset.id;
         }
       });
     });
-    
+
     // Link form submit
     document.querySelectorAll('.link-form .btn-create').forEach(btn => {
       btn.addEventListener('click', async function() {
         const row = this.closest('tr');
-        const billCode = row.dataset.billCode;
-        const custId = row.querySelector('.cust-id').value;
-        if (!custId) { alert('Select a customer first'); return; }
-        await linkCustomer(row, billCode, parseInt(custId));
+        const agencyRaw = row.dataset.agencyRaw;
+        const agencyId = row.querySelector('.agency-id').value;
+        if (!agencyId) { alert('Select an agency first'); return; }
+        await linkAgency(row, agencyRaw, parseInt(agencyId));
       });
     });
-    
+
     // Cancel link / Skip
     document.querySelectorAll('.btn-skip').forEach(btn => {
       btn.addEventListener('click', function() {
@@ -240,57 +239,57 @@
       });
     });
   }
-  
-  async function createCustomer(row, billCode, normalized) {
+
+  async function createAgency(row, agencyRaw, agencyName) {
     row.style.opacity = '0.5';
     try {
       const r = await fetch(`${API}/create`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ bill_code: billCode, normalized_name: normalized })
+        body: JSON.stringify({ agency_raw: agencyRaw, agency_name: agencyName })
       });
       const result = await r.json();
       if (!r.ok || !result.success) throw new Error(result.error || 'Failed');
-      
+
       row.classList.add('resolved');
-      row.querySelector('.actions').innerHTML = `<span class="meta">✓ Created${result.alias_created ? ' + alias' : ''}</span>`;
+      row.querySelector('.actions').innerHTML = `<span class="meta">Created${result.alias_created ? ' + alias' : ''}</span>`;
       loadStats();
     } catch (e) {
       row.style.opacity = '1';
       alert('Error: ' + e.message);
     }
   }
-  
-  async function linkCustomer(row, billCode, customerId) {
+
+  async function linkAgency(row, agencyRaw, agencyId) {
     row.style.opacity = '0.5';
     try {
       const r = await fetch(`${API}/link`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ bill_code: billCode, customer_id: customerId })
+        body: JSON.stringify({ agency_raw: agencyRaw, agency_id: agencyId })
       });
       const result = await r.json();
       if (!r.ok || !result.success) throw new Error(result.error || 'Failed');
-      
+
       row.classList.add('resolved');
       row.querySelector('.link-form').classList.remove('active');
       row.querySelector('.actions').style.display = 'flex';
-      row.querySelector('.actions').innerHTML = `<span class="meta">✓ Linked to ${esc(result.normalized_name)}</span>`;
+      row.querySelector('.actions').innerHTML = `<span class="meta">Linked to ${esc(result.agency_name)}</span>`;
       loadStats();
     } catch (e) {
       row.style.opacity = '1';
       alert('Error: ' + e.message);
     }
   }
-  
+
   function esc(s) {
     return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
-  
+
   document.getElementById('refresh').addEventListener('click', () => { loadStats(); loadTable(); });
   document.getElementById('min-revenue').addEventListener('change', loadTable);
   document.getElementById('search').addEventListener('input', loadTable);
-  
+
   loadStats();
   loadTable();
 })();
