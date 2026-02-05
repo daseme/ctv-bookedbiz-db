@@ -1,0 +1,1084 @@
+{% extends "base.html" %}
+
+{% block title %}Address Book - SpotOps{% endblock %}
+{% block header_title %}Address Book{% endblock %}
+{% block header_subtitle %}Unified directory of agencies and customers with contacts{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .stats-row{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+  .stat{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;min-width:120px}
+  .stat .val{font-size:24px;font-weight:700}
+  .stat .lbl{font-size:12px;color:#64748b;margin-top:2px}
+  .stat.agencies{border-left:4px solid #0ea5e9}
+  .stat.customers{border-left:4px solid #8b5cf6}
+  .stat.warn{border-left:4px solid #f59e0b}
+
+  .filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+  .filter-bar input,.filter-bar select{padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px}
+  .filter-bar input[type="text"]{width:280px}
+  .filter-bar button{padding:8px 16px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0;background:#fff}
+  .filter-bar button:hover{background:#f8fafc}
+  .filter-bar button#export-csv{background:#059669;color:#fff;border-color:#047857}
+  .filter-bar button#export-csv:hover{background:#047857}
+  .filter-bar button#save-filter{background:#0ea5e9;color:#fff;border-color:#0284c7}
+  .filter-bar button#save-filter:hover{background:#0284c7}
+  .filter-bar .count{margin-left:auto;font-size:13px;color:#64748b}
+
+  .entity-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(380px, 1fr));gap:16px}
+
+  .entity-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;transition:box-shadow 0.15s;cursor:pointer}
+  .entity-card:hover{box-shadow:0 4px 12px rgba(0,0,0,0.08);border-color:#cbd5e1}
+  .entity-card.agency{border-top:3px solid #0ea5e9}
+  .entity-card.customer{border-top:3px solid #8b5cf6}
+
+  .card-header{padding:14px 16px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .entity-name{font-weight:600;font-size:15px;color:#0f172a;margin:0}
+  .header-badges{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .entity-type{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500}
+  .entity-type.agency{background:#e0f2fe;color:#0369a1}
+  .entity-type.customer{background:#ede9fe;color:#6d28d9}
+  .sector-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;background:#fef3c7;color:#92400e}
+  .sector-badge.none{background:#f1f5f9;color:#64748b}
+  .market-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .market-chip{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500;background:#dcfce7;color:#166534}
+  .market-chip.more{background:#f1f5f9;color:#64748b}
+
+  .metrics-row{display:flex;gap:16px;margin-top:8px;font-size:12px;color:#64748b}
+  .metric{display:flex;align-items:center;gap:4px}
+  .metric .value{font-weight:600;color:#334155}
+  .metric.revenue .value{color:#059669}
+  .metric.inactive{opacity:0.5}
+
+  .card-body{padding:0 16px 14px}
+  .address-line{font-size:13px;color:#475569;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px}
+  .address-line .icon{color:#94a3b8;flex-shrink:0}
+  .no-data{font-size:13px;color:#94a3b8;font-style:italic}
+  .notes-preview{font-size:12px;color:#64748b;margin-bottom:6px;max-height:36px;overflow:hidden}
+  .contacts-summary{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .contact-chip{display:flex;align-items:center;gap:4px;padding:4px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px}
+  .contact-chip .name{font-weight:500;color:#334155}
+  .contact-chip.primary{background:#fef3c7;border-color:#fcd34d}
+
+  .empty{text-align:center;padding:60px 20px;color:#64748b}
+  .empty h3{margin:0 0 8px;color:#334155}
+
+  /* Detail Modal - larger */
+  .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+  .modal-overlay.active{display:flex}
+  .detail-modal{background:#fff;border-radius:12px;width:100%;max-width:700px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .detail-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+  .detail-modal .modal-header h2{margin:0;font-size:20px;display:flex;align-items:center;gap:12px}
+  .detail-modal .modal-header .type-badge{font-size:12px;padding:4px 10px;border-radius:12px;font-weight:500}
+  .detail-modal .modal-header .type-badge.agency{background:#e0f2fe;color:#0369a1}
+  .detail-modal .modal-header .type-badge.customer{background:#ede9fe;color:#6d28d9}
+  .modal-close{background:none;border:none;font-size:24px;color:#94a3b8;cursor:pointer;padding:4px 8px}
+  .modal-close:hover{color:#334155}
+  .detail-modal .modal-body{padding:24px}
+
+  .detail-section{margin-bottom:24px}
+  .detail-section:last-child{margin-bottom:0}
+  .detail-section h3{font-size:14px;font-weight:600;color:#334155;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .detail-section h3 .icon{font-size:16px}
+
+  .address-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .address-form .full-width{grid-column:1/-1}
+  .form-field label{display:block;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
+  .form-field input,.form-field select,.form-field textarea{width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px}
+  .form-field input:focus,.form-field select:focus,.form-field textarea:focus{border-color:#0ea5e9;outline:none}
+  .form-field textarea{resize:vertical;min-height:80px}
+
+  .sector-row{display:flex;gap:12px;align-items:flex-end}
+  .sector-row .form-field{flex:1}
+
+  .contacts-list{display:flex;flex-direction:column;gap:10px}
+  .contact-card{display:flex;align-items:flex-start;gap:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}
+  .contact-card.primary{background:#fefce8;border-color:#fde047}
+  .contact-card .contact-info{flex:1}
+  .contact-card .contact-name{font-weight:600;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .contact-card .primary-badge{font-size:10px;padding:2px 6px;background:#fde047;color:#854d0e;border-radius:4px;font-weight:600}
+  .contact-card .contact-title{font-size:12px;color:#64748b;margin-top:2px}
+  .contact-card .contact-details{font-size:13px;color:#475569;margin-top:6px;display:flex;gap:16px;flex-wrap:wrap}
+  .contact-card .contact-actions{display:flex;gap:4px}
+  .contact-card .contact-actions button{background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px 6px;font-size:12px;border-radius:4px}
+  .contact-card .contact-actions button:hover{background:#e2e8f0;color:#334155}
+  .contact-card .contact-actions button.delete:hover{background:#fee2e2;color:#dc2626}
+
+  .role-badge{font-size:10px;padding:2px 6px;background:#e0e7ff;color:#4338ca;border-radius:4px;font-weight:500}
+
+  .add-contact-btn{padding:10px 16px;background:#fff;border:2px dashed #cbd5e1;border-radius:8px;color:#64748b;cursor:pointer;font-size:13px;width:100%;text-align:center}
+  .add-contact-btn:hover{border-color:#0ea5e9;color:#0ea5e9;background:#f0f9ff}
+
+  .add-contact-form{display:none;padding:16px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:8px;margin-top:10px}
+  .add-contact-form.active{display:block}
+  .add-contact-form .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .add-contact-form .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+  .add-contact-form .btn{padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer}
+  .add-contact-form .btn-cancel{background:#fff;border:1px solid #e2e8f0;color:#64748b}
+  .add-contact-form .btn-save{background:#0ea5e9;border:1px solid #0284c7;color:#fff}
+  .add-contact-form .btn-save:hover{background:#0284c7}
+
+  .save-bar{padding:16px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:12px}
+  .save-bar .btn{padding:10px 20px;border-radius:6px;font-size:14px;cursor:pointer}
+  .save-bar .btn-close{background:#fff;border:1px solid #e2e8f0;color:#475569}
+  .save-bar .btn-save{background:#0ea5e9;border:1px solid #0284c7;color:#fff}
+  .save-bar .btn-save:hover{background:#0284c7}
+  .save-bar .btn-save:disabled{background:#94a3b8;border-color:#94a3b8;cursor:not-allowed}
+  .save-status{font-size:13px;color:#64748b;display:flex;align-items:center;margin-right:auto}
+  .save-status.success{color:#16a34a}
+  .save-status.error{color:#dc2626}
+
+  /* View Toggle */
+  .view-toggle{display:flex;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
+  .view-toggle button{padding:6px 12px;border:none;background:#fff;color:#64748b;cursor:pointer;font-size:13px}
+  .view-toggle button.active{background:#0ea5e9;color:#fff}
+  .view-toggle button:hover:not(.active){background:#f1f5f9}
+
+  /* Table View */
+  .entity-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;display:none}
+  .entity-table.active{display:table}
+  .entity-grid.hidden{display:none}
+  .entity-table th,.entity-table td{padding:10px 12px;text-align:left;border-bottom:1px solid #e2e8f0}
+  .entity-table th{background:#f8fafc;font-size:12px;font-weight:600;color:#475569;text-transform:uppercase}
+  .entity-table td{font-size:13px}
+  .entity-table tr:hover{background:#f8fafc}
+  .entity-table tr.selected{background:#e0f2fe}
+  .entity-table .name-cell{font-weight:500;color:#0f172a;cursor:pointer}
+  .entity-table .name-cell:hover{color:#0ea5e9}
+  .entity-table .checkbox-cell{width:40px}
+  .entity-table .type-cell{width:80px}
+  .entity-table .revenue-cell{text-align:right;font-weight:500;color:#059669}
+
+  /* Bulk Toolbar */
+  .bulk-toolbar{display:none;align-items:center;gap:12px;padding:12px 16px;background:#e0f2fe;border-radius:8px;margin-bottom:16px}
+  .bulk-toolbar.active{display:flex}
+  .bulk-toolbar .count{font-weight:600;color:#0369a1}
+  .bulk-toolbar button{padding:6px 12px;border:1px solid #0284c7;border-radius:6px;background:#fff;color:#0284c7;cursor:pointer;font-size:13px}
+  .bulk-toolbar button:hover{background:#0ea5e9;color:#fff}
+  .bulk-toolbar .clear-selection{background:transparent;border:none;color:#64748b;text-decoration:underline}
+
+  /* Activity Log */
+  .activity-timeline{max-height:300px;overflow-y:auto;margin-top:12px}
+  .activity-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f1f5f9}
+  .activity-item:last-child{border-bottom:none}
+  .activity-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px}
+  .activity-icon.note{background:#e0e7ff;color:#4338ca}
+  .activity-icon.call{background:#dcfce7;color:#16a34a}
+  .activity-icon.email{background:#fef3c7;color:#ca8a04}
+  .activity-icon.meeting{background:#ede9fe;color:#7c3aed}
+  .activity-icon.status_change{background:#fee2e2;color:#dc2626}
+  .activity-content{flex:1;min-width:0}
+  .activity-header{font-size:12px;color:#64748b;display:flex;gap:8px;align-items:center}
+  .activity-type{font-weight:600;text-transform:capitalize}
+  .activity-desc{font-size:13px;color:#334155;margin-top:4px}
+  .add-activity-form{margin-top:12px;padding:12px;background:#f8fafc;border-radius:8px;display:none}
+  .add-activity-form.active{display:block}
+  .add-activity-form select,.add-activity-form textarea{width:100%;margin-bottom:8px;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px}
+  .add-activity-form textarea{min-height:60px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="stats-row" id="stats">
+  <div class="stat agencies"><div class="val">-</div><div class="lbl">Agencies</div></div>
+  <div class="stat customers"><div class="val">-</div><div class="lbl">Customers</div></div>
+  <div class="stat"><div class="val">-</div><div class="lbl">With Contacts</div></div>
+  <div class="stat warn"><div class="val">-</div><div class="lbl">Missing Contacts</div></div>
+</div>
+
+<div class="filter-bar">
+  <input type="text" id="search" placeholder="Search name, contacts, notes...">
+  <select id="type-filter">
+    <option value="all">All Types</option>
+    <option value="agency">Agencies Only</option>
+    <option value="customer">Customers Only</option>
+  </select>
+  <select id="market-filter">
+    <option value="">All Markets</option>
+  </select>
+  <select id="sector-filter">
+    <option value="">All Sectors</option>
+  </select>
+  <select id="contacts-filter">
+    <option value="all">All Contact Status</option>
+    <option value="yes">Has Contacts</option>
+    <option value="no">Missing Contacts</option>
+  </select>
+  <select id="sort-filter">
+    <option value="name">Sort by Name</option>
+    <option value="last_active">Sort by Last Active</option>
+    <option value="revenue">Sort by Revenue</option>
+    <option value="market">Sort by Market</option>
+    <option value="sector">Sort by Sector</option>
+    <option value="type">Sort by Type</option>
+  </select>
+  <select id="saved-filter">
+    <option value="">Saved Filters...</option>
+  </select>
+  <button id="save-filter" title="Save current filter">Save</button>
+  <button id="export-csv" title="Export to CSV">Export</button>
+  <button id="refresh">Refresh</button>
+  <div class="view-toggle">
+    <button id="view-cards" class="active" title="Card View">Cards</button>
+    <button id="view-table" title="Table View">Table</button>
+  </div>
+  <span class="count" id="count"></span>
+</div>
+
+<!-- Bulk Toolbar -->
+<div class="bulk-toolbar" id="bulk-toolbar">
+  <span class="count"><span id="selected-count">0</span> selected</span>
+  <button id="bulk-export">Export Selected</button>
+  <button id="bulk-set-sector">Set Sector</button>
+  <button class="clear-selection" id="clear-selection">Clear Selection</button>
+</div>
+
+<div class="entity-grid" id="grid">
+  <div class="empty">Loading...</div>
+</div>
+
+<!-- Table View -->
+<table class="entity-table" id="table">
+  <thead>
+    <tr>
+      <th class="checkbox-cell"><input type="checkbox" id="select-all"></th>
+      <th>Name</th>
+      <th class="type-cell">Type</th>
+      <th>Sector</th>
+      <th>Primary Contact</th>
+      <th>Last Active</th>
+      <th class="revenue-cell">Revenue</th>
+    </tr>
+  </thead>
+  <tbody id="table-body"></tbody>
+</table>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="detail-modal">
+    <div class="modal-header">
+      <h2><span id="detail-name"></span> <span class="type-badge" id="detail-type-badge"></span></h2>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <!-- Sector (customers only) -->
+      <div class="detail-section" id="sector-section" style="display:none">
+        <h3><span class="icon">🏷️</span> Sector</h3>
+        <div class="sector-row">
+          <div class="form-field">
+            <select id="detail-sector"></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Markets -->
+      <div class="detail-section" id="markets-section">
+        <h3><span class="icon">📺</span> Markets</h3>
+        <div class="market-badges" id="detail-markets" style="font-size:12px">
+          <span class="no-data">No spots in any market</span>
+        </div>
+      </div>
+
+      <!-- Address -->
+      <div class="detail-section">
+        <h3><span class="icon">📍</span> Address</h3>
+        <div class="address-form">
+          <div class="form-field full-width">
+            <label>Street Address</label>
+            <input type="text" id="detail-address" placeholder="123 Main St">
+          </div>
+          <div class="form-field">
+            <label>City</label>
+            <input type="text" id="detail-city" placeholder="City">
+          </div>
+          <div class="form-field">
+            <label>State</label>
+            <input type="text" id="detail-state" placeholder="CA" maxlength="2" style="width:80px">
+          </div>
+          <div class="form-field">
+            <label>ZIP</label>
+            <input type="text" id="detail-zip" placeholder="12345" maxlength="10" style="width:100px">
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="detail-section">
+        <h3><span class="icon">📝</span> Notes</h3>
+        <div class="form-field">
+          <textarea id="detail-notes" placeholder="Add notes about this entity..."></textarea>
+        </div>
+      </div>
+
+      <!-- Contacts -->
+      <div class="detail-section">
+        <h3><span class="icon">👤</span> Contacts</h3>
+        <div class="contacts-list" id="detail-contacts"></div>
+        <button class="add-contact-btn" id="show-add-contact">+ Add New Contact</button>
+        <div class="add-contact-form" id="add-contact-form">
+          <div class="form-row">
+            <div class="form-field">
+              <label>Name *</label>
+              <input type="text" id="new-contact-name" placeholder="Full name">
+            </div>
+            <div class="form-field">
+              <label>Title</label>
+              <input type="text" id="new-contact-title" placeholder="Job title">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label>Email</label>
+              <input type="email" id="new-contact-email" placeholder="email@example.com">
+            </div>
+            <div class="form-field">
+              <label>Phone</label>
+              <input type="text" id="new-contact-phone" placeholder="(555) 123-4567">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label>Role</label>
+              <select id="new-contact-role">
+                <option value="">-- Select Role --</option>
+                <option value="decision_maker">Decision Maker</option>
+                <option value="account_manager">Account Manager</option>
+                <option value="billing">Billing</option>
+                <option value="technical">Technical</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-field" style="display:flex;align-items:flex-end;padding-bottom:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="new-contact-primary">
+                <label for="new-contact-primary" style="font-size:13px;color:#475569">Primary contact</label>
+              </div>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-cancel" id="cancel-add-contact">Cancel</button>
+            <button class="btn btn-save" id="save-new-contact">Add Contact</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity Log -->
+      <div class="detail-section">
+        <h3><span class="icon">📋</span> Activity Log</h3>
+        <button class="add-contact-btn" id="show-add-activity">+ Add Note or Activity</button>
+        <div class="add-activity-form" id="add-activity-form">
+          <select id="new-activity-type">
+            <option value="note">Note</option>
+            <option value="call">Call</option>
+            <option value="email">Email</option>
+            <option value="meeting">Meeting</option>
+          </select>
+          <textarea id="new-activity-desc" placeholder="Describe the activity..."></textarea>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-cancel" id="cancel-add-activity">Cancel</button>
+            <button class="btn btn-save" id="save-new-activity">Add</button>
+          </div>
+        </div>
+        <div class="activity-timeline" id="detail-activities">
+          <div class="no-data">No activity recorded</div>
+        </div>
+      </div>
+    </div>
+    <div class="save-bar">
+      <span class="save-status" id="save-status"></span>
+      <button class="btn btn-close" id="close-detail">Close</button>
+      <button class="btn btn-save" id="save-detail">Save Changes</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const API = '/api/address-book';
+  let currentData = [];
+  let sectorsData = [];
+  let marketsData = [];
+  let currentEntity = null;
+  let hasUnsavedChanges = false;
+  let selectedEntities = new Set();
+  let viewMode = localStorage.getItem('addressBookView') || 'cards';
+
+  function esc(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ===== Load sectors =====
+  async function loadSectors() {
+    try {
+      const r = await fetch(`${API}/sectors`);
+      sectorsData = await r.json();
+      document.getElementById('sector-filter').innerHTML = '<option value="">All Sectors</option>' +
+        sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+      document.getElementById('detail-sector').innerHTML = '<option value="">-- No Sector --</option>' +
+        sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+    } catch (e) { console.error('Failed to load sectors:', e); }
+  }
+
+  // ===== Load markets =====
+  async function loadMarkets() {
+    try {
+      const r = await fetch(`${API}/markets`);
+      marketsData = await r.json();
+      document.getElementById('market-filter').innerHTML = '<option value="">All Markets</option>' +
+        marketsData.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    } catch (e) { console.error('Failed to load markets:', e); }
+  }
+
+  // ===== Load data =====
+  async function loadData() {
+    const params = new URLSearchParams({
+      search: document.getElementById('search').value.trim(),
+      type: document.getElementById('type-filter').value,
+      market: document.getElementById('market-filter').value,
+      has_contacts: document.getElementById('contacts-filter').value,
+      sector_id: document.getElementById('sector-filter').value,
+      sort: document.getElementById('sort-filter').value
+    });
+    const r = await fetch(`${API}?${params}`);
+    currentData = await r.json();
+    updateStats();
+    renderGrid();
+  }
+
+  function updateStats() {
+    const agencies = currentData.filter(d => d.entity_type === 'agency').length;
+    const customers = currentData.filter(d => d.entity_type === 'customer').length;
+    const withContacts = currentData.filter(d => d.contact_count > 0).length;
+    const noContacts = currentData.filter(d => d.contact_count === 0).length;
+    document.getElementById('stats').innerHTML = `
+      <div class="stat agencies"><div class="val">${agencies}</div><div class="lbl">Agencies</div></div>
+      <div class="stat customers"><div class="val">${customers}</div><div class="lbl">Customers</div></div>
+      <div class="stat"><div class="val">${withContacts}</div><div class="lbl">With Contacts</div></div>
+      <div class="stat warn"><div class="val">${noContacts}</div><div class="lbl">Missing Contacts</div></div>`;
+    document.getElementById('count').textContent = `${currentData.length} entities`;
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('grid');
+    const table = document.getElementById('table');
+
+    if (!currentData.length) {
+      grid.innerHTML = `<div class="empty"><h3>No entities found</h3><p>Try adjusting your filters.</p></div>`;
+      grid.classList.remove('hidden');
+      table.classList.remove('active');
+      return;
+    }
+
+    // Render card view
+    grid.innerHTML = currentData.map(renderCard).join('');
+    document.querySelectorAll('.entity-card').forEach(card => {
+      card.addEventListener('click', () => openDetail(card.dataset.type, card.dataset.id));
+    });
+
+    // Render table view
+    renderTable();
+
+    // Apply view mode
+    applyViewMode();
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById('table-body');
+    tbody.innerHTML = currentData.map(e => {
+      const key = `${e.entity_type}:${e.entity_id}`;
+      const isSelected = selectedEntities.has(key);
+      const revenue = e.total_revenue || 0;
+      const revenueStr = revenue >= 1000000 ? `$${(revenue/1000000).toFixed(1)}M` :
+                         revenue >= 1000 ? `$${(revenue/1000).toFixed(0)}K` :
+                         `$${revenue.toFixed(0)}`;
+      const lastActive = e.last_active ? formatDate(e.last_active) : '-';
+      return `
+        <tr class="${isSelected ? 'selected' : ''}" data-key="${key}" data-type="${e.entity_type}" data-id="${e.entity_id}">
+          <td class="checkbox-cell"><input type="checkbox" class="row-select" ${isSelected ? 'checked' : ''}></td>
+          <td class="name-cell">${esc(e.entity_name)}</td>
+          <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span></td>
+          <td>${esc(e.sector_name || '-')}</td>
+          <td>${esc(e.primary_contact || '-')}</td>
+          <td>${lastActive}</td>
+          <td class="revenue-cell">${revenueStr}</td>
+        </tr>`;
+    }).join('');
+
+    // Attach click handlers
+    tbody.querySelectorAll('.name-cell').forEach(cell => {
+      cell.addEventListener('click', (e) => {
+        const row = cell.closest('tr');
+        openDetail(row.dataset.type, row.dataset.id);
+      });
+    });
+
+    tbody.querySelectorAll('.row-select').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const row = cb.closest('tr');
+        const key = row.dataset.key;
+        if (cb.checked) {
+          selectedEntities.add(key);
+          row.classList.add('selected');
+        } else {
+          selectedEntities.delete(key);
+          row.classList.remove('selected');
+        }
+        updateBulkToolbar();
+      });
+    });
+  }
+
+  function applyViewMode() {
+    const grid = document.getElementById('grid');
+    const table = document.getElementById('table');
+    const cardsBtn = document.getElementById('view-cards');
+    const tableBtn = document.getElementById('view-table');
+
+    if (viewMode === 'table') {
+      grid.classList.add('hidden');
+      table.classList.add('active');
+      cardsBtn.classList.remove('active');
+      tableBtn.classList.add('active');
+    } else {
+      grid.classList.remove('hidden');
+      table.classList.remove('active');
+      cardsBtn.classList.add('active');
+      tableBtn.classList.remove('active');
+    }
+  }
+
+  // View toggle handlers
+  document.getElementById('view-cards').addEventListener('click', () => {
+    viewMode = 'cards';
+    localStorage.setItem('addressBookView', 'cards');
+    applyViewMode();
+  });
+  document.getElementById('view-table').addEventListener('click', () => {
+    viewMode = 'table';
+    localStorage.setItem('addressBookView', 'table');
+    applyViewMode();
+  });
+
+  // Select all handler
+  document.getElementById('select-all').addEventListener('change', function() {
+    const checked = this.checked;
+    document.querySelectorAll('.row-select').forEach(cb => {
+      cb.checked = checked;
+      const row = cb.closest('tr');
+      const key = row.dataset.key;
+      if (checked) {
+        selectedEntities.add(key);
+        row.classList.add('selected');
+      } else {
+        selectedEntities.delete(key);
+        row.classList.remove('selected');
+      }
+    });
+    updateBulkToolbar();
+  });
+
+  function updateBulkToolbar() {
+    const toolbar = document.getElementById('bulk-toolbar');
+    const countEl = document.getElementById('selected-count');
+    countEl.textContent = selectedEntities.size;
+    if (selectedEntities.size > 0) {
+      toolbar.classList.add('active');
+    } else {
+      toolbar.classList.remove('active');
+    }
+  }
+
+  document.getElementById('clear-selection').addEventListener('click', () => {
+    selectedEntities.clear();
+    document.querySelectorAll('.row-select').forEach(cb => {
+      cb.checked = false;
+      cb.closest('tr').classList.remove('selected');
+    });
+    document.getElementById('select-all').checked = false;
+    updateBulkToolbar();
+  });
+
+  document.getElementById('bulk-export').addEventListener('click', () => {
+    if (selectedEntities.size === 0) return;
+    const ids = Array.from(selectedEntities).map(k => k.split(':'));
+    const customerIds = ids.filter(([t]) => t === 'customer').map(([,id]) => id);
+    const agencyIds = ids.filter(([t]) => t === 'agency').map(([,id]) => id);
+    // For now, just export all with current filters - full bulk export would need backend changes
+    alert(`Exporting ${selectedEntities.size} selected entities. Using current filters for export.`);
+    document.getElementById('export-csv').click();
+  });
+
+  function renderCard(e) {
+    const sectorBadge = e.entity_type === 'customer'
+      ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}</span>`
+      : '';
+    let addressHtml = e.address || e.city ? `<div class="address-line"><span class="icon">📍</span>${esc([e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(' | '))}</div>` : '';
+    const notesHtml = e.notes ? `<div class="notes-preview">${esc(e.notes)}</div>` : '';
+    let contactsHtml = '';
+    if (e.contact_count > 0) {
+      contactsHtml = e.primary_contact ? `<div class="contact-chip primary"><span class="name">${esc(e.primary_contact)}</span></div>` : '';
+      if (e.contact_count > 1) contactsHtml += `<div class="contact-chip">+${e.contact_count - (e.primary_contact ? 1 : 0)} more</div>`;
+    }
+    // Markets
+    const markets = e.markets ? e.markets.split(',') : [];
+    let marketsHtml = '';
+    if (markets.length > 0) {
+      const displayMarkets = markets.slice(0, 4);
+      marketsHtml = '<div class="market-badges">' +
+        displayMarkets.map(m => `<span class="market-chip">${esc(m)}</span>`).join('') +
+        (markets.length > 4 ? `<span class="market-chip more">+${markets.length - 4}</span>` : '') +
+        '</div>';
+    }
+    // Metrics (revenue, last active, spots)
+    const revenue = e.total_revenue || 0;
+    const revenueStr = revenue >= 1000000 ? `$${(revenue/1000000).toFixed(1)}M` :
+                       revenue >= 1000 ? `$${(revenue/1000).toFixed(0)}K` :
+                       `$${revenue.toFixed(0)}`;
+    const lastActive = e.last_active ? formatDate(e.last_active) : 'Never';
+    const metricsHtml = `
+      <div class="metrics-row">
+        <div class="metric revenue"><span class="value">${revenueStr}</span> revenue</div>
+        <div class="metric"><span class="value">${e.spot_count || 0}</span> spots</div>
+        <div class="metric ${e.last_active ? '' : 'inactive'}">Last: <span class="value">${lastActive}</span></div>
+      </div>`;
+    return `
+      <div class="entity-card ${e.entity_type}" data-type="${e.entity_type}" data-id="${e.entity_id}">
+        <div class="card-header">
+          <h4 class="entity-name">${esc(e.entity_name)}</h4>
+          <div class="header-badges">
+            <span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span>
+            ${sectorBadge}
+          </div>
+        </div>
+        <div class="card-body">
+          ${metricsHtml}
+          ${marketsHtml}
+          ${addressHtml}
+          ${notesHtml}
+          <div class="contacts-summary">${contactsHtml || '<span class="no-data">No contacts</span>'}</div>
+        </div>
+      </div>`;
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // ===== Detail Modal =====
+  const modal = document.getElementById('detail-modal');
+
+  async function openDetail(type, id) {
+    const r = await fetch(`${API}/${type}/${id}`);
+    if (!r.ok) { alert('Failed to load entity'); return; }
+    currentEntity = await r.json();
+    currentEntity.entity_type = type;
+    currentEntity.entity_id = id;
+
+    document.getElementById('detail-name').textContent = currentEntity.entity_name;
+    const badge = document.getElementById('detail-type-badge');
+    badge.textContent = type === 'agency' ? 'Agency' : 'Customer';
+    badge.className = 'type-badge ' + type;
+
+    // Sector (customers only)
+    const sectorSection = document.getElementById('sector-section');
+    if (type === 'customer') {
+      sectorSection.style.display = 'block';
+      document.getElementById('detail-sector').value = currentEntity.sector_id || '';
+    } else {
+      sectorSection.style.display = 'none';
+    }
+
+    // Markets
+    const marketsDiv = document.getElementById('detail-markets');
+    if (currentEntity.markets && currentEntity.markets.length > 0) {
+      marketsDiv.innerHTML = currentEntity.markets.map(m => `<span class="market-chip" style="font-size:12px;padding:4px 8px">${esc(m)}</span>`).join('');
+    } else {
+      marketsDiv.innerHTML = '<span class="no-data">No spots in any market</span>';
+    }
+
+    // Address
+    document.getElementById('detail-address').value = currentEntity.address || '';
+    document.getElementById('detail-city').value = currentEntity.city || '';
+    document.getElementById('detail-state').value = currentEntity.state || '';
+    document.getElementById('detail-zip').value = currentEntity.zip || '';
+
+    // Notes
+    document.getElementById('detail-notes').value = currentEntity.notes || '';
+
+    // Contacts
+    renderContacts();
+
+    // Activities
+    loadActivities();
+
+    // Reset state
+    hasUnsavedChanges = false;
+    document.getElementById('save-status').textContent = '';
+    document.getElementById('add-contact-form').classList.remove('active');
+    document.getElementById('add-activity-form').classList.remove('active');
+
+    modal.classList.add('active');
+  }
+
+  const ACTIVITY_ICONS = {
+    'note': '📝',
+    'call': '📞',
+    'email': '📧',
+    'meeting': '🤝',
+    'status_change': '🔄'
+  };
+
+  async function loadActivities() {
+    const container = document.getElementById('detail-activities');
+    try {
+      const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`);
+      const activities = await r.json();
+
+      if (!activities || activities.length === 0) {
+        container.innerHTML = '<div class="no-data">No activity recorded</div>';
+        return;
+      }
+
+      container.innerHTML = activities.map(a => {
+        const icon = ACTIVITY_ICONS[a.activity_type] || '📋';
+        const date = a.activity_date ? formatDateTime(a.activity_date) : '';
+        return `
+          <div class="activity-item">
+            <div class="activity-icon ${a.activity_type}">${icon}</div>
+            <div class="activity-content">
+              <div class="activity-header">
+                <span class="activity-type">${a.activity_type}</span>
+                <span>${date}</span>
+                ${a.contact_name ? `<span>with ${esc(a.contact_name)}</span>` : ''}
+              </div>
+              ${a.description ? `<div class="activity-desc">${esc(a.description)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      container.innerHTML = '<div class="no-data">Failed to load activities</div>';
+    }
+  }
+
+  function formatDateTime(dt) {
+    if (!dt) return '';
+    const d = new Date(dt);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  // Activity form handlers
+  document.getElementById('show-add-activity').addEventListener('click', () => {
+    document.getElementById('add-activity-form').classList.add('active');
+  });
+  document.getElementById('cancel-add-activity').addEventListener('click', () => {
+    document.getElementById('add-activity-form').classList.remove('active');
+    document.getElementById('new-activity-type').value = 'note';
+    document.getElementById('new-activity-desc').value = '';
+  });
+  document.getElementById('save-new-activity').addEventListener('click', async () => {
+    const activityType = document.getElementById('new-activity-type').value;
+    const description = document.getElementById('new-activity-desc').value.trim();
+
+    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ activity_type: activityType, description: description || null })
+    });
+
+    if (r.ok) {
+      document.getElementById('add-activity-form').classList.remove('active');
+      document.getElementById('new-activity-type').value = 'note';
+      document.getElementById('new-activity-desc').value = '';
+      loadActivities();
+    } else {
+      alert('Failed to add activity');
+    }
+  });
+
+  const ROLE_LABELS = {
+    'decision_maker': 'Decision Maker',
+    'account_manager': 'Account Manager',
+    'billing': 'Billing',
+    'technical': 'Technical',
+    'other': 'Other'
+  };
+
+  function renderContacts() {
+    const list = document.getElementById('detail-contacts');
+    if (!currentEntity.contacts || currentEntity.contacts.length === 0) {
+      list.innerHTML = '<div class="no-data">No contacts yet</div>';
+      return;
+    }
+    list.innerHTML = currentEntity.contacts.map(c => {
+      const roleLabel = c.contact_role ? ROLE_LABELS[c.contact_role] || c.contact_role : '';
+      const lastContacted = c.last_contacted ? `Last contact: ${formatDate(c.last_contacted)}` : '';
+      return `
+      <div class="contact-card ${c.is_primary ? 'primary' : ''}" data-contact-id="${c.contact_id}">
+        <div class="contact-info">
+          <div class="contact-name">
+            ${esc(c.contact_name)}
+            ${c.is_primary ? '<span class="primary-badge">PRIMARY</span>' : ''}
+            ${roleLabel ? `<span class="role-badge">${roleLabel}</span>` : ''}
+          </div>
+          ${c.contact_title ? `<div class="contact-title">${esc(c.contact_title)}</div>` : ''}
+          <div class="contact-details">
+            ${c.email ? `<span>📧 ${esc(c.email)}</span>` : ''}
+            ${c.phone ? `<span>📞 ${esc(c.phone)}</span>` : ''}
+            ${lastContacted ? `<span style="color:#64748b;font-size:11px">${lastContacted}</span>` : ''}
+          </div>
+        </div>
+        <div class="contact-actions">
+          <button class="mark-contacted" title="Mark as contacted">📞</button>
+          ${!c.is_primary ? `<button class="set-primary" title="Set as primary">⭐</button>` : ''}
+          <button class="delete" title="Delete contact">🗑️</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Attach handlers
+    list.querySelectorAll('.set-primary').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const contactId = btn.closest('.contact-card').dataset.contactId;
+        await setPrimaryContact(contactId);
+      });
+    });
+    list.querySelectorAll('.delete').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this contact?')) return;
+        const contactId = btn.closest('.contact-card').dataset.contactId;
+        await deleteContact(contactId);
+      });
+    });
+    list.querySelectorAll('.mark-contacted').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const contactId = btn.closest('.contact-card').dataset.contactId;
+        await markContacted(contactId);
+      });
+    });
+  }
+
+  async function markContacted(contactId) {
+    const r = await fetch(`/api/contacts/${contactId}/touched`, { method: 'POST' });
+    if (r.ok) {
+      // Refresh contacts
+      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      const data = await detail.json();
+      currentEntity.contacts = data.contacts;
+      renderContacts();
+    }
+  }
+
+  async function setPrimaryContact(contactId) {
+    const r = await fetch(`/api/contacts/${contactId}/primary`, { method: 'POST' });
+    if (r.ok) {
+      // Refresh contacts
+      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      const data = await detail.json();
+      currentEntity.contacts = data.contacts;
+      renderContacts();
+    }
+  }
+
+  async function deleteContact(contactId) {
+    const r = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
+    if (r.ok) {
+      currentEntity.contacts = currentEntity.contacts.filter(c => c.contact_id != contactId);
+      renderContacts();
+    }
+  }
+
+  // Add contact form
+  document.getElementById('show-add-contact').addEventListener('click', () => {
+    document.getElementById('add-contact-form').classList.add('active');
+    document.getElementById('new-contact-name').focus();
+  });
+  document.getElementById('cancel-add-contact').addEventListener('click', () => {
+    document.getElementById('add-contact-form').classList.remove('active');
+    clearNewContactForm();
+  });
+  document.getElementById('save-new-contact').addEventListener('click', async () => {
+    const name = document.getElementById('new-contact-name').value.trim();
+    if (!name) { alert('Name is required'); return; }
+    const r = await fetch(`/api/contacts/${currentEntity.entity_type}/${currentEntity.entity_id}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        contact_name: name,
+        contact_title: document.getElementById('new-contact-title').value.trim() || null,
+        email: document.getElementById('new-contact-email').value.trim() || null,
+        phone: document.getElementById('new-contact-phone').value.trim() || null,
+        contact_role: document.getElementById('new-contact-role').value || null,
+        is_primary: document.getElementById('new-contact-primary').checked
+      })
+    });
+    if (r.ok) {
+      const result = await r.json();
+      // Refresh contacts
+      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      const data = await detail.json();
+      currentEntity.contacts = data.contacts;
+      renderContacts();
+      document.getElementById('add-contact-form').classList.remove('active');
+      clearNewContactForm();
+    } else {
+      alert('Failed to add contact');
+    }
+  });
+
+  function clearNewContactForm() {
+    document.getElementById('new-contact-name').value = '';
+    document.getElementById('new-contact-title').value = '';
+    document.getElementById('new-contact-email').value = '';
+    document.getElementById('new-contact-phone').value = '';
+    document.getElementById('new-contact-role').value = '';
+    document.getElementById('new-contact-primary').checked = false;
+  }
+
+  // Save changes
+  document.getElementById('save-detail').addEventListener('click', async () => {
+    const btn = document.getElementById('save-detail');
+    const status = document.getElementById('save-status');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    status.textContent = '';
+    status.className = 'save-status';
+
+    try {
+      // Save address
+      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/address`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          address: document.getElementById('detail-address').value.trim() || null,
+          city: document.getElementById('detail-city').value.trim() || null,
+          state: document.getElementById('detail-state').value.trim() || null,
+          zip: document.getElementById('detail-zip').value.trim() || null
+        })
+      });
+
+      // Save notes
+      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/notes`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ notes: document.getElementById('detail-notes').value.trim() || null })
+      });
+
+      // Save sector (customers only)
+      if (currentEntity.entity_type === 'customer') {
+        await fetch(`${API}/customer/${currentEntity.entity_id}/sector`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ sector_id: document.getElementById('detail-sector').value || null })
+        });
+      }
+
+      status.textContent = '✓ Saved';
+      status.className = 'save-status success';
+      hasUnsavedChanges = false;
+      loadData(); // Refresh grid
+    } catch (e) {
+      status.textContent = '✗ Error saving';
+      status.className = 'save-status error';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save Changes';
+    }
+  });
+
+  // Close modal
+  function closeModal() {
+    modal.classList.remove('active');
+    currentEntity = null;
+  }
+  modal.querySelector('.modal-close').addEventListener('click', closeModal);
+  document.getElementById('close-detail').addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  // Filter handlers
+  document.getElementById('search').addEventListener('input', debounce(loadData, 300));
+  ['type-filter', 'market-filter', 'sector-filter', 'contacts-filter', 'sort-filter'].forEach(id => {
+    document.getElementById(id).addEventListener('change', loadData);
+  });
+  document.getElementById('refresh').addEventListener('click', loadData);
+
+  function debounce(fn, ms) {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+
+  // ===== Saved Filters =====
+  let savedFiltersData = [];
+
+  async function loadSavedFilters() {
+    try {
+      const r = await fetch(`${API}/filters`);
+      savedFiltersData = await r.json();
+      const select = document.getElementById('saved-filter');
+      select.innerHTML = '<option value="">Saved Filters...</option>' +
+        savedFiltersData.map(f => `<option value="${f.filter_id}">${esc(f.filter_name)}</option>`).join('');
+    } catch (e) { console.error('Failed to load saved filters:', e); }
+  }
+
+  document.getElementById('saved-filter').addEventListener('change', function() {
+    const filterId = this.value;
+    if (!filterId) return;
+    const filter = savedFiltersData.find(f => f.filter_id == filterId);
+    if (!filter) return;
+    const cfg = filter.filter_config;
+    if (cfg.search) document.getElementById('search').value = cfg.search;
+    if (cfg.type) document.getElementById('type-filter').value = cfg.type;
+    if (cfg.market) document.getElementById('market-filter').value = cfg.market;
+    if (cfg.sector_id) document.getElementById('sector-filter').value = cfg.sector_id;
+    if (cfg.has_contacts) document.getElementById('contacts-filter').value = cfg.has_contacts;
+    if (cfg.sort) document.getElementById('sort-filter').value = cfg.sort;
+    loadData();
+  });
+
+  document.getElementById('save-filter').addEventListener('click', async function() {
+    const filterName = prompt('Enter a name for this filter:');
+    if (!filterName) return;
+    const filterConfig = {
+      search: document.getElementById('search').value,
+      type: document.getElementById('type-filter').value,
+      market: document.getElementById('market-filter').value,
+      sector_id: document.getElementById('sector-filter').value,
+      has_contacts: document.getElementById('contacts-filter').value,
+      sort: document.getElementById('sort-filter').value
+    };
+    const r = await fetch(`${API}/filters`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ filter_name: filterName, filter_config: filterConfig })
+    });
+    if (r.ok) {
+      alert('Filter saved!');
+      loadSavedFilters();
+    } else {
+      alert('Failed to save filter');
+    }
+  });
+
+  // ===== CSV Export =====
+  document.getElementById('export-csv').addEventListener('click', function() {
+    const params = new URLSearchParams({
+      search: document.getElementById('search').value.trim(),
+      type: document.getElementById('type-filter').value,
+      market: document.getElementById('market-filter').value,
+      has_contacts: document.getElementById('contacts-filter').value,
+      sector_id: document.getElementById('sector-filter').value
+    });
+    window.location.href = `${API}/export?${params}`;
+  });
+
+  // Init
+  Promise.all([loadSectors(), loadMarkets(), loadSavedFilters()]).then(() => loadData());
+})();
+</script>
+{% endblock %}

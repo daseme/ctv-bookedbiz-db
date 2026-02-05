@@ -126,7 +126,13 @@
     }
     
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">No unresolved bill codes found</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="5" class="empty">
+        <div style="padding:20px">
+          <div style="font-size:18px;margin-bottom:8px">All customers resolved!</div>
+          <div style="color:#64748b;font-size:14px">No unmatched bill codes found matching your filters.</div>
+          <div style="margin-top:16px"><a href="/customer-aliases" style="color:#0ea5e9">Manage existing customers and aliases &rarr;</a></div>
+        </div>
+      </td></tr>`;
       return;
     }
     

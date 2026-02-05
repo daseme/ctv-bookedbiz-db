@@ -136,5 +136,77 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-**Last Updated**: 2026-02-02  
-**Session Context**: Phase 1 cleanup removing 9,000+ lines of dead code across old directories, orphaned templates, and unused imports. Phase 2 Step 1 consolidating 115 lines of duplicate utilities.
+## Service and Deployment Patterns
+
+### Rule 12: Check for Service Conflicts Before Starting
+**Context**: `spotops-dev` and `ctv-dev` both tried to bind to port 5100
+**Pattern**: Multiple services may target the same port:
+```bash
+# Check what's using a port
+sudo lsof -i :5100
+# Check systemd services (both system AND user level)
+systemctl list-units --type=service | grep ctv
+systemctl --user list-units --type=service | grep ctv
+```
+**Action**: Before starting a dev service, verify no other service is using the same port.
+
+### Rule 13: User Services vs System Services Can Conflict
+**Context**: There was both `/etc/systemd/system/ctv-dev.service` and `~/.config/systemd/user/ctv-dev.service`
+**Pattern**: Systemd services exist at two levels:
+- System: `/etc/systemd/system/` (controlled via `sudo systemctl`)
+- User: `~/.config/systemd/user/` (controlled via `systemctl --user`)
+
+**Action**: When troubleshooting service conflicts, check BOTH system and user service directories.
+
+---
+
+## Blueprint Registration Patterns
+
+### Rule 14: Register Blueprints in ONE Place Only
+**Context**: `customer_resolution_bp` was registered in both `app.py` and `blueprints.py`, causing warnings
+**Pattern**: Flask blueprints should be registered in exactly one location:
+- Standard location: `src/web/blueprints.py` via `initialize_blueprints()`
+- Never register the same blueprint in multiple files
+
+**Action**: When adding new blueprints, only add to `blueprints.py`, not `app.py`.
+
+---
+
+## UX Patterns for Resolution Pages
+
+### Rule 15: Provide Helpful Empty States
+**Context**: Agency resolution page showed nothing when all agencies were resolved
+**Pattern**: Empty states should include:
+1. Clear message that everything is done (positive framing)
+2. Explanation of filter context ("matching your filters")
+3. Link to related management page
+
+**Action**: Always design empty states with helpful guidance and next actions.
+
+---
+
+## Database Schema Patterns
+
+### Rule 16: Verify Column Names Before Writing Queries
+**Context**: Address Book API failed because customers table uses `normalized_name` not `customer_name`
+**Pattern**: Customer vs Agency naming differs:
+- **agencies** table: `agency_name`
+- **customers** table: `normalized_name` (NOT `customer_name`)
+
+**Action**: Always check `PRAGMA table_info(table_name)` when writing new queries against unfamiliar tables.
+
+---
+
+### Rule 17: Agencies vs Customers Have Different Data Models
+**Context**: Building unified Address Book needed to account for schema differences
+**Pattern**: Key differences:
+- **Agencies**: No sector (they're ad buyers), have `agency_name`
+- **Customers**: Have `sector_id` linking to sectors table, use `normalized_name` not `customer_name`
+- Both have: address, city, state, zip, notes, contacts (via entity_contacts)
+
+**Action**: When building unified views, handle entity-type-specific fields conditionally.
+
+---
+
+**Last Updated**: 2026-02-05
+**Session Context**: Entity Management System implementation including agency/customer resolution, contacts, addresses, and unified Address Book with sector/notes management. Fixed service port conflicts, duplicate blueprint registration, and schema column name issues.
