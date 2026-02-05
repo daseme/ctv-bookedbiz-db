@@ -23,11 +23,13 @@ class Contact:
     contact_title: Optional[str]
     email: Optional[str]
     phone: Optional[str]
+    contact_role: Optional[str]  # decision_maker, account_manager, billing, technical, other
     is_primary: bool
     is_active: bool
     created_by: str
     created_date: str
     updated_date: str
+    last_contacted: Optional[str]
     notes: Optional[str]
 
 
@@ -79,8 +81,8 @@ class ContactService:
             SELECT
                 contact_id, entity_type, entity_id,
                 contact_name, contact_title, email, phone,
-                is_primary, is_active, created_by, created_date,
-                updated_date, notes
+                contact_role, is_primary, is_active, created_by, created_date,
+                updated_date, last_contacted, notes
             FROM entity_contacts
             WHERE entity_type = ? AND entity_id = ?
         """
@@ -103,11 +105,13 @@ class ContactService:
                 "contact_title": r["contact_title"],
                 "email": r["email"],
                 "phone": r["phone"],
+                "contact_role": r["contact_role"],
                 "is_primary": bool(r["is_primary"]),
                 "is_active": bool(r["is_active"]),
                 "created_by": r["created_by"],
                 "created_date": r["created_date"],
                 "updated_date": r["updated_date"],
+                "last_contacted": r["last_contacted"],
                 "notes": r["notes"],
             }
             for r in rows
@@ -120,8 +124,8 @@ class ContactService:
                 SELECT
                     contact_id, entity_type, entity_id,
                     contact_name, contact_title, email, phone,
-                    is_primary, is_active, created_by, created_date,
-                    updated_date, notes
+                    contact_role, is_primary, is_active, created_by, created_date,
+                    updated_date, last_contacted, notes
                 FROM entity_contacts
                 WHERE contact_id = ?
             """, [contact_id]).fetchone()
@@ -137,13 +141,17 @@ class ContactService:
             "contact_title": row["contact_title"],
             "email": row["email"],
             "phone": row["phone"],
+            "contact_role": row["contact_role"],
             "is_primary": bool(row["is_primary"]),
             "is_active": bool(row["is_active"]),
             "created_by": row["created_by"],
             "created_date": row["created_date"],
             "updated_date": row["updated_date"],
+            "last_contacted": row["last_contacted"],
             "notes": row["notes"],
         }
+
+    VALID_ROLES = ['decision_maker', 'account_manager', 'billing', 'technical', 'other', None]
 
     def create_contact(
         self,
@@ -153,6 +161,7 @@ class ContactService:
         contact_title: str = None,
         email: str = None,
         phone: str = None,
+        contact_role: str = None,
         is_primary: bool = False,
         notes: str = None,
         created_by: str = "web_user"
@@ -161,6 +170,7 @@ class ContactService:
         Create a new contact for an entity.
 
         If is_primary=True, demotes any existing primary contact.
+        contact_role can be: decision_maker, account_manager, billing, technical, other
         """
         if entity_type not in ('customer', 'agency'):
             return {"success": False, "error": f"Invalid entity_type: {entity_type}"}
@@ -168,6 +178,9 @@ class ContactService:
         contact_name = contact_name.strip() if contact_name else ""
         if not contact_name:
             return {"success": False, "error": "contact_name is required"}
+
+        if contact_role and contact_role not in self.VALID_ROLES:
+            return {"success": False, "error": f"Invalid contact_role: {contact_role}"}
 
         with self._db_rw() as db:
             # Verify entity exists
@@ -197,11 +210,11 @@ class ContactService:
             db.execute("""
                 INSERT INTO entity_contacts
                 (entity_type, entity_id, contact_name, contact_title,
-                 email, phone, is_primary, is_active, created_by, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                 email, phone, contact_role, is_primary, is_active, created_by, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             """, [
                 entity_type, entity_id, contact_name, contact_title,
-                email, phone, 1 if is_primary else 0, created_by, notes
+                email, phone, contact_role, 1 if is_primary else 0, created_by, notes
             ])
 
             contact_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -214,6 +227,7 @@ class ContactService:
             "entity_type": entity_type,
             "entity_id": entity_id,
             "contact_name": contact_name,
+            "contact_role": contact_role,
             "is_primary": is_primary,
         }
 
@@ -224,6 +238,7 @@ class ContactService:
         contact_title: str = None,
         email: str = None,
         phone: str = None,
+        contact_role: str = None,
         notes: str = None,
         updated_by: str = "web_user"
     ) -> Dict[str, Any]:
@@ -231,6 +246,7 @@ class ContactService:
         Update an existing contact.
 
         Only updates provided fields (None = keep existing).
+        Use empty string to clear a field.
         """
         with self._db_rw() as db:
             # Get existing contact
@@ -265,6 +281,12 @@ class ContactService:
             if phone is not None:
                 updates.append("phone = ?")
                 params.append(phone if phone else None)
+
+            if contact_role is not None:
+                if contact_role and contact_role not in self.VALID_ROLES:
+                    return {"success": False, "error": f"Invalid contact_role: {contact_role}"}
+                updates.append("contact_role = ?")
+                params.append(contact_role if contact_role else None)
 
             if notes is not None:
                 updates.append("notes = ?")
@@ -380,8 +402,8 @@ class ContactService:
                 SELECT
                     contact_id, entity_type, entity_id,
                     contact_name, contact_title, email, phone,
-                    is_primary, is_active, created_by, created_date,
-                    updated_date, notes
+                    contact_role, is_primary, is_active, created_by, created_date,
+                    updated_date, last_contacted, notes
                 FROM entity_contacts
                 WHERE entity_type = ? AND entity_id = ?
                   AND is_primary = 1 AND is_active = 1
@@ -398,10 +420,54 @@ class ContactService:
             "contact_title": row["contact_title"],
             "email": row["email"],
             "phone": row["phone"],
+            "contact_role": row["contact_role"],
             "is_primary": True,
             "is_active": True,
             "created_by": row["created_by"],
             "created_date": row["created_date"],
             "updated_date": row["updated_date"],
+            "last_contacted": row["last_contacted"],
             "notes": row["notes"],
+        }
+
+    def update_last_contacted(
+        self,
+        contact_id: int,
+        contacted_date: str = None
+    ) -> Dict[str, Any]:
+        """
+        Update the last_contacted timestamp for a contact.
+
+        If contacted_date is None, uses current timestamp.
+        """
+        with self._db_rw() as db:
+            # Verify contact exists
+            contact = db.execute("""
+                SELECT contact_id, contact_name
+                FROM entity_contacts
+                WHERE contact_id = ? AND is_active = 1
+            """, [contact_id]).fetchone()
+
+            if not contact:
+                return {"success": False, "error": "Contact not found"}
+
+            if contacted_date:
+                db.execute("""
+                    UPDATE entity_contacts
+                    SET last_contacted = ?, updated_date = CURRENT_TIMESTAMP
+                    WHERE contact_id = ?
+                """, [contacted_date, contact_id])
+            else:
+                db.execute("""
+                    UPDATE entity_contacts
+                    SET last_contacted = CURRENT_TIMESTAMP, updated_date = CURRENT_TIMESTAMP
+                    WHERE contact_id = ?
+                """, [contact_id])
+
+            db.commit()
+
+        return {
+            "success": True,
+            "contact_id": contact_id,
+            "contact_name": contact["contact_name"],
         }

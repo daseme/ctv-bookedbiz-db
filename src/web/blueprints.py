@@ -39,6 +39,7 @@ from src.utils.template_formatters import register_template_filters
 from src.web.routes.customer_resolution import customer_resolution_bp
 from src.web.routes.agency_resolution import agency_resolution_bp
 from src.web.routes.contacts import contacts_bp
+from src.web.routes.address_book import address_book_bp
 
 # Optional feature: customer sector API (do not break import if missing)
 try:
@@ -120,6 +121,9 @@ def register_blueprints(app: Flask) -> None:
 
         app.register_blueprint(contacts_bp)
         logger.info("Registered contacts blueprint")
+
+        app.register_blueprint(address_book_bp)
+        logger.info("Registered address book blueprint")
 
         register_template_filters(app)
         logger.info("Registered template filters")

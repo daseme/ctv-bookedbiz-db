@@ -46,6 +46,7 @@ def create_contact(entity_type: str, entity_id: int):
         contact_title=data.get("contact_title"),
         email=data.get("email"),
         phone=data.get("phone"),
+        contact_role=data.get("contact_role"),
         is_primary=data.get("is_primary", False),
         notes=data.get("notes"),
         created_by="web_user"
@@ -76,6 +77,7 @@ def update_contact(contact_id: int):
         contact_title=data.get("contact_title"),
         email=data.get("email"),
         phone=data.get("phone"),
+        contact_role=data.get("contact_role"),
         notes=data.get("notes"),
         updated_by="web_user"
     )
@@ -125,3 +127,19 @@ def get_primary_contact(entity_type: str, entity_id: int):
     if not contact:
         return jsonify({"error": "No primary contact found"}), 404
     return jsonify(contact)
+
+
+@contacts_bp.route("/api/contacts/<int:contact_id>/touched", methods=["POST"])
+def mark_contacted(contact_id: int):
+    """Mark a contact as recently contacted (updates last_contacted timestamp)."""
+    data = request.json or {}
+    contacted_date = data.get("contacted_date")  # Optional: ISO format date
+
+    result = _get_service().update_last_contacted(
+        contact_id=contact_id,
+        contacted_date=contacted_date
+    )
+
+    if not result["success"]:
+        return jsonify(result), 400
+    return jsonify(result)
