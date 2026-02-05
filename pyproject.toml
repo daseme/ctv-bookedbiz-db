@@ -5,6 +5,7 @@ description = "warehouse and analyze Booked Biz revenue data"
 readme = "README.md"
 authors = [{ name = "Kurt", email = "you@example.com" }]
 dependencies = [
+    "flask-login==0.6.3",
     "datasette>=0.65.1",
     "openpyxl>=3.1.5",
     "flask>=2.3.0",
