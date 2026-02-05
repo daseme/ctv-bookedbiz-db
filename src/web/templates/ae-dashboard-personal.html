@@ -102,6 +102,33 @@
     border-collapse: collapse;
 }
 
+/* Prevent column squishing when tbody rows are reordered (e.g. sector/account sort) */
+#account-revenue-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+/* Ensure cells maintain their structure and don't squish */
+#account-revenue-table td,
+#account-revenue-table th {
+    box-sizing: border-box;
+}
+
+#account-revenue-table td:nth-child(1),
+#account-revenue-table th:nth-child(1) {
+    width: 3% !important;
+    min-width: 40px;
+    max-width: 40px;
+}
+
+#account-revenue-table td:nth-child(3),
+#account-revenue-table th:nth-child(3),
+#account-revenue-table td:nth-child(4),
+#account-revenue-table th:nth-child(4) {
+    width: 20% !important;
+    min-width: 120px;
+}
+
 .monthly-table thead {
     background: #f7fafc;
     border-bottom: 2px solid #e2e8f0;
@@ -234,6 +261,38 @@
         </form>
     </div>
     {% endif %}
+    
+    <!-- Contracts highlight reel (last 7 days) -->
+    <div style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #2d3748;">Contracts Added (Last 7 Days)</h3>
+            <a href="/reports/contracts-added{% if is_admin_or_management and selected_ae %}?ae={{ selected_ae | urlencode }}{% endif %}" 
+               style="padding: 6px 14px; background: #e2e8f0; color: #4a5568; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500; white-space: nowrap; transition: background 0.2s;"
+               onmouseover="this.style.background='#cbd5e0';"
+               onmouseout="this.style.background='#e2e8f0';">
+                See More →
+            </a>
+        </div>
+        {% if contracts_highlight %}
+            <div style="max-height: 140px; overflow-y: auto; background: white; border: 1px solid #e2e8f0; border-radius: 6px;">
+                {% for row in contracts_highlight %}
+                {% set is_today = row.added_date and row.added_date[:10] == today %}
+                <div style="display: flex; align-items: center; padding: 8px 14px; border-bottom: 1px solid #f7fafc; gap: 16px; font-size: 14px; {% if is_today %}background: #f0f9ff; border-left: 3px solid #4299e1;{% endif %}">
+                    <div style="flex: 1; min-width: 0;">
+                        <span style="font-weight: 600; color: #2d3748;">{{ row.client }}</span>
+                        <span style="color: #718096; margin-left: 8px;">{{ row.contract }}</span>
+                    </div>
+                    <div style="font-weight: 600; color: #2d3748; margin-right: 16px; white-space: nowrap;">${{ "{:,.0f}".format(row.total) }}</div>
+                    <div style="font-size: 12px; color: #718096; white-space: nowrap;">{% if row.added_date %}{{ row.added_date[:10] }}{% else %}—{% endif %}</div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div style="padding: 16px; text-align: center; color: #718096; font-size: 14px; background: white; border: 1px solid #e2e8f0; border-radius: 6px;">
+                No contracts added in the last 7 days
+            </div>
+        {% endif %}
+    </div>
     
     <!-- Summary Cards -->
     <div class="summary-cards">
@@ -379,13 +438,19 @@
                 </select>
             </div>
         </div>
-        <table class="monthly-table" id="account-revenue-table">
+        <table class="monthly-table" id="account-revenue-table" style="table-layout: fixed; width: 100%;">
+            <colgroup>
+                <col style="width: 3%;">
+                <col style="width: 57%;">
+                <col style="width: 20%;">
+                <col style="width: 20%;">
+            </colgroup>
             <thead>
                 <tr>
-                    <th style="width: 40px;"></th>
-                    <th>Account</th>
-                    <th class="numeric">Total Revenue</th>
-                    <th class="numeric">% of Total Budget</th>
+                    <th style="width: 3%;"></th>
+                    <th style="width: 57%;">Account</th>
+                    <th class="numeric" style="width: 20%;">Total Revenue</th>
+                    <th class="numeric" style="width: 20%;">% of Total Budget</th>
                 </tr>
             </thead>
             <tbody id="account-revenue-tbody">
@@ -447,6 +512,7 @@
             </tbody>
         </table>
     </div>
+
 
     <script>
         // Year filter functionality
@@ -587,8 +653,9 @@
                         tbody.style.opacity = '1';
                     });
                     
-                    // Re-attach event listeners (expand/collapse only, sorting listeners persist)
+                    // Re-attach event listeners after DOM update
                     attachSectorExpandListeners();
+                    attachSortingListeners();
                 })
                 .catch(error => {
                     console.error('Error loading account revenue:', error);
@@ -649,8 +716,13 @@
             const accountDateReset = document.getElementById('account-date-reset');
             if (accountDateReset) {
                 accountDateReset.addEventListener('click', function() {
-                    document.getElementById('account-start-date').value = '';
-                    document.getElementById('account-end-date').value = '';
+                    // Get current year from year filter or URL
+                    const yearFilter = document.getElementById('year-filter');
+                    const currentYear = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
+                    const startDate = `${currentYear}-01-01`;
+                    const endDate = `${currentYear}-12-31`;
+                    document.getElementById('account-start-date').value = startDate;
+                    document.getElementById('account-end-date').value = endDate;
                     // Apply immediately (no debounce for reset)
                     applyAccountDateFilter();
                 });
@@ -664,116 +736,265 @@
                     sectorSortSelect.dataset.listenerAttached = 'true';
                     sectorSortSelect.addEventListener('change', function() {
                         const sortValue = this.value;
-                    const tbody = document.querySelector('#account-revenue-table tbody');
-                    const sectorHeaders = Array.from(document.querySelectorAll('.sector-header'));
-                    const totalRow = document.querySelector('.year-totals-row');
-                    
-                    // Store expanded state before sorting
-                    const expandedSectors = new Set();
-                    sectorHeaders.forEach(header => {
-                        const icon = header.querySelector('.expand-icon span');
-                        if (icon && icon.textContent === '−') {
-                            expandedSectors.add(header.dataset.sector);
+                        if (!sortValue) {
+                            return; // No sort value selected
                         }
-                    });
-                    
-                    sectorHeaders.sort((a, b) => {
-                        if (sortValue === 'name-asc') {
-                            return a.dataset.sectorName.localeCompare(b.dataset.sectorName);
-                        } else if (sortValue === 'name-desc') {
-                            return b.dataset.sectorName.localeCompare(a.dataset.sectorName);
-                        } else if (sortValue === 'revenue-desc') {
-                            return parseFloat(b.dataset.sectorRevenue) - parseFloat(a.dataset.sectorRevenue);
-                        } else if (sortValue === 'revenue-asc') {
-                            return parseFloat(a.dataset.sectorRevenue) - parseFloat(b.dataset.sectorRevenue);
+                        
+                        const tbody = document.querySelector('#account-revenue-table tbody');
+                        if (!tbody) {
+                            console.error('Could not find account revenue tbody');
+                            return;
                         }
-                        return 0;
-                    });
-                    
-                    // Collect all account rows by sector before removing
-                    const allAccountRows = {};
-                    sectorHeaders.forEach(sectorHeader => {
-                        const sector = sectorHeader.dataset.sector;
-                        allAccountRows[sector] = Array.from(document.querySelectorAll(`.account-row[data-sector="${sector}"]`));
-                    });
-                    
-                    // Remove all sector headers and account rows from DOM
-                    sectorHeaders.forEach(header => header.remove());
-                    Object.values(allAccountRows).flat().forEach(row => row.remove());
-                    
-                    // Re-insert sorted sector headers with their account rows
-                    sectorHeaders.forEach(sectorHeader => {
-                        const sector = sectorHeader.dataset.sector;
-                        const accountRows = allAccountRows[sector];
                         
-                        // Insert sector header
-                        tbody.insertBefore(sectorHeader, totalRow);
+                        const sectorHeaders = Array.from(document.querySelectorAll('.sector-header'));
+                        if (sectorHeaders.length === 0) {
+                            console.warn('No sector headers found to sort');
+                            return;
+                        }
                         
-                        // Insert account rows after sector header
-                        accountRows.forEach(row => {
-                            tbody.insertBefore(row, totalRow);
+                        const totalRow = tbody.querySelector('.year-totals-row');
+                        if (!totalRow) {
+                            console.warn('Total row not found, cannot ensure proper sorting');
+                            return;
+                        }
+                        
+                        // Ensure total row is in tbody before we start
+                        if (totalRow.parentNode !== tbody) {
+                            tbody.appendChild(totalRow);
+                        }
+                        
+                        // Store expanded state before sorting
+                        const expandedSectors = new Set();
+                        sectorHeaders.forEach(header => {
+                            const icon = header.querySelector('.expand-icon span');
+                            if (icon && icon.textContent === '−') {
+                                expandedSectors.add(header.dataset.sector);
+                            }
                         });
                         
-                        // Restore expanded state
-                        if (expandedSectors.has(sector)) {
-                            const icon = sectorHeader.querySelector('.expand-icon span');
-                            if (icon) {
-                                icon.textContent = '−';
-                                accountRows.forEach(row => {
-                                    row.style.display = '';
-                                });
+                        // Collect all account rows by sector BEFORE sorting/removing anything
+                        const allAccountRows = {};
+                        sectorHeaders.forEach(sectorHeader => {
+                            const sector = sectorHeader.dataset.sector;
+                            if (sector) {
+                                allAccountRows[sector] = Array.from(document.querySelectorAll(`.account-row[data-sector="${sector}"]`));
+                            }
+                        });
+                        
+                        // Sort sector headers
+                        sectorHeaders.sort((a, b) => {
+                            if (sortValue === 'name-asc') {
+                                return (a.dataset.sectorName || '').localeCompare(b.dataset.sectorName || '');
+                            } else if (sortValue === 'name-desc') {
+                                return (b.dataset.sectorName || '').localeCompare(a.dataset.sectorName || '');
+                            } else if (sortValue === 'revenue-desc') {
+                                return parseFloat(b.dataset.sectorRevenue || 0) - parseFloat(a.dataset.sectorRevenue || 0);
+                            } else if (sortValue === 'revenue-asc') {
+                                return parseFloat(a.dataset.sectorRevenue || 0) - parseFloat(b.dataset.sectorRevenue || 0);
+                            }
+                            return 0;
+                        });
+                        
+                        // Ensure total row is in tbody and at the bottom BEFORE we start moving things
+                        if (totalRow) {
+                            if (totalRow.parentNode !== tbody) {
+                                tbody.appendChild(totalRow);
+                            } else if (totalRow !== tbody.lastElementChild) {
+                                // Move to bottom before we start removing rows
+                                tbody.appendChild(totalRow);
                             }
                         }
-                    });
+                        
+                        // Remove all sector headers and account rows (but NOT the total row)
+                        sectorHeaders.forEach(header => {
+                            if (header && header.parentNode && header !== totalRow && !header.classList.contains('year-totals-row')) {
+                                header.remove();
+                            }
+                        });
+                        Object.values(allAccountRows).flat().forEach(row => {
+                            if (row && row.parentNode && row !== totalRow && !row.classList.contains('year-totals-row')) {
+                                row.remove();
+                            }
+                        });
+                        
+                        // Re-query total row after removing rows to ensure we have a fresh reference
+                        let currentTotalRow = document.querySelector('.year-totals-row');
+                        if (!currentTotalRow && totalRow) {
+                            // If total row was accidentally removed, restore it
+                            currentTotalRow = totalRow;
+                            if (currentTotalRow.parentNode !== tbody) {
+                                tbody.appendChild(currentTotalRow);
+                            }
+                        }
+                        
+                        // Insert sorted sector headers and their account rows directly
+                        // Always insert before currentTotalRow to ensure it stays at bottom
+                        sectorHeaders.forEach(sectorHeader => {
+                            if (!sectorHeader || sectorHeader === totalRow || sectorHeader.classList.contains('year-totals-row')) return;
+                            
+                            const sector = sectorHeader.dataset.sector;
+                            const accountRows = allAccountRows[sector] || [];
+                            
+                            // Insert sector header before total row
+                            if (currentTotalRow && currentTotalRow.parentNode === tbody) {
+                                tbody.insertBefore(sectorHeader, currentTotalRow);
+                            } else {
+                                tbody.appendChild(sectorHeader);
+                            }
+                            
+                            // Insert account rows after sector header, before total row
+                            accountRows.forEach(row => {
+                                if (row && row !== totalRow && !row.classList.contains('year-totals-row')) {
+                                    if (currentTotalRow && currentTotalRow.parentNode === tbody) {
+                                        tbody.insertBefore(row, currentTotalRow);
+                                    } else {
+                                        tbody.appendChild(row);
+                                    }
+                                }
+                            });
+                        });
+                        
+                        // Final check: ensure total row is still at the bottom
+                        currentTotalRow = tbody.querySelector('.year-totals-row');
+                        if (currentTotalRow && currentTotalRow.parentNode === tbody) {
+                            // Only move if it's not already last
+                            if (currentTotalRow !== tbody.lastElementChild) {
+                                tbody.appendChild(currentTotalRow);
+                            }
+                        }
+                        
+                        // Force layout recalculation
+                        const table = document.getElementById('account-revenue-table');
+                        if (table) {
+                            void table.offsetHeight;
+                        }
+                        
+                        // Restore expanded state after insertion
+                        sectorHeaders.forEach(sectorHeader => {
+                            const sector = sectorHeader.dataset.sector;
+                            if (expandedSectors.has(sector)) {
+                                const icon = sectorHeader.querySelector('.expand-icon span');
+                                if (icon) {
+                                    icon.textContent = '−';
+                                    const accountRows = allAccountRows[sector] || [];
+                                    accountRows.forEach(row => {
+                                        if (row) {
+                                            row.style.display = '';
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                        
+                        // Re-attach expand/collapse listeners after re-insertion
+                        attachSectorExpandListeners();
                     });
                 }
                 
                 // Account sorting functionality
                 const accountSortSelect = document.getElementById('account-sort');
-                if (accountSortSelect && !accountSortSelect.dataset.listenerAttached) {
-                    accountSortSelect.dataset.listenerAttached = 'true';
-                    accountSortSelect.addEventListener('change', function() {
-                        const sortValue = this.value;
-                    const sectors = document.querySelectorAll('.sector-header');
+                if (accountSortSelect) {
+                    // Remove existing listener if any (using named function for proper removal)
+                    if (accountSortSelect.dataset.listenerAttached === 'true' && accountSortSelect._accountSortHandler) {
+                        accountSortSelect.removeEventListener('change', accountSortSelect._accountSortHandler);
+                    }
                     
-                    sectors.forEach(sectorHeader => {
-                        const sector = sectorHeader.dataset.sector;
-                        const accountRows = Array.from(document.querySelectorAll(`.account-row[data-sector="${sector}"]`));
+                    // Create handler function
+                    accountSortSelect._accountSortHandler = function() {
+                        const sortValue = this.value;
+                        if (!sortValue) return;
                         
-                        // Check if sector is expanded by checking the icon
-                        const icon = sectorHeader.querySelector('.expand-icon span');
-                        const isSectorExpanded = icon && icon.textContent === '−';
+                        const tbody = document.querySelector('#account-revenue-table tbody');
+                        if (!tbody) return;
                         
-                        accountRows.sort((a, b) => {
-                            if (sortValue === 'revenue-desc') {
-                                return parseFloat(b.dataset.revenue) - parseFloat(a.dataset.revenue);
-                            } else if (sortValue === 'revenue-asc') {
-                                return parseFloat(a.dataset.revenue) - parseFloat(b.dataset.revenue);
-                            } else if (sortValue === 'name-asc') {
-                                return a.dataset.name.localeCompare(b.dataset.name);
-                            } else if (sortValue === 'name-desc') {
-                                return b.dataset.name.localeCompare(a.dataset.name);
+                        const totalRow = tbody.querySelector('.year-totals-row');
+                        if (!totalRow) return;
+                        
+                        const sectors = document.querySelectorAll('.sector-header');
+                        if (sectors.length === 0) return;
+                        
+                        sectors.forEach(sectorHeader => {
+                            const sector = sectorHeader.dataset.sector;
+                            if (!sector) return;
+                            
+                            const accountRows = Array.from(document.querySelectorAll(`.account-row[data-sector="${sector}"]`));
+                            if (accountRows.length === 0) return;
+                            
+                            // Check if sector is expanded by checking the icon
+                            const icon = sectorHeader.querySelector('.expand-icon span');
+                            const isSectorExpanded = icon && icon.textContent === '−';
+                            
+                            accountRows.sort((a, b) => {
+                                if (sortValue === 'revenue-desc') {
+                                    return parseFloat(b.dataset.revenue || 0) - parseFloat(a.dataset.revenue || 0);
+                                } else if (sortValue === 'revenue-asc') {
+                                    return parseFloat(a.dataset.revenue || 0) - parseFloat(b.dataset.revenue || 0);
+                                } else if (sortValue === 'name-asc') {
+                                    return (a.dataset.name || '').localeCompare(b.dataset.name || '');
+                                } else if (sortValue === 'name-desc') {
+                                    return (b.dataset.name || '').localeCompare(a.dataset.name || '');
+                                }
+                                return 0;
+                            });
+                            
+                            // Find insertion point BEFORE removing rows (to avoid DOM changes affecting lookup)
+                            const sectorTbody = sectorHeader.parentElement;
+                            if (!sectorTbody) return;
+                            
+                            // Find the first element after this sector's account rows that is NOT an account row for this sector
+                            // This will be either the next sector header or the total row
+                            let insertBefore = null;
+                            let current = sectorHeader.nextElementSibling;
+                            
+                            while (current) {
+                                // Stop at next sector header or total row
+                                if (current.classList.contains('sector-header') || current.classList.contains('year-totals-row')) {
+                                    insertBefore = current;
+                                    break;
+                                }
+                                // If we hit an account row from a different sector, that's our insertion point
+                                if (current.classList.contains('account-row') && current.dataset.sector !== sector) {
+                                    insertBefore = current;
+                                    break;
+                                }
+                                current = current.nextElementSibling;
                             }
-                            return 0;
+                            
+                            // If still no insertion point found, use total row as fallback (scoped to account revenue tbody)
+                            if (!insertBefore) {
+                                insertBefore = tbody.querySelector('.year-totals-row');
+                            }
+                            
+                            // Remove all account rows for this sector
+                            accountRows.forEach(row => {
+                                if (row && row.parentNode) {
+                                    row.remove();
+                                }
+                            });
+                            
+                            // Re-insert sorted rows with preserved display state
+                            accountRows.forEach(row => {
+                                if (row) {
+                                    // Restore display state based on whether sector is expanded
+                                    row.style.display = isSectorExpanded ? '' : 'none';
+                                    if (insertBefore && insertBefore.parentNode === sectorTbody) {
+                                        sectorTbody.insertBefore(row, insertBefore);
+                                    } else {
+                                        sectorTbody.appendChild(row);
+                                    }
+                                }
+                            });
                         });
                         
-                        // Remove all account rows for this sector
-                        accountRows.forEach(row => row.remove());
-                        
-                        // Re-insert sorted rows with preserved display state
-                        const tbody = sectorHeader.parentElement;
-                        const nextSector = sectorHeader.nextElementSibling;
-                        const insertBefore = (nextSector && nextSector.classList.contains('sector-header')) 
-                            ? nextSector 
-                            : document.querySelector('.year-totals-row');
-                        
-                        accountRows.forEach(row => {
-                            // Restore display state based on whether sector is expanded
-                            row.style.display = isSectorExpanded ? '' : 'none';
-                            tbody.insertBefore(row, insertBefore);
-                        });
-                    });
-                    });
+                        // Ensure total row stays at the bottom after all sorting (scoped to account revenue tbody)
+                        const finalTotalRow = tbody.querySelector('.year-totals-row');
+                        if (finalTotalRow && finalTotalRow.parentNode === tbody && finalTotalRow !== tbody.lastElementChild) {
+                            tbody.appendChild(finalTotalRow);
+                        }
+                    };
+                    
+                    accountSortSelect.addEventListener('change', accountSortSelect._accountSortHandler);
+                    accountSortSelect.dataset.listenerAttached = 'true';
                 }
             }
             

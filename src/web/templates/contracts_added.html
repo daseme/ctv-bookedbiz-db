@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+
+{% block title %}Contracts added (last 30 days) - CTV Reports{% endblock %}
+
+{% block header_title %}Contracts added (last 30 days){% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<a class="breadcrumb-link" href="/reports/ae-dashboard-personal{% if is_admin_or_management and selected_ae %}?ae={{ selected_ae | urlencode }}{% endif %}">My Dashboard</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Contracts added</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.contracts-page-container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.monthly-table-container { background: white; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.monthly-table-header { background: linear-gradient(135deg, #2e3440 0%, #3b4252 100%); color: white; padding: 20px 24px; border-bottom: 2px solid #4c566a; }
+.monthly-table-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.contracts-sort-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 24px; background: #f7fafc; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+.contracts-sort-bar span { color: #4a5568; }
+.contracts-sort-bar a { color: #2b6cb0; text-decoration: none; padding: 4px 10px; border-radius: 4px; }
+.contracts-sort-bar a:hover { background: #e2e8f0; }
+.contracts-sort-bar a.active { font-weight: 600; color: #2e3440; background: #e2e8f0; pointer-events: none; }
+.contracts-sort-bar .sort-group { display: flex; align-items: center; gap: 8px; }
+.contracts-sort-bar .sort-divider { display: inline-block; width: 1px; height: 18px; background: #cbd5e0; margin: 0 4px; vertical-align: middle; }
+.monthly-table { width: 100%; border-collapse: collapse; }
+.monthly-table thead { background: #f7fafc; border-bottom: 2px solid #e2e8f0; }
+.monthly-table th { padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #4a5568; text-transform: uppercase; letter-spacing: 0.5px; }
+.monthly-table th.numeric { text-align: right; }
+.monthly-table td { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #2d3748; }
+.monthly-table td.numeric { text-align: right; font-feature-settings: "tnum"; }
+.monthly-table tbody tr:hover { background: #f7fafc; }
+.contracts-client-header { background: #f7fafc; cursor: pointer; font-weight: 600; }
+.contracts-contract-row { display: none; }
+.month-name { font-weight: 500; color: #2d3748; }
+.amount-cell { font-weight: 500; color: #2d3748; }
+.year-totals-row { background: #f7fafc; font-weight: 600; border-top: 2px solid #2d3748; }
+.year-totals-row td { padding: 16px; font-size: 15px; }
+.btn-secondary { display: inline-block; padding: 8px 16px; background: #e2e8f0; color: #4a5568; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; margin-bottom: 16px; }
+.btn-secondary:hover { background: #cbd5e0; }
+.contracts-ae-filter { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.contracts-ae-filter label { font-weight: 600; color: #4a5568; font-size: 14px; margin-right: 12px; }
+.contracts-ae-filter select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 14px; min-width: 220px; }
+.contracts-empty-state { text-align: center; padding: 48px 24px; color: #718096; font-size: 15px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="contracts-page-container">
+    <a href="/reports/ae-dashboard-personal{% if is_admin_or_management and selected_ae %}?ae={{ selected_ae | urlencode }}{% endif %}" class="btn-secondary">← Back to My Dashboard</a>
+
+    {% if is_admin_or_management and ae_list %}
+    <div class="contracts-ae-filter">
+        <form method="get" action="/reports/contracts-added" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <label for="ae-select">Account Executive:</label>
+            <select id="ae-select" name="ae" onchange="this.form.submit()">
+                <option value="">-- Select an AE --</option>
+                {% for ae in ae_list %}
+                <option value="{{ ae }}" {% if selected_ae == ae %}selected{% endif %}>{{ ae }}{% if ae == 'WorldLink' %}{% endif %}</option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="sort" value="{{ sort }}">
+            <input type="hidden" name="contract_sort" value="{{ contract_sort }}">
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="monthly-table-container">
+        <div class="monthly-table-header">
+            <h2>Contracts added (last 30 days){% if ae_name %} – {{ ae_name }}{% endif %}</h2>
+            <div style="font-size: 12px; color: rgba(255,255,255,0.85); margin-top: 4px;">{% if ae_name %}By client; click to expand and see contracts and totals{% else %}Select an AE above to view their contracts.{% endif %}</div>
+        </div>
+        {% if ae_name %}
+        <div class="contracts-sort-bar">
+            <div class="sort-group">
+                <span>Clients:</span>
+                <a href="/reports/contracts-added?sort=total_desc&contract_sort={{ contract_sort }}{% if is_admin_or_management and selected_ae %}&ae={{ selected_ae | urlencode }}{% endif %}" class="{{ 'active' if sort == 'total_desc' else '' }}">High → Low</a>
+                <a href="/reports/contracts-added?sort=total_asc&contract_sort={{ contract_sort }}{% if is_admin_or_management and selected_ae %}&ae={{ selected_ae | urlencode }}{% endif %}" class="{{ 'active' if sort == 'total_asc' else '' }}">Low → High</a>
+            </div>
+            <span class="sort-divider"></span>
+            <div class="sort-group">
+                <span>Within client:</span>
+                <a href="/reports/contracts-added?sort={{ sort }}&contract_sort=amount_desc{% if is_admin_or_management and selected_ae %}&ae={{ selected_ae | urlencode }}{% endif %}" class="{{ 'active' if contract_sort == 'amount_desc' else '' }}">High → Low</a>
+                <a href="/reports/contracts-added?sort={{ sort }}&contract_sort=amount_asc{% if is_admin_or_management and selected_ae %}&ae={{ selected_ae | urlencode }}{% endif %}" class="{{ 'active' if contract_sort == 'amount_asc' else '' }}">Low → High</a>
+            </div>
+        </div>
+        {% endif %}
+        <table class="monthly-table" id="contracts-by-client-table">
+            <colgroup>
+                <col style="width: 3%;">
+                <col style="width: 47%;">
+                <col style="width: 28%;">
+                <col style="width: 22%;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th style="width: 3%;"></th>
+                    <th style="width: 47%;">Client / Contract</th>
+                    <th class="numeric" style="width: 28%;">Total</th>
+                    <th class="numeric" style="width: 22%;">Added</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if is_admin_or_management and not ae_name %}
+                    <tr>
+                        <td colspan="4" class="contracts-empty-state">Select an AE to view contracts.</td>
+                    </tr>
+                {% elif contracts_by_client %}
+                    {% for client_data in contracts_by_client %}
+                    {% set client_loop = loop %}
+                    <tr class="contracts-client-header" data-contracts-client-id="{{ client_loop.index0 }}" data-contracts-client-name="{{ client_data.client | e }}">
+                        <td class="expand-icon" style="text-align: center; padding: 12px 8px;">
+                            <span class="contracts-expand-icon" style="display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #4a5568; border-radius: 3px; background: white; color: #4a5568; font-size: 12px;">+</span>
+                        </td>
+                        <td style="padding: 12px 16px;">
+                            {{ client_data.client }}
+                            <span style="font-weight: normal; color: #718096; margin-left: 8px;">
+                                ({{ client_data.contracts | length }} contract{{ 's' if client_data.contracts | length != 1 else '' }})
+                            </span>
+                        </td>
+                        <td class="numeric" style="padding: 12px 16px;">${{ "{:,.0f}".format(client_data.total) }}</td>
+                        <td class="numeric" style="padding: 12px 16px;"></td>
+                    </tr>
+                    {% for contract in client_data.contracts %}
+                    <tr class="contracts-contract-row" data-contracts-client-id="{{ client_loop.index0 }}">
+                        <td></td>
+                        <td class="month-name" style="padding-left: 32px;">{{ contract.contract }}</td>
+                        <td class="numeric amount-cell">${{ "{:,.0f}".format(contract.total) }}</td>
+                        <td class="numeric" style="font-size: 12px; color: #718096;">{% if contract.added_date %}{{ contract.added_date[:10] }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                    <tr class="year-totals-row">
+                        <td colspan="2"><strong>Total</strong></td>
+                        <td class="numeric"><strong>${{ "{:,.0f}".format(total_contracts_30d) }}</strong></td>
+                        <td></td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 24px; color: #718096;">No contracts added in the last 30 days</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// Restore scroll position early (before DOMContentLoaded) to prevent visible jump
+(function() {
+    var scrollKey = 'contracts_added_scroll';
+    var sortNavFlag = 'contracts_added_from_sort';
+    if (sessionStorage.getItem(sortNavFlag) === 'true') {
+        var savedScroll = sessionStorage.getItem(scrollKey);
+        if (savedScroll) {
+            var targetScroll = parseInt(savedScroll, 10);
+            // Set scroll as early as possible
+            window.addEventListener('load', function() {
+                if (document.documentElement.scrollHeight > targetScroll) {
+                    window.scrollTo(0, targetScroll);
+                }
+            }, { once: true });
+        }
+    }
+})();
+
+document.addEventListener('DOMContentLoaded', function() {
+    var storageKey = 'contracts_added_expanded';
+    var scrollKey = 'contracts_added_scroll';
+    var sortNavFlag = 'contracts_added_from_sort';
+    
+    function getExpandedSet() {
+        try {
+            var raw = sessionStorage.getItem(storageKey);
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) { return []; }
+    }
+    function setExpandedSet(arr) {
+        try { sessionStorage.setItem(storageKey, JSON.stringify(arr)); } catch (e) {}
+    }
+    function expandHeader(header, expanded) {
+        var id = header.getAttribute('data-contracts-client-id');
+        var rows = document.querySelectorAll('.contracts-contract-row[data-contracts-client-id="' + id + '"]');
+        var icon = header.querySelector('.contracts-expand-icon');
+        rows.forEach(function(row) { row.style.display = expanded ? 'table-row' : 'none'; });
+        if (icon) icon.textContent = expanded ? '−' : '+';
+    }
+    
+    // Helper function to attach expand/collapse listeners
+    function attachContractExpandListeners() {
+        document.querySelectorAll('.contracts-client-header').forEach(function(header) {
+            // Check if listener already attached
+            if (header.dataset.listenerAttached === 'true') return;
+            header.dataset.listenerAttached = 'true';
+            
+            header.addEventListener('click', function() {
+                var id = this.getAttribute('data-contracts-client-id');
+                var name = this.getAttribute('data-contracts-client-name');
+                var rows = document.querySelectorAll('.contracts-contract-row[data-contracts-client-id="' + id + '"]');
+                var icon = this.querySelector('.contracts-expand-icon');
+                var isExpanded = icon && icon.textContent === '−';
+                var nowExpanded = !isExpanded;
+                rows.forEach(function(row) { row.style.display = nowExpanded ? 'table-row' : 'none'; });
+                if (icon) icon.textContent = nowExpanded ? '−' : '+';
+                var set = getExpandedSet();
+                var idx = set.indexOf(name);
+                if (nowExpanded && idx === -1) set.push(name);
+                else if (!nowExpanded && idx !== -1) set.splice(idx, 1);
+                setExpandedSet(set);
+            });
+        });
+    }
+    
+    // Check if we came from a sort navigation (not a refresh)
+    var fromSortNav = sessionStorage.getItem(sortNavFlag) === 'true';
+    
+    if (fromSortNav) {
+        // Restore expanded state
+        var expandedSet = getExpandedSet();
+        document.querySelectorAll('.contracts-client-header').forEach(function(header) {
+            var clientName = header.getAttribute('data-contracts-client-name');
+            if (clientName && expandedSet.indexOf(clientName) !== -1) {
+                expandHeader(header, true);
+            }
+        });
+        
+        // Restore scroll position smoothly after DOM is ready and headers expanded
+        var savedScroll = sessionStorage.getItem(scrollKey);
+        if (savedScroll) {
+            var targetScroll = parseInt(savedScroll, 10);
+            // Wait for layout to settle after expanding headers
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    if (document.documentElement.scrollHeight > targetScroll) {
+                        window.scrollTo({
+                            top: targetScroll,
+                            behavior: 'auto'
+                        });
+                    }
+                });
+            });
+        }
+        
+        // Clear the flag
+        sessionStorage.removeItem(sortNavFlag);
+    } else {
+        // Refresh: clear expanded state
+        setExpandedSet([]);
+    }
+    
+    // Attach click handlers initially
+    attachContractExpandListeners();
+    
+    // AJAX sort functionality (no page reload)
+    function applySort(newSort, newContractSort) {
+        var tbody = document.getElementById('contracts-by-client-table').querySelector('tbody');
+        var container = document.querySelector('.monthly-table-container');
+        
+        // Save current expanded state
+        var currentExpanded = [];
+        document.querySelectorAll('.contracts-client-header').forEach(function(header) {
+            var icon = header.querySelector('.contracts-expand-icon');
+            if (icon && icon.textContent === '−') {
+                var name = header.getAttribute('data-contracts-client-name');
+                if (name) currentExpanded.push(name);
+            }
+        });
+        
+        // Save scroll position relative to container
+        var scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        var containerTop = container ? container.getBoundingClientRect().top + scrollTop : 0;
+        var relativeScroll = scrollTop - containerTop;
+        
+        // Show loading state
+        tbody.style.opacity = '0.5';
+        tbody.style.transition = 'opacity 0.2s';
+        
+        // Build query params
+        var params = new URLSearchParams();
+        params.set('sort', newSort);
+        params.set('contract_sort', newContractSort);
+        params.set('ajax', 'contracts_table');
+        var urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('ae')) params.set('ae', urlParams.get('ae'));
+        
+        // Fetch sorted data
+        fetch('/reports/contracts-added?' + params.toString(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Build HTML for new table content
+            var html = '';
+            if (data.contracts_by_client && data.contracts_by_client.length > 0) {
+                data.contracts_by_client.forEach(function(clientData, idx) {
+                    html += '<tr class="contracts-client-header" data-contracts-client-id="' + idx + '" data-contracts-client-name="' + 
+                        (clientData.client || '').replace(/"/g, '&quot;') + '">';
+                    html += '<td class="expand-icon" style="text-align: center; padding: 12px 8px;">';
+                    html += '<span class="contracts-expand-icon" style="display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #4a5568; border-radius: 3px; background: white; color: #4a5568; font-size: 12px;">+</span>';
+                    html += '</td>';
+                    html += '<td style="padding: 12px 16px;">' + (clientData.client || '') + 
+                        ' <span style="font-weight: normal; color: #718096; margin-left: 8px;">(' + 
+                        clientData.contracts.length + ' contract' + (clientData.contracts.length !== 1 ? 's' : '') + ')</span></td>';
+                    html += '<td class="numeric" style="padding: 12px 16px;">$' + 
+                        parseFloat(clientData.total).toLocaleString('en-US', {maximumFractionDigits: 0}) + '</td>';
+                    html += '<td class="numeric" style="padding: 12px 16px;"></td></tr>';
+                    
+                    clientData.contracts.forEach(function(contract) {
+                        html += '<tr class="contracts-contract-row" data-contracts-client-id="' + idx + '">';
+                        html += '<td></td>';
+                        html += '<td class="month-name" style="padding-left: 32px;">' + (contract.contract || '—') + '</td>';
+                        html += '<td class="numeric amount-cell">$' + 
+                            parseFloat(contract.total).toLocaleString('en-US', {maximumFractionDigits: 0}) + '</td>';
+                        html += '<td class="numeric" style="font-size: 12px; color: #718096;">' + 
+                            (contract.added_date ? contract.added_date.substring(0, 10) : '—') + '</td>';
+                        html += '</tr>';
+                    });
+                });
+                html += '<tr class="year-totals-row"><td colspan="2"><strong>Total</strong></td>';
+                html += '<td class="numeric"><strong>$' + 
+                    parseFloat(data.total_contracts_30d).toLocaleString('en-US', {maximumFractionDigits: 0}) + '</strong></td>';
+                html += '<td></td></tr>';
+            } else {
+                html += '<tr><td colspan="4" style="text-align: center; padding: 24px; color: #718096;">No contracts added in the last 30 days</td></tr>';
+            }
+            
+            // Update content
+            tbody.innerHTML = html;
+            
+            // Restore expanded state
+            currentExpanded.forEach(function(clientName) {
+                var header = document.querySelector('.contracts-client-header[data-contracts-client-name="' + 
+                    clientName.replace(/"/g, '&quot;') + '"]');
+                if (header) {
+                    var id = header.getAttribute('data-contracts-client-id');
+                    var rows = document.querySelectorAll('.contracts-contract-row[data-contracts-client-id="' + id + '"]');
+                    var icon = header.querySelector('.contracts-expand-icon');
+                    rows.forEach(function(row) { row.style.display = 'table-row'; });
+                    if (icon) icon.textContent = '−';
+                }
+            });
+            
+            // Restore scroll position
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    if (container) {
+                        var newContainerTop = container.getBoundingClientRect().top + 
+                            (window.pageYOffset || document.documentElement.scrollTop);
+                        window.scrollTo({
+                            top: newContainerTop + relativeScroll,
+                            behavior: 'auto'
+                        });
+                    }
+                    tbody.style.opacity = '1';
+                });
+            });
+            
+            // Re-attach event listeners (clear flags first)
+            document.querySelectorAll('.contracts-client-header').forEach(function(h) {
+                h.dataset.listenerAttached = 'false';
+            });
+            attachContractExpandListeners();
+            
+            // Update URL without reload
+            var newUrl = new URL(window.location);
+            newUrl.searchParams.set('sort', newSort);
+            newUrl.searchParams.set('contract_sort', newContractSort);
+            window.history.pushState({}, '', newUrl);
+            
+            // Update active sort links
+            document.querySelectorAll('.contracts-sort-bar a').forEach(function(link) {
+                link.classList.remove('active');
+                var href = new URL(link.href);
+                if (href.searchParams.get('sort') === newSort && href.searchParams.get('contract_sort') === newContractSort) {
+                    link.classList.add('active');
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error loading contracts:', error);
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 24px; color: #d32f2f;">Error loading data. Please try again.</td></tr>';
+            tbody.style.opacity = '1';
+        });
+    }
+    
+    // Convert sort links to AJAX
+    document.querySelectorAll('.contracts-sort-bar a').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var url = new URL(this.href);
+            var newSort = url.searchParams.get('sort');
+            var newContractSort = url.searchParams.get('contract_sort');
+            if (newSort && newContractSort) {
+                applySort(newSort, newContractSort);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
