@@ -262,6 +262,38 @@
     </div>
     {% endif %}
     
+    <!-- Contracts highlight reel (last 7 days) -->
+    <div style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #2d3748;">Contracts Added (Last 7 Days)</h3>
+            <a href="/reports/contracts-added{% if is_admin_or_management and selected_ae %}?ae={{ selected_ae | urlencode }}{% endif %}" 
+               style="padding: 6px 14px; background: #e2e8f0; color: #4a5568; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: 500; white-space: nowrap; transition: background 0.2s;"
+               onmouseover="this.style.background='#cbd5e0';"
+               onmouseout="this.style.background='#e2e8f0';">
+                See More →
+            </a>
+        </div>
+        {% if contracts_highlight %}
+            <div style="max-height: 140px; overflow-y: auto; background: white; border: 1px solid #e2e8f0; border-radius: 6px;">
+                {% for row in contracts_highlight %}
+                {% set is_today = row.added_date and row.added_date[:10] == today %}
+                <div style="display: flex; align-items: center; padding: 8px 14px; border-bottom: 1px solid #f7fafc; gap: 16px; font-size: 14px; {% if is_today %}background: #f0f9ff; border-left: 3px solid #4299e1;{% endif %}">
+                    <div style="flex: 1; min-width: 0;">
+                        <span style="font-weight: 600; color: #2d3748;">{{ row.client }}</span>
+                        <span style="color: #718096; margin-left: 8px;">{{ row.contract }}</span>
+                    </div>
+                    <div style="font-weight: 600; color: #2d3748; margin-right: 16px; white-space: nowrap;">${{ "{:,.0f}".format(row.total) }}</div>
+                    <div style="font-size: 12px; color: #718096; white-space: nowrap;">{% if row.added_date %}{{ row.added_date[:10] }}{% else %}—{% endif %}</div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div style="padding: 16px; text-align: center; color: #718096; font-size: 14px; background: white; border: 1px solid #e2e8f0; border-radius: 6px;">
+                No contracts added in the last 7 days
+            </div>
+        {% endif %}
+    </div>
+    
     <!-- Summary Cards -->
     <div class="summary-cards">
         <div class="summary-card">
@@ -481,6 +513,7 @@
         </table>
     </div>
 
+
     <script>
         // Year filter functionality
         document.addEventListener('DOMContentLoaded', function() {
@@ -683,8 +716,13 @@
             const accountDateReset = document.getElementById('account-date-reset');
             if (accountDateReset) {
                 accountDateReset.addEventListener('click', function() {
-                    document.getElementById('account-start-date').value = '';
-                    document.getElementById('account-end-date').value = '';
+                    // Get current year from year filter or URL
+                    const yearFilter = document.getElementById('year-filter');
+                    const currentYear = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
+                    const startDate = `${currentYear}-01-01`;
+                    const endDate = `${currentYear}-12-31`;
+                    document.getElementById('account-start-date').value = startDate;
+                    document.getElementById('account-end-date').value = endDate;
                     // Apply immediately (no debounce for reset)
                     applyAccountDateFilter();
                 });
