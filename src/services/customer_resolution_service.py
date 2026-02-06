@@ -318,9 +318,13 @@ class CustomerResolutionService:
         """
         sql = """
         WITH agency_clients AS (
-            SELECT customer_id
-            FROM customers
+            SELECT customer_id FROM customers
             WHERE is_active = 1 AND normalized_name LIKE '%:%'
+            UNION
+            SELECT customer_id FROM spots
+            WHERE customer_id IS NOT NULL
+            GROUP BY customer_id
+            HAVING COUNT(*) = COUNT(agency_id)
         ),
         alias_counts AS (
             SELECT
@@ -605,9 +609,13 @@ class CustomerResolutionService:
         """
         sql = """
         WITH agency_clients AS (
-            SELECT customer_id
-            FROM customers
+            SELECT customer_id FROM customers
             WHERE is_active = 1 AND normalized_name LIKE '%:%'
+            UNION
+            SELECT customer_id FROM spots
+            WHERE customer_id IS NOT NULL
+            GROUP BY customer_id
+            HAVING COUNT(*) = COUNT(agency_id)
         ),
         alias_counts AS (
             SELECT

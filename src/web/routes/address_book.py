@@ -41,13 +41,18 @@ def _db_rw():
 def _get_agency_client_ids(conn):
     """
     Return set of customer_ids that are agency clients (hidden from front page).
-    Hard rule: a customer is an agency client if their name contains ':',
-    indicating an Agency:Customer relationship.
+    A customer is an agency client if:
+      1. Their name contains ':' (Agency:Customer naming convention), OR
+      2. ALL of their spots are booked through an agency (agency_id is never null)
     """
     rows = conn.execute("""
-        SELECT customer_id
-        FROM customers
+        SELECT customer_id FROM customers
         WHERE is_active = 1 AND normalized_name LIKE '%:%'
+        UNION
+        SELECT customer_id FROM spots
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+        HAVING COUNT(*) = COUNT(agency_id)
     """).fetchall()
     return {row["customer_id"] for row in rows}
 
