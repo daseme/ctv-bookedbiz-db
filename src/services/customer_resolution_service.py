@@ -314,15 +314,21 @@ class CustomerResolutionService:
         """
         Get customers with their alias counts and revenue summary.
         Ordered by alias count desc (most complex first).
-        Excludes agency-booked customers (all spots have agency_id).
+        Excludes agency clients (any spot via agency, or name-prefix match).
         """
         sql = """
-        WITH agency_booked AS (
-            SELECT customer_id
+        WITH agency_clients AS (
+            SELECT DISTINCT customer_id
             FROM spots
-            WHERE customer_id IS NOT NULL
-            GROUP BY customer_id
-            HAVING COUNT(*) = COUNT(agency_id)
+            WHERE customer_id IS NOT NULL AND agency_id IS NOT NULL
+            UNION
+            SELECT c.customer_id
+            FROM customers c
+            JOIN agencies a ON c.normalized_name LIKE a.agency_name || ':%'
+            WHERE c.is_active = 1 AND a.is_active = 1
+              AND c.customer_id NOT IN (
+                  SELECT DISTINCT customer_id FROM spots WHERE customer_id IS NOT NULL
+              )
         ),
         alias_counts AS (
             SELECT
@@ -357,7 +363,7 @@ class CustomerResolutionService:
         LEFT JOIN alias_counts ac ON c.customer_id = ac.customer_id
         LEFT JOIN customer_revenue cr ON c.customer_id = cr.customer_id
         WHERE c.is_active = 1
-        AND c.customer_id NOT IN (SELECT customer_id FROM agency_booked)
+        AND c.customer_id NOT IN (SELECT customer_id FROM agency_clients)
         AND (? = '' OR c.normalized_name LIKE '%' || ? || '%')
         AND COALESCE(ac.alias_count, 0) >= ?
         ORDER BY COALESCE(ac.alias_count, 0) DESC, cr.total_revenue DESC
@@ -603,15 +609,21 @@ class CustomerResolutionService:
         """
         Get customers with their alias counts and revenue summary.
         Ordered by alias count desc (most complex first).
-        Excludes agency-booked customers (all spots have agency_id).
+        Excludes agency clients (any spot via agency, or name-prefix match).
         """
         sql = """
-        WITH agency_booked AS (
-            SELECT customer_id
+        WITH agency_clients AS (
+            SELECT DISTINCT customer_id
             FROM spots
-            WHERE customer_id IS NOT NULL
-            GROUP BY customer_id
-            HAVING COUNT(*) = COUNT(agency_id)
+            WHERE customer_id IS NOT NULL AND agency_id IS NOT NULL
+            UNION
+            SELECT c.customer_id
+            FROM customers c
+            JOIN agencies a ON c.normalized_name LIKE a.agency_name || ':%'
+            WHERE c.is_active = 1 AND a.is_active = 1
+              AND c.customer_id NOT IN (
+                  SELECT DISTINCT customer_id FROM spots WHERE customer_id IS NOT NULL
+              )
         ),
         alias_counts AS (
             SELECT
@@ -646,7 +658,7 @@ class CustomerResolutionService:
         LEFT JOIN alias_counts ac ON c.customer_id = ac.customer_id
         LEFT JOIN customer_revenue cr ON c.customer_id = cr.customer_id
         WHERE c.is_active = 1
-        AND c.customer_id NOT IN (SELECT customer_id FROM agency_booked)
+        AND c.customer_id NOT IN (SELECT customer_id FROM agency_clients)
         AND (? = '' OR c.normalized_name LIKE '%' || ? || '%')
         AND COALESCE(ac.alias_count, 0) >= ?
         ORDER BY COALESCE(ac.alias_count, 0) DESC, cr.total_revenue DESC

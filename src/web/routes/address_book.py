@@ -38,19 +38,38 @@ def _db_rw():
         conn.close()
 
 
-def _get_agency_booked_customer_ids(conn):
+def _get_agency_client_ids(conn):
     """
-    Return set of customer_ids that are purely agency-booked.
-    A customer is agency-booked if they have spots AND all their spots have a non-null agency_id.
+    Return set of customer_ids that are agency clients (hidden from front page).
+    A customer is an agency client if:
+      1. ANY of their spots have a non-null agency_id, OR
+      2. They have no spots but their name matches 'AgencyName:...' for an active agency
     """
+    ids = set()
+
+    # Customers with any agency-booked spots
     rows = conn.execute("""
-        SELECT customer_id
+        SELECT DISTINCT customer_id
         FROM spots
-        WHERE customer_id IS NOT NULL
-        GROUP BY customer_id
-        HAVING COUNT(*) = COUNT(agency_id)
+        WHERE customer_id IS NOT NULL AND agency_id IS NOT NULL
     """).fetchall()
-    return {row["customer_id"] for row in rows}
+    for row in rows:
+        ids.add(row["customer_id"])
+
+    # Zero-spot customers whose name matches an agency prefix
+    rows = conn.execute("""
+        SELECT c.customer_id
+        FROM customers c
+        JOIN agencies a ON c.normalized_name LIKE a.agency_name || ':%'
+        WHERE c.is_active = 1 AND a.is_active = 1
+          AND c.customer_id NOT IN (
+              SELECT DISTINCT customer_id FROM spots WHERE customer_id IS NOT NULL
+          )
+    """).fetchall()
+    for row in rows:
+        ids.add(row["customer_id"])
+
+    return ids
 
 
 @address_book_bp.route("/address-book")
@@ -114,7 +133,7 @@ def api_address_book():
 
     with _db_ro() as conn:
         # Get agency-booked customer IDs to exclude
-        agency_booked_ids = _get_agency_booked_customer_ids(conn)
+        agency_client_ids = _get_agency_client_ids(conn)
 
         # Build lookup of markets by entity
         # For agencies: markets where agency_id matches
@@ -245,7 +264,7 @@ def api_address_book():
             for c in customers:
                 row = dict(c)
                 # Skip agency-booked customers
-                if row["entity_id"] in agency_booked_ids:
+                if row["entity_id"] in agency_client_ids:
                     continue
                 row["markets"] = customer_markets.get(row["entity_id"], "")
                 metrics = customer_metrics.get(row["entity_id"], {})
@@ -531,9 +550,9 @@ def api_agency_customers(agency_id):
         if not agency:
             return jsonify({"error": "Agency not found"}), 404
 
-        # Get customers that have booked through this agency
-        customers = conn.execute("""
-            SELECT DISTINCT
+        # Get customers booked through this agency (via spots)
+        spot_customers = conn.execute("""
+            SELECT
                 c.customer_id,
                 c.normalized_name as customer_name,
                 c.sector_id,
@@ -548,13 +567,44 @@ def api_agency_customers(agency_id):
             WHERE sp.agency_id = ?
                 AND c.is_active = 1
             GROUP BY c.customer_id
-            ORDER BY revenue_via_agency DESC
         """, [agency_id]).fetchall()
+
+        seen_ids = set()
+        result_customers = []
+        for c in spot_customers:
+            result_customers.append(dict(c))
+            seen_ids.add(c["customer_id"])
+
+        # Also find zero-spot customers whose name matches AgencyName:*
+        name_customers = conn.execute("""
+            SELECT
+                c.customer_id,
+                c.normalized_name as customer_name,
+                c.sector_id,
+                s.sector_name,
+                0 as revenue_via_agency,
+                0 as spot_count,
+                NULL as last_active
+            FROM customers c
+            LEFT JOIN sectors s ON c.sector_id = s.sector_id
+            WHERE c.is_active = 1
+              AND c.normalized_name LIKE ? || ':%'
+              AND c.customer_id NOT IN (
+                  SELECT DISTINCT customer_id FROM spots WHERE customer_id IS NOT NULL
+              )
+        """, [agency["agency_name"]]).fetchall()
+
+        for c in name_customers:
+            if c["customer_id"] not in seen_ids:
+                result_customers.append(dict(c))
+
+        # Sort by revenue descending
+        result_customers.sort(key=lambda x: -(x.get("revenue_via_agency") or 0))
 
         return jsonify({
             "agency_id": agency_id,
             "agency_name": agency["agency_name"],
-            "customers": [dict(c) for c in customers]
+            "customers": result_customers
         })
 
 
@@ -652,7 +702,7 @@ def api_export_csv():
 
     with _db_ro() as conn:
         # Get agency-booked customer IDs to exclude
-        agency_booked_ids = _get_agency_booked_customer_ids(conn)
+        agency_client_ids = _get_agency_client_ids(conn)
 
         # Get metrics lookups
         agency_metrics = {}
@@ -727,7 +777,7 @@ def api_export_csv():
             for c in customers:
                 row = dict(c)
                 # Skip agency-booked customers
-                if row["entity_id"] in agency_booked_ids:
+                if row["entity_id"] in agency_client_ids:
                     continue
                 m = customer_metrics.get(row["entity_id"], {})
                 row["last_active"] = m.get("last_active", "")

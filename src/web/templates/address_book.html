@@ -178,6 +178,13 @@
 
   .ae-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;background:#dbeafe;color:#1e40af}
   .ae-badge.none{background:#f1f5f9;color:#94a3b8}
+
+  .sub-customers-table{width:100%;border-collapse:collapse;font-size:13px}
+  .sub-customers-table th,.sub-customers-table td{padding:6px 10px;text-align:left;border-bottom:1px solid #f1f5f9}
+  .sub-customers-table th{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase}
+  .sub-customers-table .revenue{text-align:right;color:#059669;font-weight:500}
+  .sub-customers-table .spots{text-align:right;color:#64748b}
+  .sub-customers-scroll{max-height:250px;overflow-y:auto}
 </style>
 {% endblock %}
 
@@ -295,6 +302,17 @@
         <h3><span class="icon">📺</span> Markets</h3>
         <div class="market-badges" id="detail-markets" style="font-size:12px">
           <span class="no-data">No spots in any market</span>
+        </div>
+      </div>
+
+      <!-- Agency Clients (agencies only) -->
+      <div class="detail-section" id="agency-clients-section" style="display:none">
+        <h3><span class="icon">🏢</span> Agency Clients <span id="agency-clients-count" style="font-weight:400;color:#64748b;font-size:12px"></span></h3>
+        <div class="sub-customers-scroll">
+          <table class="sub-customers-table">
+            <thead><tr><th>Client</th><th>Sector</th><th class="spots">Spots</th><th class="revenue">Revenue</th></tr></thead>
+            <tbody id="agency-clients-body"></tbody>
+          </table>
         </div>
       </div>
 
@@ -744,6 +762,15 @@
       marketsDiv.innerHTML = '<span class="no-data">No spots in any market</span>';
     }
 
+    // Agency Clients (agencies only)
+    const clientsSection = document.getElementById('agency-clients-section');
+    if (type === 'agency') {
+      clientsSection.style.display = 'block';
+      loadAgencyClients(id);
+    } else {
+      clientsSection.style.display = 'none';
+    }
+
     // Address
     document.getElementById('detail-address').value = currentEntity.address || '';
     document.getElementById('detail-city').value = currentEntity.city || '';
@@ -805,6 +832,36 @@
       }).join('');
     } catch (e) {
       container.innerHTML = '<div class="no-data">Failed to load activities</div>';
+    }
+  }
+
+  async function loadAgencyClients(agencyId) {
+    const tbody = document.getElementById('agency-clients-body');
+    const countEl = document.getElementById('agency-clients-count');
+    tbody.innerHTML = '<tr><td colspan="4" class="no-data">Loading...</td></tr>';
+    try {
+      const r = await fetch(`${API}/agency/${agencyId}/customers`);
+      const data = await r.json();
+      const clients = data.customers || [];
+      countEl.textContent = `(${clients.length})`;
+      if (clients.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="no-data">No clients on record</td></tr>';
+        return;
+      }
+      tbody.innerHTML = clients.map(c => {
+        const rev = c.revenue_via_agency || 0;
+        const revStr = rev >= 1000000 ? `$${(rev/1000000).toFixed(1)}M` :
+                       rev >= 1000 ? `$${(rev/1000).toFixed(0)}K` :
+                       rev > 0 ? `$${rev.toFixed(0)}` : '-';
+        return `<tr>
+          <td>${esc(c.customer_name)}</td>
+          <td>${esc(c.sector_name || '-')}</td>
+          <td class="spots">${c.spot_count || '-'}</td>
+          <td class="revenue">${revStr}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="4" class="no-data">Failed to load clients</td></tr>';
     }
   }
 
