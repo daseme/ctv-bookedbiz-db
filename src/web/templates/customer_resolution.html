@@ -46,6 +46,23 @@
   .normalized-input{padding:4px 8px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;width:300px}
 .normalized-input:focus{border-color:#0ea5e9;outline:none}
   .empty{text-align:center;padding:40px;color:#64748b}
+
+  /* Similar-customer warning overlay */
+  .similar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center}
+  .similar-overlay.active{display:flex}
+  .similar-box{background:#fff;border-radius:10px;padding:24px;max-width:520px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.18)}
+  .similar-box h3{margin:0 0 12px;font-size:16px;color:#0f172a}
+  .similar-box .match{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:8px;cursor:pointer}
+  .similar-box .match:hover{background:#f0f9ff;border-color:#0ea5e9}
+  .similar-box .match .name{font-weight:600;font-size:14px}
+  .similar-box .match .info{font-size:12px;color:#64748b}
+  .similar-box .match .score{font-size:13px;font-weight:600;color:#0ea5e9}
+  .similar-box .btns{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+  .similar-box .btns button{padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid}
+  .btn-proceed{background:#f59e0b;border-color:#d97706;color:#fff}
+  .btn-proceed:hover{background:#d97706}
+  .btn-cancel-similar{background:#fff;border-color:#e2e8f0;color:#334155}
+  .btn-cancel-similar:hover{background:#f8fafc}
 </style>
 {% endblock %}
 
@@ -79,6 +96,17 @@
     <tr><td colspan="5" class="empty">Loading...</td></tr>
   </tbody>
 </table>
+<div class="similar-overlay" id="similar-overlay">
+  <div class="similar-box">
+    <h3>Similar customers found</h3>
+    <p style="font-size:13px;color:#64748b;margin:0 0 12px">Did you mean one of these? Click a match to link instead.</p>
+    <div id="similar-matches"></div>
+    <div class="btns">
+      <button class="btn-cancel-similar" id="similar-cancel">Cancel</button>
+      <button class="btn-proceed" id="similar-proceed">Create Anyway</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -250,6 +278,26 @@
   async function createCustomer(row, billCode, normalized) {
     row.style.opacity = '0.5';
     try {
+      // Pre-creation similarity check
+      const chk = await fetch(`${API}/check-similar`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ normalized_name: normalized })
+      });
+      const chkData = await chk.json();
+
+      if (chkData.similar && chkData.similar.length > 0) {
+        row.style.opacity = '1';
+        const choice = await showSimilarWarning(chkData.similar, billCode, normalized);
+        if (choice === 'cancel') return;
+        if (choice && choice !== 'proceed') {
+          // User chose to link to an existing customer
+          await linkCustomer(row, billCode, parseInt(choice));
+          return;
+        }
+        row.style.opacity = '0.5';
+      }
+
       const r = await fetch(`${API}/create`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -257,7 +305,7 @@
       });
       const result = await r.json();
       if (!r.ok || !result.success) throw new Error(result.error || 'Failed');
-      
+
       row.classList.add('resolved');
       row.querySelector('.actions').innerHTML = `<span class="meta">✓ Created${result.alias_created ? ' + alias' : ''}</span>`;
       loadStats();
@@ -265,6 +313,40 @@
       row.style.opacity = '1';
       alert('Error: ' + e.message);
     }
+  }
+
+  function showSimilarWarning(matches, billCode, normalized) {
+    return new Promise(resolve => {
+      const overlay = document.getElementById('similar-overlay');
+      const container = document.getElementById('similar-matches');
+      container.innerHTML = matches.map(m => `
+        <div class="match" data-id="${m.customer_id}">
+          <div>
+            <div class="name">${esc(m.normalized_name)}</div>
+            <div class="info">${m.match_type} match &middot; ID ${m.customer_id}</div>
+          </div>
+          <div class="score">${Math.round(m.score * 100)}%</div>
+        </div>
+      `).join('');
+      overlay.classList.add('active');
+
+      function cleanup() {
+        overlay.classList.remove('active');
+        document.getElementById('similar-cancel').removeEventListener('click', onCancel);
+        document.getElementById('similar-proceed').removeEventListener('click', onProceed);
+        container.querySelectorAll('.match').forEach(el => el.removeEventListener('click', onMatch));
+      }
+      function onCancel() { cleanup(); resolve('cancel'); }
+      function onProceed() { cleanup(); resolve('proceed'); }
+      function onMatch(e) {
+        const id = e.currentTarget.dataset.id;
+        cleanup();
+        resolve(id);
+      }
+      document.getElementById('similar-cancel').addEventListener('click', onCancel);
+      document.getElementById('similar-proceed').addEventListener('click', onProceed);
+      container.querySelectorAll('.match').forEach(el => el.addEventListener('click', onMatch));
+    });
   }
   
   async function linkCustomer(row, billCode, customerId) {

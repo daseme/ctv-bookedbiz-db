@@ -152,8 +152,8 @@ class BatchEntityResolver:
             # Direct lookup
             cursor = conn.execute(
                 """
-                SELECT customer_id FROM customers 
-                WHERE normalized_name = ? AND is_active = 1
+                SELECT customer_id FROM customers
+                WHERE normalized_name = ? COLLATE NOCASE AND is_active = 1
             """,
                 (customer_name,),
             )
@@ -166,9 +166,9 @@ class BatchEntityResolver:
                 """
                 SELECT ea.target_entity_id FROM entity_aliases ea
                 JOIN customers c ON c.customer_id = ea.target_entity_id
-                WHERE ea.alias_name = ? 
-                AND ea.entity_type = 'customer' 
-                AND ea.is_active = 1 
+                WHERE ea.alias_name = ? COLLATE NOCASE
+                AND ea.entity_type = 'customer'
+                AND ea.is_active = 1
                 AND c.is_active = 1
             """,
                 (customer_name,),
@@ -188,8 +188,8 @@ class BatchEntityResolver:
             # Direct lookup
             cursor = conn.execute(
                 """
-                SELECT agency_id FROM agencies 
-                WHERE agency_name = ? AND is_active = 1
+                SELECT agency_id FROM agencies
+                WHERE agency_name = ? COLLATE NOCASE AND is_active = 1
             """,
                 (agency_name,),
             )
@@ -202,9 +202,9 @@ class BatchEntityResolver:
                 """
                 SELECT ea.target_entity_id FROM entity_aliases ea
                 JOIN agencies a ON a.agency_id = ea.target_entity_id
-                WHERE ea.alias_name = ? 
-                AND ea.entity_type = 'agency' 
-                AND ea.is_active = 1 
+                WHERE ea.alias_name = ? COLLATE NOCASE
+                AND ea.entity_type = 'agency'
+                AND ea.is_active = 1
                 AND a.is_active = 1
             """,
                 (agency_name,),
@@ -223,8 +223,8 @@ class BatchEntityResolver:
         # Try direct lookup first
         cursor = conn.execute(
             """
-            SELECT customer_id FROM customers 
-            WHERE normalized_name = ? AND is_active = 1
+            SELECT customer_id FROM customers
+            WHERE normalized_name = ? COLLATE NOCASE AND is_active = 1
         """,
             (customer_name,),
         )
@@ -237,9 +237,9 @@ class BatchEntityResolver:
             """
             SELECT ea.target_entity_id FROM entity_aliases ea
             JOIN customers c ON c.customer_id = ea.target_entity_id
-            WHERE ea.alias_name = ? 
-              AND ea.entity_type = 'customer' 
-              AND ea.is_active = 1 
+            WHERE ea.alias_name = ? COLLATE NOCASE
+              AND ea.entity_type = 'customer'
+              AND ea.is_active = 1
               AND c.is_active = 1
         """,
             (customer_name,),
@@ -255,8 +255,8 @@ class BatchEntityResolver:
         # Try direct lookup first
         cursor = conn.execute(
             """
-            SELECT agency_id FROM agencies 
-            WHERE agency_name = ? AND is_active = 1
+            SELECT agency_id FROM agencies
+            WHERE agency_name = ? COLLATE NOCASE AND is_active = 1
         """,
             (agency_name,),
         )
@@ -269,9 +269,9 @@ class BatchEntityResolver:
             """
             SELECT ea.target_entity_id FROM entity_aliases ea
             JOIN agencies a ON a.agency_id = ea.target_entity_id
-            WHERE ea.alias_name = ? 
-              AND ea.entity_type = 'agency' 
-              AND ea.is_active = 1 
+            WHERE ea.alias_name = ? COLLATE NOCASE
+              AND ea.entity_type = 'agency'
+              AND ea.is_active = 1
               AND a.is_active = 1
         """,
             (agency_name,),
