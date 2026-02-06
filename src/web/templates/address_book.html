@@ -175,6 +175,9 @@
   .add-activity-form.active{display:block}
   .add-activity-form select,.add-activity-form textarea{width:100%;margin-bottom:8px;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px}
   .add-activity-form textarea{min-height:60px}
+
+  .ae-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;background:#dbeafe;color:#1e40af}
+  .ae-badge.none{background:#f1f5f9;color:#94a3b8}
 </style>
 {% endblock %}
 
@@ -199,6 +202,10 @@
   <select id="sector-filter">
     <option value="">All Sectors</option>
   </select>
+  <select id="ae-filter">
+    <option value="">All AEs</option>
+    <option value="__none__">Unassigned</option>
+  </select>
   <select id="contacts-filter">
     <option value="all">All Contact Status</option>
     <option value="yes">Has Contacts</option>
@@ -211,6 +218,7 @@
     <option value="market">Sort by Market</option>
     <option value="sector">Sort by Sector</option>
     <option value="type">Sort by Type</option>
+    <option value="ae">Sort by AE</option>
   </select>
   <select id="saved-filter">
     <option value="">Saved Filters...</option>
@@ -245,6 +253,7 @@
       <th>Name</th>
       <th class="type-cell">Type</th>
       <th>Sector</th>
+      <th>AE</th>
       <th>Primary Contact</th>
       <th>Last Active</th>
       <th class="revenue-cell">Revenue</th>
@@ -268,6 +277,16 @@
           <div class="form-field">
             <select id="detail-sector"></select>
           </div>
+        </div>
+      </div>
+
+      <!-- AE Assignment -->
+      <div class="detail-section">
+        <h3><span class="icon">👔</span> Assigned AE</h3>
+        <div class="form-field">
+          <select id="detail-ae">
+            <option value="">-- No AE Assigned --</option>
+          </select>
         </div>
       </div>
 
@@ -400,6 +419,7 @@
   let currentData = [];
   let sectorsData = [];
   let marketsData = [];
+  let aeListData = [];
   let currentEntity = null;
   let hasUnsavedChanges = false;
   let selectedEntities = new Set();
@@ -431,12 +451,27 @@
     } catch (e) { console.error('Failed to load markets:', e); }
   }
 
+  // ===== Load AE list =====
+  async function loadAEList() {
+    try {
+      const r = await fetch(`${API}/ae-list`);
+      aeListData = await r.json();
+      const filterEl = document.getElementById('ae-filter');
+      filterEl.innerHTML = '<option value="">All AEs</option><option value="__none__">Unassigned</option>' +
+        aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
+      const detailEl = document.getElementById('detail-ae');
+      detailEl.innerHTML = '<option value="">-- No AE Assigned --</option>' +
+        aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
+    } catch (e) { console.error('Failed to load AE list:', e); }
+  }
+
   // ===== Load data =====
   async function loadData() {
     const params = new URLSearchParams({
       search: document.getElementById('search').value.trim(),
       type: document.getElementById('type-filter').value,
       market: document.getElementById('market-filter').value,
+      ae: document.getElementById('ae-filter').value,
       has_contacts: document.getElementById('contacts-filter').value,
       sector_id: document.getElementById('sector-filter').value,
       sort: document.getElementById('sort-filter').value
@@ -500,6 +535,7 @@
           <td class="name-cell">${esc(e.entity_name)}</td>
           <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span></td>
           <td>${esc(e.sector_name || '-')}</td>
+          <td>${e.assigned_ae ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>` : '-'}</td>
           <td>${esc(e.primary_contact || '-')}</td>
           <td>${lastActive}</td>
           <td class="revenue-cell">${revenueStr}</td>
@@ -615,6 +651,9 @@
     const sectorBadge = e.entity_type === 'customer'
       ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}</span>`
       : '';
+    const aeBadge = e.assigned_ae
+      ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>`
+      : '';
     let addressHtml = e.address || e.city ? `<div class="address-line"><span class="icon">📍</span>${esc([e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(' | '))}</div>` : '';
     const notesHtml = e.notes ? `<div class="notes-preview">${esc(e.notes)}</div>` : '';
     let contactsHtml = '';
@@ -651,6 +690,7 @@
           <div class="header-badges">
             <span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span>
             ${sectorBadge}
+            ${aeBadge}
           </div>
         </div>
         <div class="card-body">
@@ -692,6 +732,9 @@
     } else {
       sectorSection.style.display = 'none';
     }
+
+    // AE
+    document.getElementById('detail-ae').value = currentEntity.assigned_ae || '';
 
     // Markets
     const marketsDiv = document.getElementById('detail-markets');
@@ -980,6 +1023,13 @@
         });
       }
 
+      // Save AE
+      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ assigned_ae: document.getElementById('detail-ae').value || null })
+      });
+
       status.textContent = '✓ Saved';
       status.className = 'save-status success';
       hasUnsavedChanges = false;
@@ -1004,7 +1054,7 @@
 
   // Filter handlers
   document.getElementById('search').addEventListener('input', debounce(loadData, 300));
-  ['type-filter', 'market-filter', 'sector-filter', 'contacts-filter', 'sort-filter'].forEach(id => {
+  ['type-filter', 'market-filter', 'ae-filter', 'sector-filter', 'contacts-filter', 'sort-filter'].forEach(id => {
     document.getElementById(id).addEventListener('change', loadData);
   });
   document.getElementById('refresh').addEventListener('click', loadData);
@@ -1035,6 +1085,7 @@
     if (cfg.search) document.getElementById('search').value = cfg.search;
     if (cfg.type) document.getElementById('type-filter').value = cfg.type;
     if (cfg.market) document.getElementById('market-filter').value = cfg.market;
+    if (cfg.ae) document.getElementById('ae-filter').value = cfg.ae;
     if (cfg.sector_id) document.getElementById('sector-filter').value = cfg.sector_id;
     if (cfg.has_contacts) document.getElementById('contacts-filter').value = cfg.has_contacts;
     if (cfg.sort) document.getElementById('sort-filter').value = cfg.sort;
@@ -1048,6 +1099,7 @@
       search: document.getElementById('search').value,
       type: document.getElementById('type-filter').value,
       market: document.getElementById('market-filter').value,
+      ae: document.getElementById('ae-filter').value,
       sector_id: document.getElementById('sector-filter').value,
       has_contacts: document.getElementById('contacts-filter').value,
       sort: document.getElementById('sort-filter').value
@@ -1071,6 +1123,7 @@
       search: document.getElementById('search').value.trim(),
       type: document.getElementById('type-filter').value,
       market: document.getElementById('market-filter').value,
+      ae: document.getElementById('ae-filter').value,
       has_contacts: document.getElementById('contacts-filter').value,
       sector_id: document.getElementById('sector-filter').value
     });
@@ -1078,7 +1131,7 @@
   });
 
   // Init
-  Promise.all([loadSectors(), loadMarkets(), loadSavedFilters()]).then(() => loadData());
+  Promise.all([loadSectors(), loadMarkets(), loadAEList(), loadSavedFilters()]).then(() => loadData());
 })();
 </script>
 {% endblock %}
