@@ -38,25 +38,6 @@ def _db_rw():
         conn.close()
 
 
-def _get_agency_client_ids(conn):
-    """
-    Return set of customer_ids that are agency clients (hidden from front page).
-    A customer is an agency client if:
-      1. Their name contains ':' (Agency:Customer naming convention), OR
-      2. ALL of their spots are booked through an agency (agency_id is never null)
-    """
-    rows = conn.execute("""
-        SELECT customer_id FROM customers
-        WHERE is_active = 1 AND normalized_name LIKE '%:%'
-        UNION
-        SELECT customer_id FROM spots
-        WHERE customer_id IS NOT NULL
-        GROUP BY customer_id
-        HAVING COUNT(*) = COUNT(agency_id)
-    """).fetchall()
-    return {row["customer_id"] for row in rows}
-
-
 @address_book_bp.route("/address-book")
 def address_book_page():
     """Render the unified address book page."""
@@ -118,38 +99,12 @@ def api_address_book():
     results = []
 
     with _db_ro() as conn:
-        # Get agency-booked customer IDs to exclude
-        agency_client_ids = _get_agency_client_ids(conn)
-
-        # Build lookup of markets by entity
-        # For agencies: markets where agency_id matches
+        # Combined agency query: markets + metrics in one scan
         agency_markets = {}
-        rows = conn.execute("""
-            SELECT agency_id, GROUP_CONCAT(DISTINCT market_name) as markets
-            FROM spots
-            WHERE agency_id IS NOT NULL AND market_name IS NOT NULL AND market_name != ''
-            GROUP BY agency_id
-        """).fetchall()
-        for row in rows:
-            agency_markets[row["agency_id"]] = row["markets"]
-
-        # For customers: markets where customer_id matches
-        customer_markets = {}
-        rows = conn.execute("""
-            SELECT customer_id, GROUP_CONCAT(DISTINCT market_name) as markets
-            FROM spots
-            WHERE customer_id IS NOT NULL AND market_name IS NOT NULL AND market_name != ''
-            GROUP BY customer_id
-        """).fetchall()
-        for row in rows:
-            customer_markets[row["customer_id"]] = row["markets"]
-
-        # Build lookup of metrics (last_active, revenue, spot_count) by entity
-        # For agencies
         agency_metrics = {}
         rows = conn.execute("""
-            SELECT
-                agency_id,
+            SELECT agency_id,
+                GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END) as markets,
                 MAX(air_date) as last_active,
                 SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
                     THEN gross_rate ELSE 0 END) as total_revenue,
@@ -159,31 +114,39 @@ def api_address_book():
             GROUP BY agency_id
         """).fetchall()
         for row in rows:
+            agency_markets[row["agency_id"]] = row["markets"] or ""
             agency_metrics[row["agency_id"]] = {
                 "last_active": row["last_active"],
                 "total_revenue": float(row["total_revenue"] or 0),
                 "spot_count": row["spot_count"]
             }
 
-        # For customers
+        # Combined customer query: markets + metrics + agency-client detection in one scan
+        customer_markets = {}
         customer_metrics = {}
+        agency_client_ids_from_spots = set()
         rows = conn.execute("""
-            SELECT
-                customer_id,
+            SELECT customer_id,
+                GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END) as markets,
                 MAX(air_date) as last_active,
                 SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
                     THEN gross_rate ELSE 0 END) as total_revenue,
-                COUNT(*) as spot_count
+                COUNT(*) as spot_count,
+                COUNT(agency_id) as agency_spot_count
             FROM spots
             WHERE customer_id IS NOT NULL
             GROUP BY customer_id
         """).fetchall()
         for row in rows:
+            customer_markets[row["customer_id"]] = row["markets"] or ""
             customer_metrics[row["customer_id"]] = {
                 "last_active": row["last_active"],
                 "total_revenue": float(row["total_revenue"] or 0),
                 "spot_count": row["spot_count"]
             }
+            # All spots booked through agency = agency client
+            if row["agency_spot_count"] == row["spot_count"]:
+                agency_client_ids_from_spots.add(row["customer_id"])
 
         # Get agencies (no sector for agencies)
         if entity_type in ("all", "agency"):
@@ -253,8 +216,8 @@ def api_address_book():
 
             for c in customers:
                 row = dict(c)
-                # Skip agency-booked customers
-                if row["entity_id"] in agency_client_ids:
+                # Skip agency clients: name contains ':' or all spots booked via agency
+                if ':' in row["entity_name"] or row["entity_id"] in agency_client_ids_from_spots:
                     continue
                 row["markets"] = customer_markets.get(row["entity_id"], "")
                 metrics = customer_metrics.get(row["entity_id"], {})
@@ -700,10 +663,7 @@ def api_export_csv():
     results = []
 
     with _db_ro() as conn:
-        # Get agency-booked customer IDs to exclude
-        agency_client_ids = _get_agency_client_ids(conn)
-
-        # Get metrics lookups
+        # Combined agency metrics lookup (one scan)
         agency_metrics = {}
         rows = conn.execute("""
             SELECT agency_id,
@@ -716,17 +676,22 @@ def api_export_csv():
         for row in rows:
             agency_metrics[row["agency_id"]] = dict(row)
 
+        # Combined customer metrics + agency-client detection (one scan)
         customer_metrics = {}
+        agency_client_ids_from_spots = set()
         rows = conn.execute("""
             SELECT customer_id,
                 MAX(air_date) as last_active,
                 SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
                     THEN gross_rate ELSE 0 END) as total_revenue,
-                COUNT(*) as spot_count
+                COUNT(*) as spot_count,
+                COUNT(agency_id) as agency_spot_count
             FROM spots WHERE customer_id IS NOT NULL GROUP BY customer_id
         """).fetchall()
         for row in rows:
             customer_metrics[row["customer_id"]] = dict(row)
+            if row["agency_spot_count"] == row["spot_count"]:
+                agency_client_ids_from_spots.add(row["customer_id"])
 
         # Get agencies
         if entity_type in ("all", "agency"):
@@ -775,8 +740,8 @@ def api_export_csv():
             """).fetchall()
             for c in customers:
                 row = dict(c)
-                # Skip agency-booked customers
-                if row["entity_id"] in agency_client_ids:
+                # Skip agency clients: name contains ':' or all spots booked via agency
+                if ':' in row["entity_name"] or row["entity_id"] in agency_client_ids_from_spots:
                     continue
                 m = customer_metrics.get(row["entity_id"], {})
                 row["last_active"] = m.get("last_active", "")
