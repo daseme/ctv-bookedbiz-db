@@ -534,8 +534,34 @@ def consolidate_customer():
             (target_id, source_id),
         )
 
-        # 3. Delete the source customer record
-        conn.execute("DELETE FROM customers WHERE customer_id = ?", (source_id,))
+        # 3. Create alias from source normalized_name → target (for future import resolution)
+        source_name = source_customer["normalized_name"]
+        target_name = target_customer["normalized_name"]
+        if source_name != target_name:
+            existing_alias = conn.execute(
+                "SELECT alias_id FROM entity_aliases WHERE alias_name = ? AND entity_type = 'customer'",
+                (source_name,),
+            ).fetchone()
+            if not existing_alias:
+                conn.execute(
+                    """INSERT INTO entity_aliases
+                       (alias_name, entity_type, target_entity_id, confidence_score,
+                        created_by, notes, is_active)
+                       VALUES (?, 'customer', ?, 100, 'canon_tool',
+                               'Created via consolidation from customer ' || ?, 1)""",
+                    (source_name, target_id, source_id),
+                )
+
+        # 4. Soft-delete the source customer record (not hard delete)
+        conn.execute(
+            """UPDATE customers
+               SET is_active = 0,
+                   updated_date = CURRENT_TIMESTAMP,
+                   notes = COALESCE(notes, '') || ' | Consolidated into customer '
+                           || ? || ' by canon_tool at ' || datetime('now')
+               WHERE customer_id = ?""",
+            (target_id, source_id),
+        )
 
         conn.execute("COMMIT;")
 
