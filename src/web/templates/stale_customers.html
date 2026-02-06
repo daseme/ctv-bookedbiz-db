@@ -1,0 +1,420 @@
+{% extends "base.html" %}
+
+{% block title %}Stale Customer Report - SpotOps{% endblock %}
+{% block header_title %}Stale Customer Report{% endblock %}
+{% block header_subtitle %}Review customers and agencies with zero spots or no recent activity{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .stats-row{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+  .stat{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;min-width:140px;flex:1}
+  .stat .val{font-size:24px;font-weight:700}
+  .stat .lbl{font-size:12px;color:#64748b;margin-top:2px}
+  .stat.zero{border-left:4px solid var(--nord11)}
+  .stat.stale{border-left:4px solid var(--nord13)}
+  .stat.revenue{border-left:4px solid var(--nord12)}
+  .stat.total{border-left:4px solid var(--nord9)}
+
+  .filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+  .filter-bar select{padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px}
+  .filter-bar button{padding:8px 16px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0;background:#fff;font-size:14px}
+  .filter-bar button:hover{background:#f8fafc}
+  .filter-bar .count{margin-left:auto;font-size:13px;color:#64748b}
+  .count.loading{color:#0ea5e9}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .count.loading{animation:pulse 1s ease-in-out infinite}
+  .toggle-label{display:flex;align-items:center;gap:6px;font-size:13px;color:#475569;cursor:pointer}
+  .toggle-label input{cursor:pointer}
+
+  .entity-table{width:100%;border-collapse:collapse;font-size:13px}
+  .entity-table th{text-align:left;padding:10px 8px;border-bottom:2px solid var(--nord0);font-weight:600;color:var(--nord0);font-size:12px;white-space:nowrap}
+  .entity-table td{padding:8px;border-bottom:1px solid #e2e8f0;vertical-align:middle}
+  .entity-table tbody tr:hover{background:#f8fafc}
+  .entity-table tbody tr.zero-spot{background:rgba(191,97,106,0.06)}
+  .entity-table tbody tr.zero-spot:hover{background:rgba(191,97,106,0.12)}
+  .entity-table tbody tr.stale{background:rgba(235,203,139,0.08)}
+  .entity-table tbody tr.stale:hover{background:rgba(235,203,139,0.15)}
+
+  .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500}
+  .badge.agency{background:#e0f2fe;color:#0369a1}
+  .badge.customer{background:#ede9fe;color:#6d28d9}
+  .badge.zero_spot{background:#fee2e2;color:#991b1b}
+  .badge.stale{background:#fef3c7;color:#92400e}
+  .badge.agency-client{background:#dcfce7;color:#166534;font-size:10px}
+  .badge.inactive{background:#f1f5f9;color:#64748b}
+
+  .revenue{text-align:right;font-variant-numeric:tabular-nums}
+  .spots{text-align:right;font-variant-numeric:tabular-nums}
+
+  .action-btn{padding:4px 10px;border-radius:4px;cursor:pointer;border:1px solid #e2e8f0;background:#fff;font-size:12px;white-space:nowrap}
+  .action-btn:hover{background:#f8fafc}
+  .action-btn.deactivate{color:var(--nord11);border-color:var(--nord11)}
+  .action-btn.deactivate:hover{background:#fee2e2}
+  .action-btn.view{color:var(--nord10);border-color:var(--nord10)}
+  .action-btn.view:hover{background:#e0f2fe}
+
+  .empty{text-align:center;padding:60px 20px;color:#64748b}
+  .empty h3{margin:0 0 8px;color:#334155}
+
+  /* Deactivation Modal */
+  .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center}
+  .modal-overlay.active{display:flex}
+  .deactivate-modal{background:#fff;border-radius:12px;width:100%;max-width:480px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .deactivate-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+  .deactivate-modal .modal-header h3{margin:0;font-size:18px}
+  .modal-close{background:none;border:none;font-size:24px;color:#94a3b8;cursor:pointer;padding:4px 8px}
+  .modal-close:hover{color:#334155}
+  .deactivate-modal .modal-body{padding:24px}
+  .deactivate-modal .entity-info{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:14px}
+  .deactivate-modal .entity-info .name{font-weight:600;color:#0f172a}
+  .deactivate-modal .entity-info .meta{font-size:12px;color:#64748b;margin-top:4px}
+  .deactivate-modal textarea{width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;min-height:100px;resize:vertical;font-family:inherit}
+  .deactivate-modal textarea:focus{border-color:var(--nord11);outline:none}
+  .deactivate-modal label{display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px}
+  .modal-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:16px}
+  .modal-actions button{padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;border:none}
+  .btn-cancel{background:#f1f5f9;color:#475569}
+  .btn-cancel:hover{background:#e2e8f0}
+  .btn-confirm{background:var(--nord11);color:#fff}
+  .btn-confirm:hover{background:#a54e56}
+  .btn-confirm:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* Info Modal */
+  .info-btn{width:28px;height:28px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .info-btn:hover{background:#f0f9ff;border-color:#0ea5e9;color:#0ea5e9}
+  .info-modal{background:#fff;border-radius:12px;width:100%;max-width:560px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .info-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff}
+  .info-modal .modal-header h3{margin:0;font-size:18px;color:#0369a1}
+  .info-modal .modal-body{padding:24px;max-height:70vh;overflow-y:auto}
+  .info-modal .info-section{margin-bottom:20px}
+  .info-modal .info-section:last-child{margin-bottom:0}
+  .info-modal .info-section h4{margin:0 0 6px;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .info-modal .info-section p{margin:0;font-size:13px;color:#475569;line-height:1.5}
+  .info-modal .info-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;vertical-align:middle}
+  .info-modal .info-badge.zero{background:#fee2e2;color:#991b1b}
+  .info-modal .info-badge.stale{background:#fef3c7;color:#92400e}
+  .info-modal .info-do{color:#16a34a;font-weight:500}
+  .info-modal .info-dont{color:#dc2626;font-weight:500}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Summary Stats -->
+<div class="stats-row" id="stats-row">
+  <div class="stat zero"><div class="val" id="stat-zero">-</div><div class="lbl">Zero-Spot Entities</div></div>
+  <div class="stat stale"><div class="val" id="stat-stale">-</div><div class="lbl">Stale Entities</div></div>
+  <div class="stat revenue"><div class="val" id="stat-revenue">-</div><div class="lbl">Revenue at Risk</div></div>
+  <div class="stat total"><div class="val" id="stat-total">-</div><div class="lbl">Total for Review</div></div>
+</div>
+
+<!-- Filters -->
+<div class="filter-bar">
+  <select id="filter-type">
+    <option value="all">All Types</option>
+    <option value="customer">Customers Only</option>
+    <option value="agency">Agencies Only</option>
+  </select>
+  <select id="filter-category">
+    <option value="all">All Categories</option>
+    <option value="zero_spot">Zero Spots</option>
+    <option value="stale">Stale</option>
+  </select>
+  <select id="filter-threshold">
+    <option value="1">Stale: 1+ year</option>
+    <option value="2" selected>Stale: 2+ years</option>
+    <option value="3">Stale: 3+ years</option>
+  </select>
+  <select id="filter-sector">
+    <option value="">All Sectors</option>
+  </select>
+  <select id="filter-sort">
+    <option value="name">Sort: Name</option>
+    <option value="last_active">Sort: Last Active</option>
+    <option value="revenue">Sort: Revenue</option>
+    <option value="spots">Sort: Spots</option>
+    <option value="type">Sort: Type</option>
+  </select>
+  <label class="toggle-label">
+    <input type="checkbox" id="filter-inactive"> Show Deactivated
+  </label>
+  <button onclick="loadAll()">Refresh</button>
+  <button class="info-btn" onclick="document.getElementById('info-modal').classList.add('active')" title="About this report">?</button>
+  <span class="count" id="entity-count"></span>
+</div>
+
+<!-- Entity Table -->
+<div id="table-container">
+  <table class="entity-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Category</th>
+        <th>Sector</th>
+        <th>AE</th>
+        <th style="text-align:right">Spots</th>
+        <th style="text-align:right">Revenue</th>
+        <th>Last Active</th>
+        <th>Aliases</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="entity-tbody"></tbody>
+  </table>
+  <div class="empty" id="empty-state" style="display:none">
+    <h3>No stale or zero-spot entities found</h3>
+    <p>All entities have recent activity. Try adjusting the threshold or filters.</p>
+  </div>
+</div>
+
+<!-- Info Modal -->
+<div class="modal-overlay" id="info-modal">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>About This Report</h3>
+      <button class="modal-close" onclick="document.getElementById('info-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What is this report?</h4>
+        <p>Surfaces entities (customers and agencies) with no spots or no recent activity. Use it to identify records that may need cleanup or archival.</p>
+      </div>
+      <div class="info-section">
+        <h4><span class="info-badge zero">Zero Spots</span> category</h4>
+        <p>Active record with no spot data at all. Typically an orphan from ingest &mdash; the name was seen and a customer row was created, but spots were mapped to a different entity.</p>
+      </div>
+      <div class="info-section">
+        <h4><span class="info-badge stale">Stale</span> category</h4>
+        <p>Has historical spots but none within the threshold window (default 2 years). The entity was once active but hasn't booked recently.</p>
+      </div>
+      <div class="info-section">
+        <h4>What does Deactivate do?</h4>
+        <p>Archives the entity. Historical spot and revenue data is preserved. The entity is hidden from the Address Book and this report by default (use "Show Deactivated" to see them). Can be reactivated if the customer returns. Think <strong>"archive,"</strong> not "delete."</p>
+      </div>
+      <div class="info-section">
+        <h4><span class="info-do">When to deactivate</span></h4>
+        <p>Dormant customers unlikely to return, orphan or duplicate records, businesses that have closed.</p>
+      </div>
+      <div class="info-section">
+        <h4><span class="info-dont">When NOT to deactivate</span></h4>
+        <p>Seasonal advertisers, customers in active sales conversations, entities you're unsure about &mdash; when in doubt, leave them active.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Deactivation Modal -->
+<div class="modal-overlay" id="deactivate-modal">
+  <div class="deactivate-modal">
+    <div class="modal-header">
+      <h3>Deactivate Entity</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="entity-info">
+        <div class="name" id="modal-entity-name"></div>
+        <div class="meta" id="modal-entity-meta"></div>
+      </div>
+      <label for="deactivate-reason">Reason for deactivation (required)</label>
+      <textarea id="deactivate-reason" placeholder="e.g., No longer a client, duplicate record, business closed..."></textarea>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-confirm" id="btn-confirm-deactivate" onclick="confirmDeactivate()">Deactivate</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  let pendingDeactivation = null;
+
+  function fmt$(n) {
+    if (!n && n !== 0) return '-';
+    return '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  }
+
+  function loadStats() {
+    const threshold = document.getElementById('filter-threshold').value;
+    fetch('/api/stale-customers/stats?threshold=' + threshold)
+      .then(r => r.json())
+      .then(d => {
+        document.getElementById('stat-zero').textContent = d.zero_spot_total;
+        document.getElementById('stat-stale').textContent = d.stale_total;
+        document.getElementById('stat-revenue').textContent = fmt$(d.revenue_at_risk);
+        document.getElementById('stat-total').textContent = d.total_for_review;
+      })
+      .catch(e => console.error('Stats error:', e));
+  }
+
+  function loadSectors() {
+    fetch('/api/stale-customers/sectors')
+      .then(r => r.json())
+      .then(sectors => {
+        const sel = document.getElementById('filter-sector');
+        const current = sel.value;
+        sel.innerHTML = '<option value="">All Sectors</option>';
+        sectors.forEach(s => {
+          sel.innerHTML += '<option value="' + s.sector_id + '">' + (s.sector_name || s.sector_code) + '</option>';
+        });
+        sel.value = current;
+      });
+  }
+
+  function loadEntities() {
+    const countEl = document.getElementById('entity-count');
+    countEl.textContent = 'Loading\u2026';
+    countEl.classList.add('loading');
+
+    const params = new URLSearchParams({
+      type: document.getElementById('filter-type').value,
+      category: document.getElementById('filter-category').value,
+      threshold: document.getElementById('filter-threshold').value,
+      sector_id: document.getElementById('filter-sector').value,
+      include_inactive: document.getElementById('filter-inactive').checked ? '1' : '0',
+      sort: document.getElementById('filter-sort').value,
+    });
+
+    fetch('/api/stale-customers/entities?' + params)
+      .then(r => r.json())
+      .then(entities => {
+        renderTable(entities);
+        countEl.textContent = entities.length + ' entities';
+      })
+      .catch(e => {
+        countEl.textContent = 'Error loading';
+        console.error('Entities error:', e);
+      })
+      .finally(() => countEl.classList.remove('loading'));
+  }
+
+  function renderTable(entities) {
+    const tbody = document.getElementById('entity-tbody');
+    const empty = document.getElementById('empty-state');
+
+    if (!entities.length) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = entities.map(e => {
+      const rowClass = e.category === 'zero_spot' ? 'zero-spot' : (e.category === 'stale' ? 'stale' : '');
+      const typeBadge = '<span class="badge ' + e.entity_type + '">' + e.entity_type + '</span>';
+      const catBadge = '<span class="badge ' + e.category + '">' + (e.category === 'zero_spot' ? 'Zero Spots' : 'Stale') + '</span>';
+      const agencyBadge = e.is_agency_client ? ' <span class="badge agency-client">Agency Client</span>' : '';
+      const inactiveBadge = e.is_active === 0 ? ' <span class="badge inactive">Inactive</span>' : '';
+      const sector = e.sector_name || '-';
+      const ae = e.assigned_ae || '-';
+      const spots = e.spot_count || 0;
+      const rev = e.total_revenue ? fmt$(e.total_revenue) : '-';
+      const lastActive = e.last_active || 'Never';
+      const aliases = e.alias_count || 0;
+
+      const abType = e.entity_type === 'agency' ? 'agency' : 'customer';
+      const deactivateBtn = e.is_active !== 0
+        ? '<button class="action-btn deactivate" onclick="window._stale.openDeactivate(\'' + e.entity_type + '\',' + e.entity_id + ',\'' + (e.entity_name || '').replace(/'/g, "\\'") + '\',' + spots + ',' + (e.total_revenue || 0) + ')">Deactivate</button>'
+        : '';
+      const viewBtn = '<a class="action-btn view" href="/stale-customers/' + e.entity_type + '/' + e.entity_id + '">Details</a>';
+
+      return '<tr class="' + rowClass + '">' +
+        '<td><a href="/stale-customers/' + e.entity_type + '/' + e.entity_id + '" style="color:inherit;text-decoration:none"><strong>' + (e.entity_name || '') + '</strong></a>' + agencyBadge + inactiveBadge + '</td>' +
+        '<td>' + typeBadge + '</td>' +
+        '<td>' + catBadge + '</td>' +
+        '<td>' + sector + '</td>' +
+        '<td>' + ae + '</td>' +
+        '<td class="spots">' + spots + '</td>' +
+        '<td class="revenue">' + rev + '</td>' +
+        '<td>' + lastActive + '</td>' +
+        '<td>' + aliases + '</td>' +
+        '<td>' + deactivateBtn + ' ' + viewBtn + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  window._stale = {
+    openDeactivate: function(entityType, entityId, entityName, spots, revenue) {
+      pendingDeactivation = { entityType, entityId, entityName };
+      document.getElementById('modal-entity-name').textContent = entityName;
+      document.getElementById('modal-entity-meta').textContent =
+        entityType + ' | ' + spots + ' spots | ' + fmt$(revenue) + ' revenue';
+      document.getElementById('deactivate-reason').value = '';
+      document.getElementById('deactivate-modal').classList.add('active');
+      document.getElementById('deactivate-reason').focus();
+    }
+  };
+
+  window.closeModal = function() {
+    document.getElementById('deactivate-modal').classList.remove('active');
+    pendingDeactivation = null;
+  };
+
+  window.confirmDeactivate = function() {
+    if (!pendingDeactivation) return;
+    const reason = document.getElementById('deactivate-reason').value.trim();
+    if (!reason) {
+      alert('Please provide a reason for deactivation.');
+      return;
+    }
+
+    const btn = document.getElementById('btn-confirm-deactivate');
+    btn.disabled = true;
+    btn.textContent = 'Deactivating...';
+
+    fetch('/api/stale-customers/deactivate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        entity_type: pendingDeactivation.entityType,
+        entity_id: pendingDeactivation.entityId,
+        reason: reason
+      })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        closeModal();
+        loadAll();
+      } else {
+        alert('Error: ' + (d.error || 'Unknown error'));
+      }
+    })
+    .catch(e => alert('Request failed: ' + e))
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = 'Deactivate';
+    });
+  };
+
+  window.loadAll = function() {
+    loadStats();
+    loadEntities();
+  };
+
+  // Filter change handlers
+  ['filter-type', 'filter-category', 'filter-sector', 'filter-sort'].forEach(id => {
+    document.getElementById(id).addEventListener('change', loadEntities);
+  });
+  document.getElementById('filter-inactive').addEventListener('change', loadEntities);
+  document.getElementById('filter-threshold').addEventListener('change', function() {
+    loadStats();
+    loadEntities();
+  });
+
+  // Close modals on overlay click
+  document.getElementById('deactivate-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+  document.getElementById('info-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+  });
+
+  // Init
+  loadSectors();
+  loadAll();
+})();
+</script>
+{% endblock %}

@@ -136,5 +136,112 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-**Last Updated**: 2026-02-02  
-**Session Context**: Phase 1 cleanup removing 9,000+ lines of dead code across old directories, orphaned templates, and unused imports. Phase 2 Step 1 consolidating 115 lines of duplicate utilities.
+## Service and Deployment Patterns
+
+### Rule 12: Check for Service Conflicts Before Starting
+**Context**: `spotops-dev` and `ctv-dev` both tried to bind to port 5100
+**Pattern**: Multiple services may target the same port:
+```bash
+# Check what's using a port
+sudo lsof -i :5100
+# Check systemd services (both system AND user level)
+systemctl list-units --type=service | grep ctv
+systemctl --user list-units --type=service | grep ctv
+```
+**Action**: Before starting a dev service, verify no other service is using the same port.
+
+### Rule 13: User Services vs System Services Can Conflict
+**Context**: There was both `/etc/systemd/system/ctv-dev.service` and `~/.config/systemd/user/ctv-dev.service`
+**Pattern**: Systemd services exist at two levels:
+- System: `/etc/systemd/system/` (controlled via `sudo systemctl`)
+- User: `~/.config/systemd/user/` (controlled via `systemctl --user`)
+
+**Action**: When troubleshooting service conflicts, check BOTH system and user service directories.
+
+---
+
+## Blueprint Registration Patterns
+
+### Rule 14: Register Blueprints in ONE Place Only
+**Context**: `customer_resolution_bp` was registered in both `app.py` and `blueprints.py`, causing warnings
+**Pattern**: Flask blueprints should be registered in exactly one location:
+- Standard location: `src/web/blueprints.py` via `initialize_blueprints()`
+- Never register the same blueprint in multiple files
+
+**Action**: When adding new blueprints, only add to `blueprints.py`, not `app.py`.
+
+---
+
+## UX Patterns for Resolution Pages
+
+### Rule 15: Provide Helpful Empty States
+**Context**: Agency resolution page showed nothing when all agencies were resolved
+**Pattern**: Empty states should include:
+1. Clear message that everything is done (positive framing)
+2. Explanation of filter context ("matching your filters")
+3. Link to related management page
+
+**Action**: Always design empty states with helpful guidance and next actions.
+
+---
+
+## Database Schema Patterns
+
+### Rule 16: Verify Column Names Before Writing Queries
+**Context**: Address Book API failed because customers table uses `normalized_name` not `customer_name`
+**Pattern**: Customer vs Agency naming differs:
+- **agencies** table: `agency_name`
+- **customers** table: `normalized_name` (NOT `customer_name`)
+
+**Action**: Always check `PRAGMA table_info(table_name)` when writing new queries against unfamiliar tables.
+
+---
+
+### Rule 17: Agencies vs Customers Have Different Data Models
+**Context**: Building unified Address Book needed to account for schema differences
+**Pattern**: Key differences:
+- **Agencies**: No sector (they're ad buyers), have `agency_name`
+- **Customers**: Have `sector_id` linking to sectors table, use `normalized_name` not `customer_name`
+- Both have: address, city, state, zip, notes, contacts (via entity_contacts)
+
+**Action**: When building unified views, handle entity-type-specific fields conditionally.
+
+---
+
+### Rule 18: Dev Database Path — ALWAYS Override DB_PATH in Tests
+**Context**: Stale Customer Report endpoints returned 500 (no such table: customers) during test_client testing
+**Pattern**: `create_app()` sets `DB_PATH` from settings → `data/database/production.db` (4KB empty skeleton). The `_get_db_path()` fallback `or "./.data/dev.db"` does NOT trigger because the config IS set — just to the wrong path.
+```python
+# WRONG — will use empty production.db
+app = create_app()
+
+# CORRECT — override to real dev data
+app = create_app()
+app.config['DB_PATH'] = '.data/dev.db'
+```
+**Action**: When testing ANY endpoint via `app.test_client()`, always set `app.config['DB_PATH'] = '.data/dev.db'` after `create_app()`. The running `spotops-dev.service` doesn't have this problem because its environment sets the correct path.
+
+---
+
+### Rule 19: Orphan Customer Lifecycle — How They're Created and Why They Persist
+**Context**: ~140+ orphan customers with zero spots found during stale report cleanup (Feb 2026). 5 years of accumulated data.
+**How orphans are created**: Customer rows are created during **manual resolution** (CustomerResolutionService.create_customer_and_alias), NOT by the daily import itself. The daily update only adds bill codes to `raw_customer_inputs` and resolves against existing customers via `BatchEntityResolver` (which never creates rows).
+**Why they persist**: The daily update and monthly close both delete+reimport **spots** but never touch the **customers** table. When spots get remapped to a different entity (e.g., from "Bay Area AQMD" to "Allison + Partners:Bay Area AQMD"), the original customer row stays with zero spots. The customers table has `ON DELETE RESTRICT` — it only grows, never shrinks.
+**The cycle**:
+1. Daily update adds new bill code to `raw_customer_inputs` → appears in resolution queue
+2. User manually resolves → new customer row created, spots linked
+3. Later daily update or monthly close reimports data with different mapping (e.g., agency-prefixed name)
+4. Spots move to different customer_id; original customer row left with zero spots
+5. `raw_customer_inputs` also only appends, never prunes
+**Indicators**: Customer has 0 spots, name is a variant of another entity (abbreviation, agency prefix, "&" vs "and")
+**Current cleanup**: Stale Customer Report → deactivate orphans manually (or bulk via future tooling)
+**Future prevention ideas**:
+- Pre-creation fuzzy match against `normalized_name` + `entity_aliases` during resolution
+- Post-import job: auto-flag customers that went from >0 to 0 spots in that batch
+- Nightly reconciliation: auto-deactivate zero-spot customers older than 7 days
+- Bulk deactivate on stale report for faster cleanup
+
+---
+
+**Last Updated**: 2026-02-06
+**Session Context**: Stale report cleanup, traced full orphan lifecycle through daily update (GUIDE-DAILY-COMMERCIALLOG.md) and monthly close (GUIDE-MONTHLY-CLOSING.md) pipelines.
