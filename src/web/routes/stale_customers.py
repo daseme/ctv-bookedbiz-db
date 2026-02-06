@@ -325,6 +325,146 @@ def api_stale_entities():
     return jsonify(results)
 
 
+@stale_customers_bp.route("/stale-customers/<entity_type>/<int:entity_id>")
+def stale_customer_detail_page(entity_type, entity_id):
+    """Render the stale customer detail page."""
+    if entity_type not in ("customer", "agency"):
+        return "Invalid entity type", 404
+    return render_template(
+        "stale_customer_detail.html",
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+
+
+@stale_customers_bp.route("/api/stale-customers/<entity_type>/<int:entity_id>")
+def api_stale_customer_detail(entity_type, entity_id):
+    """Return all detail data for a single entity."""
+    if entity_type not in ("customer", "agency"):
+        return jsonify({"error": "Invalid entity_type"}), 400
+
+    with _db_ro() as conn:
+        # 1. Entity basics
+        if entity_type == "customer":
+            entity = conn.execute("""
+                SELECT c.customer_id as entity_id, 'customer' as entity_type,
+                       c.normalized_name as entity_name, c.is_active,
+                       s.sector_name, c.assigned_ae, c.notes,
+                       c.address, c.city, c.state, c.zip
+                FROM customers c
+                LEFT JOIN sectors s ON c.sector_id = s.sector_id
+                WHERE c.customer_id = ?
+            """, [entity_id]).fetchone()
+        else:
+            entity = conn.execute("""
+                SELECT a.agency_id as entity_id, 'agency' as entity_type,
+                       a.agency_name as entity_name, a.is_active,
+                       NULL as sector_name, a.assigned_ae, a.notes,
+                       a.address, a.city, a.state, a.zip
+                FROM agencies a
+                WHERE a.agency_id = ?
+            """, [entity_id]).fetchone()
+
+        if not entity:
+            return jsonify({"error": "Entity not found"}), 404
+
+        result = dict(entity)
+
+        # 2. Aggregate metrics
+        id_col = "customer_id" if entity_type == "customer" else "agency_id"
+        agg = conn.execute(f"""
+            SELECT COUNT(*) as spot_count,
+                   COALESCE(SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
+                                     THEN gross_rate ELSE 0 END), 0) as total_revenue,
+                   MIN(air_date) as first_active,
+                   MAX(air_date) as last_active
+            FROM spots
+            WHERE {id_col} = ?
+        """, [entity_id]).fetchone()
+        result["spot_count"] = agg["spot_count"]
+        result["total_revenue"] = float(agg["total_revenue"] or 0)
+        result["first_active"] = agg["first_active"]
+        result["last_active"] = agg["last_active"]
+
+        # 3. Recent spots (last 50)
+        spots = conn.execute(f"""
+            SELECT air_date, market_name, sales_person, gross_rate,
+                   revenue_type, length_seconds, bill_code
+            FROM spots
+            WHERE {id_col} = ?
+            ORDER BY air_date DESC
+            LIMIT 50
+        """, [entity_id]).fetchall()
+        result["recent_spots"] = [dict(s) for s in spots]
+
+        # 4. Revenue by year
+        rev_year = conn.execute(f"""
+            SELECT strftime('%Y', air_date) as year,
+                   COUNT(*) as spot_count,
+                   COALESCE(SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
+                                     THEN gross_rate ELSE 0 END), 0) as revenue
+            FROM spots
+            WHERE {id_col} = ?
+            GROUP BY strftime('%Y', air_date)
+            ORDER BY year DESC
+        """, [entity_id]).fetchall()
+        result["revenue_by_year"] = [
+            {"year": r["year"], "spot_count": r["spot_count"], "revenue": float(r["revenue"] or 0)}
+            for r in rev_year
+        ]
+
+        # 5. Revenue by market
+        rev_market = conn.execute(f"""
+            SELECT market_name,
+                   COUNT(*) as spot_count,
+                   COALESCE(SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
+                                     THEN gross_rate ELSE 0 END), 0) as revenue
+            FROM spots
+            WHERE {id_col} = ?
+            GROUP BY market_name
+            ORDER BY revenue DESC
+        """, [entity_id]).fetchall()
+        result["revenue_by_market"] = [
+            {"market_name": r["market_name"], "spot_count": r["spot_count"], "revenue": float(r["revenue"] or 0)}
+            for r in rev_market
+        ]
+
+        # 6. Aliases
+        aliases = conn.execute("""
+            SELECT alias_name, created_by
+            FROM entity_aliases
+            WHERE entity_type = ? AND target_entity_id = ? AND is_active = 1
+            ORDER BY alias_name
+        """, [entity_type, entity_id]).fetchall()
+        result["aliases"] = [{"alias_name": a["alias_name"], "created_by": a["created_by"]} for a in aliases]
+
+        # 7. Audit trail
+        audit_key = f"{entity_type}:{entity_id}"
+        audit = conn.execute("""
+            SELECT ts, actor, action, key, value, extra
+            FROM canon_audit
+            WHERE key = ? OR value = ? OR extra LIKE ?
+            ORDER BY ts DESC
+            LIMIT 50
+        """, [audit_key, audit_key, f"%{entity_id}%"]).fetchall()
+        result["audit_trail"] = [
+            {"ts": a["ts"], "actor": a["actor"], "action": a["action"],
+             "key": a["key"], "value": a["value"], "extra": a["extra"]}
+            for a in audit
+        ]
+
+        # 8. Contacts
+        contacts = conn.execute("""
+            SELECT contact_name, email, phone, contact_role, is_primary
+            FROM entity_contacts
+            WHERE entity_type = ? AND entity_id = ? AND is_active = 1
+            ORDER BY is_primary DESC, contact_name
+        """, [entity_type, entity_id]).fetchall()
+        result["contacts"] = [dict(c) for c in contacts]
+
+    return jsonify(result)
+
+
 @stale_customers_bp.route("/api/stale-customers/deactivate", methods=["POST"])
 def api_deactivate_entity():
     """

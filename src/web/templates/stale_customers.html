@@ -20,6 +20,9 @@
   .filter-bar button{padding:8px 16px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0;background:#fff;font-size:14px}
   .filter-bar button:hover{background:#f8fafc}
   .filter-bar .count{margin-left:auto;font-size:13px;color:#64748b}
+  .count.loading{color:#0ea5e9}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .count.loading{animation:pulse 1s ease-in-out infinite}
   .toggle-label{display:flex;align-items:center;gap:6px;font-size:13px;color:#475569;cursor:pointer}
   .toggle-label input{cursor:pointer}
 
@@ -75,6 +78,23 @@
   .btn-confirm{background:var(--nord11);color:#fff}
   .btn-confirm:hover{background:#a54e56}
   .btn-confirm:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* Info Modal */
+  .info-btn{width:28px;height:28px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .info-btn:hover{background:#f0f9ff;border-color:#0ea5e9;color:#0ea5e9}
+  .info-modal{background:#fff;border-radius:12px;width:100%;max-width:560px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .info-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff}
+  .info-modal .modal-header h3{margin:0;font-size:18px;color:#0369a1}
+  .info-modal .modal-body{padding:24px;max-height:70vh;overflow-y:auto}
+  .info-modal .info-section{margin-bottom:20px}
+  .info-modal .info-section:last-child{margin-bottom:0}
+  .info-modal .info-section h4{margin:0 0 6px;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .info-modal .info-section p{margin:0;font-size:13px;color:#475569;line-height:1.5}
+  .info-modal .info-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;vertical-align:middle}
+  .info-modal .info-badge.zero{background:#fee2e2;color:#991b1b}
+  .info-modal .info-badge.stale{background:#fef3c7;color:#92400e}
+  .info-modal .info-do{color:#16a34a;font-weight:500}
+  .info-modal .info-dont{color:#dc2626;font-weight:500}
 </style>
 {% endblock %}
 
@@ -118,6 +138,7 @@
     <input type="checkbox" id="filter-inactive"> Show Deactivated
   </label>
   <button onclick="loadAll()">Refresh</button>
+  <button class="info-btn" onclick="document.getElementById('info-modal').classList.add('active')" title="About this report">?</button>
   <span class="count" id="entity-count"></span>
 </div>
 
@@ -143,6 +164,42 @@
   <div class="empty" id="empty-state" style="display:none">
     <h3>No stale or zero-spot entities found</h3>
     <p>All entities have recent activity. Try adjusting the threshold or filters.</p>
+  </div>
+</div>
+
+<!-- Info Modal -->
+<div class="modal-overlay" id="info-modal">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>About This Report</h3>
+      <button class="modal-close" onclick="document.getElementById('info-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What is this report?</h4>
+        <p>Surfaces entities (customers and agencies) with no spots or no recent activity. Use it to identify records that may need cleanup or archival.</p>
+      </div>
+      <div class="info-section">
+        <h4><span class="info-badge zero">Zero Spots</span> category</h4>
+        <p>Active record with no spot data at all. Typically an orphan from ingest &mdash; the name was seen and a customer row was created, but spots were mapped to a different entity.</p>
+      </div>
+      <div class="info-section">
+        <h4><span class="info-badge stale">Stale</span> category</h4>
+        <p>Has historical spots but none within the threshold window (default 2 years). The entity was once active but hasn't booked recently.</p>
+      </div>
+      <div class="info-section">
+        <h4>What does Deactivate do?</h4>
+        <p>Archives the entity. Historical spot and revenue data is preserved. The entity is hidden from the Address Book and this report by default (use "Show Deactivated" to see them). Can be reactivated if the customer returns. Think <strong>"archive,"</strong> not "delete."</p>
+      </div>
+      <div class="info-section">
+        <h4><span class="info-do">When to deactivate</span></h4>
+        <p>Dormant customers unlikely to return, orphan or duplicate records, businesses that have closed.</p>
+      </div>
+      <div class="info-section">
+        <h4><span class="info-dont">When NOT to deactivate</span></h4>
+        <p>Seasonal advertisers, customers in active sales conversations, entities you're unsure about &mdash; when in doubt, leave them active.</p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -207,6 +264,10 @@
   }
 
   function loadEntities() {
+    const countEl = document.getElementById('entity-count');
+    countEl.textContent = 'Loading\u2026';
+    countEl.classList.add('loading');
+
     const params = new URLSearchParams({
       type: document.getElementById('filter-type').value,
       category: document.getElementById('filter-category').value,
@@ -220,9 +281,13 @@
       .then(r => r.json())
       .then(entities => {
         renderTable(entities);
-        document.getElementById('entity-count').textContent = entities.length + ' entities';
+        countEl.textContent = entities.length + ' entities';
       })
-      .catch(e => console.error('Entities error:', e));
+      .catch(e => {
+        countEl.textContent = 'Error loading';
+        console.error('Entities error:', e);
+      })
+      .finally(() => countEl.classList.remove('loading'));
   }
 
   function renderTable(entities) {
@@ -253,10 +318,10 @@
       const deactivateBtn = e.is_active !== 0
         ? '<button class="action-btn deactivate" onclick="window._stale.openDeactivate(\'' + e.entity_type + '\',' + e.entity_id + ',\'' + (e.entity_name || '').replace(/'/g, "\\'") + '\',' + spots + ',' + (e.total_revenue || 0) + ')">Deactivate</button>'
         : '';
-      const viewBtn = '<a class="action-btn view" href="/address-book" title="View in Address Book">View</a>';
+      const viewBtn = '<a class="action-btn view" href="/stale-customers/' + e.entity_type + '/' + e.entity_id + '">Details</a>';
 
       return '<tr class="' + rowClass + '">' +
-        '<td><strong>' + (e.entity_name || '') + '</strong>' + agencyBadge + inactiveBadge + '</td>' +
+        '<td><a href="/stale-customers/' + e.entity_type + '/' + e.entity_id + '" style="color:inherit;text-decoration:none"><strong>' + (e.entity_name || '') + '</strong></a>' + agencyBadge + inactiveBadge + '</td>' +
         '<td>' + typeBadge + '</td>' +
         '<td>' + catBadge + '</td>' +
         '<td>' + sector + '</td>' +
@@ -339,9 +404,12 @@
     loadEntities();
   });
 
-  // Close modal on overlay click
+  // Close modals on overlay click
   document.getElementById('deactivate-modal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
+  });
+  document.getElementById('info-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
   });
 
   // Init

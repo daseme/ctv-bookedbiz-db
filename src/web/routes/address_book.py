@@ -113,6 +113,7 @@ def api_address_book():
     market_filter = request.args.get("market", "")
     ae_filter = request.args.get("ae", "")
     sort_by = request.args.get("sort", "name")
+    include_inactive = request.args.get("include_inactive", "0") == "1"
 
     results = []
 
@@ -186,7 +187,8 @@ def api_address_book():
 
         # Get agencies (no sector for agencies)
         if entity_type in ("all", "agency"):
-            agencies = conn.execute("""
+            active_clause = "" if include_inactive else "WHERE a.is_active = 1"
+            agencies = conn.execute(f"""
                 SELECT
                     a.agency_id as entity_id,
                     'agency' as entity_type,
@@ -197,6 +199,7 @@ def api_address_book():
                     a.zip,
                     a.notes,
                     a.assigned_ae,
+                    a.is_active,
                     NULL as sector_id,
                     NULL as sector_name,
                     NULL as sector_code,
@@ -206,7 +209,7 @@ def api_address_book():
                      WHERE ec.entity_type = 'agency' AND ec.entity_id = a.agency_id
                      AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact
                 FROM agencies a
-                WHERE a.is_active = 1
+                {active_clause}
                 ORDER BY a.agency_name
             """).fetchall()
 
@@ -221,7 +224,8 @@ def api_address_book():
 
         # Get customers with sector info (exclude agency-booked)
         if entity_type in ("all", "customer"):
-            customers = conn.execute("""
+            active_clause = "" if include_inactive else "WHERE c.is_active = 1"
+            customers = conn.execute(f"""
                 SELECT
                     c.customer_id as entity_id,
                     'customer' as entity_type,
@@ -232,6 +236,7 @@ def api_address_book():
                     c.zip,
                     c.notes,
                     c.assigned_ae,
+                    c.is_active,
                     c.sector_id,
                     s.sector_name,
                     s.sector_code,
@@ -242,7 +247,7 @@ def api_address_book():
                      AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
-                WHERE c.is_active = 1
+                {active_clause}
                 ORDER BY c.normalized_name
             """).fetchall()
 

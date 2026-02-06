@@ -185,6 +185,13 @@
   .sub-customers-table .revenue{text-align:right;color:#059669;font-weight:500}
   .sub-customers-table .spots{text-align:right;color:#64748b}
   .sub-customers-scroll{max-height:250px;overflow-y:auto}
+
+  .toggle-label{display:flex;align-items:center;gap:6px;font-size:13px;color:#475569;cursor:pointer}
+  .toggle-label input{cursor:pointer}
+  .badge-inactive{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;background:#f1f5f9;color:#64748b;margin-left:6px}
+  .count.loading{color:#0ea5e9}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .count.loading{animation:pulse 1s ease-in-out infinite}
 </style>
 {% endblock %}
 
@@ -230,6 +237,9 @@
   <select id="saved-filter">
     <option value="">Saved Filters...</option>
   </select>
+  <label class="toggle-label">
+    <input type="checkbox" id="inactive-filter"> Show Deactivated
+  </label>
   <button id="save-filter" title="Save current filter">Save</button>
   <button id="export-csv" title="Export to CSV">Export</button>
   <button id="refresh">Refresh</button>
@@ -485,6 +495,10 @@
 
   // ===== Load data =====
   async function loadData() {
+    const countEl = document.getElementById('count');
+    countEl.textContent = 'Loading\u2026';
+    countEl.classList.add('loading');
+
     const params = new URLSearchParams({
       search: document.getElementById('search').value.trim(),
       type: document.getElementById('type-filter').value,
@@ -492,12 +506,20 @@
       ae: document.getElementById('ae-filter').value,
       has_contacts: document.getElementById('contacts-filter').value,
       sector_id: document.getElementById('sector-filter').value,
-      sort: document.getElementById('sort-filter').value
+      sort: document.getElementById('sort-filter').value,
+      include_inactive: document.getElementById('inactive-filter').checked ? '1' : '0'
     });
-    const r = await fetch(`${API}?${params}`);
-    currentData = await r.json();
-    updateStats();
-    renderGrid();
+    try {
+      const r = await fetch(`${API}?${params}`);
+      currentData = await r.json();
+      updateStats();
+      renderGrid();
+    } catch (e) {
+      countEl.textContent = 'Error loading';
+      console.error('Load error:', e);
+    } finally {
+      countEl.classList.remove('loading');
+    }
   }
 
   function updateStats() {
@@ -547,10 +569,11 @@
                          revenue >= 1000 ? `$${(revenue/1000).toFixed(0)}K` :
                          `$${revenue.toFixed(0)}`;
       const lastActive = e.last_active ? formatDate(e.last_active) : '-';
+      const inactiveTag = e.is_active === 0 ? '<span class="badge-inactive">Inactive</span>' : '';
       return `
         <tr class="${isSelected ? 'selected' : ''}" data-key="${key}" data-type="${e.entity_type}" data-id="${e.entity_id}">
           <td class="checkbox-cell"><input type="checkbox" class="row-select" ${isSelected ? 'checked' : ''}></td>
-          <td class="name-cell">${esc(e.entity_name)}</td>
+          <td class="name-cell">${esc(e.entity_name)}${inactiveTag}</td>
           <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span></td>
           <td>${esc(e.sector_name || '-')}</td>
           <td>${e.assigned_ae ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>` : '-'}</td>
@@ -672,6 +695,7 @@
     const aeBadge = e.assigned_ae
       ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>`
       : '';
+    const inactiveBadge = e.is_active === 0 ? '<span class="badge-inactive">Inactive</span>' : '';
     let addressHtml = e.address || e.city ? `<div class="address-line"><span class="icon">📍</span>${esc([e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(' | '))}</div>` : '';
     const notesHtml = e.notes ? `<div class="notes-preview">${esc(e.notes)}</div>` : '';
     let contactsHtml = '';
@@ -704,7 +728,7 @@
     return `
       <div class="entity-card ${e.entity_type}" data-type="${e.entity_type}" data-id="${e.entity_id}">
         <div class="card-header">
-          <h4 class="entity-name">${esc(e.entity_name)}</h4>
+          <h4 class="entity-name">${esc(e.entity_name)}${inactiveBadge}</h4>
           <div class="header-badges">
             <span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span>
             ${sectorBadge}
@@ -1114,6 +1138,7 @@
   ['type-filter', 'market-filter', 'ae-filter', 'sector-filter', 'contacts-filter', 'sort-filter'].forEach(id => {
     document.getElementById(id).addEventListener('change', loadData);
   });
+  document.getElementById('inactive-filter').addEventListener('change', loadData);
   document.getElementById('refresh').addEventListener('click', loadData);
 
   function debounce(fn, ms) {

@@ -223,5 +223,17 @@ app.config['DB_PATH'] = '.data/dev.db'
 
 ---
 
+### Rule 19: Ingest Creates Orphan Customers from Unresolved Name Variants
+**Context**: Customer 453 ("3 Olives Media:Riverside County Voters") had 0 spots despite its bill_code appearing on 211 real spots in Oct/Nov 2024.
+**Root Cause**: The normalization pipeline saw the raw name `"3 Olives Media:Riverside County Voters"` in `raw_customer_inputs` (2025-12-17) and created a new customer record. But the spots with that exact `bill_code` were already mapped to customer 21 ("Riverside County Voters") via a prior mapping. Result: a dangling customer row with no spots attached.
+**Pattern**: The ingest process creates a customer record when it encounters an unknown raw name, but doesn't check whether spots with that `bill_code` are already assigned to an existing customer. This produces orphan customers — real names with zero economic activity — that clutter resolution queues.
+**Indicators of this pattern**:
+- Customer has 0 spots but its `normalized_name` matches a `bill_code` that DOES have spots under a different `customer_id`
+- Customer was created well after the spots it should represent were already imported
+- Name is a variant of an existing customer (e.g., different agency prefix, abbreviation, "&" vs "and")
+**Future Fix**: During ingest, before creating a new customer, check if any existing spots already use that `bill_code`. If so, link to the existing customer or flag for resolution rather than creating a new record. Also consider fuzzy matching against existing `normalized_name` values and `entity_aliases`.
+
+---
+
 **Last Updated**: 2026-02-06
-**Session Context**: Stale Customer Report implementation. Dev DB path issue re-encountered and documented. Created CLAUDE.md for project-level instructions.
+**Session Context**: Riverside County Voter customer merge. Discovered orphan customer pattern in ingest pipeline.
