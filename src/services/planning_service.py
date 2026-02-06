@@ -591,6 +591,8 @@ class PlanningService(BaseService):
                     month=exp["month"],
                     expected_amount=Decimal(str(exp["amount"])),
                     notes=exp.get("notes"),
+                    new_accounts_forecast=exp.get("new_accounts_forecast") if exp.get("new_accounts_forecast") not in (None, "") else 0,
+                    new_dollars_forecast=Decimal(str(exp.get("new_dollars_forecast") or 0)),
                 )
             )
 

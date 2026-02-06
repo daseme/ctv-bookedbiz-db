@@ -22,6 +22,10 @@ from src.web.utils.request_helpers import (
     handle_request_errors,
 )
 from src.utils.template_formatters import prepare_template_context
+from src.web.placement_confirmation_parser import (
+    contracts_highlight_7_days,
+    contracts_by_client_30_days,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +289,11 @@ def ae_dashboard_personal():
         # Get account revenue date range filters
         account_start_date = request.args.get("account_start_date", "").strip()
         account_end_date = request.args.get("account_end_date", "").strip()
+        
+        # If no date filters provided, default to first and last day of selected year
+        if not account_start_date and not account_end_date:
+            account_start_date = date(current_year, 1, 1).isoformat()
+            account_end_date = date(current_year, 12, 31).isoformat()
 
         # Get available years from database
         available_years = []
@@ -427,7 +436,7 @@ def ae_dashboard_personal():
             try:
                 # Build date filter for account revenue
                 date_filter = ""
-                query_params = [ae_name]
+                query_params = []
 
                 if account_start_date and account_end_date:
                     date_filter = "AND s.air_date >= ? AND s.air_date <= ?"
@@ -443,6 +452,20 @@ def ae_dashboard_personal():
                     date_filter = "AND SUBSTR(s.broadcast_month, -2) = ?"
                     query_params.append(str(current_year)[-2:])
 
+                # Build entity filter - special handling for WorldLink and House
+                entity_filter = ""
+                if ae_name == "WorldLink":
+                    # WorldLink revenue is identified by bill_code prefix, not sales_person
+                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
+                elif ae_name == "House":
+                    # House revenue excludes WorldLink bill_codes
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink:%'"
+                    query_params.insert(0, ae_name)
+                else:
+                    # Standard AE lookup by sales_person
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
+                    query_params.insert(0, ae_name)
+
                 cursor = conn.execute(
                     f"""
                     SELECT 
@@ -452,7 +475,7 @@ def ae_dashboard_personal():
                     FROM spots s
                     LEFT JOIN customers c ON s.customer_id = c.customer_id
                     LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
-                    WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))
+                    {entity_filter}
                         {date_filter}
                         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
                         AND COALESCE(s.gross_rate, 0) > 0
@@ -499,6 +522,73 @@ def ae_dashboard_personal():
             account_revenue_by_sector.values(), key=lambda x: x["sector"]
         )
 
+        # Contracts added in the last 30 days: one line per contract, grouped by client with totals
+        contracts_by_client = []
+        try:
+            db_connection = container.get("database_connection")
+            conn = db_connection.connect()
+            try:
+                entity_filter = ""
+                params = []
+                if ae_name == "WorldLink":
+                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
+                elif ae_name == "House":
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink:%'"
+                    params.append(ae_name)
+                else:
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
+                    params.append(ae_name)
+                cursor = conn.execute(
+                    f"""
+                    SELECT
+                        COALESCE(c.normalized_name, s.bill_code, 'Unknown') AS customer_name,
+                        COALESCE(NULLIF(TRIM(s.contract), ''), '—') AS contract,
+                        ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total,
+                        MIN(s.load_date) AS added_date
+                    FROM spots s
+                    LEFT JOIN customers c ON s.customer_id = c.customer_id
+                    {entity_filter}
+                        AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                        AND s.load_date IS NOT NULL
+                        AND datetime(s.load_date) >= datetime('now', '-30 days')
+                    GROUP BY customer_name, contract
+                    ORDER BY customer_name, total DESC
+                    """,
+                    params,
+                )
+                client_map = {}
+                for row in cursor.fetchall():
+                    customer_name = row[0]
+                    contract = row[1] or "—"
+                    total = float(row[2])
+                    added_date = row[3]  # timestamp or date string
+                    if customer_name not in client_map:
+                        client_map[customer_name] = {"total": 0.0, "contracts": []}
+                    client_map[customer_name]["total"] += total
+                    client_map[customer_name]["contracts"].append({
+                        "contract": contract,
+                        "total": total,
+                        "added_date": added_date,
+                    })
+                contracts_by_client = [
+                    {"client": client, "total": data["total"], "contracts": data["contracts"]}
+                    for client, data in sorted(
+                        client_map.items(), key=lambda x: x[1]["total"], reverse=True
+                    )
+                ]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Could not get contracts last 30 days: {e}")
+
+        # Highlight reel: contracts added in the last 7 days from placement confirmation files
+        contracts_highlight = []
+        try:
+            contracts_highlight = contracts_highlight_7_days(ae_name=ae_name)
+            contracts_highlight.sort(key=lambda x: x.get("added_date") or "", reverse=True)
+        except Exception as e:
+            logger.warning(f"Could not get contracts highlight from placement files: {e}")
+
         # Check if this is an AJAX request for account revenue data only
         if (
             request.headers.get("X-Requested-With") == "XMLHttpRequest"
@@ -510,6 +600,8 @@ def ae_dashboard_personal():
                     "total_account_revenue": float(total_account_revenue),
                     "total_account_count": total_account_count,
                     "totals": {"budget": float(total_budget)},
+                    "account_start_date": account_start_date,
+                    "account_end_date": account_end_date,
                 }
             )
 
@@ -541,6 +633,8 @@ def ae_dashboard_personal():
                 "available_years": available_years,
                 "account_start_date": account_start_date,
                 "account_end_date": account_end_date,
+                "contracts_highlight": contracts_highlight,
+                "today": date.today().isoformat(),
             },
         )
 
@@ -562,6 +656,105 @@ def ae_dashboard_personal():
                     "traceback": error_trace if debug_mode else None,
                 }
             ), 500
+
+
+@reports_bp.route("/contracts-added")
+@handle_request_errors
+@log_requests
+def contracts_added_page():
+    """Full list of contracts added in the last 30 days, by client with expandable contract rows.
+    For AEs: only their contracts. For admin/management: dropdown to pick AE; WorldLink shown separately.
+    """
+    if not current_user.is_authenticated:
+        from flask import redirect, url_for
+        return redirect(url_for("user_management.login"))
+
+    try:
+        container = get_container()
+        is_admin_or_management = current_user.role.value in ["admin", "management"]
+        selected_ae = request.args.get("ae", "").strip()
+        ae_name = (
+            selected_ae
+            if (is_admin_or_management and selected_ae)
+            else (current_user.full_name if not is_admin_or_management else None)
+        )
+        if not is_admin_or_management and (not ae_name or not ae_name.strip()):
+            raise ValueError("Cannot determine AE name")
+
+        # AE list for dropdown (admin/management): revenue entities + WorldLink as separate option
+        ae_list = []
+        if is_admin_or_management:
+            try:
+                planning_service = safe_get_service(container, "planning_service")
+                if planning_service:
+                    entities = planning_service.get_revenue_entities()
+                    ae_list = [e.entity_name for e in entities]
+                if "WorldLink" not in ae_list:
+                    ae_list.append("WorldLink")
+                ae_list = sorted(ae_list, key=lambda x: (1 if x == "WorldLink" else 0, x))
+            except Exception as e:
+                logger.warning(f"Could not get AE list for contracts-added: {e}")
+                if "WorldLink" not in ae_list:
+                    ae_list = ["WorldLink"]
+
+        contracts_by_client = []
+        if ae_name and ae_name.strip():
+            try:
+                contracts_by_client = contracts_by_client_30_days(ae_name=ae_name)
+            except Exception as e:
+                logger.warning(f"Could not get contracts from placement confirmation files: {e}")
+
+        sort = request.args.get("sort", "total_desc").strip() or "total_desc"
+        if sort not in ("total_asc", "total_desc"):
+            sort = "total_desc"
+        contract_sort = request.args.get("contract_sort", "amount_desc").strip() or "amount_desc"
+        if contract_sort not in ("amount_asc", "amount_desc"):
+            contract_sort = "amount_desc"
+        client_reverse = sort == "total_desc"
+        contract_reverse = contract_sort == "amount_desc"
+        if contracts_by_client:
+            contracts_by_client = sorted(
+                contracts_by_client,
+                key=lambda c: c["total"],
+                reverse=client_reverse,
+            )
+            for c in contracts_by_client:
+                c["contracts"] = sorted(
+                    c["contracts"],
+                    key=lambda x: x["total"],
+                    reverse=contract_reverse,
+                )
+
+        total_contracts_30d = sum(c["total"] for c in contracts_by_client) if contracts_by_client else 0
+        
+        # Check if this is an AJAX request for contracts data only
+        if (
+            request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            and request.args.get("ajax") == "contracts_table"
+        ):
+            return jsonify(
+                {
+                    "contracts_by_client": contracts_by_client,
+                    "total_contracts_30d": total_contracts_30d,
+                    "sort": sort,
+                    "contract_sort": contract_sort,
+                }
+            )
+        
+        return render_template(
+            "contracts_added.html",
+            ae_name=ae_name or "",
+            contracts_by_client=contracts_by_client,
+            total_contracts_30d=total_contracts_30d,
+            is_admin_or_management=is_admin_or_management,
+            selected_ae=selected_ae,
+            ae_list=ae_list,
+            sort=sort,
+            contract_sort=contract_sort,
+        )
+    except Exception as e:
+        logger.error(f"Error loading contracts added page: {e}", exc_info=True)
+        return render_template("error_500.html", message=str(e)), 500
 
 
 # ============================================================================

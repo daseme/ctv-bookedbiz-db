@@ -12,6 +12,23 @@ from typing import List, Optional, Dict, Any
 import sqlite3
 from contextlib import contextmanager
 
+try:
+    from rapidfuzz import fuzz
+    _HAVE_RAPIDFUZZ = True
+except ImportError:
+    _HAVE_RAPIDFUZZ = False
+
+
+def _score_name(q: str, n: str) -> float:
+    """Prefer token-based RapidFuzz; fallback to Jaccard on tokens."""
+    if _HAVE_RAPIDFUZZ:
+        return max(fuzz.WRatio(q, n), fuzz.token_set_ratio(q, n)) / 100.0
+    qt = set(q.lower().split())
+    nt = set(n.lower().split())
+    if not qt or not nt:
+        return 0.0
+    return len(qt & nt) / len(qt | nt)
+
 
 @dataclass
 class UnresolvedCustomer:
@@ -160,6 +177,106 @@ class CustomerResolutionService:
             """, [normalized_name]).fetchone()
         return row["customer_id"] if row else None
     
+    def find_similar_customers(
+        self,
+        normalized_name: str,
+        threshold: float = 0.60,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Find active customers or aliases similar to the proposed name.
+
+        Returns matches above *threshold* scored by RapidFuzz (or Jaccard
+        fallback), sorted best-first.
+        """
+        if not normalized_name or not normalized_name.strip():
+            return []
+
+        query = normalized_name.strip()
+
+        with self._db_ro() as db:
+            # Exact match on customer name (case-insensitive)
+            exact = db.execute("""
+                SELECT customer_id, normalized_name
+                FROM customers
+                WHERE normalized_name = ? COLLATE NOCASE AND is_active = 1
+            """, [query]).fetchone()
+
+            if exact:
+                return [{
+                    "customer_id": exact["customer_id"],
+                    "normalized_name": exact["normalized_name"],
+                    "score": 1.0,
+                    "match_type": "exact",
+                }]
+
+            # Exact alias match (case-insensitive)
+            alias_exact = db.execute("""
+                SELECT c.customer_id, c.normalized_name
+                FROM entity_aliases ea
+                JOIN customers c ON c.customer_id = ea.target_entity_id
+                WHERE ea.alias_name = ? COLLATE NOCASE
+                  AND ea.entity_type = 'customer'
+                  AND ea.is_active = 1
+                  AND c.is_active = 1
+            """, [query]).fetchone()
+
+            if alias_exact:
+                return [{
+                    "customer_id": alias_exact["customer_id"],
+                    "normalized_name": alias_exact["normalized_name"],
+                    "score": 1.0,
+                    "match_type": "alias",
+                }]
+
+            # Fuzzy: score all active customers
+            customers = db.execute("""
+                SELECT customer_id, normalized_name
+                FROM customers WHERE is_active = 1
+            """).fetchall()
+
+            aliases = db.execute("""
+                SELECT ea.target_entity_id AS customer_id,
+                       ea.alias_name,
+                       c.normalized_name
+                FROM entity_aliases ea
+                JOIN customers c ON c.customer_id = ea.target_entity_id
+                WHERE ea.entity_type = 'customer'
+                  AND ea.is_active = 1
+                  AND c.is_active = 1
+            """).fetchall()
+
+        # Score customers
+        seen: Dict[int, Dict[str, Any]] = {}
+
+        for row in customers:
+            score = _score_name(query, row["normalized_name"])
+            if score >= threshold:
+                cid = row["customer_id"]
+                if cid not in seen or score > seen[cid]["score"]:
+                    seen[cid] = {
+                        "customer_id": cid,
+                        "normalized_name": row["normalized_name"],
+                        "score": round(score, 3),
+                        "match_type": "fuzzy",
+                    }
+
+        # Score aliases
+        for row in aliases:
+            score = _score_name(query, row["alias_name"])
+            if score >= threshold:
+                cid = row["customer_id"]
+                if cid not in seen or score > seen[cid]["score"]:
+                    seen[cid] = {
+                        "customer_id": cid,
+                        "normalized_name": row["normalized_name"],
+                        "score": round(score, 3),
+                        "match_type": "fuzzy_alias",
+                    }
+
+        results = sorted(seen.values(), key=lambda m: m["score"], reverse=True)
+        return results[:limit]
+
     def create_customer_and_alias(
         self, 
         bill_code: str, 

@@ -633,6 +633,9 @@ class SectorExpectation:
     created_date: Optional[datetime] = None
     updated_date: Optional[datetime] = None
     updated_by: Optional[str] = None
+    # Per-month forecasts for this sector
+    new_accounts_forecast: Optional[int] = None
+    new_dollars_forecast: Optional[Decimal] = None
 
     @property
     def period(self) -> PlanningPeriod:
@@ -698,6 +701,24 @@ class EntitySectorExpectations:
             if e.sector_id not in grid:
                 grid[e.sector_id] = {}
             grid[e.sector_id][e.month] = e.expected_amount
+        return grid
+
+    def new_accounts_grid(self) -> Dict[int, Dict[int, Optional[int]]]:
+        """Build a grid: sector_id -> month -> new_accounts_forecast."""
+        grid: Dict[int, Dict[int, Optional[int]]] = {}
+        for e in self.expectations:
+            if e.sector_id not in grid:
+                grid[e.sector_id] = {}
+            grid[e.sector_id][e.month] = e.new_accounts_forecast
+        return grid
+
+    def new_dollars_grid(self) -> Dict[int, Dict[int, Optional[Decimal]]]:
+        """Build a grid: sector_id -> month -> new_dollars_forecast."""
+        grid: Dict[int, Dict[int, Optional[Decimal]]] = {}
+        for e in self.expectations:
+            if e.sector_id not in grid:
+                grid[e.sector_id] = {}
+            grid[e.sector_id][e.month] = e.new_dollars_forecast
         return grid
 
 
