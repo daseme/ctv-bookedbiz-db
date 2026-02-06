@@ -223,17 +223,25 @@ app.config['DB_PATH'] = '.data/dev.db'
 
 ---
 
-### Rule 19: Ingest Creates Orphan Customers from Unresolved Name Variants
-**Context**: Customer 453 ("3 Olives Media:Riverside County Voters") had 0 spots despite its bill_code appearing on 211 real spots in Oct/Nov 2024.
-**Root Cause**: The normalization pipeline saw the raw name `"3 Olives Media:Riverside County Voters"` in `raw_customer_inputs` (2025-12-17) and created a new customer record. But the spots with that exact `bill_code` were already mapped to customer 21 ("Riverside County Voters") via a prior mapping. Result: a dangling customer row with no spots attached.
-**Pattern**: The ingest process creates a customer record when it encounters an unknown raw name, but doesn't check whether spots with that `bill_code` are already assigned to an existing customer. This produces orphan customers — real names with zero economic activity — that clutter resolution queues.
-**Indicators of this pattern**:
-- Customer has 0 spots but its `normalized_name` matches a `bill_code` that DOES have spots under a different `customer_id`
-- Customer was created well after the spots it should represent were already imported
-- Name is a variant of an existing customer (e.g., different agency prefix, abbreviation, "&" vs "and")
-**Future Fix**: During ingest, before creating a new customer, check if any existing spots already use that `bill_code`. If so, link to the existing customer or flag for resolution rather than creating a new record. Also consider fuzzy matching against existing `normalized_name` values and `entity_aliases`.
+### Rule 19: Orphan Customer Lifecycle — How They're Created and Why They Persist
+**Context**: ~140+ orphan customers with zero spots found during stale report cleanup (Feb 2026). 5 years of accumulated data.
+**How orphans are created**: Customer rows are created during **manual resolution** (CustomerResolutionService.create_customer_and_alias), NOT by the daily import itself. The daily update only adds bill codes to `raw_customer_inputs` and resolves against existing customers via `BatchEntityResolver` (which never creates rows).
+**Why they persist**: The daily update and monthly close both delete+reimport **spots** but never touch the **customers** table. When spots get remapped to a different entity (e.g., from "Bay Area AQMD" to "Allison + Partners:Bay Area AQMD"), the original customer row stays with zero spots. The customers table has `ON DELETE RESTRICT` — it only grows, never shrinks.
+**The cycle**:
+1. Daily update adds new bill code to `raw_customer_inputs` → appears in resolution queue
+2. User manually resolves → new customer row created, spots linked
+3. Later daily update or monthly close reimports data with different mapping (e.g., agency-prefixed name)
+4. Spots move to different customer_id; original customer row left with zero spots
+5. `raw_customer_inputs` also only appends, never prunes
+**Indicators**: Customer has 0 spots, name is a variant of another entity (abbreviation, agency prefix, "&" vs "and")
+**Current cleanup**: Stale Customer Report → deactivate orphans manually (or bulk via future tooling)
+**Future prevention ideas**:
+- Pre-creation fuzzy match against `normalized_name` + `entity_aliases` during resolution
+- Post-import job: auto-flag customers that went from >0 to 0 spots in that batch
+- Nightly reconciliation: auto-deactivate zero-spot customers older than 7 days
+- Bulk deactivate on stale report for faster cleanup
 
 ---
 
 **Last Updated**: 2026-02-06
-**Session Context**: Riverside County Voter customer merge. Discovered orphan customer pattern in ingest pipeline.
+**Session Context**: Stale report cleanup, traced full orphan lifecycle through daily update (GUIDE-DAILY-COMMERCIALLOG.md) and monthly close (GUIDE-MONTHLY-CLOSING.md) pipelines.
