@@ -42,6 +42,17 @@ def get_unresolved():
     ])
 
 
+@customer_resolution_bp.route("/api/customer-resolution/check-similar", methods=["POST"])
+def check_similar():
+    """Check for existing customers similar to a proposed name."""
+    data = request.json or {}
+    normalized_name = (data.get("normalized_name") or "").strip()
+    if not normalized_name:
+        return jsonify({"similar": []}), 200
+    similar = _get_service().find_similar_customers(normalized_name)
+    return jsonify({"similar": similar})
+
+
 @customer_resolution_bp.route("/api/customer-resolution/create", methods=["POST"])
 def create_customer():
     data = request.json
