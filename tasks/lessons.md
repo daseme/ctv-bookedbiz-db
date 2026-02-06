@@ -208,5 +208,20 @@ systemctl --user list-units --type=service | grep ctv
 
 ---
 
-**Last Updated**: 2026-02-05
-**Session Context**: Entity Management System implementation including agency/customer resolution, contacts, addresses, and unified Address Book with sector/notes management. Fixed service port conflicts, duplicate blueprint registration, and schema column name issues.
+### Rule 18: Dev Database Path — ALWAYS Override DB_PATH in Tests
+**Context**: Stale Customer Report endpoints returned 500 (no such table: customers) during test_client testing
+**Pattern**: `create_app()` sets `DB_PATH` from settings → `data/database/production.db` (4KB empty skeleton). The `_get_db_path()` fallback `or "./.data/dev.db"` does NOT trigger because the config IS set — just to the wrong path.
+```python
+# WRONG — will use empty production.db
+app = create_app()
+
+# CORRECT — override to real dev data
+app = create_app()
+app.config['DB_PATH'] = '.data/dev.db'
+```
+**Action**: When testing ANY endpoint via `app.test_client()`, always set `app.config['DB_PATH'] = '.data/dev.db'` after `create_app()`. The running `spotops-dev.service` doesn't have this problem because its environment sets the correct path.
+
+---
+
+**Last Updated**: 2026-02-06
+**Session Context**: Stale Customer Report implementation. Dev DB path issue re-encountered and documented. Created CLAUDE.md for project-level instructions.
