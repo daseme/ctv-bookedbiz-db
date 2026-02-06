@@ -58,26 +58,33 @@ class AgencyResolutionService:
         """
         Get agency names from spots that don't resolve to an agency.
         Parses agency from bill_code using normalization view.
+
+        Uses a CTE to find unresolved agencies first (fast, view-only),
+        then joins spots only for those bill_codes to get revenue/counts.
         """
         sql = """
+        WITH unresolved AS (
+            SELECT DISTINCT vcna.agency1, vcna.raw_text
+            FROM v_customer_normalization_audit vcna
+            LEFT JOIN agencies a ON a.agency_name = vcna.agency1 AND a.is_active = 1
+            LEFT JOIN entity_aliases ea ON ea.alias_name = vcna.agency1
+                AND ea.entity_type = 'agency' AND ea.is_active = 1
+            WHERE vcna.agency1 IS NOT NULL
+                AND vcna.agency1 != ''
+                AND a.agency_id IS NULL
+                AND ea.alias_id IS NULL
+        )
         SELECT
-            vcna.agency1 as agency_raw,
-            COALESCE(vcna.agency1, s.ae) as normalized_name,
+            u.agency1 as agency_raw,
+            u.agency1 as normalized_name,
             COUNT(*) as spot_count,
             SUM(CASE WHEN s.gross_rate > 0 THEN s.gross_rate ELSE 0 END) as revenue,
             MIN(s.air_date) as first_seen,
             MAX(s.air_date) as last_seen
-        FROM spots s
-        LEFT JOIN v_customer_normalization_audit vcna ON vcna.raw_text = s.bill_code
-        LEFT JOIN agencies a ON a.agency_name = vcna.agency1 AND a.is_active = 1
-        LEFT JOIN entity_aliases ea ON ea.alias_name = vcna.agency1
-            AND ea.entity_type = 'agency' AND ea.is_active = 1
-        WHERE vcna.agency1 IS NOT NULL
-            AND vcna.agency1 != ''
-            AND a.agency_id IS NULL
-            AND ea.alias_id IS NULL
+        FROM unresolved u
+        JOIN spots s ON s.bill_code = u.raw_text
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-        GROUP BY vcna.agency1
+        GROUP BY u.agency1
         HAVING revenue >= ?
         ORDER BY revenue DESC
         LIMIT ?
@@ -99,52 +106,56 @@ class AgencyResolutionService:
         ]
 
     def get_stats(self) -> Dict[str, Any]:
-        """Resolution statistics for agencies."""
+        """Resolution statistics for agencies.
+
+        Queries the view directly (no spots re-join) for counts,
+        then joins spots only for unresolved revenue total.
+        """
         with self._db_ro() as db:
-            # Total unique agency names from bill_codes (excluding Trade)
+            # Total unique agency names (view already excludes Trade)
             total = db.execute("""
-                SELECT COUNT(DISTINCT vcna.agency1) as cnt
-                FROM spots s
-                LEFT JOIN v_customer_normalization_audit vcna ON vcna.raw_text = s.bill_code
-                WHERE vcna.agency1 IS NOT NULL AND vcna.agency1 != ''
-                    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                SELECT COUNT(DISTINCT agency1) as cnt
+                FROM v_customer_normalization_audit
+                WHERE agency1 IS NOT NULL AND agency1 != ''
             """).fetchone()["cnt"]
 
             # Resolved (has agency record or alias)
             resolved = db.execute("""
                 SELECT COUNT(DISTINCT vcna.agency1) as cnt
-                FROM spots s
-                LEFT JOIN v_customer_normalization_audit vcna ON vcna.raw_text = s.bill_code
-                LEFT JOIN agencies a ON a.agency_name = vcna.agency1 AND a.is_active = 1
-                LEFT JOIN entity_aliases ea ON ea.alias_name = vcna.agency1
-                    AND ea.entity_type = 'agency' AND ea.is_active = 1
-                WHERE vcna.agency1 IS NOT NULL
-                    AND (a.agency_id IS NOT NULL OR ea.alias_id IS NOT NULL)
-                    AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-            """).fetchone()["cnt"]
-
-            # Unresolved with revenue
-            unresolved = db.execute("""
-                SELECT
-                    COUNT(DISTINCT vcna.agency1) as cnt,
-                    COALESCE(SUM(s.gross_rate), 0) as revenue
-                FROM spots s
-                LEFT JOIN v_customer_normalization_audit vcna ON vcna.raw_text = s.bill_code
+                FROM v_customer_normalization_audit vcna
                 LEFT JOIN agencies a ON a.agency_name = vcna.agency1 AND a.is_active = 1
                 LEFT JOIN entity_aliases ea ON ea.alias_name = vcna.agency1
                     AND ea.entity_type = 'agency' AND ea.is_active = 1
                 WHERE vcna.agency1 IS NOT NULL AND vcna.agency1 != ''
-                    AND a.agency_id IS NULL AND ea.alias_id IS NULL
+                    AND (a.agency_id IS NOT NULL OR ea.alias_id IS NOT NULL)
+            """).fetchone()["cnt"]
+
+            unresolved_cnt = total - resolved
+
+            # Unresolved revenue (needs spots join, but scoped to unresolved bill_codes only)
+            unresolved_rev = db.execute("""
+                WITH unresolved AS (
+                    SELECT DISTINCT vcna.agency1, vcna.raw_text
+                    FROM v_customer_normalization_audit vcna
+                    LEFT JOIN agencies a ON a.agency_name = vcna.agency1 AND a.is_active = 1
+                    LEFT JOIN entity_aliases ea ON ea.alias_name = vcna.agency1
+                        AND ea.entity_type = 'agency' AND ea.is_active = 1
+                    WHERE vcna.agency1 IS NOT NULL AND vcna.agency1 != ''
+                        AND a.agency_id IS NULL AND ea.alias_id IS NULL
+                )
+                SELECT COALESCE(SUM(CASE WHEN s.gross_rate > 0 THEN s.gross_rate ELSE 0 END), 0) as revenue
+                FROM unresolved u
+                JOIN spots s ON s.bill_code = u.raw_text
                     AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-            """).fetchone()
+            """).fetchone()["revenue"]
 
         rate = (resolved / total * 100) if total > 0 else 0
 
         return {
             "total_agencies": total,
             "resolved": resolved,
-            "unresolved": unresolved["cnt"],
-            "unresolved_revenue": float(unresolved["revenue"]),
+            "unresolved": unresolved_cnt,
+            "unresolved_revenue": float(unresolved_rev),
             "resolution_rate": round(rate, 1),
         }
 
