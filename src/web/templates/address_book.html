@@ -175,6 +175,23 @@
   .add-activity-form.active{display:block}
   .add-activity-form select,.add-activity-form textarea{width:100%;margin-bottom:8px;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px}
   .add-activity-form textarea{min-height:60px}
+
+  .ae-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;background:#dbeafe;color:#1e40af}
+  .ae-badge.none{background:#f1f5f9;color:#94a3b8}
+
+  .sub-customers-table{width:100%;border-collapse:collapse;font-size:13px}
+  .sub-customers-table th,.sub-customers-table td{padding:6px 10px;text-align:left;border-bottom:1px solid #f1f5f9}
+  .sub-customers-table th{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase}
+  .sub-customers-table .revenue{text-align:right;color:#059669;font-weight:500}
+  .sub-customers-table .spots{text-align:right;color:#64748b}
+  .sub-customers-scroll{max-height:250px;overflow-y:auto}
+
+  .toggle-label{display:flex;align-items:center;gap:6px;font-size:13px;color:#475569;cursor:pointer}
+  .toggle-label input{cursor:pointer}
+  .badge-inactive{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;background:#f1f5f9;color:#64748b;margin-left:6px}
+  .count.loading{color:#0ea5e9}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .count.loading{animation:pulse 1s ease-in-out infinite}
 </style>
 {% endblock %}
 
@@ -199,6 +216,10 @@
   <select id="sector-filter">
     <option value="">All Sectors</option>
   </select>
+  <select id="ae-filter">
+    <option value="">All AEs</option>
+    <option value="__none__">Unassigned</option>
+  </select>
   <select id="contacts-filter">
     <option value="all">All Contact Status</option>
     <option value="yes">Has Contacts</option>
@@ -211,10 +232,14 @@
     <option value="market">Sort by Market</option>
     <option value="sector">Sort by Sector</option>
     <option value="type">Sort by Type</option>
+    <option value="ae">Sort by AE</option>
   </select>
   <select id="saved-filter">
     <option value="">Saved Filters...</option>
   </select>
+  <label class="toggle-label">
+    <input type="checkbox" id="inactive-filter"> Show Deactivated
+  </label>
   <button id="save-filter" title="Save current filter">Save</button>
   <button id="export-csv" title="Export to CSV">Export</button>
   <button id="refresh">Refresh</button>
@@ -245,6 +270,7 @@
       <th>Name</th>
       <th class="type-cell">Type</th>
       <th>Sector</th>
+      <th>AE</th>
       <th>Primary Contact</th>
       <th>Last Active</th>
       <th class="revenue-cell">Revenue</th>
@@ -271,11 +297,32 @@
         </div>
       </div>
 
+      <!-- AE Assignment -->
+      <div class="detail-section">
+        <h3><span class="icon">👔</span> Assigned AE</h3>
+        <div class="form-field">
+          <select id="detail-ae">
+            <option value="">-- No AE Assigned --</option>
+          </select>
+        </div>
+      </div>
+
       <!-- Markets -->
       <div class="detail-section" id="markets-section">
         <h3><span class="icon">📺</span> Markets</h3>
         <div class="market-badges" id="detail-markets" style="font-size:12px">
           <span class="no-data">No spots in any market</span>
+        </div>
+      </div>
+
+      <!-- Agency Clients (agencies only) -->
+      <div class="detail-section" id="agency-clients-section" style="display:none">
+        <h3><span class="icon">🏢</span> Agency Clients <span id="agency-clients-count" style="font-weight:400;color:#64748b;font-size:12px"></span></h3>
+        <div class="sub-customers-scroll">
+          <table class="sub-customers-table">
+            <thead><tr><th>Client</th><th>Sector</th><th class="spots">Spots</th><th class="revenue">Revenue</th></tr></thead>
+            <tbody id="agency-clients-body"></tbody>
+          </table>
         </div>
       </div>
 
@@ -400,6 +447,7 @@
   let currentData = [];
   let sectorsData = [];
   let marketsData = [];
+  let aeListData = [];
   let currentEntity = null;
   let hasUnsavedChanges = false;
   let selectedEntities = new Set();
@@ -431,20 +479,47 @@
     } catch (e) { console.error('Failed to load markets:', e); }
   }
 
+  // ===== Load AE list =====
+  async function loadAEList() {
+    try {
+      const r = await fetch(`${API}/ae-list`);
+      aeListData = await r.json();
+      const filterEl = document.getElementById('ae-filter');
+      filterEl.innerHTML = '<option value="">All AEs</option><option value="__none__">Unassigned</option>' +
+        aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
+      const detailEl = document.getElementById('detail-ae');
+      detailEl.innerHTML = '<option value="">-- No AE Assigned --</option>' +
+        aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
+    } catch (e) { console.error('Failed to load AE list:', e); }
+  }
+
   // ===== Load data =====
   async function loadData() {
+    const countEl = document.getElementById('count');
+    countEl.textContent = 'Loading\u2026';
+    countEl.classList.add('loading');
+
     const params = new URLSearchParams({
       search: document.getElementById('search').value.trim(),
       type: document.getElementById('type-filter').value,
       market: document.getElementById('market-filter').value,
+      ae: document.getElementById('ae-filter').value,
       has_contacts: document.getElementById('contacts-filter').value,
       sector_id: document.getElementById('sector-filter').value,
-      sort: document.getElementById('sort-filter').value
+      sort: document.getElementById('sort-filter').value,
+      include_inactive: document.getElementById('inactive-filter').checked ? '1' : '0'
     });
-    const r = await fetch(`${API}?${params}`);
-    currentData = await r.json();
-    updateStats();
-    renderGrid();
+    try {
+      const r = await fetch(`${API}?${params}`);
+      currentData = await r.json();
+      updateStats();
+      renderGrid();
+    } catch (e) {
+      countEl.textContent = 'Error loading';
+      console.error('Load error:', e);
+    } finally {
+      countEl.classList.remove('loading');
+    }
   }
 
   function updateStats() {
@@ -494,12 +569,14 @@
                          revenue >= 1000 ? `$${(revenue/1000).toFixed(0)}K` :
                          `$${revenue.toFixed(0)}`;
       const lastActive = e.last_active ? formatDate(e.last_active) : '-';
+      const inactiveTag = e.is_active === 0 ? '<span class="badge-inactive">Inactive</span>' : '';
       return `
         <tr class="${isSelected ? 'selected' : ''}" data-key="${key}" data-type="${e.entity_type}" data-id="${e.entity_id}">
           <td class="checkbox-cell"><input type="checkbox" class="row-select" ${isSelected ? 'checked' : ''}></td>
-          <td class="name-cell">${esc(e.entity_name)}</td>
+          <td class="name-cell">${esc(e.entity_name)}${inactiveTag}</td>
           <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span></td>
           <td>${esc(e.sector_name || '-')}</td>
+          <td>${e.assigned_ae ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>` : '-'}</td>
           <td>${esc(e.primary_contact || '-')}</td>
           <td>${lastActive}</td>
           <td class="revenue-cell">${revenueStr}</td>
@@ -615,6 +692,10 @@
     const sectorBadge = e.entity_type === 'customer'
       ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}</span>`
       : '';
+    const aeBadge = e.assigned_ae
+      ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>`
+      : '';
+    const inactiveBadge = e.is_active === 0 ? '<span class="badge-inactive">Inactive</span>' : '';
     let addressHtml = e.address || e.city ? `<div class="address-line"><span class="icon">📍</span>${esc([e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(' | '))}</div>` : '';
     const notesHtml = e.notes ? `<div class="notes-preview">${esc(e.notes)}</div>` : '';
     let contactsHtml = '';
@@ -647,10 +728,11 @@
     return `
       <div class="entity-card ${e.entity_type}" data-type="${e.entity_type}" data-id="${e.entity_id}">
         <div class="card-header">
-          <h4 class="entity-name">${esc(e.entity_name)}</h4>
+          <h4 class="entity-name">${esc(e.entity_name)}${inactiveBadge}</h4>
           <div class="header-badges">
             <span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span>
             ${sectorBadge}
+            ${aeBadge}
           </div>
         </div>
         <div class="card-body">
@@ -693,12 +775,24 @@
       sectorSection.style.display = 'none';
     }
 
+    // AE
+    document.getElementById('detail-ae').value = currentEntity.assigned_ae || '';
+
     // Markets
     const marketsDiv = document.getElementById('detail-markets');
     if (currentEntity.markets && currentEntity.markets.length > 0) {
       marketsDiv.innerHTML = currentEntity.markets.map(m => `<span class="market-chip" style="font-size:12px;padding:4px 8px">${esc(m)}</span>`).join('');
     } else {
       marketsDiv.innerHTML = '<span class="no-data">No spots in any market</span>';
+    }
+
+    // Agency Clients (agencies only)
+    const clientsSection = document.getElementById('agency-clients-section');
+    if (type === 'agency') {
+      clientsSection.style.display = 'block';
+      loadAgencyClients(id);
+    } else {
+      clientsSection.style.display = 'none';
     }
 
     // Address
@@ -762,6 +856,36 @@
       }).join('');
     } catch (e) {
       container.innerHTML = '<div class="no-data">Failed to load activities</div>';
+    }
+  }
+
+  async function loadAgencyClients(agencyId) {
+    const tbody = document.getElementById('agency-clients-body');
+    const countEl = document.getElementById('agency-clients-count');
+    tbody.innerHTML = '<tr><td colspan="4" class="no-data">Loading...</td></tr>';
+    try {
+      const r = await fetch(`${API}/agency/${agencyId}/customers`);
+      const data = await r.json();
+      const clients = data.customers || [];
+      countEl.textContent = `(${clients.length})`;
+      if (clients.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="no-data">No clients on record</td></tr>';
+        return;
+      }
+      tbody.innerHTML = clients.map(c => {
+        const rev = c.revenue_via_agency || 0;
+        const revStr = rev >= 1000000 ? `$${(rev/1000000).toFixed(1)}M` :
+                       rev >= 1000 ? `$${(rev/1000).toFixed(0)}K` :
+                       rev > 0 ? `$${rev.toFixed(0)}` : '-';
+        return `<tr>
+          <td>${esc(c.customer_name)}</td>
+          <td>${esc(c.sector_name || '-')}</td>
+          <td class="spots">${c.spot_count || '-'}</td>
+          <td class="revenue">${revStr}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="4" class="no-data">Failed to load clients</td></tr>';
     }
   }
 
@@ -980,6 +1104,13 @@
         });
       }
 
+      // Save AE
+      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ assigned_ae: document.getElementById('detail-ae').value || null })
+      });
+
       status.textContent = '✓ Saved';
       status.className = 'save-status success';
       hasUnsavedChanges = false;
@@ -1004,9 +1135,10 @@
 
   // Filter handlers
   document.getElementById('search').addEventListener('input', debounce(loadData, 300));
-  ['type-filter', 'market-filter', 'sector-filter', 'contacts-filter', 'sort-filter'].forEach(id => {
+  ['type-filter', 'market-filter', 'ae-filter', 'sector-filter', 'contacts-filter', 'sort-filter'].forEach(id => {
     document.getElementById(id).addEventListener('change', loadData);
   });
+  document.getElementById('inactive-filter').addEventListener('change', loadData);
   document.getElementById('refresh').addEventListener('click', loadData);
 
   function debounce(fn, ms) {
@@ -1035,6 +1167,7 @@
     if (cfg.search) document.getElementById('search').value = cfg.search;
     if (cfg.type) document.getElementById('type-filter').value = cfg.type;
     if (cfg.market) document.getElementById('market-filter').value = cfg.market;
+    if (cfg.ae) document.getElementById('ae-filter').value = cfg.ae;
     if (cfg.sector_id) document.getElementById('sector-filter').value = cfg.sector_id;
     if (cfg.has_contacts) document.getElementById('contacts-filter').value = cfg.has_contacts;
     if (cfg.sort) document.getElementById('sort-filter').value = cfg.sort;
@@ -1048,6 +1181,7 @@
       search: document.getElementById('search').value,
       type: document.getElementById('type-filter').value,
       market: document.getElementById('market-filter').value,
+      ae: document.getElementById('ae-filter').value,
       sector_id: document.getElementById('sector-filter').value,
       has_contacts: document.getElementById('contacts-filter').value,
       sort: document.getElementById('sort-filter').value
@@ -1071,6 +1205,7 @@
       search: document.getElementById('search').value.trim(),
       type: document.getElementById('type-filter').value,
       market: document.getElementById('market-filter').value,
+      ae: document.getElementById('ae-filter').value,
       has_contacts: document.getElementById('contacts-filter').value,
       sector_id: document.getElementById('sector-filter').value
     });
@@ -1078,7 +1213,7 @@
   });
 
   // Init
-  Promise.all([loadSectors(), loadMarkets(), loadSavedFilters()]).then(() => loadData());
+  Promise.all([loadSectors(), loadMarkets(), loadAEList(), loadSavedFilters()]).then(() => loadData());
 })();
 </script>
 {% endblock %}

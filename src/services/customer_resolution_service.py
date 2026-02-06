@@ -306,18 +306,28 @@ class CustomerResolutionService:
         return [{"customer_id": r["customer_id"], "normalized_name": r["normalized_name"]} for r in rows]
 
     def get_customers_with_aliases(
-        self, 
-        search: str = "", 
+        self,
+        search: str = "",
         min_aliases: int = 0,
         limit: int = 200
     ) -> List[Dict[str, Any]]:
         """
         Get customers with their alias counts and revenue summary.
         Ordered by alias count desc (most complex first).
+        Excludes agency clients (any spot via agency, or name-prefix match).
         """
         sql = """
-        WITH alias_counts AS (
-            SELECT 
+        WITH agency_clients AS (
+            SELECT customer_id FROM customers
+            WHERE is_active = 1 AND normalized_name LIKE '%:%'
+            UNION
+            SELECT customer_id FROM spots
+            WHERE customer_id IS NOT NULL
+            GROUP BY customer_id
+            HAVING COUNT(*) = COUNT(agency_id)
+        ),
+        alias_counts AS (
+            SELECT
                 target_entity_id as customer_id,
                 COUNT(*) as alias_count
             FROM entity_aliases
@@ -325,7 +335,7 @@ class CustomerResolutionService:
             GROUP BY target_entity_id
         ),
         customer_revenue AS (
-            SELECT 
+            SELECT
                 customer_id,
                 COUNT(*) as spot_count,
                 SUM(CASE WHEN gross_rate > 0 THEN gross_rate ELSE 0 END) as total_revenue,
@@ -336,7 +346,7 @@ class CustomerResolutionService:
             AND (revenue_type != 'Trade' OR revenue_type IS NULL)
             GROUP BY customer_id
         )
-        SELECT 
+        SELECT
             c.customer_id,
             c.normalized_name,
             c.created_date,
@@ -349,15 +359,16 @@ class CustomerResolutionService:
         LEFT JOIN alias_counts ac ON c.customer_id = ac.customer_id
         LEFT JOIN customer_revenue cr ON c.customer_id = cr.customer_id
         WHERE c.is_active = 1
+        AND c.customer_id NOT IN (SELECT customer_id FROM agency_clients)
         AND (? = '' OR c.normalized_name LIKE '%' || ? || '%')
         AND COALESCE(ac.alias_count, 0) >= ?
         ORDER BY COALESCE(ac.alias_count, 0) DESC, cr.total_revenue DESC
         LIMIT ?
         """
-        
+
         with self._db_ro() as db:
             rows = db.execute(sql, [search, search, min_aliases, limit]).fetchall()
-        
+
         return [
             {
                 "customer_id": r["customer_id"],
@@ -586,18 +597,28 @@ class CustomerResolutionService:
 
 
     def get_customers_with_aliases(
-        self, 
-        search: str = "", 
+        self,
+        search: str = "",
         min_aliases: int = 0,
         limit: int = 200
     ) -> List[Dict[str, Any]]:
         """
         Get customers with their alias counts and revenue summary.
         Ordered by alias count desc (most complex first).
+        Excludes agency clients (any spot via agency, or name-prefix match).
         """
         sql = """
-        WITH alias_counts AS (
-            SELECT 
+        WITH agency_clients AS (
+            SELECT customer_id FROM customers
+            WHERE is_active = 1 AND normalized_name LIKE '%:%'
+            UNION
+            SELECT customer_id FROM spots
+            WHERE customer_id IS NOT NULL
+            GROUP BY customer_id
+            HAVING COUNT(*) = COUNT(agency_id)
+        ),
+        alias_counts AS (
+            SELECT
                 target_entity_id as customer_id,
                 COUNT(*) as alias_count
             FROM entity_aliases
@@ -605,7 +626,7 @@ class CustomerResolutionService:
             GROUP BY target_entity_id
         ),
         customer_revenue AS (
-            SELECT 
+            SELECT
                 customer_id,
                 COUNT(*) as spot_count,
                 SUM(CASE WHEN gross_rate > 0 THEN gross_rate ELSE 0 END) as total_revenue,
@@ -616,7 +637,7 @@ class CustomerResolutionService:
             AND (revenue_type != 'Trade' OR revenue_type IS NULL)
             GROUP BY customer_id
         )
-        SELECT 
+        SELECT
             c.customer_id,
             c.normalized_name,
             c.created_date,
@@ -629,15 +650,16 @@ class CustomerResolutionService:
         LEFT JOIN alias_counts ac ON c.customer_id = ac.customer_id
         LEFT JOIN customer_revenue cr ON c.customer_id = cr.customer_id
         WHERE c.is_active = 1
+        AND c.customer_id NOT IN (SELECT customer_id FROM agency_clients)
         AND (? = '' OR c.normalized_name LIKE '%' || ? || '%')
         AND COALESCE(ac.alias_count, 0) >= ?
         ORDER BY COALESCE(ac.alias_count, 0) DESC, cr.total_revenue DESC
         LIMIT ?
         """
-        
+
         with self._db_ro() as db:
             rows = db.execute(sql, [search, search, min_aliases, limit]).fetchall()
-        
+
         return [
             {
                 "customer_id": r["customer_id"],

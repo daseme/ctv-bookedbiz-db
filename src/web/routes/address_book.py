@@ -38,6 +38,25 @@ def _db_rw():
         conn.close()
 
 
+def _get_agency_client_ids(conn):
+    """
+    Return set of customer_ids that are agency clients (hidden from front page).
+    A customer is an agency client if:
+      1. Their name contains ':' (Agency:Customer naming convention), OR
+      2. ALL of their spots are booked through an agency (agency_id is never null)
+    """
+    rows = conn.execute("""
+        SELECT customer_id FROM customers
+        WHERE is_active = 1 AND normalized_name LIKE '%:%'
+        UNION
+        SELECT customer_id FROM spots
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+        HAVING COUNT(*) = COUNT(agency_id)
+    """).fetchall()
+    return {row["customer_id"] for row in rows}
+
+
 @address_book_bp.route("/address-book")
 def address_book_page():
     """Render the unified address book page."""
@@ -83,7 +102,8 @@ def api_address_book():
         has_address: 'all', 'yes', 'no'
         sector_id: filter by sector (customers only)
         market: filter by market name
-        sort: 'name', 'sector', 'type', 'market' (default: 'name')
+        ae: filter by assigned AE name
+        sort: 'name', 'sector', 'type', 'market', 'ae' (default: 'name')
     """
     search = request.args.get("search", "").strip()
     entity_type = request.args.get("type", "all")
@@ -91,11 +111,16 @@ def api_address_book():
     has_address = request.args.get("has_address", "all")
     sector_filter = request.args.get("sector_id", "")
     market_filter = request.args.get("market", "")
+    ae_filter = request.args.get("ae", "")
     sort_by = request.args.get("sort", "name")
+    include_inactive = request.args.get("include_inactive", "0") == "1"
 
     results = []
 
     with _db_ro() as conn:
+        # Get agency-booked customer IDs to exclude
+        agency_client_ids = _get_agency_client_ids(conn)
+
         # Build lookup of markets by entity
         # For agencies: markets where agency_id matches
         agency_markets = {}
@@ -162,7 +187,8 @@ def api_address_book():
 
         # Get agencies (no sector for agencies)
         if entity_type in ("all", "agency"):
-            agencies = conn.execute("""
+            active_clause = "" if include_inactive else "WHERE a.is_active = 1"
+            agencies = conn.execute(f"""
                 SELECT
                     a.agency_id as entity_id,
                     'agency' as entity_type,
@@ -172,6 +198,8 @@ def api_address_book():
                     a.state,
                     a.zip,
                     a.notes,
+                    a.assigned_ae,
+                    a.is_active,
                     NULL as sector_id,
                     NULL as sector_name,
                     NULL as sector_code,
@@ -181,7 +209,7 @@ def api_address_book():
                      WHERE ec.entity_type = 'agency' AND ec.entity_id = a.agency_id
                      AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact
                 FROM agencies a
-                WHERE a.is_active = 1
+                {active_clause}
                 ORDER BY a.agency_name
             """).fetchall()
 
@@ -194,9 +222,10 @@ def api_address_book():
                 row["spot_count"] = metrics.get("spot_count", 0)
                 results.append(row)
 
-        # Get customers with sector info
+        # Get customers with sector info (exclude agency-booked)
         if entity_type in ("all", "customer"):
-            customers = conn.execute("""
+            active_clause = "" if include_inactive else "WHERE c.is_active = 1"
+            customers = conn.execute(f"""
                 SELECT
                     c.customer_id as entity_id,
                     'customer' as entity_type,
@@ -206,6 +235,8 @@ def api_address_book():
                     c.state,
                     c.zip,
                     c.notes,
+                    c.assigned_ae,
+                    c.is_active,
                     c.sector_id,
                     s.sector_name,
                     s.sector_code,
@@ -216,12 +247,15 @@ def api_address_book():
                      AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
-                WHERE c.is_active = 1
+                {active_clause}
                 ORDER BY c.normalized_name
             """).fetchall()
 
             for c in customers:
                 row = dict(c)
+                # Skip agency-booked customers
+                if row["entity_id"] in agency_client_ids:
+                    continue
                 row["markets"] = customer_markets.get(row["entity_id"], "")
                 metrics = customer_metrics.get(row["entity_id"], {})
                 row["last_active"] = metrics.get("last_active")
@@ -275,6 +309,12 @@ def api_address_book():
         # Filter to entities that have run spots in this market
         results = [r for r in results if market_filter in (r.get("markets") or "").split(",")]
 
+    if ae_filter:
+        if ae_filter == "__none__":
+            results = [r for r in results if not r.get("assigned_ae")]
+        else:
+            results = [r for r in results if r.get("assigned_ae") == ae_filter]
+
     # Sort
     if sort_by == "sector":
         # Sort by sector name (nulls last), then by name
@@ -311,6 +351,13 @@ def api_address_book():
             -(r.get("total_revenue") or 0),
             r["entity_name"].lower()
         ))
+    elif sort_by == "ae":
+        # Sort by AE name (nulls last), then by name
+        results.sort(key=lambda r: (
+            r.get("assigned_ae") is None,
+            (r.get("assigned_ae") or "").lower(),
+            r["entity_name"].lower()
+        ))
     else:
         # Default: sort by name
         results.sort(key=lambda r: r["entity_name"].lower())
@@ -329,14 +376,14 @@ def api_entity_detail(entity_type, entity_id):
         if entity_type == "agency":
             entity = conn.execute("""
                 SELECT agency_id as entity_id, 'agency' as entity_type, agency_name as entity_name,
-                       address, city, state, zip, notes,
+                       address, city, state, zip, notes, assigned_ae,
                        NULL as sector_id, NULL as sector_name
                 FROM agencies WHERE agency_id = ? AND is_active = 1
             """, [entity_id]).fetchone()
         else:
             entity = conn.execute("""
                 SELECT c.customer_id as entity_id, 'customer' as entity_type, c.normalized_name as entity_name,
-                       c.address, c.city, c.state, c.zip, c.notes,
+                       c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae,
                        c.sector_id, s.sector_name
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
@@ -493,9 +540,18 @@ def api_agency_customers(agency_id):
         if not agency:
             return jsonify({"error": "Agency not found"}), 404
 
-        # Get customers that have booked through this agency
-        customers = conn.execute("""
-            SELECT DISTINCT
+        # Collect all known names for this agency (canonical + aliases)
+        agency_names = [agency["agency_name"]]
+        alias_rows = conn.execute("""
+            SELECT alias_name FROM entity_aliases
+            WHERE entity_type = 'agency' AND target_entity_id = ? AND is_active = 1
+        """, [agency_id]).fetchall()
+        for ar in alias_rows:
+            agency_names.append(ar["alias_name"])
+
+        # Get customers booked through this agency (via spots)
+        spot_customers = conn.execute("""
+            SELECT
                 c.customer_id,
                 c.normalized_name as customer_name,
                 c.sector_id,
@@ -510,13 +566,44 @@ def api_agency_customers(agency_id):
             WHERE sp.agency_id = ?
                 AND c.is_active = 1
             GROUP BY c.customer_id
-            ORDER BY revenue_via_agency DESC
         """, [agency_id]).fetchall()
+
+        seen_ids = set()
+        result_customers = []
+        for c in spot_customers:
+            result_customers.append(dict(c))
+            seen_ids.add(c["customer_id"])
+
+        # Also find customers whose name matches any agency name variant + ':'
+        for name in agency_names:
+            name_customers = conn.execute("""
+                SELECT
+                    c.customer_id,
+                    c.normalized_name as customer_name,
+                    c.sector_id,
+                    s.sector_name,
+                    COALESCE((SELECT SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
+                        THEN sp.gross_rate ELSE 0 END) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as revenue_via_agency,
+                    COALESCE((SELECT COUNT(*) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as spot_count,
+                    (SELECT MAX(sp.air_date) FROM spots sp WHERE sp.customer_id = c.customer_id) as last_active
+                FROM customers c
+                LEFT JOIN sectors s ON c.sector_id = s.sector_id
+                WHERE c.is_active = 1
+                  AND c.normalized_name LIKE ? || ':%'
+            """, [name]).fetchall()
+
+            for c in name_customers:
+                if c["customer_id"] not in seen_ids:
+                    result_customers.append(dict(c))
+                    seen_ids.add(c["customer_id"])
+
+        # Sort by revenue descending
+        result_customers.sort(key=lambda x: -(x.get("revenue_via_agency") or 0))
 
         return jsonify({
             "agency_id": agency_id,
             "agency_name": agency["agency_name"],
-            "customers": [dict(c) for c in customers]
+            "customers": result_customers
         })
 
 
@@ -608,10 +695,14 @@ def api_export_csv():
     has_address = request.args.get("has_address", "all")
     sector_filter = request.args.get("sector_id", "")
     market_filter = request.args.get("market", "")
+    ae_filter = request.args.get("ae", "")
 
     results = []
 
     with _db_ro() as conn:
+        # Get agency-booked customer IDs to exclude
+        agency_client_ids = _get_agency_client_ids(conn)
+
         # Get metrics lookups
         agency_metrics = {}
         rows = conn.execute("""
@@ -641,7 +732,7 @@ def api_export_csv():
         if entity_type in ("all", "agency"):
             agencies = conn.execute("""
                 SELECT a.agency_id as entity_id, 'agency' as entity_type, a.agency_name as entity_name,
-                       a.address, a.city, a.state, a.zip, a.notes, NULL as sector_name,
+                       a.address, a.city, a.state, a.zip, a.notes, a.assigned_ae, NULL as sector_name,
                        (SELECT contact_name FROM entity_contacts ec
                         WHERE ec.entity_type = 'agency' AND ec.entity_id = a.agency_id
                         AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact,
@@ -662,11 +753,11 @@ def api_export_csv():
                 row["total_revenue"] = m.get("total_revenue", 0)
                 results.append(row)
 
-        # Get customers
+        # Get customers (exclude agency-booked)
         if entity_type in ("all", "customer"):
             customers = conn.execute("""
                 SELECT c.customer_id as entity_id, 'customer' as entity_type, c.normalized_name as entity_name,
-                       c.address, c.city, c.state, c.zip, c.notes, s.sector_name,
+                       c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae, s.sector_name,
                        (SELECT contact_name FROM entity_contacts ec
                         WHERE ec.entity_type = 'customer' AND ec.entity_id = c.customer_id
                         AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact,
@@ -684,6 +775,9 @@ def api_export_csv():
             """).fetchall()
             for c in customers:
                 row = dict(c)
+                # Skip agency-booked customers
+                if row["entity_id"] in agency_client_ids:
+                    continue
                 m = customer_metrics.get(row["entity_id"], {})
                 row["last_active"] = m.get("last_active", "")
                 row["total_revenue"] = m.get("total_revenue", 0)
@@ -710,6 +804,12 @@ def api_export_csv():
     if market_filter:
         results = [r for r in results if market_filter in (r.get("markets") or "")]
 
+    if ae_filter:
+        if ae_filter == "__none__":
+            results = [r for r in results if not r.get("assigned_ae")]
+        else:
+            results = [r for r in results if r.get("assigned_ae") == ae_filter]
+
     # Sort by name
     results.sort(key=lambda r: r["entity_name"].lower())
 
@@ -717,7 +817,7 @@ def api_export_csv():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "Entity Name", "Type", "Sector", "Primary Contact", "Email", "Phone",
+        "Entity Name", "Type", "Sector", "Assigned AE", "Primary Contact", "Email", "Phone",
         "Address", "City", "State", "ZIP", "Markets", "Last Active", "Total Revenue", "Notes"
     ])
 
@@ -726,6 +826,7 @@ def api_export_csv():
             r.get("entity_name", ""),
             r.get("entity_type", ""),
             r.get("sector_name", ""),
+            r.get("assigned_ae", ""),
             r.get("primary_contact", ""),
             r.get("primary_email", ""),
             r.get("primary_phone", ""),
@@ -838,3 +939,86 @@ def api_create_activity(entity_type, entity_id):
         except Exception as e:
             conn.rollback()
             return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# AE Assignment
+# ============================================================
+
+@address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/ae", methods=["PUT"])
+def api_update_ae(entity_type, entity_id):
+    """Update assigned AE for an entity."""
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "Invalid entity type"}), 400
+
+    data = request.get_json() or {}
+    assigned_ae = (data.get("assigned_ae") or "").strip() or None
+
+    with _db_rw() as conn:
+        try:
+            table = "agencies" if entity_type == "agency" else "customers"
+            id_col = "agency_id" if entity_type == "agency" else "customer_id"
+            name_col = "agency_name" if entity_type == "agency" else "normalized_name"
+
+            # Get current value for audit
+            row = conn.execute(
+                f"SELECT {name_col} as name, assigned_ae FROM {table} WHERE {id_col} = ?",
+                [entity_id]
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "Entity not found"}), 404
+
+            old_ae = row["assigned_ae"]
+
+            conn.execute(
+                f"UPDATE {table} SET assigned_ae = ? WHERE {id_col} = ?",
+                [assigned_ae, entity_id]
+            )
+
+            # Audit the change
+            conn.execute("""
+                INSERT INTO canon_audit (actor, action, key, value, extra)
+                VALUES (?, 'AE_ASSIGN', ?, ?, ?)
+            """, [
+                "web_user",
+                f"{entity_type}:{entity_id}",
+                assigned_ae or "(cleared)",
+                f"name={row['name']}|old_ae={old_ae or '(none)'}|new_ae={assigned_ae or '(none)'}"
+            ])
+
+            conn.commit()
+            return jsonify({"success": True, "assigned_ae": assigned_ae})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/ae-list")
+def api_ae_list():
+    """Get sorted list of AE names from spots data and existing assignments."""
+    with _db_ro() as conn:
+        # Get distinct sales_person values from spots
+        spot_aes = conn.execute("""
+            SELECT DISTINCT sales_person
+            FROM spots
+            WHERE sales_person IS NOT NULL AND sales_person != ''
+            ORDER BY sales_person
+        """).fetchall()
+
+        # Get distinct assigned_ae values from agencies and customers
+        assigned_aes = conn.execute("""
+            SELECT DISTINCT assigned_ae FROM agencies
+            WHERE assigned_ae IS NOT NULL AND assigned_ae != ''
+            UNION
+            SELECT DISTINCT assigned_ae FROM customers
+            WHERE assigned_ae IS NOT NULL AND assigned_ae != ''
+        """).fetchall()
+
+        # Combine and deduplicate
+        ae_set = set()
+        for row in spot_aes:
+            ae_set.add(row["sales_person"])
+        for row in assigned_aes:
+            ae_set.add(row["assigned_ae"])
+
+        return jsonify(sorted(ae_set, key=str.lower))
