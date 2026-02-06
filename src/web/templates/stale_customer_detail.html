@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entity_type|title }} Detail - SpotOps{% endblock %}
+{% block header_title %}Entity Detail{% endblock %}
+{% block header_subtitle %}Stale Customer Report - Entity Triage{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .back-link{display:inline-block;margin-bottom:16px;color:var(--nord10);text-decoration:none;font-size:14px}
+  .back-link:hover{text-decoration:underline}
+
+  .entity-header{display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+  .entity-header h2{margin:0;font-size:22px;color:#0f172a}
+  .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500}
+  .badge.agency{background:#e0f2fe;color:#0369a1}
+  .badge.customer{background:#ede9fe;color:#6d28d9}
+  .badge.active{background:#dcfce7;color:#166534}
+  .badge.inactive{background:#fee2e2;color:#991b1b}
+
+  .summary-cards{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+  .scard{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;min-width:140px;flex:1}
+  .scard .val{font-size:22px;font-weight:700;color:#0f172a}
+  .scard .lbl{font-size:12px;color:#64748b;margin-top:2px}
+  .scard.spots{border-left:4px solid var(--nord9)}
+  .scard.revenue{border-left:4px solid var(--nord14)}
+  .scard.first{border-left:4px solid var(--nord8)}
+  .scard.last{border-left:4px solid var(--nord13)}
+
+  .detail-grid{display:grid;grid-template-columns:1fr 340px;gap:24px}
+  @media(max-width:900px){.detail-grid{grid-template-columns:1fr}}
+
+  .detail-section{background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;overflow:hidden}
+  .detail-section h3{margin:0;padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:14px;color:#334155}
+
+  .detail-table{width:100%;border-collapse:collapse;font-size:13px}
+  .detail-table th{text-align:left;padding:8px 12px;border-bottom:2px solid var(--nord0);font-weight:600;color:var(--nord0);font-size:12px;white-space:nowrap}
+  .detail-table td{padding:6px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+  .detail-table tbody tr:hover{background:#f8fafc}
+  .detail-table .num{text-align:right;font-variant-numeric:tabular-nums}
+
+  .info-list{padding:12px 16px;font-size:13px}
+  .info-list dt{font-weight:600;color:#475569;margin-top:10px}
+  .info-list dt:first-child{margin-top:0}
+  .info-list dd{margin:2px 0 0 0;color:#0f172a}
+
+  .alias-list,.contact-list,.audit-list{padding:0;list-style:none;margin:0}
+  .alias-list li,.contact-list li,.audit-list li{padding:8px 16px;border-bottom:1px solid #f1f5f9;font-size:13px}
+  .alias-list li:last-child,.contact-list li:last-child,.audit-list li:last-child{border-bottom:none}
+  .contact-primary{font-size:10px;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:8px}
+  .audit-ts{font-size:11px;color:#94a3b8;margin-right:8px}
+  .audit-action{font-size:11px;background:#f1f5f9;padding:1px 6px;border-radius:4px;color:#475569;margin-right:4px}
+  .empty-msg{padding:16px;color:#94a3b8;font-size:13px;text-align:center}
+
+  .actions-row{display:flex;gap:12px;margin-top:24px;align-items:center}
+  .btn{padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;border:1px solid #e2e8f0;background:#fff;text-decoration:none;color:#334155}
+  .btn:hover{background:#f8fafc}
+  .btn-danger{color:var(--nord11);border-color:var(--nord11)}
+  .btn-danger:hover{background:#fee2e2}
+
+  .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center}
+  .modal-overlay.active{display:flex}
+  .deactivate-modal{background:#fff;border-radius:12px;width:100%;max-width:480px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .deactivate-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+  .deactivate-modal .modal-header h3{margin:0;font-size:18px}
+  .modal-close{background:none;border:none;font-size:24px;color:#94a3b8;cursor:pointer;padding:4px 8px}
+  .modal-close:hover{color:#334155}
+  .deactivate-modal .modal-body{padding:24px}
+  .deactivate-modal textarea{width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;min-height:100px;resize:vertical;font-family:inherit;box-sizing:border-box}
+  .deactivate-modal textarea:focus{border-color:var(--nord11);outline:none}
+  .deactivate-modal label{display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px}
+  .modal-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:16px}
+  .modal-actions button{padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;border:none}
+  .btn-cancel{background:#f1f5f9;color:#475569}
+  .btn-cancel:hover{background:#e2e8f0}
+  .btn-confirm{background:var(--nord11);color:#fff}
+  .btn-confirm:hover{background:#a54e56}
+  .btn-confirm:disabled{opacity:0.5;cursor:not-allowed}
+
+  .loading{text-align:center;padding:48px;color:#94a3b8;font-size:14px}
+</style>
+{% endblock %}
+
+{% block content %}
+<a class="back-link" href="/stale-customers">&larr; Back to Stale Customer Report</a>
+
+<div id="detail-loading" class="loading">Loading entity details...</div>
+<div id="detail-content" style="display:none">
+
+  <!-- Header -->
+  <div class="entity-header">
+    <h2 id="entity-name"></h2>
+    <span class="badge" id="entity-type-badge"></span>
+    <span class="badge" id="entity-status-badge"></span>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="summary-cards">
+    <div class="scard spots"><div class="val" id="sc-spots">-</div><div class="lbl">Total Spots</div></div>
+    <div class="scard revenue"><div class="val" id="sc-revenue">-</div><div class="lbl">Total Revenue</div></div>
+    <div class="scard first"><div class="val" id="sc-first">-</div><div class="lbl">First Active</div></div>
+    <div class="scard last"><div class="val" id="sc-last">-</div><div class="lbl">Last Active</div></div>
+  </div>
+
+  <!-- Two-column grid -->
+  <div class="detail-grid">
+    <!-- Left column -->
+    <div>
+      <!-- Revenue by Year -->
+      <div class="detail-section">
+        <h3>Revenue by Year</h3>
+        <table class="detail-table" id="rev-year-table">
+          <thead><tr><th>Year</th><th class="num">Spots</th><th class="num">Revenue</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="empty-msg" id="rev-year-empty" style="display:none">No revenue data</div>
+      </div>
+
+      <!-- Revenue by Market -->
+      <div class="detail-section">
+        <h3>Revenue by Market</h3>
+        <table class="detail-table" id="rev-market-table">
+          <thead><tr><th>Market</th><th class="num">Spots</th><th class="num">Revenue</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="empty-msg" id="rev-market-empty" style="display:none">No market data</div>
+      </div>
+
+      <!-- Recent Spots -->
+      <div class="detail-section">
+        <h3>Recent Spots (Last 50)</h3>
+        <div style="overflow-x:auto">
+        <table class="detail-table" id="spots-table">
+          <thead><tr>
+            <th>Air Date</th><th>Market</th><th>Sales Person</th>
+            <th class="num">Gross Rate</th><th>Rev Type</th><th>Length</th><th>Bill Code</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+        <div class="empty-msg" id="spots-empty" style="display:none">No spots found</div>
+      </div>
+    </div>
+
+    <!-- Right column (sidebar) -->
+    <div>
+      <!-- Entity Info -->
+      <div class="detail-section">
+        <h3>Entity Info</h3>
+        <dl class="info-list" id="entity-info"></dl>
+      </div>
+
+      <!-- Contacts -->
+      <div class="detail-section">
+        <h3>Contacts</h3>
+        <ul class="contact-list" id="contacts-list"></ul>
+        <div class="empty-msg" id="contacts-empty" style="display:none">No contacts</div>
+      </div>
+
+      <!-- Aliases -->
+      <div class="detail-section">
+        <h3>Aliases</h3>
+        <ul class="alias-list" id="aliases-list"></ul>
+        <div class="empty-msg" id="aliases-empty" style="display:none">No aliases</div>
+      </div>
+
+      <!-- Audit Trail -->
+      <div class="detail-section">
+        <h3>Audit Trail</h3>
+        <ul class="audit-list" id="audit-list"></ul>
+        <div class="empty-msg" id="audit-empty" style="display:none">No audit records</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions-row">
+    <button class="btn btn-danger" id="btn-deactivate" onclick="openDeactivateModal()">Deactivate</button>
+    <a class="btn" href="/address-book">View in Address Book</a>
+  </div>
+</div>
+
+<!-- Deactivation Modal -->
+<div class="modal-overlay" id="deactivate-modal">
+  <div class="deactivate-modal">
+    <div class="modal-header">
+      <h3>Deactivate Entity</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label for="deactivate-reason">Reason for deactivation (required)</label>
+      <textarea id="deactivate-reason" placeholder="e.g., No longer a client, duplicate record, business closed..."></textarea>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-confirm" id="btn-confirm-deactivate" onclick="confirmDeactivate()">Deactivate</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  const ENTITY_TYPE = '{{ entity_type }}';
+  const ENTITY_ID = {{ entity_id }};
+
+  function fmt$(n) {
+    if (!n && n !== 0) return '-';
+    return '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  }
+
+  function esc(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  fetch('/api/stale-customers/' + ENTITY_TYPE + '/' + ENTITY_ID)
+    .then(r => { if (!r.ok) throw new Error('Not found'); return r.json(); })
+    .then(render)
+    .catch(e => {
+      document.getElementById('detail-loading').textContent = 'Error loading entity: ' + e.message;
+    });
+
+  function render(d) {
+    document.getElementById('detail-loading').style.display = 'none';
+    document.getElementById('detail-content').style.display = 'block';
+
+    // Header
+    document.getElementById('entity-name').textContent = d.entity_name;
+    const typeBadge = document.getElementById('entity-type-badge');
+    typeBadge.textContent = d.entity_type;
+    typeBadge.className = 'badge ' + d.entity_type;
+    const statusBadge = document.getElementById('entity-status-badge');
+    statusBadge.textContent = d.is_active ? 'Active' : 'Inactive';
+    statusBadge.className = 'badge ' + (d.is_active ? 'active' : 'inactive');
+
+    // Hide deactivate button if already inactive
+    if (!d.is_active) {
+      document.getElementById('btn-deactivate').style.display = 'none';
+    }
+
+    // Summary cards
+    document.getElementById('sc-spots').textContent = (d.spot_count || 0).toLocaleString();
+    document.getElementById('sc-revenue').textContent = fmt$(d.total_revenue);
+    document.getElementById('sc-first').textContent = d.first_active || 'Never';
+    document.getElementById('sc-last').textContent = d.last_active || 'Never';
+
+    // Entity info sidebar
+    const info = document.getElementById('entity-info');
+    let infoHtml = '';
+    if (d.sector_name) infoHtml += '<dt>Sector</dt><dd>' + esc(d.sector_name) + '</dd>';
+    if (d.assigned_ae) infoHtml += '<dt>Account Executive</dt><dd>' + esc(d.assigned_ae) + '</dd>';
+    const addr = [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
+    if (addr) infoHtml += '<dt>Address</dt><dd>' + esc(addr) + '</dd>';
+    if (d.notes) infoHtml += '<dt>Notes</dt><dd>' + esc(d.notes) + '</dd>';
+    info.innerHTML = infoHtml || '<dd style="color:#94a3b8">No additional info</dd>';
+
+    // Revenue by year
+    const ryTbody = document.querySelector('#rev-year-table tbody');
+    if (d.revenue_by_year.length) {
+      ryTbody.innerHTML = d.revenue_by_year.map(r =>
+        '<tr><td>' + esc(r.year) + '</td><td class="num">' + r.spot_count.toLocaleString() +
+        '</td><td class="num">' + fmt$(r.revenue) + '</td></tr>'
+      ).join('');
+    } else {
+      document.getElementById('rev-year-table').style.display = 'none';
+      document.getElementById('rev-year-empty').style.display = 'block';
+    }
+
+    // Revenue by market
+    const rmTbody = document.querySelector('#rev-market-table tbody');
+    if (d.revenue_by_market.length) {
+      rmTbody.innerHTML = d.revenue_by_market.map(r =>
+        '<tr><td>' + esc(r.market_name) + '</td><td class="num">' + r.spot_count.toLocaleString() +
+        '</td><td class="num">' + fmt$(r.revenue) + '</td></tr>'
+      ).join('');
+    } else {
+      document.getElementById('rev-market-table').style.display = 'none';
+      document.getElementById('rev-market-empty').style.display = 'block';
+    }
+
+    // Recent spots
+    const sTbody = document.querySelector('#spots-table tbody');
+    if (d.recent_spots.length) {
+      sTbody.innerHTML = d.recent_spots.map(s =>
+        '<tr><td>' + esc(s.air_date) + '</td><td>' + esc(s.market_name) +
+        '</td><td>' + esc(s.sales_person) + '</td><td class="num">' + fmt$(s.gross_rate) +
+        '</td><td>' + esc(s.revenue_type) + '</td><td>' + esc(s.length_seconds) +
+        '</td><td>' + esc(s.bill_code) + '</td></tr>'
+      ).join('');
+    } else {
+      document.getElementById('spots-table').style.display = 'none';
+      document.getElementById('spots-empty').style.display = 'block';
+    }
+
+    // Contacts
+    const cList = document.getElementById('contacts-list');
+    if (d.contacts.length) {
+      cList.innerHTML = d.contacts.map(c => {
+        let html = '<li><strong>' + esc(c.contact_name) + '</strong>';
+        if (c.is_primary) html += ' <span class="contact-primary">Primary</span>';
+        if (c.contact_role) html += '<br><span style="color:#64748b;font-size:12px">' + esc(c.contact_role) + '</span>';
+        if (c.email) html += '<br><span style="color:#64748b;font-size:12px">' + esc(c.email) + '</span>';
+        if (c.phone) html += '<br><span style="color:#64748b;font-size:12px">' + esc(c.phone) + '</span>';
+        return html + '</li>';
+      }).join('');
+    } else {
+      cList.style.display = 'none';
+      document.getElementById('contacts-empty').style.display = 'block';
+    }
+
+    // Aliases
+    const aList = document.getElementById('aliases-list');
+    if (d.aliases.length) {
+      aList.innerHTML = d.aliases.map(a =>
+        '<li>' + esc(a.alias_name) + '<span style="color:#94a3b8;font-size:11px;margin-left:8px">via ' + esc(a.created_by) + '</span></li>'
+      ).join('');
+    } else {
+      aList.style.display = 'none';
+      document.getElementById('aliases-empty').style.display = 'block';
+    }
+
+    // Audit trail
+    const auList = document.getElementById('audit-list');
+    if (d.audit_trail.length) {
+      auList.innerHTML = d.audit_trail.map(a =>
+        '<li><span class="audit-ts">' + esc(a.ts) + '</span>' +
+        '<span class="audit-action">' + esc(a.action) + '</span> ' +
+        esc(a.value || '') +
+        (a.extra ? ' <span style="color:#94a3b8;font-size:11px">' + esc(a.extra) + '</span>' : '') +
+        '</li>'
+      ).join('');
+    } else {
+      auList.style.display = 'none';
+      document.getElementById('audit-empty').style.display = 'block';
+    }
+  }
+
+  // Deactivation
+  window.openDeactivateModal = function() {
+    document.getElementById('deactivate-reason').value = '';
+    document.getElementById('deactivate-modal').classList.add('active');
+    document.getElementById('deactivate-reason').focus();
+  };
+
+  window.closeModal = function() {
+    document.getElementById('deactivate-modal').classList.remove('active');
+  };
+
+  window.confirmDeactivate = function() {
+    const reason = document.getElementById('deactivate-reason').value.trim();
+    if (!reason) { alert('Please provide a reason for deactivation.'); return; }
+
+    const btn = document.getElementById('btn-confirm-deactivate');
+    btn.disabled = true;
+    btn.textContent = 'Deactivating...';
+
+    fetch('/api/stale-customers/deactivate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ entity_type: ENTITY_TYPE, entity_id: ENTITY_ID, reason: reason })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        closeModal();
+        window.location.reload();
+      } else {
+        alert('Error: ' + (d.error || 'Unknown error'));
+      }
+    })
+    .catch(e => alert('Request failed: ' + e))
+    .finally(() => { btn.disabled = false; btn.textContent = 'Deactivate'; });
+  };
+
+  document.getElementById('deactivate-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+})();
+</script>
+{% endblock %}

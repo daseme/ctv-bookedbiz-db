@@ -175,7 +175,8 @@ class BatchEntityResolver:
             )
             result = cursor.fetchone()
             return result[0] if result else None
-        except:
+        except Exception as e:
+            logger.warning(f"Customer lookup failed for {customer_name}: {e}")
             return None
 
     def _lookup_agency_direct(self, agency_name: str, conn) -> Optional[int]:
@@ -210,7 +211,8 @@ class BatchEntityResolver:
             )
             result = cursor.fetchone()
             return result[0] if result else None
-        except:
+        except Exception as e:
+            logger.warning(f"Agency lookup failed for {agency_name}: {e}")
             return None
 
     def _lookup_customer_quick(self, customer_name: str, conn) -> Optional[int]:
