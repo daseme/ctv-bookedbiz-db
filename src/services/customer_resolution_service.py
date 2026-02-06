@@ -318,17 +318,9 @@ class CustomerResolutionService:
         """
         sql = """
         WITH agency_clients AS (
-            SELECT DISTINCT customer_id
-            FROM spots
-            WHERE customer_id IS NOT NULL AND agency_id IS NOT NULL
-            UNION
-            SELECT c.customer_id
-            FROM customers c
-            JOIN agencies a ON c.normalized_name LIKE a.agency_name || ':%'
-            WHERE c.is_active = 1 AND a.is_active = 1
-              AND c.customer_id NOT IN (
-                  SELECT DISTINCT customer_id FROM spots WHERE customer_id IS NOT NULL
-              )
+            SELECT customer_id
+            FROM customers
+            WHERE is_active = 1 AND normalized_name LIKE '%:%'
         ),
         alias_counts AS (
             SELECT
@@ -613,17 +605,9 @@ class CustomerResolutionService:
         """
         sql = """
         WITH agency_clients AS (
-            SELECT DISTINCT customer_id
-            FROM spots
-            WHERE customer_id IS NOT NULL AND agency_id IS NOT NULL
-            UNION
-            SELECT c.customer_id
-            FROM customers c
-            JOIN agencies a ON c.normalized_name LIKE a.agency_name || ':%'
-            WHERE c.is_active = 1 AND a.is_active = 1
-              AND c.customer_id NOT IN (
-                  SELECT DISTINCT customer_id FROM spots WHERE customer_id IS NOT NULL
-              )
+            SELECT customer_id
+            FROM customers
+            WHERE is_active = 1 AND normalized_name LIKE '%:%'
         ),
         alias_counts AS (
             SELECT

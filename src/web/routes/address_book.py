@@ -41,35 +41,15 @@ def _db_rw():
 def _get_agency_client_ids(conn):
     """
     Return set of customer_ids that are agency clients (hidden from front page).
-    A customer is an agency client if:
-      1. ANY of their spots have a non-null agency_id, OR
-      2. They have no spots but their name matches 'AgencyName:...' for an active agency
+    Hard rule: a customer is an agency client if their name contains ':',
+    indicating an Agency:Customer relationship.
     """
-    ids = set()
-
-    # Customers with any agency-booked spots
     rows = conn.execute("""
-        SELECT DISTINCT customer_id
-        FROM spots
-        WHERE customer_id IS NOT NULL AND agency_id IS NOT NULL
+        SELECT customer_id
+        FROM customers
+        WHERE is_active = 1 AND normalized_name LIKE '%:%'
     """).fetchall()
-    for row in rows:
-        ids.add(row["customer_id"])
-
-    # Zero-spot customers whose name matches an agency prefix
-    rows = conn.execute("""
-        SELECT c.customer_id
-        FROM customers c
-        JOIN agencies a ON c.normalized_name LIKE a.agency_name || ':%'
-        WHERE c.is_active = 1 AND a.is_active = 1
-          AND c.customer_id NOT IN (
-              SELECT DISTINCT customer_id FROM spots WHERE customer_id IS NOT NULL
-          )
-    """).fetchall()
-    for row in rows:
-        ids.add(row["customer_id"])
-
-    return ids
+    return {row["customer_id"] for row in rows}
 
 
 @address_book_bp.route("/address-book")
@@ -550,6 +530,15 @@ def api_agency_customers(agency_id):
         if not agency:
             return jsonify({"error": "Agency not found"}), 404
 
+        # Collect all known names for this agency (canonical + aliases)
+        agency_names = [agency["agency_name"]]
+        alias_rows = conn.execute("""
+            SELECT alias_name FROM entity_aliases
+            WHERE entity_type = 'agency' AND target_entity_id = ? AND is_active = 1
+        """, [agency_id]).fetchall()
+        for ar in alias_rows:
+            agency_names.append(ar["alias_name"])
+
         # Get customers booked through this agency (via spots)
         spot_customers = conn.execute("""
             SELECT
@@ -575,28 +564,28 @@ def api_agency_customers(agency_id):
             result_customers.append(dict(c))
             seen_ids.add(c["customer_id"])
 
-        # Also find zero-spot customers whose name matches AgencyName:*
-        name_customers = conn.execute("""
-            SELECT
-                c.customer_id,
-                c.normalized_name as customer_name,
-                c.sector_id,
-                s.sector_name,
-                0 as revenue_via_agency,
-                0 as spot_count,
-                NULL as last_active
-            FROM customers c
-            LEFT JOIN sectors s ON c.sector_id = s.sector_id
-            WHERE c.is_active = 1
-              AND c.normalized_name LIKE ? || ':%'
-              AND c.customer_id NOT IN (
-                  SELECT DISTINCT customer_id FROM spots WHERE customer_id IS NOT NULL
-              )
-        """, [agency["agency_name"]]).fetchall()
+        # Also find customers whose name matches any agency name variant + ':'
+        for name in agency_names:
+            name_customers = conn.execute("""
+                SELECT
+                    c.customer_id,
+                    c.normalized_name as customer_name,
+                    c.sector_id,
+                    s.sector_name,
+                    COALESCE((SELECT SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
+                        THEN sp.gross_rate ELSE 0 END) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as revenue_via_agency,
+                    COALESCE((SELECT COUNT(*) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as spot_count,
+                    (SELECT MAX(sp.air_date) FROM spots sp WHERE sp.customer_id = c.customer_id) as last_active
+                FROM customers c
+                LEFT JOIN sectors s ON c.sector_id = s.sector_id
+                WHERE c.is_active = 1
+                  AND c.normalized_name LIKE ? || ':%'
+            """, [name]).fetchall()
 
-        for c in name_customers:
-            if c["customer_id"] not in seen_ids:
-                result_customers.append(dict(c))
+            for c in name_customers:
+                if c["customer_id"] not in seen_ids:
+                    result_customers.append(dict(c))
+                    seen_ids.add(c["customer_id"])
 
         # Sort by revenue descending
         result_customers.sort(key=lambda x: -(x.get("revenue_via_agency") or 0))
