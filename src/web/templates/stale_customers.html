@@ -78,6 +78,10 @@
   .btn-confirm{background:var(--nord11);color:#fff}
   .btn-confirm:hover{background:#a54e56}
   .btn-confirm:disabled{opacity:0.5;cursor:not-allowed}
+  .btn-bulk-deactivate{padding:8px 16px;border-radius:6px;cursor:pointer;border:1px solid var(--nord11);background:#fff;font-size:14px;color:var(--nord11);font-weight:500}
+  .btn-bulk-deactivate:hover{background:#fee2e2}
+  .btn-bulk-deactivate:disabled{opacity:0.5;cursor:not-allowed}
+  .bulk-entity-list{max-height:240px;overflow-y:auto;margin:12px 0;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;line-height:1.6}
 
   /* Info Modal */
   .info-btn{width:28px;height:28px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
@@ -138,6 +142,7 @@
     <input type="checkbox" id="filter-inactive"> Show Deactivated
   </label>
   <button onclick="loadAll()">Refresh</button>
+  <button class="btn-bulk-deactivate" onclick="window._stale.bulkDeactivate()" title="Deactivate all entities 3+ years old with zero revenue">Bulk Deactivate</button>
   <button class="info-btn" onclick="document.getElementById('info-modal').classList.add('active')" title="About this report">?</button>
   <span class="count" id="entity-count"></span>
 </div>
@@ -224,6 +229,31 @@
     </div>
   </div>
 </div>
+<!-- Bulk Deactivation Modal -->
+<div class="modal-overlay" id="bulk-deactivate-modal">
+  <div class="deactivate-modal">
+    <div class="modal-header">
+      <h3>Bulk Deactivate</h3>
+      <button class="modal-close" onclick="window._stale.closeBulkModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="bulk-loading" style="text-align:center;padding:20px;color:#64748b">Scanning entities...</div>
+      <div id="bulk-preview" style="display:none">
+        <p style="margin:0 0 8px;font-size:14px">This will deactivate <strong id="bulk-count">0</strong> entities that are <strong>3+ years old</strong> with <strong>zero revenue</strong>.</p>
+        <div class="bulk-entity-list" id="bulk-entity-list"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="window._stale.closeBulkModal()">Cancel</button>
+          <button class="btn-confirm" id="btn-confirm-bulk" onclick="window._stale.confirmBulkDeactivate()">Deactivate All</button>
+        </div>
+      </div>
+      <div id="bulk-empty" style="display:none;text-align:center;padding:20px">
+        <p style="color:#64748b;margin:0 0 12px">No entities match the bulk deactivation criteria<br>(3+ years old, zero revenue) with current filters.</p>
+        <button class="btn-cancel" onclick="window._stale.closeBulkModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -335,6 +365,15 @@
     }).join('');
   }
 
+  function getBulkParams() {
+    return new URLSearchParams({
+      type: document.getElementById('filter-type').value,
+      category: document.getElementById('filter-category').value,
+      threshold: document.getElementById('filter-threshold').value,
+      sector_id: document.getElementById('filter-sector').value,
+    });
+  }
+
   window._stale = {
     openDeactivate: function(entityType, entityId, entityName, spots, revenue) {
       pendingDeactivation = { entityType, entityId, entityName };
@@ -344,6 +383,68 @@
       document.getElementById('deactivate-reason').value = '';
       document.getElementById('deactivate-modal').classList.add('active');
       document.getElementById('deactivate-reason').focus();
+    },
+
+    bulkDeactivate: function() {
+      const modal = document.getElementById('bulk-deactivate-modal');
+      document.getElementById('bulk-loading').style.display = 'block';
+      document.getElementById('bulk-preview').style.display = 'none';
+      document.getElementById('bulk-empty').style.display = 'none';
+      modal.classList.add('active');
+
+      fetch('/api/stale-customers/bulk-deactivate?' + getBulkParams(), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ dry_run: true })
+      })
+      .then(r => r.json())
+      .then(d => {
+        document.getElementById('bulk-loading').style.display = 'none';
+        if (d.count === 0) {
+          document.getElementById('bulk-empty').style.display = 'block';
+          return;
+        }
+        document.getElementById('bulk-count').textContent = d.count;
+        document.getElementById('bulk-entity-list').innerHTML =
+          d.entities.map(n => '<div>' + n + '</div>').join('');
+        document.getElementById('bulk-preview').style.display = 'block';
+      })
+      .catch(e => {
+        document.getElementById('bulk-loading').style.display = 'none';
+        alert('Error: ' + e);
+        modal.classList.remove('active');
+      });
+    },
+
+    confirmBulkDeactivate: function() {
+      const btn = document.getElementById('btn-confirm-bulk');
+      btn.disabled = true;
+      btn.textContent = 'Deactivating...';
+
+      fetch('/api/stale-customers/bulk-deactivate?' + getBulkParams(), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ dry_run: false })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          window._stale.closeBulkModal();
+          loadAll();
+          alert('Successfully deactivated ' + d.deactivated_count + ' entities.');
+        } else {
+          alert('Error: ' + (d.error || 'Unknown error'));
+        }
+      })
+      .catch(e => alert('Request failed: ' + e))
+      .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Deactivate All';
+      });
+    },
+
+    closeBulkModal: function() {
+      document.getElementById('bulk-deactivate-modal').classList.remove('active');
     }
   };
 
@@ -410,6 +511,9 @@
   });
   document.getElementById('info-modal').addEventListener('click', function(e) {
     if (e.target === this) this.classList.remove('active');
+  });
+  document.getElementById('bulk-deactivate-modal').addEventListener('click', function(e) {
+    if (e.target === this) window._stale.closeBulkModal();
   });
 
   // Init

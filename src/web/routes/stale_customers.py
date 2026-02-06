@@ -525,3 +525,204 @@ def api_deactivate_entity():
         except Exception as e:
             conn.rollback()
             return jsonify({"success": False, "error": str(e)}), 500
+
+
+@stale_customers_bp.route("/api/stale-customers/bulk-deactivate", methods=["POST"])
+def api_bulk_deactivate():
+    """
+    Bulk deactivate entities that are 3+ years old with zero revenue.
+
+    Uses same filter logic as api_stale_entities() to match visible rows,
+    then further filters to: total_revenue == 0 AND created_date > 3 years ago.
+
+    JSON body:
+        dry_run: bool (default true) - preview only, no changes
+    Query params: same as /entities (type, category, threshold, sector_id)
+    """
+    data = request.get_json() or {}
+    dry_run = data.get("dry_run", True)
+
+    entity_type = request.args.get("type", "all")
+    category = request.args.get("category", "all")
+    threshold = request.args.get("threshold", "2", type=str)
+    sector_filter = request.args.get("sector_id", "")
+
+    try:
+        threshold_years = int(threshold)
+    except ValueError:
+        threshold_years = 2
+
+    cutoff = f"{date.today().year - threshold_years}-01-01"
+    age_cutoff = f"{date.today().year - 3}-01-01"
+    candidates = []
+
+    with _db_ro() as conn:
+        # --- Build metrics lookups (same as api_stale_entities) ---
+        customer_metrics = {}
+        for row in conn.execute("""
+            SELECT customer_id,
+                   COUNT(*) as spot_count,
+                   SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
+                       THEN gross_rate ELSE 0 END) as total_revenue,
+                   MAX(air_date) as last_active
+            FROM spots WHERE customer_id IS NOT NULL
+            GROUP BY customer_id
+        """).fetchall():
+            customer_metrics[row["customer_id"]] = {
+                "spot_count": row["spot_count"],
+                "total_revenue": float(row["total_revenue"] or 0),
+                "last_active": row["last_active"],
+            }
+
+        agency_metrics = {}
+        for row in conn.execute("""
+            SELECT agency_id,
+                   COUNT(*) as spot_count,
+                   SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
+                       THEN gross_rate ELSE 0 END) as total_revenue,
+                   MAX(air_date) as last_active
+            FROM spots WHERE agency_id IS NOT NULL
+            GROUP BY agency_id
+        """).fetchall():
+            agency_metrics[row["agency_id"]] = {
+                "spot_count": row["spot_count"],
+                "total_revenue": float(row["total_revenue"] or 0),
+                "last_active": row["last_active"],
+            }
+
+        # --- Collect qualifying entities ---
+        if entity_type in ("all", "customer"):
+            for c in conn.execute("""
+                SELECT customer_id as entity_id, 'customer' as entity_type,
+                       normalized_name as entity_name, sector_id, created_date
+                FROM customers
+                WHERE is_active = 1
+            """).fetchall():
+                row = dict(c)
+                cid = row["entity_id"]
+                metrics = customer_metrics.get(cid, {})
+                spot_count = metrics.get("spot_count", 0)
+                total_revenue = metrics.get("total_revenue", 0)
+                last_active = metrics.get("last_active")
+
+                # Must be stale or zero-spot
+                if spot_count == 0:
+                    cat = "zero_spot"
+                elif last_active and last_active < cutoff:
+                    cat = "stale"
+                else:
+                    continue
+
+                if category != "all" and cat != category:
+                    continue
+
+                # Bulk criteria: zero revenue AND created 3+ years ago
+                if total_revenue != 0:
+                    continue
+                if not row["created_date"] or row["created_date"] >= age_cutoff:
+                    continue
+
+                # Sector filter
+                if sector_filter:
+                    try:
+                        if row.get("sector_id") != int(sector_filter):
+                            continue
+                    except ValueError:
+                        pass
+
+                candidates.append({
+                    "entity_type": "customer",
+                    "entity_id": cid,
+                    "entity_name": row["entity_name"],
+                    "category": cat,
+                    "created_date": row["created_date"],
+                })
+
+        if entity_type in ("all", "agency"):
+            for a in conn.execute("""
+                SELECT agency_id as entity_id, 'agency' as entity_type,
+                       agency_name as entity_name, created_date
+                FROM agencies
+                WHERE is_active = 1
+            """).fetchall():
+                row = dict(a)
+                aid = row["entity_id"]
+                metrics = agency_metrics.get(aid, {})
+                spot_count = metrics.get("spot_count", 0)
+                total_revenue = metrics.get("total_revenue", 0)
+                last_active = metrics.get("last_active")
+
+                if spot_count == 0:
+                    cat = "zero_spot"
+                elif last_active and last_active < cutoff:
+                    cat = "stale"
+                else:
+                    continue
+
+                if category != "all" and cat != category:
+                    continue
+
+                if total_revenue != 0:
+                    continue
+                if not row["created_date"] or row["created_date"] >= age_cutoff:
+                    continue
+
+                if sector_filter:
+                    continue  # agencies have no sector; if sector filter is set, skip
+
+                candidates.append({
+                    "entity_type": "agency",
+                    "entity_id": aid,
+                    "entity_name": row["entity_name"],
+                    "category": cat,
+                    "created_date": row["created_date"],
+                })
+
+    if dry_run:
+        return jsonify({
+            "dry_run": True,
+            "count": len(candidates),
+            "entities": [c["entity_name"] for c in candidates],
+        })
+
+    # --- Execute deactivation ---
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    reason = "Bulk deactivate: 3+ years old, zero revenue"
+    deactivated = 0
+
+    with _db_rw() as conn:
+        try:
+            for c in candidates:
+                table = "agencies" if c["entity_type"] == "agency" else "customers"
+                id_col = "agency_id" if c["entity_type"] == "agency" else "customer_id"
+                name_col = "agency_name" if c["entity_type"] == "agency" else "normalized_name"
+
+                entity = conn.execute(
+                    f"SELECT {name_col} as name, notes FROM {table} WHERE {id_col} = ? AND is_active = 1",
+                    [c["entity_id"]]
+                ).fetchone()
+                if not entity:
+                    continue  # already deactivated or missing
+
+                new_notes = (entity["notes"] or "") + f"\n[Deactivated {timestamp}] {reason}"
+                conn.execute(
+                    f"UPDATE {table} SET is_active = 0, notes = ? WHERE {id_col} = ?",
+                    [new_notes, c["entity_id"]]
+                )
+                conn.execute("""
+                    INSERT INTO canon_audit (actor, action, key, value, extra)
+                    VALUES (?, 'DEACTIVATE', ?, ?, ?)
+                """, [
+                    "web_user",
+                    f"{c['entity_type']}:{c['entity_id']}",
+                    entity["name"],
+                    f"reason={reason}"
+                ])
+                deactivated += 1
+
+            conn.commit()
+            return jsonify({"success": True, "deactivated_count": deactivated})
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"success": False, "error": str(e)}), 500
