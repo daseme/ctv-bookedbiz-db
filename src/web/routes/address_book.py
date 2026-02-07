@@ -562,6 +562,8 @@ def api_agency_customers(agency_id):
                 c.normalized_name as customer_name,
                 c.sector_id,
                 s.sector_name,
+                c.po_number,
+                c.edi_billing,
                 SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
                     THEN sp.gross_rate ELSE 0 END) as revenue_via_agency,
                 COUNT(sp.spot_id) as spot_count,
@@ -588,6 +590,8 @@ def api_agency_customers(agency_id):
                     c.normalized_name as customer_name,
                     c.sector_id,
                     s.sector_name,
+                    c.po_number,
+                    c.edi_billing,
                     COALESCE((SELECT SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
                         THEN sp.gross_rate ELSE 0 END) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as revenue_via_agency,
                     COALESCE((SELECT COUNT(*) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as spot_count,
