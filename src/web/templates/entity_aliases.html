@@ -4,6 +4,13 @@
 {% block header_title %}Entity Aliases{% endblock %}
 {% block header_subtitle %}View and manage {{ cfg.label|lower }} aliases{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Data Management</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Entity Aliases</span>
+{% endblock %}
+
 {% block extra_styles %}
 <style>
   .tab-bar{display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid #e2e8f0}

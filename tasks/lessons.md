@@ -243,5 +243,20 @@ app.config['DB_PATH'] = '.data/dev.db'
 
 ---
 
+### Rule 20: Deploy to Dev First, Then Production
+**Context**: Deployed address book enhancements to production first, then couldn't verify dev was working because the dev database had different data (fewer Automotive customers). Appeared broken on dev but was actually a data difference.
+**Pattern**: Deployment order must always be:
+1. Dev: restart `spotops-dev.service`, verify on port 5100
+2. Production: `git pull`, run migrations, restart `ctv-bookedbiz-db.service`, verify on port 8000
+
+**Why it matters**:
+- Dev is the safety net — if something breaks there, production is untouched
+- Data differences between dev.db and production.db can mask or create false failures
+- Always verify the feature works on dev with appropriate test data before touching production
+
+**Action**: Never skip dev verification. If dev data doesn't cover the test case, test with a query that does hit dev data to confirm the code path works.
+
+---
+
 **Last Updated**: 2026-02-06
-**Session Context**: Stale report cleanup, traced full orphan lifecycle through daily update (GUIDE-DAILY-COMMERCIALLOG.md) and monthly close (GUIDE-MONTHLY-CLOSING.md) pipelines.
+**Session Context**: Address book enhancements deployment — search fix appeared broken on dev due to data differences, not code.

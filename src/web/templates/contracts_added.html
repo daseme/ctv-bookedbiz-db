@@ -6,9 +6,11 @@
 
 {% block breadcrumb %}
 <span class="breadcrumb-separator">›</span>
-<a class="breadcrumb-link" href="/reports/ae-dashboard-personal{% if is_admin_or_management and selected_ae %}?ae={{ selected_ae | urlencode }}{% endif %}">My Dashboard</a>
+<span>Reporting</span>
 <span class="breadcrumb-separator">›</span>
-<span class="breadcrumb-current">Contracts added</span>
+<a href="/reports/ae-dashboard-personal{% if is_admin_or_management and selected_ae %}?ae={{ selected_ae | urlencode }}{% endif %}">My Dashboard</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Contracts Added</span>
 {% endblock %}
 
 {% block extra_styles %}

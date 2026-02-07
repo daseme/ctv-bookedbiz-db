@@ -7,7 +7,7 @@
 
 {% block breadcrumb %}
 <span class="breadcrumb-separator">›</span>
-<span class="breadcrumb-link">Analytics</span>
+<span>Reporting</span>
 <span class="breadcrumb-separator">›</span>
 <a href="{{ url_for('pricing.pricing_index', **({'from': selected_from, 'to': selected_to} if selected_from and selected_to else {})) }}" class="breadcrumb-link">Pricing</a>
 {% for crumb in context.breadcrumbs %}

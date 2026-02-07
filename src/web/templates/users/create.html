@@ -5,6 +5,15 @@
 {% block header_title %}Create New User{% endblock %}
 {% block header_subtitle %}Add a new user account to the system{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Admin</span>
+<span class="breadcrumb-separator">›</span>
+<a href="{{ url_for('user_management.list_users') }}">User Management</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Create User</span>
+{% endblock %}
+
 {% block content %}
 <div class="user-form">
     <div style="max-width: 600px; margin: 0 auto;">

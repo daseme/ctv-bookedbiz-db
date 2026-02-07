@@ -5,6 +5,13 @@
 {% block header_title %}{{ title }}{% endblock %}
 {% block header_subtitle %}Enhanced Two-Tiered Sector Analysis (Nord Theme){% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Reporting</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Sector Analysis</span>
+{% endblock %}
+
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/shared/nord-enhanced.css') }}">
 <style>
