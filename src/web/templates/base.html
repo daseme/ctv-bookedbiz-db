@@ -171,36 +171,36 @@
             user-select: none;
         }
         
-        .nav-section.executive .nav-section-label { 
-            color: var(--nord8); 
+        .nav-section.reporting .nav-section-label {
+            color: var(--nord8);
         }
-        .nav-section.operational .nav-section-label { 
-            color: var(--nord14); 
+        .nav-section.datamanagement .nav-section-label {
+            color: var(--nord15);
         }
-        .nav-section.market .nav-section-label { 
-            color: var(--nord15); 
+        .nav-section.budgeting .nav-section-label {
+            color: var(--nord14);
         }
-        .nav-section.admin .nav-section-label { 
-            color: var(--nord11); 
+        .nav-section.admin .nav-section-label {
+            color: var(--nord11);
         }
-        
+
         .nav-section:hover .nav-section-label,
         .nav-section.active .nav-section-label {
             transform: translateY(-1px);
             font-weight: 700;
         }
-        
-        .nav-section.executive:hover .nav-section-label,
-        .nav-section.executive.active .nav-section-label {
+
+        .nav-section.reporting:hover .nav-section-label,
+        .nav-section.reporting.active .nav-section-label {
             border-bottom-color: var(--nord8);
         }
-        .nav-section.operational:hover .nav-section-label,
-        .nav-section.operational.active .nav-section-label {
-            border-bottom-color: var(--nord14);
-        }
-        .nav-section.market:hover .nav-section-label,
-        .nav-section.market.active .nav-section-label {
+        .nav-section.datamanagement:hover .nav-section-label,
+        .nav-section.datamanagement.active .nav-section-label {
             border-bottom-color: var(--nord15);
+        }
+        .nav-section.budgeting:hover .nav-section-label,
+        .nav-section.budgeting.active .nav-section-label {
+            border-bottom-color: var(--nord14);
         }
         .nav-section.admin:hover .nav-section-label,
         .nav-section.admin.active .nav-section-label {
@@ -564,68 +564,92 @@
     <nav class="main-nav">
         <div class="main-nav-container">
             
-            <!-- Executive Section -->
-            <div class="nav-section executive">
-                <div class="nav-section-label">📊 Executive</div>
+            <!-- Reporting Section -->
+            <div class="nav-section reporting">
+                <div class="nav-section-label">📊 Reporting</div>
                 <div class="nav-dropdown">
+                    <a href="/reports/revenue-dashboard-customer" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Customer Revenue Dashboard</div>
+                        <div class="nav-dropdown-item-desc">Interactive customer-level monthly revenue breakdown</div>
+                    </a>
+                    <a href="/reports/ae-dashboard" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">AE Performance Dashboard</div>
+                        <div class="nav-dropdown-item-desc">Account executive performance metrics</div>
+                    </a>
                     <a href="/reports/management-performance" class="nav-dropdown-item featured">
-                        <div class="nav-dropdown-item-title">❄️ Management Report</div>
-                        <div class="nav-dropdown-item-desc">Executive summar</div>
+                        <div class="nav-dropdown-item-title">Management Performance</div>
+                        <div class="nav-dropdown-item-desc">Quarterly performance with budget pacing and YoY</div>
                     </a>
+                    <a href="/reports/monthly/revenue-summary" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Monthly Revenue Summary</div>
+                        <div class="nav-dropdown-item-desc">Monthly revenue overview and trends</div>
+                    </a>
+                    <div class="nav-dropdown-section">
+                        <a href="/reports/report4" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Sector Analysis</div>
+                            <div class="nav-dropdown-item-desc">Sector breakdown and market segmentation</div>
+                        </a>
+                        <a href="/reports/market-analysis" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Language Analysis</div>
+                            <div class="nav-dropdown-item-desc">Language performance by market</div>
+                        </a>
+                        <a href="/pricing" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Pricing</div>
+                            <div class="nav-dropdown-item-desc">Average spot rates across dimensions</div>
+                        </a>
+                        <a href="/pricing/trends/" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Pricing Trends</div>
+                            <div class="nav-dropdown-item-desc">Rate trends over time</div>
+                        </a>
+                        <a href="/length-analysis/" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Length Analysis</div>
+                            <div class="nav-dropdown-item-desc">Average spot rates by spot length</div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Management Section -->
+            <div class="nav-section datamanagement">
+                <div class="nav-section-label">🔧 Data Management</div>
+                <div class="nav-dropdown">
+                    <a href="/entity-resolution" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Entity Resolution</div>
+                        <div class="nav-dropdown-item-desc">Resolve unmatched advertisers and agencies</div>
+                    </a>
+                    <a href="/entity-aliases" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Entity Aliases</div>
+                        <div class="nav-dropdown-item-desc">Manage aliases, merge duplicates, rename entities</div>
+                    </a>
+                    <div class="nav-dropdown-section">
+                        <a href="/address-book" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Address Book</div>
+                            <div class="nav-dropdown-item-desc">Contacts and addresses directory</div>
+                        </a>
+                        <a href="/stale-customers" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Stale Customer Report</div>
+                            <div class="nav-dropdown-item-desc">Review zero-spot and inactive entities</div>
+                        </a>
+                        <a href="/reports/customer-sector-manager" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Customer Sector Manager</div>
+                            <div class="nav-dropdown-item-desc">Manage customer sector assignments</div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Budgeting Section -->
+            <div class="nav-section budgeting">
+                <div class="nav-section-label">💰 Budgeting</div>
+                <div class="nav-dropdown">
                     <a href="/planning/" class="nav-dropdown-item featured">
-                        <div class="nav-dropdown-item-title">❄️ Revenue Forecast Tool</div>
-                        <div class="nav-dropdown-item-desc">Revenue update</div>
+                        <div class="nav-dropdown-item-title">Planning Hub</div>
+                        <div class="nav-dropdown-item-desc">Forecasting, goal setting, and strategic planning</div>
                     </a>
-                </div>
-            </div>
-
-            <!-- Operational Section -->
-            <div class="nav-section operational">
-                <div class="nav-section-label">📈 Operational</div>
-                <div class="nav-dropdown">
-                    <a href="/report5" class="nav-dropdown-item featured">
-                        <div class="nav-dropdown-item-title">Monthly Revenue Dashboard</div>
-                        <div class="nav-dropdown-item-desc">Interactive customer-level revenue breakdown with filtering</div>
+                    <a href="/planning/budget" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Budget Management</div>
+                        <div class="nav-dropdown-item-desc">Budget planning with version control and tracking</div>
                     </a>
-                    <div class="nav-dropdown-section">
-                        <a href="/reports/monthly/revenue-summary" class="nav-dropdown-item featured">
-                            <div class="nav-dropdown-item-title">❄️ Monthly Revenue Summary</div>
-                            <div class="nav-dropdown-item-desc">what this is</div>
-                        </a>
-                        <a href="/report2-nord" class="nav-dropdown-item featured">
-                            <div class="nav-dropdown-item-title">❄️ Expectation Tracking</div>
-                            <div class="nav-dropdown-item-desc">what this is</div>
-                        </a>
-                        <a href="/report3-nord" class="nav-dropdown-item featured">
-                            <div class="nav-dropdown-item-title">❄️ Performance Story</div>
-                            <div class="nav-dropdown-item-desc">Performance narrative</div>
-                        </a>
-                        <a href="/report4-nord" class="nav-dropdown-item featured">
-                            <div class="nav-dropdown-item-title">❄️ Sector Analysis</div>
-                            <div class="nav-dropdown-item-desc">Sector breakdown</div>
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Market Section -->
-            <div class="nav-section market">
-                <div class="nav-section-label">🌍 Market</div>
-                <div class="nav-dropdown">
-                    <a href="/reports/language-blocks" class="nav-dropdown-item featured">
-                        <div class="nav-dropdown-item-title">❄️ Language Block Performance</div>
-                        <div class="nav-dropdown-item-desc">Comprehensive language block analytics</div>
-                    </a>
-                    <div class="nav-dropdown-section">
-                        <a href="/report6-nord" class="nav-dropdown-item featured">
-                            <div class="nav-dropdown-item-title">❄️ Language Analysis</div>
-                            <div class="nav-dropdown-item-desc">Language analysis</div>
-                        </a>
-                        <a href="/report7-nord" class="nav-dropdown-item featured">
-                            <div class="nav-dropdown-item-title">❄️ Market-Language Analysis</div>
-                            <div class="nav-dropdown-item-desc">Market-language cross-analysis</div>
-                        </a>
-                    </div>
                 </div>
             </div>
 
@@ -633,20 +657,14 @@
             <div class="nav-section admin">
                 <div class="nav-section-label">⚙️ Admin</div>
                 <div class="nav-dropdown">
-                    <a href="/planning/budget" class="nav-dropdown-item featured">
-                        <div class="nav-dropdown-item-title">❄️ Budget Management</div>
-                        <div class="nav-dropdown-item-desc">Budget data entry</div>
+                    <a href="/users/" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">User Management</div>
+                        <div class="nav-dropdown-item-desc">Manage user accounts and permissions</div>
                     </a>
-                    <div class="nav-dropdown">
-                    <a href="/reports/customer-sector-manager" class="nav-dropdown-item featured">
-                        <div class="nav-dropdown-item-title">❄️ Customer & Sector Management</div>
-                        <div class="nav-dropdown-item-desc">Complete customer database management</div>
-                    </a>
-                    </div>
                     <div class="nav-dropdown-section">
-                        <a href="/users/" class="nav-dropdown-item featured">
-                            <div class="nav-dropdown-item-title">👥 User Management</div>
-                            <div class="nav-dropdown-item-desc">Manage user accounts and permissions</div>
+                        <a href="/health" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">System Health</div>
+                            <div class="nav-dropdown-item-desc">Monitor system status and diagnostics</div>
                         </a>
                     </div>
                 </div>
@@ -700,27 +718,35 @@
             
             // Map URLs to navigation sections
             const urlToSection = {
-                '/management-report-web': 'executive',
-                '/pipeline-revenue': 'executive',
-                '/report1-nord': 'operational',
-                '/report2-nord': 'operational', 
-                '/report3-nord': 'operational',
-                '/report4-nord': 'operational',
-                '/report5': 'operational',
-                '/report6-nord': 'market',
-                '/report7-nord': 'market',
-                '/budget-management': 'admin',
-                '/sector-management': 'admin'
+                '/reports/revenue-dashboard-customer': 'reporting',
+                '/reports/ae-dashboard': 'reporting',
+                '/reports/ae-dashboard-personal': 'reporting',
+                '/reports/management-performance': 'reporting',
+                '/reports/monthly/revenue-summary': 'reporting',
+                '/reports/report4': 'reporting',
+                '/reports/market-analysis': 'reporting',
+                '/pricing': 'reporting',
+                '/pricing/trends/': 'reporting',
+                '/length-analysis/': 'reporting',
+                '/entity-resolution': 'datamanagement',
+                '/entity-aliases': 'datamanagement',
+                '/address-book': 'datamanagement',
+                '/stale-customers': 'datamanagement',
+                '/reports/customer-sector-manager': 'datamanagement',
+                '/planning/': 'budgeting',
+                '/planning/budget': 'budgeting',
+                '/users/': 'admin',
+                '/health': 'admin'
             };
-            
+
             const activeSection = urlToSection[currentPath];
             if (activeSection) {
                 const section = document.querySelector(`.nav-section.${activeSection} .nav-section-label`);
                 if (section) {
-                    section.style.borderBottomColor = section.parentElement.classList.contains('executive') ? '#1e40af' :
-                                                    section.parentElement.classList.contains('operational') ? '#059669' :
-                                                    section.parentElement.classList.contains('market') ? '#7c3aed' :
-                                                    section.parentElement.classList.contains('admin') ? '#dc2626' : 'transparent';
+                    section.style.borderBottomColor = section.parentElement.classList.contains('reporting') ? 'var(--nord8)' :
+                                                    section.parentElement.classList.contains('datamanagement') ? 'var(--nord15)' :
+                                                    section.parentElement.classList.contains('budgeting') ? 'var(--nord14)' :
+                                                    section.parentElement.classList.contains('admin') ? 'var(--nord11)' : 'transparent';
                     section.style.fontWeight = '700';
                 }
                 
@@ -749,7 +775,7 @@
                 // Alt + D for Revenue Dashboard
                 if (e.altKey && e.key === 'd') {
                     e.preventDefault();
-                    window.location.href = '/report5';
+                    window.location.href = '/reports/revenue-dashboard-customer';
                 }
             });
             
@@ -791,17 +817,29 @@
             if (!query) return;
             
             const searchMap = {
-                'pipeline': '/pipeline-revenue', 
-                'monthly': '/report1-nord',
-                'dashboard': '/report5',
-                'expectation': '/report2-nord',
-                'performance': '/report3-nord',
-                'sector': '/report4-nord',
-                'language': '/report6-nord',
-                'market': '/report7-nord',
-                'budget': '/budget-management'
+                'customer': '/reports/revenue-dashboard-customer',
+                'revenue': '/reports/revenue-dashboard-customer',
+                'dashboard': '/reports/revenue-dashboard-customer',
+                'ae': '/reports/ae-dashboard',
+                'management': '/reports/management-performance',
+                'performance': '/reports/management-performance',
+                'monthly': '/reports/monthly/revenue-summary',
+                'summary': '/reports/monthly/revenue-summary',
+                'sector': '/reports/report4',
+                'language': '/reports/market-analysis',
+                'market': '/reports/market-analysis',
+                'pricing': '/pricing',
+                'length': '/length-analysis/',
+                'resolution': '/entity-resolution',
+                'alias': '/entity-aliases',
+                'address': '/address-book',
+                'stale': '/stale-customers',
+                'budget': '/planning/budget',
+                'planning': '/planning/',
+                'users': '/users/',
+                'health': '/health'
             };
-            
+
             const lowerQuery = query.toLowerCase();
             for (const [key, url] of Object.entries(searchMap)) {
                 if (key.includes(lowerQuery) || lowerQuery.includes(key)) {
@@ -809,8 +847,8 @@
                     return;
                 }
             }
-            
-            alert('No matching report found. Try: management, pipeline, monthly, dashboard, budget, etc.');
+
+            alert('No matching report found. Try: dashboard, ae, management, monthly, sector, budget, etc.');
         }
     </script>
     {% block extra_js %}{% endblock %}
