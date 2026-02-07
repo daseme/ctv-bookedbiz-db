@@ -336,18 +336,21 @@
         </div>
       </div>
 
-      <!-- Billing Info (customers only) -->
-      <div class="detail-section" id="billing-section" style="display:none">
-        <h3><span class="icon">💰</span> Billing Info</h3>
-        <div class="billing-row">
-          <div class="form-field">
-            <label>PO Number</label>
-            <input type="text" id="detail-po-number" placeholder="Purchase order number">
-          </div>
-          <div class="edi-toggle">
-            <input type="checkbox" id="detail-edi-billing">
-            <label for="detail-edi-billing">EDI Billing</label>
-          </div>
+      <!-- EDI Billing (agencies only) -->
+      <div class="detail-section" id="edi-section" style="display:none">
+        <h3><span class="icon">💰</span> Billing</h3>
+        <div class="edi-toggle">
+          <input type="checkbox" id="detail-edi-billing">
+          <label for="detail-edi-billing">EDI Billing</label>
+        </div>
+      </div>
+
+      <!-- PO Number (customers only) -->
+      <div class="detail-section" id="po-section" style="display:none">
+        <h3><span class="icon">💰</span> Billing</h3>
+        <div class="form-field" style="max-width:300px">
+          <label>PO Number</label>
+          <input type="text" id="detail-po-number" placeholder="Purchase order number">
         </div>
       </div>
 
@@ -880,14 +883,17 @@
     // AE
     document.getElementById('detail-ae').value = currentEntity.assigned_ae || '';
 
-    // Billing Info (customers only)
-    const billingSection = document.getElementById('billing-section');
-    if (type === 'customer') {
-      billingSection.style.display = 'block';
-      document.getElementById('detail-po-number').value = currentEntity.po_number || '';
+    // EDI Billing (agencies only), PO Number (customers only)
+    const ediSection = document.getElementById('edi-section');
+    const poSection = document.getElementById('po-section');
+    if (type === 'agency') {
+      ediSection.style.display = 'block';
+      poSection.style.display = 'none';
       document.getElementById('detail-edi-billing').checked = !!currentEntity.edi_billing;
     } else {
-      billingSection.style.display = 'none';
+      ediSection.style.display = 'none';
+      poSection.style.display = 'block';
+      document.getElementById('detail-po-number').value = currentEntity.po_number || '';
     }
 
     // Markets
@@ -1353,14 +1359,23 @@
         body: JSON.stringify({ assigned_ae: document.getElementById('detail-ae').value || null })
       });
 
-      // Save billing info (customers only)
-      if (currentEntity.entity_type === 'customer') {
+      // Save billing info: EDI for agencies, PO for customers
+      if (currentEntity.entity_type === 'agency') {
+        await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            po_number: null,
+            edi_billing: document.getElementById('detail-edi-billing').checked
+          })
+        });
+      } else {
         await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             po_number: document.getElementById('detail-po-number').value.trim() || null,
-            edi_billing: document.getElementById('detail-edi-billing').checked
+            edi_billing: false
           })
         });
       }
