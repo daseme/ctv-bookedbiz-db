@@ -1,0 +1,840 @@
+{% extends "base.html" %}
+
+{% block title %}Entity Aliases - SpotOps{% endblock %}
+{% block header_title %}Entity Aliases{% endblock %}
+{% block header_subtitle %}View and manage {{ cfg.label|lower }} aliases{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .tab-bar{display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid #e2e8f0}
+  .tab-bar a{padding:12px 24px;font-weight:600;font-size:14px;color:#64748b;text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+  .tab-bar a:hover{color:#334155;background:#f8fafc}
+  .tab-bar a.active{color:#0ea5e9;border-bottom-color:#0ea5e9}
+
+  .filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+  .filter-bar input,.filter-bar select{padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px}
+  .filter-bar input[type="text"]{width:280px}
+  .filter-bar button{padding:8px 16px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0;background:#fff}
+  .filter-bar button:hover{background:#f8fafc}
+  .filter-bar .count{margin-left:auto;font-size:13px;color:#64748b}
+
+  .alias-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+  .alias-table th{background:#f8fafc;padding:12px;text-align:left;font-weight:600;font-size:13px;border-bottom:1px solid #e2e8f0}
+  .alias-table th.sortable{cursor:pointer;user-select:none}
+  .alias-table th.sortable:hover{background:#f1f5f9}
+  .alias-table th .sort-arrow{margin-left:4px;color:#94a3b8;font-size:11px}
+  .alias-table th.sort-asc .sort-arrow::after{content:'▲'}
+  .alias-table th.sort-desc .sort-arrow::after{content:'▼'}
+  .alias-table th:not(.sort-asc):not(.sort-desc) .sort-arrow::after{content:'⇅'}
+  .alias-table td{padding:12px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+  .alias-table tr:hover{background:#fafafa}
+  .alias-table tr.expanded{background:#f0f9ff}
+
+  .entity-name{font-weight:600;color:#0f172a}
+  .alias-badge{display:inline-block;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600}
+  .alias-badge.zero{background:#f1f5f9;color:#64748b}
+
+  .revenue{text-align:right;font-weight:500}
+  .meta{font-size:12px;color:#94a3b8}
+
+  .expand-btn{background:none;border:none;cursor:pointer;font-size:16px;color:#64748b;padding:4px 8px}
+  .expand-btn:hover{color:#0ea5e9}
+
+  .detail-row{display:none}
+  .detail-row.active{display:table-row}
+  .detail-row td{padding:0;background:#f8fafc}
+  .detail-panel{padding:16px 24px;border-top:1px solid #e2e8f0}
+
+  .detail-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .detail-header h3{margin:0;font-size:15px;font-weight:600;color:#334155;display:flex;align-items:center;gap:8px}
+  .detail-header .detail-stats{font-size:13px;color:#64748b}
+  .rename-input{padding:4px 8px;border:1px solid #0ea5e9;border-radius:4px;font-size:15px;font-weight:600;width:320px}
+  .rename-input:focus{outline:none;border-color:#0284c7}
+  .btn-rename{padding:4px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;color:#64748b;font-size:12px;cursor:pointer}
+  .btn-rename:hover{background:#f8fafc;color:#334155}
+  .btn-save-rename{padding:4px 10px;background:#0ea5e9;border:1px solid #0284c7;border-radius:4px;color:#fff;font-size:12px;cursor:pointer}
+  .btn-save-rename:hover{background:#0284c7}
+  .btn-cancel-rename{padding:4px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;color:#64748b;font-size:12px;cursor:pointer}
+
+  .alias-list{display:flex;flex-direction:column;gap:8px}
+  .alias-item{display:flex;align-items:center;gap:16px;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px}
+  .alias-item:hover{border-color:#cbd5e1}
+  .alias-item .name{flex:1;font-family:ui-monospace,monospace;font-size:13px;color:#334155}
+  .alias-item .stats{display:flex;gap:16px;font-size:12px;color:#64748b}
+  .alias-item .stats span{white-space:nowrap}
+  .alias-item .delete-btn{background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;font-size:14px}
+  .alias-item .delete-btn:hover{color:#ef4444}
+
+  .no-aliases{color:#94a3b8;font-style:italic;font-size:13px}
+  .empty{text-align:center;padding:40px;color:#64748b}
+
+  .detail-actions{margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;gap:12px;align-items:center}
+  .btn-merge{padding:8px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;color:#92400e;font-size:13px;cursor:pointer;font-weight:500}
+  .btn-merge:hover{background:#fde68a}
+  .merge-form{display:none;align-items:flex-start;gap:10px;flex:1;flex-wrap:wrap}
+  .merge-form.active{display:flex}
+  .merge-form input{padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;width:260px;font-size:13px}
+  .merge-form .btn-confirm{padding:8px 14px;background:#ef4444;border:1px solid #dc2626;border-radius:6px;color:#fff;font-size:13px;cursor:pointer}
+  .merge-form .btn-confirm:hover{background:#dc2626}
+  .merge-form .btn-cancel{padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;color:#64748b;font-size:13px;cursor:pointer}
+  .merge-target-info{font-size:12px;color:#64748b;margin-left:8px}
+  .merge-results{width:100%;margin-top:8px;display:none}
+  .merge-results.active{display:block}
+  .merge-result-item{padding:8px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between}
+  .merge-result-item:hover{background:#f0f9ff;border-color:#0ea5e9}
+  .merge-result-item.selected{background:#e0f2fe;border-color:#0ea5e9}
+  .merge-result-item .rev{color:#64748b;font-size:12px}
+
+  .address-section{margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0}
+  .address-section h4{margin:0 0 8px 0;font-size:13px;font-weight:600;color:#64748b;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .address-section h4:hover{color:#334155}
+  .address-section .toggle-icon{font-size:11px}
+  .address-form{display:none;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .address-form.active{display:flex}
+  .address-form .field{display:flex;flex-direction:column;gap:4px}
+  .address-form label{font-size:11px;color:#64748b}
+  .address-form input{padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px}
+  .address-form input.wide{width:280px}
+  .address-form input.medium{width:140px}
+  .address-form input.small{width:80px}
+  .address-form .btn-save-address{padding:6px 12px;background:#0ea5e9;border:1px solid #0284c7;border-radius:4px;color:#fff;font-size:12px;cursor:pointer;align-self:flex-end}
+  .address-form .btn-save-address:hover{background:#0284c7}
+
+  .contacts-section{margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0}
+  .contacts-section h4{margin:0 0 8px 0;font-size:13px;font-weight:600;color:#64748b;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .contacts-section h4:hover{color:#334155}
+  .contacts-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+  .contact-item{display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px}
+  .contact-item:hover{border-color:#cbd5e1}
+  .contact-item .contact-info{flex:1;display:flex;flex-direction:column;gap:2px}
+  .contact-item .contact-name{font-weight:600;font-size:13px;color:#0f172a}
+  .contact-item .contact-title{font-size:12px;color:#64748b}
+  .contact-item .contact-details{font-size:12px;color:#334155;display:flex;gap:12px;flex-wrap:wrap}
+  .contact-item .primary-badge{background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:6px}
+  .contact-item .contact-actions{display:flex;gap:4px}
+  .contact-item .contact-actions button{background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px;font-size:12px}
+  .contact-item .contact-actions button:hover{color:#0ea5e9}
+  .contact-item .contact-actions button.delete-contact:hover{color:#ef4444}
+  .add-contact-form{display:none;flex-wrap:wrap;gap:8px;margin-top:8px;padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px}
+  .add-contact-form.active{display:flex}
+  .add-contact-form input{padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px}
+  .add-contact-form input.name-field{width:180px}
+  .add-contact-form input.title-field{width:140px}
+  .add-contact-form input.email-field{width:200px}
+  .add-contact-form input.phone-field{width:140px}
+  .add-contact-form .form-actions{display:flex;gap:6px;align-items:center}
+  .add-contact-form .btn-add{padding:6px 12px;background:#0ea5e9;border:1px solid #0284c7;border-radius:4px;color:#fff;font-size:12px;cursor:pointer}
+  .add-contact-form .btn-cancel-add{padding:6px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;color:#64748b;font-size:12px;cursor:pointer}
+  .btn-show-add-contact{padding:6px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;color:#64748b;font-size:12px;cursor:pointer;margin-top:8px}
+  .btn-show-add-contact:hover{background:#f8fafc;color:#334155}
+  .no-contacts{color:#94a3b8;font-style:italic;font-size:13px}
+
+  /* Info Modal */
+  .info-btn{width:28px;height:28px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .info-btn:hover{background:#f0f9ff;border-color:#0ea5e9;color:#0ea5e9}
+  .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center}
+  .modal-overlay.active{display:flex}
+  .info-modal{background:#fff;border-radius:12px;width:100%;max-width:560px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .info-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff}
+  .info-modal .modal-header h3{margin:0;font-size:18px;color:#0369a1}
+  .info-modal .modal-body{padding:24px;max-height:70vh;overflow-y:auto}
+  .info-modal .info-section{margin-bottom:20px}
+  .info-modal .info-section:last-child{margin-bottom:0}
+  .info-modal .info-section h4{margin:0 0 6px;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .info-modal .info-section p{margin:0;font-size:13px;color:#475569;line-height:1.5}
+  .info-modal .info-section ul{margin:6px 0 0;padding-left:20px;font-size:13px;color:#475569;line-height:1.7}
+  .info-modal .modal-close{background:none;border:none;font-size:24px;color:#94a3b8;cursor:pointer;padding:4px 8px}
+  .info-modal .modal-close:hover{color:#334155}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tab-bar">
+  <a href="/entity-aliases?tab=advertiser" class="{{ 'active' if tab == 'advertiser' }}">Direct Advertisers</a>
+  <a href="/entity-aliases?tab=agency" class="{{ 'active' if tab == 'agency' }}">Agencies</a>
+</div>
+
+<div class="filter-bar">
+  <input type="text" id="search" placeholder="{{ cfg.search_placeholder_aliases }}">
+  <select id="min-aliases">
+    <option value="0">All {{ cfg.label_plural|lower }}</option>
+    <option value="1" selected>Has aliases (1+)</option>
+    <option value="2">Multiple aliases (2+)</option>
+    <option value="5">Complex (5+)</option>
+  </select>
+  <button id="refresh">Refresh</button>
+  <button class="info-btn" onclick="document.getElementById('info-modal').classList.add('active')" title="About this page">?</button>
+  <span class="count" id="count"></span>
+</div>
+
+<table class="alias-table">
+  <thead>
+    <tr>
+      <th style="width:40px"></th>
+      <th class="sortable" data-sort="{{ cfg.name_field }}">{{ cfg.label }} Name<span class="sort-arrow"></span></th>
+      <th class="sortable" data-sort="alias_count" style="text-align:center">Aliases<span class="sort-arrow"></span></th>
+      <th class="sortable" data-sort="total_revenue" style="text-align:right">Total Revenue<span class="sort-arrow"></span></th>
+      <th class="sortable" data-sort="spot_count" style="text-align:right">Spots<span class="sort-arrow"></span></th>
+      <th class="sortable" data-sort="last_seen">Active Range<span class="sort-arrow"></span></th>
+    </tr>
+  </thead>
+  <tbody id="tbody">
+    <tr><td colspan="6" class="empty">Loading...</td></tr>
+  </tbody>
+</table>
+
+<!-- Info Modal -->
+<div class="modal-overlay" id="info-modal">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>About Entity Aliases</h3>
+      <button class="modal-close" onclick="document.getElementById('info-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What is this page?</h4>
+        <p>Manage the canonical names and aliases for advertisers and agencies. Each entity can have multiple aliases (variant spellings, old names) that map to a single canonical record. Use it to rename, merge duplicates, delete stale aliases, and manage contacts and addresses.</p>
+      </div>
+      {% if tab == 'advertiser' %}
+      <div class="info-section">
+        <h4>Why are there only ~40 advertisers?</h4>
+        <p>This tab shows <strong>direct advertisers only</strong> &mdash; customers who buy airtime without going through an agency (or who have at least some direct spots). Two categories of customers are excluded:</p>
+        <ul>
+          <li><strong>Agency-represented clients</strong> &mdash; customers whose spots are 100% placed through an agency. These are managed under their parent agency instead.</li>
+          <li><strong>Compound names</strong> (e.g., "A Partnership:CDPH") &mdash; these are agency:advertiser pairs that appear as sub-entries under the agency.</li>
+        </ul>
+        <p>To see the full picture of a given agency's clients, switch to the <strong>Agencies</strong> tab and expand the agency row &mdash; its customer count and revenue reflect all represented clients.</p>
+      </div>
+      {% else %}
+      <div class="info-section">
+        <h4>What do the agency stats show?</h4>
+        <p>Expanding an agency row shows the number of customers it represents, total revenue across all its clients, and total spot count. Aliases here are the variant names used for the agency itself in the raw data (not its client list).</p>
+      </div>
+      {% endif %}
+      <div class="info-section">
+        <h4>Aliases filter</h4>
+        <p>The default filter <strong>"Has aliases (1+)"</strong> hides entities with zero aliases. Switch to <strong>"All {{ cfg.label_plural|lower }}"</strong> to see every active entity, including those whose canonical name matches the raw data exactly (no alias needed).</p>
+      </div>
+      <div class="info-section">
+        <h4>Merging entities</h4>
+        <p>Expand an entity row and click <strong>"Merge into another..."</strong> to combine two records. All spots, aliases, and metadata from the source are moved to the target. The source entity is deactivated. This is irreversible &mdash; double-check before confirming.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const CFG = {{ cfg | tojson }};
+  const API = CFG.api_prefix_aliases;
+  const SEARCH_API = CFG.api_prefix_resolution;
+  let expandedId = null;
+  let currentItems = [];
+  let sortField = 'alias_count';
+  let sortDir = 'desc';
+
+  // ===== UTILITY FUNCTIONS =====
+  function esc(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function updateSortIndicators() {
+    document.querySelectorAll('.alias-table th.sortable').forEach(th => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.dataset.sort === sortField) {
+        th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+  }
+
+  // ===== RENDER FUNCTIONS =====
+  function renderRow(item) {
+    const entityId = item[CFG.id_field];
+    const entityName = item[CFG.name_field];
+    const badgeClass = item.alias_count === 0 ? 'alias-badge zero' : 'alias-badge';
+    const dateRange = item.first_seen && item.last_seen
+      ? `${item.first_seen.slice(0,10)} - ${item.last_seen.slice(0,10)}`
+      : '-';
+
+    return `
+      <tr data-id="${entityId}">
+        <td><button class="expand-btn" title="View aliases">▶</button></td>
+        <td><span class="entity-name">${esc(entityName)}</span></td>
+        <td style="text-align:center"><span class="${badgeClass}">${item.alias_count}</span></td>
+        <td class="revenue">$${item.total_revenue.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+        <td style="text-align:right">${item.spot_count.toLocaleString()}</td>
+        <td class="meta">${dateRange}</td>
+      </tr>
+      <tr class="detail-row" data-detail-for="${entityId}">
+        <td colspan="6">
+          <div class="detail-panel">
+            <div class="loading">Loading aliases...</div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  function sortAndRender() {
+    const tbody = document.getElementById('tbody');
+
+    if (!currentItems.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty">No ${CFG.label_plural.toLowerCase()} found</td></tr>`;
+      return;
+    }
+
+    const sorted = [...currentItems].sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+
+      if (aVal == null) aVal = (sortField === CFG.name_field) ? '' : 0;
+      if (bVal == null) bVal = (sortField === CFG.name_field) ? '' : 0;
+
+      if (sortField === CFG.name_field || sortField === 'first_seen' || sortField === 'last_seen') {
+        aVal = String(aVal).toLowerCase();
+        bVal = String(bVal).toLowerCase();
+        if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      }
+
+      return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+
+    tbody.innerHTML = sorted.map(renderRow).join('');
+    attachHandlers();
+    updateSortIndicators();
+  }
+
+  // ===== DATA LOADING =====
+  async function loadTable() {
+    const search = document.getElementById('search').value.trim();
+    const minAliases = document.getElementById('min-aliases').value;
+
+    const r = await fetch(`${API}?search=${encodeURIComponent(search)}&min_aliases=${minAliases}`);
+    currentItems = await r.json();
+
+    document.getElementById('count').textContent = `${currentItems.length} ${CFG.label_plural.toLowerCase()}`;
+    expandedId = null;
+    sortAndRender();
+  }
+
+  async function loadDetail(entityId, panel) {
+    panel.innerHTML = '<div class="loading">Loading...</div>';
+
+    try {
+      const r = await fetch(`${API}/${entityId}`);
+      const data = await r.json();
+
+      let aliasHtml = '';
+      if (data.aliases.length === 0) {
+        aliasHtml = `<div class="no-aliases">No aliases - name is used directly</div>`;
+      } else {
+        aliasHtml = '<div class="alias-list">' + data.aliases.map(a => `
+          <div class="alias-item" data-alias-id="${a.alias_id}">
+            <span class="name">${esc(a.alias_name)}</span>
+            <div class="stats">
+              ${a.revenue !== undefined ? `<span>$${a.revenue.toLocaleString(undefined, {maximumFractionDigits:0})}</span>` : ''}
+              ${a.spot_count !== undefined ? `<span>${a.spot_count} spots</span>` : ''}
+              <span title="${a.created_by || ''}">${a.created_date ? a.created_date.slice(0,10) : '-'}</span>
+            </div>
+            <button class="delete-btn" title="Remove alias">X</button>
+          </div>
+        `).join('') + '</div>';
+      }
+
+      // Detail stats line - different for advertiser vs agency
+      let detailStatsHtml = '';
+      if (CFG.db_entity_type === 'customer') {
+        const directInfo = data.direct_spot_count > 0
+          ? `Direct matches: $${data.direct_revenue.toLocaleString(undefined, {maximumFractionDigits:0})} (${data.direct_spot_count} spots)`
+          : 'No direct bill_code matches';
+        detailStatsHtml = directInfo;
+      } else {
+        detailStatsHtml = `${data.customer_count} customers | $${data.total_revenue.toLocaleString(undefined, {maximumFractionDigits:0})} revenue | ${data.spot_count} spots`;
+      }
+
+      // Load contacts
+      let contactsData = [];
+      try {
+        const contactsR = await fetch(`/api/contacts/${CFG.db_entity_type}/${entityId}`);
+        contactsData = await contactsR.json();
+      } catch (e) { contactsData = []; }
+
+      let contactsHtml = '';
+      if (contactsData.length === 0) {
+        contactsHtml = '<div class="no-contacts">No contacts yet</div>';
+      } else {
+        contactsHtml = '<div class="contacts-list">' + contactsData.map(c => `
+          <div class="contact-item" data-contact-id="${c.contact_id}">
+            <div class="contact-info">
+              <div class="contact-name">${esc(c.contact_name)}${c.is_primary ? '<span class="primary-badge">PRIMARY</span>' : ''}</div>
+              ${c.contact_title ? `<div class="contact-title">${esc(c.contact_title)}</div>` : ''}
+              <div class="contact-details">
+                ${c.email ? `<span>${esc(c.email)}</span>` : ''}
+                ${c.phone ? `<span>${esc(c.phone)}</span>` : ''}
+              </div>
+            </div>
+            <div class="contact-actions">
+              ${!c.is_primary ? `<button class="set-primary" title="Set as primary">*</button>` : ''}
+              <button class="delete-contact" title="Delete contact">x</button>
+            </div>
+          </div>
+        `).join('') + '</div>';
+      }
+
+      const entityName = data[CFG.name_field];
+
+      panel.innerHTML = `
+        <div class="detail-header">
+          <h3>
+            <span class="entity-name-display">${esc(entityName)}</span>
+            <button class="btn-rename">Rename</button>
+          </h3>
+          <span class="detail-stats">${detailStatsHtml}</span>
+        </div>
+        ${aliasHtml}
+        <div class="address-section">
+          <h4 class="address-toggle"><span class="toggle-icon">+</span> Address</h4>
+          <div class="address-form">
+            <div class="field"><label>Address</label><input type="text" class="addr-address wide" value="${esc(data.address || '')}" placeholder="Street address"></div>
+            <div class="field"><label>City</label><input type="text" class="addr-city medium" value="${esc(data.city || '')}" placeholder="City"></div>
+            <div class="field"><label>State</label><input type="text" class="addr-state small" value="${esc(data.state || '')}" placeholder="ST"></div>
+            <div class="field"><label>ZIP</label><input type="text" class="addr-zip small" value="${esc(data.zip || '')}" placeholder="ZIP"></div>
+            <button class="btn-save-address">Save Address</button>
+          </div>
+        </div>
+        <div class="contacts-section">
+          <h4 class="contacts-toggle"><span class="toggle-icon">+</span> Contacts (${contactsData.length})</h4>
+          <div class="contacts-content" style="display:none">
+            ${contactsHtml}
+            <button class="btn-show-add-contact">+ Add Contact</button>
+            <div class="add-contact-form">
+              <input type="text" class="name-field" placeholder="Name *">
+              <input type="text" class="title-field" placeholder="Title">
+              <input type="email" class="email-field" placeholder="Email">
+              <input type="text" class="phone-field" placeholder="Phone">
+              <div class="form-actions">
+                <label><input type="checkbox" class="is-primary-check"> Primary</label>
+                <button class="btn-add">Add</button>
+                <button class="btn-cancel-add">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="detail-actions" data-entity-id="${entityId}" data-entity-name="${esc(entityName)}">
+          <button class="btn-merge">Merge into another ${CFG.label.toLowerCase()}...</button>
+          <div class="merge-form">
+            <input type="text" placeholder="Search target ${CFG.label.toLowerCase()}..." class="merge-search">
+            <input type="hidden" class="merge-target-id">
+            <span class="merge-target-info"></span>
+            <button class="btn-confirm" disabled>Merge</button>
+            <button class="btn-cancel">Cancel</button>
+            <div class="merge-results"></div>
+          </div>
+        </div>
+      `;
+
+      // ── Address toggle ──
+      const addrToggle = panel.querySelector('.address-toggle');
+      const addrForm = panel.querySelector('.address-form');
+      addrToggle.addEventListener('click', () => {
+        const isOpen = addrForm.classList.contains('active');
+        addrForm.classList.toggle('active');
+        addrToggle.querySelector('.toggle-icon').textContent = isOpen ? '+' : '-';
+      });
+
+      // ── Save address ──
+      panel.querySelector('.btn-save-address').addEventListener('click', async () => {
+        const btn = panel.querySelector('.btn-save-address');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try {
+          const r = await fetch(`${API}/${entityId}/address`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              address: panel.querySelector('.addr-address').value.trim() || null,
+              city: panel.querySelector('.addr-city').value.trim() || null,
+              state: panel.querySelector('.addr-state').value.trim() || null,
+              zip: panel.querySelector('.addr-zip').value.trim() || null
+            })
+          });
+          const result = await r.json();
+          if (!r.ok || !result.success) throw new Error(result.error || 'Save failed');
+          btn.textContent = 'Saved!';
+          setTimeout(() => { btn.textContent = 'Save Address'; btn.disabled = false; }, 1500);
+        } catch (e) {
+          alert('Error: ' + e.message);
+          btn.textContent = 'Save Address';
+          btn.disabled = false;
+        }
+      });
+
+      // ── Contacts toggle ──
+      const contactsToggle = panel.querySelector('.contacts-toggle');
+      const contactsContent = panel.querySelector('.contacts-content');
+      contactsToggle.addEventListener('click', () => {
+        const isOpen = contactsContent.style.display !== 'none';
+        contactsContent.style.display = isOpen ? 'none' : 'block';
+        contactsToggle.querySelector('.toggle-icon').textContent = isOpen ? '+' : '-';
+      });
+
+      // ── Show add contact form ──
+      const showAddBtn = panel.querySelector('.btn-show-add-contact');
+      const addForm = panel.querySelector('.add-contact-form');
+      showAddBtn.addEventListener('click', () => {
+        showAddBtn.style.display = 'none';
+        addForm.classList.add('active');
+        addForm.querySelector('.name-field').focus();
+      });
+
+      // ── Cancel add contact ──
+      panel.querySelector('.btn-cancel-add').addEventListener('click', () => {
+        addForm.classList.remove('active');
+        showAddBtn.style.display = '';
+        addForm.querySelectorAll('input').forEach(i => { if (i.type !== 'checkbox') i.value = ''; else i.checked = false; });
+      });
+
+      // ── Add contact ──
+      panel.querySelector('.btn-add').addEventListener('click', async () => {
+        const name = addForm.querySelector('.name-field').value.trim();
+        if (!name) { alert('Name is required'); return; }
+        const btn = panel.querySelector('.btn-add');
+        btn.disabled = true;
+        try {
+          const r = await fetch(`/api/contacts/${CFG.db_entity_type}/${entityId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              contact_name: name,
+              contact_title: addForm.querySelector('.title-field').value.trim() || null,
+              email: addForm.querySelector('.email-field').value.trim() || null,
+              phone: addForm.querySelector('.phone-field').value.trim() || null,
+              is_primary: addForm.querySelector('.is-primary-check').checked
+            })
+          });
+          const result = await r.json();
+          if (!r.ok || !result.success) throw new Error(result.error || 'Failed to add contact');
+          loadDetail(entityId, panel);
+        } catch (e) {
+          alert('Error: ' + e.message);
+          btn.disabled = false;
+        }
+      });
+
+      // ── Delete contact handlers ──
+      panel.querySelectorAll('.delete-contact').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const item = this.closest('.contact-item');
+          const contactId = item.dataset.contactId;
+          if (!confirm('Delete this contact?')) return;
+          item.style.opacity = '0.5';
+          const r = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
+          const result = await r.json();
+          if (result.success) {
+            item.remove();
+            const toggle = panel.querySelector('.contacts-toggle');
+            const count = panel.querySelectorAll('.contact-item').length;
+            toggle.innerHTML = `<span class="toggle-icon">-</span> Contacts (${count})`;
+          } else {
+            item.style.opacity = '1';
+            alert('Error: ' + (result.error || 'Failed'));
+          }
+        });
+      });
+
+      // ── Set primary contact handlers ──
+      panel.querySelectorAll('.set-primary').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const item = this.closest('.contact-item');
+          const contactId = item.dataset.contactId;
+          const r = await fetch(`/api/contacts/${contactId}/primary`, { method: 'POST' });
+          const result = await r.json();
+          if (result.success) {
+            loadDetail(entityId, panel);
+          } else {
+            alert('Error: ' + (result.error || 'Failed'));
+          }
+        });
+      });
+
+      // ── Rename handler ──
+      const header = panel.querySelector('.detail-header h3');
+      const nameDisplay = header.querySelector('.entity-name-display');
+      const renameBtn = header.querySelector('.btn-rename');
+
+      renameBtn.addEventListener('click', () => {
+        const currentName = nameDisplay.textContent;
+        header.innerHTML = `
+          <input type="text" class="rename-input" value="${esc(currentName)}">
+          <button class="btn-save-rename">Save</button>
+          <button class="btn-cancel-rename">Cancel</button>
+        `;
+        const input = header.querySelector('.rename-input');
+        const saveBtn = header.querySelector('.btn-save-rename');
+        const cancelBtn = header.querySelector('.btn-cancel-rename');
+
+        input.focus();
+        input.select();
+
+        cancelBtn.addEventListener('click', () => {
+          loadDetail(entityId, panel);
+        });
+
+        saveBtn.addEventListener('click', async () => {
+          const newName = input.value.trim();
+          if (!newName) { alert('Name cannot be empty'); return; }
+          if (newName === currentName) { cancelBtn.click(); return; }
+
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving...';
+
+          try {
+            const r = await fetch(`${API}/${entityId}/rename`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ new_name: newName })
+            });
+            const result = await r.json();
+            if (!r.ok || !result.success) throw new Error(result.error || 'Rename failed');
+
+            // Update the row in the table
+            const row = document.querySelector(`tr[data-id="${entityId}"]`);
+            if (row) {
+              row.querySelector('.entity-name').textContent = newName;
+            }
+
+            // Update detail panel
+            panel.querySelector('.detail-actions').dataset.entityName = newName;
+            loadDetail(entityId, panel);
+
+            if (result.alias_created) {
+              loadTable();
+            }
+          } catch (e) {
+            alert('Error: ' + e.message);
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+          }
+        });
+
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') saveBtn.click();
+          if (e.key === 'Escape') cancelBtn.click();
+        });
+      });
+
+      // ── Delete alias handlers ──
+      panel.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const item = this.closest('.alias-item');
+          const aliasId = item.dataset.aliasId;
+          const aliasName = item.querySelector('.name').textContent;
+
+          if (!confirm(`Remove alias "${aliasName}"?`)) return;
+
+          item.style.opacity = '0.5';
+          const r = await fetch(`${API}/${aliasId}`, { method: 'DELETE' });
+          const result = await r.json();
+
+          if (result.success) {
+            item.remove();
+            const badge = document.querySelector(`tr[data-id="${entityId}"] .alias-badge`);
+            const newCount = parseInt(badge.textContent) - 1;
+            badge.textContent = newCount;
+            if (newCount === 0) badge.className = 'alias-badge zero';
+          } else {
+            item.style.opacity = '1';
+            alert('Error: ' + (result.error || 'Failed to delete'));
+          }
+        });
+      });
+
+      // ── Merge handlers ──
+      const actions = panel.querySelector('.detail-actions');
+      const mergeBtn = actions.querySelector('.btn-merge');
+      const mergeForm = actions.querySelector('.merge-form');
+      const mergeSearch = actions.querySelector('.merge-search');
+      const mergeTargetId = actions.querySelector('.merge-target-id');
+      const mergeTargetInfo = actions.querySelector('.merge-target-info');
+      const mergeResults = actions.querySelector('.merge-results');
+      const confirmBtn = actions.querySelector('.btn-confirm');
+      const cancelBtn = actions.querySelector('.btn-cancel');
+
+      mergeBtn.addEventListener('click', () => {
+        mergeBtn.style.display = 'none';
+        mergeForm.classList.add('active');
+        mergeSearch.focus();
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        mergeForm.classList.remove('active');
+        mergeBtn.style.display = '';
+        mergeSearch.value = '';
+        mergeTargetId.value = '';
+        mergeTargetInfo.textContent = '';
+        mergeResults.innerHTML = '';
+        mergeResults.classList.remove('active');
+        confirmBtn.disabled = true;
+      });
+
+      let mergeTimeout;
+      mergeSearch.addEventListener('input', () => {
+        clearTimeout(mergeTimeout);
+        mergeTargetId.value = '';
+        mergeTargetInfo.textContent = '';
+        mergeResults.innerHTML = '';
+        mergeResults.classList.remove('active');
+        confirmBtn.disabled = true;
+
+        mergeTimeout = setTimeout(async () => {
+          const q = mergeSearch.value.trim();
+          if (q.length < 2) return;
+
+          const r = await fetch(`${SEARCH_API}/search?q=${encodeURIComponent(q)}`);
+          const results = await r.json();
+          const filtered = results.filter(c => c[CFG.id_field] !== entityId);
+
+          if (filtered.length === 0) {
+            mergeTargetInfo.textContent = 'No matches';
+          } else if (filtered.length === 1) {
+            mergeTargetId.value = filtered[0][CFG.id_field];
+            mergeTargetInfo.textContent = `-> ${filtered[0][CFG.name_field]}`;
+            confirmBtn.disabled = false;
+          } else {
+            mergeTargetInfo.textContent = `${filtered.length} matches - click to select:`;
+            mergeResults.innerHTML = filtered.map(c => `
+              <div class="merge-result-item" data-id="${c[CFG.id_field]}" data-name="${esc(c[CFG.name_field])}">
+                <span>${esc(c[CFG.name_field])}</span>
+              </div>
+            `).join('');
+            mergeResults.classList.add('active');
+
+            mergeResults.querySelectorAll('.merge-result-item').forEach(item => {
+              item.addEventListener('click', () => {
+                mergeResults.querySelectorAll('.merge-result-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                mergeTargetId.value = item.dataset.id;
+                mergeTargetInfo.textContent = `-> ${item.dataset.name}`;
+                confirmBtn.disabled = false;
+              });
+            });
+          }
+        }, 300);
+      });
+
+      confirmBtn.addEventListener('click', async () => {
+        const targetId = mergeTargetId.value;
+        const sourceName = actions.dataset.entityName;
+        const targetName = mergeTargetInfo.textContent.replace('-> ', '');
+
+        if (!targetId) return;
+
+        const mergeLabel = CFG.label_plural.toUpperCase();
+        if (!confirm(`MERGE ${mergeLabel}\n\nMerge "${sourceName}" INTO "${targetName}"?\n\nAll aliases and related data will be moved.`)) return;
+
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Merging...';
+
+        try {
+          const r = await fetch(`${API}/merge`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ source_id: entityId, target_id: parseInt(targetId) })
+          });
+          const result = await r.json();
+
+          if (!r.ok || !result.success) throw new Error(result.error || 'Merge failed');
+
+          let msg = 'Merged!\n';
+          if (result.spots_moved !== undefined) msg += `${result.spots_moved} spots moved\n`;
+          if (result.customers_moved !== undefined) msg += `${result.customers_moved} customers moved\n`;
+          if (result.aliases_moved !== undefined) msg += `${result.aliases_moved} aliases moved`;
+          alert(msg);
+          loadTable();
+        } catch (e) {
+          alert('Error: ' + e.message);
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Merge';
+        }
+      });
+
+    } catch (e) {
+      panel.innerHTML = `<div class="error">Error loading: ${e.message}</div>`;
+    }
+  }
+
+  // ===== EVENT HANDLERS =====
+  function attachHandlers() {
+    document.querySelectorAll('.expand-btn').forEach(btn => {
+      btn.addEventListener('click', async function() {
+        const row = this.closest('tr');
+        const id = parseInt(row.dataset.id);
+        const detailRow = document.querySelector(`tr[data-detail-for="${id}"]`);
+
+        if (expandedId === id) {
+          detailRow.classList.remove('active');
+          row.classList.remove('expanded');
+          this.textContent = '▶';
+          expandedId = null;
+          return;
+        }
+
+        if (expandedId !== null) {
+          const prevDetail = document.querySelector(`tr[data-detail-for="${expandedId}"]`);
+          const prevRow = document.querySelector(`tr[data-id="${expandedId}"]`);
+          if (prevDetail) prevDetail.classList.remove('active');
+          if (prevRow) {
+            prevRow.classList.remove('expanded');
+            prevRow.querySelector('.expand-btn').textContent = '▶';
+          }
+        }
+
+        row.classList.add('expanded');
+        this.textContent = '▼';
+        detailRow.classList.add('active');
+        expandedId = id;
+
+        await loadDetail(id, detailRow.querySelector('.detail-panel'));
+      });
+    });
+  }
+
+  function initSortHandlers() {
+    document.querySelectorAll('.alias-table th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (sortField === field) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortField = field;
+          sortDir = (field === CFG.name_field || field === 'first_seen' || field === 'last_seen') ? 'asc' : 'desc';
+        }
+        expandedId = null;
+        sortAndRender();
+      });
+    });
+  }
+
+  // ===== INIT =====
+  let searchTimeout;
+  document.getElementById('search').addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(loadTable, 300);
+  });
+  document.getElementById('min-aliases').addEventListener('change', loadTable);
+  document.getElementById('refresh').addEventListener('click', loadTable);
+
+  initSortHandlers();
+  loadTable();
+
+  // Close info modal on overlay click
+  document.getElementById('info-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+  });
+})();
+</script>
+{% endblock %}

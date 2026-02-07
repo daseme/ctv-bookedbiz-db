@@ -36,8 +36,7 @@ from src.web.routes.language_blocks import language_blocks_bp
 from src.web.routes.customer_detail_routes import customer_detail_bp
 from src.services.container import get_container
 from src.utils.template_formatters import register_template_filters
-from src.web.routes.customer_resolution import customer_resolution_bp
-from src.web.routes.agency_resolution import agency_resolution_bp
+from src.web.routes.entity_resolution import entity_resolution_bp
 from src.web.routes.contacts import contacts_bp
 from src.web.routes.address_book import address_book_bp
 from src.web.routes.stale_customers import stale_customers_bp
@@ -114,11 +113,8 @@ def register_blueprints(app: Flask) -> None:
         app.register_blueprint(health_bp)
         logger.info("Registered health monitoring blueprint")
 
-        app.register_blueprint(customer_resolution_bp)
-        logger.info("Registered customer resolution blueprint")
-
-        app.register_blueprint(agency_resolution_bp)
-        logger.info("Registered agency resolution blueprint")
+        app.register_blueprint(entity_resolution_bp)
+        logger.info("Registered entity resolution blueprint")
 
         app.register_blueprint(contacts_bp)
         logger.info("Registered contacts blueprint")
