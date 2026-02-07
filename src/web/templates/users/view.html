@@ -5,6 +5,15 @@
 {% block header_title %}{{ user.full_name }}{% endblock %}
 {% block header_subtitle %}User Account Details{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Admin</span>
+<span class="breadcrumb-separator">›</span>
+<a href="{{ url_for('user_management.list_users') }}">User Management</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">{{ user.full_name }}</span>
+{% endblock %}
+
 {% block content %}
 <div class="user-details">
     <div style="max-width: 800px; margin: 0 auto;">

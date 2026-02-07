@@ -1,6 +1,6 @@
 {% extends "pricing/_pricing_layout.html" %}
 
-{% block pricing_titletitle %}Rate Trends Analysis{% endblock %}
+{% block pricing_title %}Rate Trends Analysis{% endblock %}
 
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
@@ -11,12 +11,6 @@
     <!-- Header -->
     <div class="row mb-4">
         <div class="col-md-8">
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="{{ url_for('pricing_trends.trends_dashboard') }}">Pricing Intelligence</a></li>
-                    <li class="breadcrumb-item active">Rate Trends</li>
-                </ol>
-            </nav>
             <h1 class="display-5">Rate Trends Analysis</h1>
             <p class="text-muted">Track how average rates evolve over time across different dimensions</p>
         </div>

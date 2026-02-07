@@ -4,6 +4,15 @@
 {% block header_title %}Customer Resolution{% endblock %}
 {% block header_subtitle %}Create customer records for unmatched bill codes{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Data Management</span>
+<span class="breadcrumb-separator">›</span>
+<a href="/entity-resolution">Entity Resolution</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Customer Resolution</span>
+{% endblock %}
+
 {% block extra_styles %}
 <style>
   .stats-row{display:flex;gap:16px;margin-bottom:20px}

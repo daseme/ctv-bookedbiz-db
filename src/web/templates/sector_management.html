@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Data Management</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Sector Management</span>
+{% endblock %}
+
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/shared/nord-enhanced.css') }}">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

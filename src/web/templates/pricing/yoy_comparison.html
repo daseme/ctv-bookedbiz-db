@@ -9,12 +9,6 @@
     <!-- Header -->
     <div class="row mb-4">
         <div class="col-md-8">
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="{{ url_for('pricing_trends.trends_dashboard') }}">Pricing Intelligence</a></li>
-                    <li class="breadcrumb-item active">YoY Comparison</li>
-                </ol>
-            </nav>
             <h1 class="display-5">Year-over-Year Comparison</h1>
             <p class="text-muted">Compare {{ current_year }} vs {{ previous_year }} performance by {{ dimension|title }}</p>
         </div>

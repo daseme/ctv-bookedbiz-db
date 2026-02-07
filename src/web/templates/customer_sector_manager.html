@@ -2,6 +2,13 @@
 
 {% block title %}Customer & Sector Management - CTV Booked Biz{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Data Management</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Customer Sector Manager</span>
+{% endblock %}
+
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/customer-sector-manager.css') }}">
 {% endblock %}

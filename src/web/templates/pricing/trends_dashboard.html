@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 
 {% block title %}Pricing Trends & Intelligence{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Reporting</span>
+<span class="breadcrumb-separator">›</span>
+<a href="{{ url_for('pricing.pricing_index') }}">Pricing</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Trends Dashboard</span>
+{% endblock %}
+
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
 {% endblock %}

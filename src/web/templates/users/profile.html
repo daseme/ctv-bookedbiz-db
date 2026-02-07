@@ -5,6 +5,13 @@
 {% block header_title %}My Profile{% endblock %}
 {% block header_subtitle %}Your account information{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Admin</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">My Profile</span>
+{% endblock %}
+
 {% block content %}
 <div class="user-profile">
     <div style="max-width: 800px; margin: 0 auto;">

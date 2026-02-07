@@ -4,6 +4,15 @@
 {% block header_title %}Agency Aliases{% endblock %}
 {% block header_subtitle %}View agencies and their associated aliases{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Data Management</span>
+<span class="breadcrumb-separator">›</span>
+<a href="/entity-aliases">Entity Aliases</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Agency Aliases</span>
+{% endblock %}
+
 {% block extra_styles %}
 <style>
   .filter-bar{display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap}

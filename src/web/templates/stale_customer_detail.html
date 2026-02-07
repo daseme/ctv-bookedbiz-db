@@ -4,6 +4,15 @@
 {% block header_title %}Entity Detail{% endblock %}
 {% block header_subtitle %}Stale Customer Report - Entity Triage{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Data Management</span>
+<span class="breadcrumb-separator">›</span>
+<a href="/stale-customers">Stale Customer Report</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Entity Detail</span>
+{% endblock %}
+
 {% block extra_styles %}
 <style>
   .back-link{display:inline-block;margin-bottom:16px;color:var(--nord10);text-decoration:none;font-size:14px}

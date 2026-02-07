@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Management Performance Report{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Reporting</span>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Management Performance</span>
+{% endblock %}
+
 {% block content %}
 <style>
     .perf-card { border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
