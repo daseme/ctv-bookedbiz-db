@@ -184,6 +184,10 @@
   .sub-customers-table th{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase}
   .sub-customers-table .revenue{text-align:right;color:#059669;font-weight:500}
   .sub-customers-table .spots{text-align:right;color:#64748b}
+  .sub-customers-table .po-input{width:100px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:4px;font-size:12px}
+  .sub-customers-table .po-input:focus{border-color:#0ea5e9;outline:none}
+  .sub-customers-table .po-saved{color:#16a34a;font-size:11px;margin-left:4px;opacity:0;transition:opacity 0.3s}
+  .sub-customers-table .po-saved.show{opacity:1}
   .sub-customers-scroll{max-height:250px;overflow-y:auto}
 
   .toggle-label{display:flex;align-items:center;gap:6px;font-size:13px;color:#475569;cursor:pointer}
@@ -360,7 +364,7 @@
         <h3><span class="icon">🏢</span> Agency Clients <span id="agency-clients-count" style="font-weight:400;color:#64748b;font-size:12px"></span></h3>
         <div class="sub-customers-scroll">
           <table class="sub-customers-table">
-            <thead><tr><th>Client</th><th>Sector</th><th class="spots">Spots</th><th class="revenue">Revenue</th></tr></thead>
+            <thead><tr><th>Client</th><th>Sector</th><th>PO Number</th><th class="spots">Spots</th><th class="revenue">Revenue</th></tr></thead>
             <tbody id="agency-clients-body"></tbody>
           </table>
         </div>
@@ -974,14 +978,14 @@
   async function loadAgencyClients(agencyId) {
     const tbody = document.getElementById('agency-clients-body');
     const countEl = document.getElementById('agency-clients-count');
-    tbody.innerHTML = '<tr><td colspan="4" class="no-data">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="no-data">Loading...</td></tr>';
     try {
       const r = await fetch(`${API}/agency/${agencyId}/customers`);
       const data = await r.json();
       const clients = data.customers || [];
       countEl.textContent = `(${clients.length})`;
       if (clients.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="no-data">No clients on record</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">No clients on record</td></tr>';
         return;
       }
       tbody.innerHTML = clients.map(c => {
@@ -992,12 +996,34 @@
         return `<tr>
           <td>${esc(c.customer_name)}</td>
           <td>${esc(c.sector_name || '-')}</td>
+          <td><input class="po-input" data-customer-id="${c.customer_id}" value="${esc(c.po_number || '')}" placeholder="—"><span class="po-saved">✓</span></td>
           <td class="spots">${c.spot_count || '-'}</td>
           <td class="revenue">${revStr}</td>
         </tr>`;
       }).join('');
+
+      // Save PO number on change
+      tbody.querySelectorAll('.po-input').forEach(input => {
+        const client = clients.find(c => c.customer_id == input.dataset.customerId);
+        input.addEventListener('change', async () => {
+          const custId = input.dataset.customerId;
+          const saved = input.nextElementSibling;
+          const res = await fetch(`${API}/customer/${custId}/billing-info`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              po_number: input.value.trim() || null,
+              edi_billing: !!(client && client.edi_billing)
+            })
+          });
+          if (res.ok) {
+            saved.classList.add('show');
+            setTimeout(() => saved.classList.remove('show'), 1500);
+          }
+        });
+      });
     } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="4" class="no-data">Failed to load clients</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="no-data">Failed to load clients</td></tr>';
     }
   }
 
