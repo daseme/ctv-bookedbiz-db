@@ -67,6 +67,23 @@
   .btn-proceed:hover{background:#d97706}
   .btn-cancel-similar{background:#fff;border-color:#e2e8f0;color:#334155}
   .btn-cancel-similar:hover{background:#f8fafc}
+
+  /* Info Modal */
+  .info-btn{width:28px;height:28px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .info-btn:hover{background:#f0f9ff;border-color:#0ea5e9;color:#0ea5e9}
+  .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center}
+  .modal-overlay.active{display:flex}
+  .info-modal{background:#fff;border-radius:12px;width:100%;max-width:560px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .info-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff}
+  .info-modal .modal-header h3{margin:0;font-size:18px;color:#0369a1}
+  .info-modal .modal-body{padding:24px;max-height:70vh;overflow-y:auto}
+  .info-modal .info-section{margin-bottom:20px}
+  .info-modal .info-section:last-child{margin-bottom:0}
+  .info-modal .info-section h4{margin:0 0 6px;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .info-modal .info-section p{margin:0;font-size:13px;color:#475569;line-height:1.5}
+  .info-modal .info-section ul{margin:6px 0 0;padding-left:20px;font-size:13px;color:#475569;line-height:1.7}
+  .info-modal .modal-close{background:none;border:none;font-size:24px;color:#94a3b8;cursor:pointer;padding:4px 8px}
+  .info-modal .modal-close:hover{color:#334155}
 </style>
 {% endblock %}
 
@@ -89,6 +106,7 @@
   </select>
   <button id="refresh">Refresh</button>
   <a href="{{ cfg.aliases_link }}">{{ cfg.label }} Aliases</a>
+  <button class="info-btn" onclick="document.getElementById('info-modal').classList.add('active')" title="About this page">?</button>
 </div>
 
 <table class="resolution-table">
@@ -119,6 +137,46 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Info Modal -->
+<div class="modal-overlay" id="info-modal">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>About Entity Resolution</h3>
+      <button class="modal-close" onclick="document.getElementById('info-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What is this page?</h4>
+        <p>This page shows raw names from spot data that haven't been matched to a canonical record yet. For each unresolved entry you can:</p>
+        <ul>
+          <li><strong>Create</strong> &mdash; make a new canonical record and automatically create an alias linking the raw name to it.</li>
+          <li><strong>Link</strong> &mdash; search for an existing record and map the raw name as a new alias.</li>
+          <li><strong>Skip</strong> &mdash; hide the row for now (it will reappear on refresh).</li>
+        </ul>
+      </div>
+      {% if tab == 'advertiser' %}
+      <div class="info-section">
+        <h4>Direct Advertisers tab</h4>
+        <p>Shows unresolved <strong>bill codes</strong> &mdash; the raw customer identifier from traffic/billing systems. The "Normalized Name" is a cleaned-up version you can edit before creating. A similarity check warns you if a close match already exists, preventing accidental duplicates.</p>
+      </div>
+      <div class="info-section">
+        <h4>Why not all customers?</h4>
+        <p>Only bill codes that haven't been linked to any customer record appear here. Once resolved, they move to the <a href="/entity-aliases?tab=advertiser">Entity Aliases</a> page where you can manage them further.</p>
+      </div>
+      {% else %}
+      <div class="info-section">
+        <h4>Agencies tab</h4>
+        <p>Shows unresolved <strong>agency names</strong> from raw spot data. Unlike advertisers, there is no similarity check &mdash; agency names tend to be more distinct. The workflow is otherwise identical: create a new agency record or link to an existing one.</p>
+      </div>
+      {% endif %}
+      <div class="info-section">
+        <h4>Revenue filter</h4>
+        <p>Use the revenue dropdown to prioritize high-value unresolved entries. The default (&ge; $500) hides low-revenue noise so you can focus on entries that matter most to reporting accuracy.</p>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -413,6 +471,11 @@
 
   loadStats();
   loadTable();
+
+  // Close info modal on overlay click
+  document.getElementById('info-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+  });
 })();
 </script>
 {% endblock %}
