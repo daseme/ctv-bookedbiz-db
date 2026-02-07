@@ -2,6 +2,15 @@
 
 {% block title %}Margin Analysis by Length{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Reporting</span>
+<span class="breadcrumb-separator">›</span>
+<a href="{{ url_for('length_analysis.dashboard') }}">Length Analysis</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Margin Analysis</span>
+{% endblock %}
+
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pricing.css') }}">
 {% endblock %}
@@ -10,12 +19,6 @@
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-1">
-                    <li class="breadcrumb-item"><a href="{{ url_for('length_analysis.dashboard') }}">Length Analysis</a></li>
-                    <li class="breadcrumb-item active">Margin Analysis</li>
-                </ol>
-            </nav>
             <h1 class="h3 mb-0">Margin Analysis by Length</h1>
         </div>
     </div>

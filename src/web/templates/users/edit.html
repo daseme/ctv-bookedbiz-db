@@ -5,6 +5,15 @@
 {% block header_title %}Edit User{% endblock %}
 {% block header_subtitle %}Update user account information{% endblock %}
 
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span>Admin</span>
+<span class="breadcrumb-separator">›</span>
+<a href="{{ url_for('user_management.list_users') }}">User Management</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Edit User</span>
+{% endblock %}
+
 {% block content %}
 <div class="user-form">
     <div style="max-width: 600px; margin: 0 auto;">
