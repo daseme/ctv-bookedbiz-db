@@ -332,8 +332,8 @@
         </div>
       </div>
 
-      <!-- Billing Info -->
-      <div class="detail-section">
+      <!-- Billing Info (customers only) -->
+      <div class="detail-section" id="billing-section" style="display:none">
         <h3><span class="icon">💰</span> Billing Info</h3>
         <div class="billing-row">
           <div class="form-field">
@@ -876,9 +876,15 @@
     // AE
     document.getElementById('detail-ae').value = currentEntity.assigned_ae || '';
 
-    // Billing Info
-    document.getElementById('detail-po-number').value = currentEntity.po_number || '';
-    document.getElementById('detail-edi-billing').checked = !!currentEntity.edi_billing;
+    // Billing Info (customers only)
+    const billingSection = document.getElementById('billing-section');
+    if (type === 'customer') {
+      billingSection.style.display = 'block';
+      document.getElementById('detail-po-number').value = currentEntity.po_number || '';
+      document.getElementById('detail-edi-billing').checked = !!currentEntity.edi_billing;
+    } else {
+      billingSection.style.display = 'none';
+    }
 
     // Markets
     const marketsDiv = document.getElementById('detail-markets');
@@ -1321,15 +1327,17 @@
         body: JSON.stringify({ assigned_ae: document.getElementById('detail-ae').value || null })
       });
 
-      // Save billing info
-      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          po_number: document.getElementById('detail-po-number').value.trim() || null,
-          edi_billing: document.getElementById('detail-edi-billing').checked
-        })
-      });
+      // Save billing info (customers only)
+      if (currentEntity.entity_type === 'customer') {
+        await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            po_number: document.getElementById('detail-po-number').value.trim() || null,
+            edi_billing: document.getElementById('detail-edi-billing').checked
+          })
+        });
+      }
 
       status.textContent = '✓ Saved';
       status.className = 'save-status success';
