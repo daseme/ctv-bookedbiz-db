@@ -190,6 +190,31 @@
   .toggle-label input{cursor:pointer}
   .badge-inactive{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;background:#f1f5f9;color:#64748b;margin-left:6px}
   .count.loading{color:#0ea5e9}
+  /* Billing Info */
+  .billing-row{display:flex;gap:16px;align-items:flex-end}
+  .billing-row .form-field{flex:1}
+  .edi-toggle{display:flex;align-items:center;gap:8px;padding-bottom:10px}
+  .edi-toggle label{font-size:13px;color:#475569;cursor:pointer}
+
+  /* Additional Addresses */
+  .address-card{display:flex;align-items:flex-start;gap:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}
+  .address-card.primary{background:#fefce8;border-color:#fde047}
+  .address-card .address-info{flex:1}
+  .address-card .address-label-badge{font-size:10px;padding:2px 6px;background:#e0e7ff;color:#4338ca;border-radius:4px;font-weight:600}
+  .address-card .address-label-badge.primary{background:#fde047;color:#854d0e}
+  .address-card .address-text{font-size:13px;color:#334155;margin-top:4px}
+  .address-card .address-notes{font-size:12px;color:#64748b;margin-top:2px;font-style:italic}
+  .address-card .address-actions{display:flex;gap:4px}
+  .address-card .address-actions button{background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px 6px;font-size:12px;border-radius:4px}
+  .address-card .address-actions button:hover{background:#e2e8f0;color:#334155}
+  .address-card .address-actions button.delete:hover{background:#fee2e2;color:#dc2626}
+  .addresses-list{display:flex;flex-direction:column;gap:10px}
+
+  .add-address-form{display:none;padding:16px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:8px;margin-top:10px}
+  .add-address-form.active{display:block}
+  .add-address-form .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .add-address-form .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
   .count.loading{animation:pulse 1s ease-in-out infinite}
 </style>
@@ -307,6 +332,21 @@
         </div>
       </div>
 
+      <!-- Billing Info -->
+      <div class="detail-section">
+        <h3><span class="icon">💰</span> Billing Info</h3>
+        <div class="billing-row">
+          <div class="form-field">
+            <label>PO Number</label>
+            <input type="text" id="detail-po-number" placeholder="Purchase order number">
+          </div>
+          <div class="edi-toggle">
+            <input type="checkbox" id="detail-edi-billing">
+            <label for="detail-edi-billing">EDI Billing</label>
+          </div>
+        </div>
+      </div>
+
       <!-- Markets -->
       <div class="detail-section" id="markets-section">
         <h3><span class="icon">📺</span> Markets</h3>
@@ -345,6 +385,64 @@
           <div class="form-field">
             <label>ZIP</label>
             <input type="text" id="detail-zip" placeholder="12345" maxlength="10" style="width:100px">
+          </div>
+        </div>
+      </div>
+
+      <!-- Additional Addresses -->
+      <div class="detail-section">
+        <h3><span class="icon">📬</span> Additional Addresses</h3>
+        <div class="addresses-list" id="detail-addresses"></div>
+        <button class="add-contact-btn" id="show-add-address">+ Add Additional Address</button>
+        <div class="add-address-form" id="add-address-form">
+          <div class="form-row">
+            <div class="form-field">
+              <label>Label *</label>
+              <select id="new-address-label">
+                <option value="">-- Select Label --</option>
+                <option value="Billing">Billing</option>
+                <option value="Shipping">Shipping</option>
+                <option value="PO Box">PO Box</option>
+                <option value="Office">Office</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-field" style="display:flex;align-items:flex-end;padding-bottom:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="new-address-primary">
+                <label for="new-address-primary" style="font-size:13px;color:#475569">Primary address</label>
+              </div>
+            </div>
+          </div>
+          <div class="form-row" style="grid-template-columns:1fr">
+            <div class="form-field">
+              <label>Street Address</label>
+              <input type="text" id="new-address-street" placeholder="123 Main St">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label>City</label>
+              <input type="text" id="new-address-city" placeholder="City">
+            </div>
+            <div class="form-field">
+              <label>State</label>
+              <input type="text" id="new-address-state" placeholder="CA" maxlength="2" style="width:80px">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label>ZIP</label>
+              <input type="text" id="new-address-zip" placeholder="12345" maxlength="10" style="width:100px">
+            </div>
+            <div class="form-field">
+              <label>Notes</label>
+              <input type="text" id="new-address-notes" placeholder="Optional notes">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-cancel" id="cancel-add-address">Cancel</button>
+            <button class="btn btn-save" id="save-new-address">Add Address</button>
           </div>
         </div>
       </div>
@@ -778,6 +876,10 @@
     // AE
     document.getElementById('detail-ae').value = currentEntity.assigned_ae || '';
 
+    // Billing Info
+    document.getElementById('detail-po-number').value = currentEntity.po_number || '';
+    document.getElementById('detail-edi-billing').checked = !!currentEntity.edi_billing;
+
     // Markets
     const marketsDiv = document.getElementById('detail-markets');
     if (currentEntity.markets && currentEntity.markets.length > 0) {
@@ -807,6 +909,9 @@
     // Contacts
     renderContacts();
 
+    // Additional Addresses
+    renderAddresses();
+
     // Activities
     loadActivities();
 
@@ -814,6 +919,7 @@
     hasUnsavedChanges = false;
     document.getElementById('save-status').textContent = '';
     document.getElementById('add-contact-form').classList.remove('active');
+    document.getElementById('add-address-form').classList.remove('active');
     document.getElementById('add-activity-form').classList.remove('active');
 
     modal.classList.add('active');
@@ -989,6 +1095,110 @@
     });
   }
 
+  // ===== Additional Addresses =====
+  function renderAddresses() {
+    const list = document.getElementById('detail-addresses');
+    if (!currentEntity.addresses || currentEntity.addresses.length === 0) {
+      list.innerHTML = '<div class="no-data">No additional addresses</div>';
+      return;
+    }
+    list.innerHTML = currentEntity.addresses.map(a => {
+      const parts = [a.address, [a.city, a.state].filter(Boolean).join(', '), a.zip].filter(Boolean);
+      return `
+      <div class="address-card ${a.is_primary ? 'primary' : ''}" data-address-id="${a.address_id}">
+        <div class="address-info">
+          <div>
+            <span class="address-label-badge">${esc(a.address_label)}</span>
+            ${a.is_primary ? '<span class="address-label-badge primary">PRIMARY</span>' : ''}
+          </div>
+          <div class="address-text">${esc(parts.join(' | ') || 'No address details')}</div>
+          ${a.notes ? `<div class="address-notes">${esc(a.notes)}</div>` : ''}
+        </div>
+        <div class="address-actions">
+          ${!a.is_primary ? `<button class="set-primary-addr" title="Set as primary">⭐</button>` : ''}
+          <button class="delete" title="Delete address">🗑️</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Attach handlers
+    list.querySelectorAll('.set-primary-addr').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const addrId = btn.closest('.address-card').dataset.addressId;
+        const addr = currentEntity.addresses.find(a => a.address_id == addrId);
+        if (!addr) return;
+        const r = await fetch(`${API}/addresses/${addrId}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ ...addr, is_primary: true })
+        });
+        if (r.ok) refreshAddresses();
+      });
+    });
+    list.querySelectorAll('.delete').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this address?')) return;
+        const addrId = btn.closest('.address-card').dataset.addressId;
+        const r = await fetch(`${API}/addresses/${addrId}`, { method: 'DELETE' });
+        if (r.ok) refreshAddresses();
+      });
+    });
+  }
+
+  async function refreshAddresses() {
+    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`);
+    if (r.ok) {
+      currentEntity.addresses = await r.json();
+      renderAddresses();
+    }
+  }
+
+  // Add address form handlers
+  document.getElementById('show-add-address').addEventListener('click', () => {
+    document.getElementById('add-address-form').classList.add('active');
+  });
+  document.getElementById('cancel-add-address').addEventListener('click', () => {
+    document.getElementById('add-address-form').classList.remove('active');
+    clearNewAddressForm();
+  });
+  document.getElementById('save-new-address').addEventListener('click', async () => {
+    const label = document.getElementById('new-address-label').value;
+    if (!label) { alert('Label is required'); return; }
+    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        address_label: label,
+        address: document.getElementById('new-address-street').value.trim() || null,
+        city: document.getElementById('new-address-city').value.trim() || null,
+        state: document.getElementById('new-address-state').value.trim() || null,
+        zip: document.getElementById('new-address-zip').value.trim() || null,
+        is_primary: document.getElementById('new-address-primary').checked,
+        notes: document.getElementById('new-address-notes').value.trim() || null
+      })
+    });
+    if (r.ok) {
+      document.getElementById('add-address-form').classList.remove('active');
+      clearNewAddressForm();
+      refreshAddresses();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      alert(err.error || 'Failed to add address');
+    }
+  });
+
+  function clearNewAddressForm() {
+    document.getElementById('new-address-label').value = '';
+    document.getElementById('new-address-street').value = '';
+    document.getElementById('new-address-city').value = '';
+    document.getElementById('new-address-state').value = '';
+    document.getElementById('new-address-zip').value = '';
+    document.getElementById('new-address-notes').value = '';
+    document.getElementById('new-address-primary').checked = false;
+  }
+
   async function markContacted(contactId) {
     const r = await fetch(`/api/contacts/${contactId}/touched`, { method: 'POST' });
     if (r.ok) {
@@ -1109,6 +1319,16 @@
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ assigned_ae: document.getElementById('detail-ae').value || null })
+      });
+
+      // Save billing info
+      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          po_number: document.getElementById('detail-po-number').value.trim() || null,
+          edi_billing: document.getElementById('detail-edi-billing').checked
+        })
       });
 
       status.textContent = '✓ Saved';

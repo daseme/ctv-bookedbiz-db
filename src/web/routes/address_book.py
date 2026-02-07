@@ -244,10 +244,12 @@ def api_address_book():
             for cr in contact_rows:
                 contact_matches.add((cr["entity_type"], cr["entity_id"]))
 
-        # Filter: match name, notes, or contact lookup
+        # Filter: match name, notes, sector, or contact lookup
         results = [r for r in results if (
             q in r["entity_name"].lower() or
             q in (r.get("notes") or "").lower() or
+            q in (r.get("sector_name") or "").lower() or
+            q in (r.get("sector_code") or "").lower() or
             (r["entity_type"], r["entity_id"]) in contact_matches
         )]
 
@@ -340,6 +342,7 @@ def api_entity_detail(entity_type, entity_id):
             entity = conn.execute("""
                 SELECT agency_id as entity_id, 'agency' as entity_type, agency_name as entity_name,
                        address, city, state, zip, notes, assigned_ae,
+                       po_number, edi_billing,
                        NULL as sector_id, NULL as sector_name
                 FROM agencies WHERE agency_id = ? AND is_active = 1
             """, [entity_id]).fetchone()
@@ -347,6 +350,7 @@ def api_entity_detail(entity_type, entity_id):
             entity = conn.execute("""
                 SELECT c.customer_id as entity_id, 'customer' as entity_type, c.normalized_name as entity_name,
                        c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae,
+                       c.po_number, c.edi_billing,
                        c.sector_id, s.sector_name
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
@@ -368,6 +372,17 @@ def api_entity_detail(entity_type, entity_id):
         """, [entity_type, entity_id]).fetchall()
 
         result["contacts"] = [dict(c) for c in contacts]
+
+        # Get additional addresses
+        addresses = conn.execute("""
+            SELECT address_id, address_label, address, city, state, zip,
+                   is_primary, notes
+            FROM entity_addresses
+            WHERE entity_type = ? AND entity_id = ? AND is_active = 1
+            ORDER BY is_primary DESC, address_label
+        """, [entity_type, entity_id]).fetchall()
+
+        result["addresses"] = [dict(a) for a in addresses]
 
         # Get markets where this entity has run spots
         if entity_type == "agency":
@@ -441,6 +456,34 @@ def api_update_notes(entity_type, entity_id):
                 SET notes = ?
                 WHERE {id_col} = ?
             """, [notes, entity_id])
+
+            conn.commit()
+            return jsonify({"success": True})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/billing-info", methods=["PUT"])
+def api_update_billing_info(entity_type, entity_id):
+    """Update PO number and EDI billing flag for an entity."""
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "Invalid entity type"}), 400
+
+    data = request.get_json() or {}
+    po_number = (data.get("po_number") or "").strip() or None
+    edi_billing = 1 if data.get("edi_billing") else 0
+
+    with _db_rw() as conn:
+        try:
+            table = "agencies" if entity_type == "agency" else "customers"
+            id_col = "agency_id" if entity_type == "agency" else "customer_id"
+
+            conn.execute(f"""
+                UPDATE {table}
+                SET po_number = ?, edi_billing = ?
+                WHERE {id_col} = ?
+            """, [po_number, edi_billing, entity_id])
 
             conn.commit()
             return jsonify({"success": True})
@@ -586,6 +629,130 @@ def api_spots_link(entity_type, entity_id):
 
 
 # ============================================================
+# Additional Addresses CRUD
+# ============================================================
+
+VALID_ADDRESS_LABELS = ['Billing', 'Shipping', 'PO Box', 'Office', 'Other']
+
+
+@address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/addresses")
+def api_get_addresses(entity_type, entity_id):
+    """Get active additional addresses for an entity."""
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "Invalid entity type"}), 400
+
+    with _db_ro() as conn:
+        addresses = conn.execute("""
+            SELECT address_id, address_label, address, city, state, zip,
+                   is_primary, notes
+            FROM entity_addresses
+            WHERE entity_type = ? AND entity_id = ? AND is_active = 1
+            ORDER BY is_primary DESC, address_label
+        """, [entity_type, entity_id]).fetchall()
+
+        return jsonify([dict(a) for a in addresses])
+
+
+@address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/addresses", methods=["POST"])
+def api_create_address(entity_type, entity_id):
+    """Create an additional address for an entity."""
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "Invalid entity type"}), 400
+
+    data = request.get_json() or {}
+    label = (data.get("address_label") or "").strip()
+    if label not in VALID_ADDRESS_LABELS:
+        return jsonify({"error": f"Invalid label. Must be one of: {VALID_ADDRESS_LABELS}"}), 400
+
+    with _db_rw() as conn:
+        try:
+            conn.execute("""
+                INSERT INTO entity_addresses
+                    (entity_type, entity_id, address_label, address, city, state, zip,
+                     is_primary, created_by, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                entity_type, entity_id, label,
+                (data.get("address") or "").strip() or None,
+                (data.get("city") or "").strip() or None,
+                (data.get("state") or "").strip() or None,
+                (data.get("zip") or "").strip() or None,
+                1 if data.get("is_primary") else 0,
+                "web_user",
+                (data.get("notes") or "").strip() or None
+            ])
+            address_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.commit()
+            return jsonify({"success": True, "address_id": address_id}), 201
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/addresses/<int:address_id>", methods=["PUT"])
+def api_update_address_entry(address_id):
+    """Update an additional address."""
+    data = request.get_json() or {}
+
+    with _db_rw() as conn:
+        try:
+            existing = conn.execute(
+                "SELECT 1 FROM entity_addresses WHERE address_id = ? AND is_active = 1",
+                [address_id]
+            ).fetchone()
+            if not existing:
+                return jsonify({"error": "Address not found"}), 404
+
+            label = (data.get("address_label") or "").strip()
+            if label and label not in VALID_ADDRESS_LABELS:
+                return jsonify({"error": f"Invalid label. Must be one of: {VALID_ADDRESS_LABELS}"}), 400
+
+            conn.execute("""
+                UPDATE entity_addresses
+                SET address_label = COALESCE(?, address_label),
+                    address = ?,
+                    city = ?,
+                    state = ?,
+                    zip = ?,
+                    is_primary = ?,
+                    notes = ?,
+                    updated_date = CURRENT_TIMESTAMP
+                WHERE address_id = ?
+            """, [
+                label or None,
+                (data.get("address") or "").strip() or None,
+                (data.get("city") or "").strip() or None,
+                (data.get("state") or "").strip() or None,
+                (data.get("zip") or "").strip() or None,
+                1 if data.get("is_primary") else 0,
+                (data.get("notes") or "").strip() or None,
+                address_id
+            ])
+            conn.commit()
+            return jsonify({"success": True})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/addresses/<int:address_id>", methods=["DELETE"])
+def api_delete_address(address_id):
+    """Soft-delete an additional address."""
+    with _db_rw() as conn:
+        try:
+            conn.execute("""
+                UPDATE entity_addresses
+                SET is_active = 0, updated_date = CURRENT_TIMESTAMP
+                WHERE address_id = ?
+            """, [address_id])
+            conn.commit()
+            return jsonify({"success": True})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
 # Saved Filters
 # ============================================================
 
@@ -697,7 +864,8 @@ def api_export_csv():
         if entity_type in ("all", "agency"):
             agencies = conn.execute("""
                 SELECT a.agency_id as entity_id, 'agency' as entity_type, a.agency_name as entity_name,
-                       a.address, a.city, a.state, a.zip, a.notes, a.assigned_ae, NULL as sector_name,
+                       a.address, a.city, a.state, a.zip, a.notes, a.assigned_ae,
+                       a.po_number, a.edi_billing, NULL as sector_name,
                        (SELECT contact_name FROM entity_contacts ec
                         WHERE ec.entity_type = 'agency' AND ec.entity_id = a.agency_id
                         AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact,
@@ -722,7 +890,8 @@ def api_export_csv():
         if entity_type in ("all", "customer"):
             customers = conn.execute("""
                 SELECT c.customer_id as entity_id, 'customer' as entity_type, c.normalized_name as entity_name,
-                       c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae, s.sector_name,
+                       c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae,
+                       c.po_number, c.edi_billing, s.sector_name,
                        (SELECT contact_name FROM entity_contacts ec
                         WHERE ec.entity_type = 'customer' AND ec.entity_id = c.customer_id
                         AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact,
@@ -751,7 +920,12 @@ def api_export_csv():
     # Apply filters
     if search:
         q = search.lower()
-        results = [r for r in results if q in r["entity_name"].lower() or q in (r.get("notes") or "").lower()]
+        results = [r for r in results if (
+            q in r["entity_name"].lower() or
+            q in (r.get("notes") or "").lower() or
+            q in (r.get("sector_name") or "").lower() or
+            q in (r.get("sector_code") or "").lower()
+        )]
 
     if has_contacts == "yes":
         results = [r for r in results if r.get("primary_contact")]
@@ -783,7 +957,8 @@ def api_export_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Entity Name", "Type", "Sector", "Assigned AE", "Primary Contact", "Email", "Phone",
-        "Address", "City", "State", "ZIP", "Markets", "Last Active", "Total Revenue", "Notes"
+        "Address", "City", "State", "ZIP", "PO Number", "EDI Billing",
+        "Markets", "Last Active", "Total Revenue", "Notes"
     ])
 
     for r in results:
@@ -799,6 +974,8 @@ def api_export_csv():
             r.get("city", ""),
             r.get("state", ""),
             r.get("zip", ""),
+            r.get("po_number", ""),
+            "Yes" if r.get("edi_billing") else "No",
             r.get("markets", ""),
             r.get("last_active", ""),
             f"${r.get('total_revenue', 0):,.2f}" if r.get("total_revenue") else "",
