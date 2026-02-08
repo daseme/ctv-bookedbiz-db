@@ -2,7 +2,7 @@
 
 {% block title %}Address Book - SpotOps{% endblock %}
 {% block header_title %}Address Book{% endblock %}
-{% block header_subtitle %}Unified directory of agencies and customers with contacts{% endblock %}
+{% block header_subtitle %}Unified directory of agencies and advertisers with contacts{% endblock %}
 
 {% block breadcrumb %}
 <span class="breadcrumb-separator">›</span>
@@ -186,6 +186,18 @@
   .ae-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;background:#dbeafe;color:#1e40af}
   .ae-badge.none{background:#f1f5f9;color:#94a3b8}
 
+  /* AE History Timeline */
+  .ae-history-timeline{max-height:200px;overflow-y:auto;margin-top:10px}
+  .ae-history-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+  .ae-history-item:last-child{border-bottom:none}
+  .ae-history-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px}
+  .ae-history-dot.active{background:#16a34a}
+  .ae-history-dot.ended{background:#cbd5e1}
+  .ae-history-info{flex:1;min-width:0}
+  .ae-history-name{font-weight:600;color:#334155}
+  .ae-history-dates{font-size:11px;color:#64748b;margin-top:2px}
+  .ae-history-source{font-size:10px;color:#94a3b8;margin-top:1px}
+
   .sub-customers-table{width:100%;border-collapse:collapse;font-size:13px}
   .sub-customers-table th,.sub-customers-table td{padding:6px 10px;text-align:left;border-bottom:1px solid #f1f5f9}
   .sub-customers-table th{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase}
@@ -234,7 +246,7 @@
 {% block content %}
 <div class="stats-row" id="stats">
   <div class="stat agencies"><div class="val">-</div><div class="lbl">Agencies</div></div>
-  <div class="stat customers"><div class="val">-</div><div class="lbl">Customers</div></div>
+  <div class="stat customers"><div class="val">-</div><div class="lbl">Advertisers</div></div>
   <div class="stat"><div class="val">-</div><div class="lbl">With Contacts</div></div>
   <div class="stat warn"><div class="val">-</div><div class="lbl">Missing Contacts</div></div>
 </div>
@@ -244,7 +256,7 @@
   <select id="type-filter">
     <option value="all">All Types</option>
     <option value="agency">Agencies Only</option>
-    <option value="customer">Customers Only</option>
+    <option value="customer">Advertisers Only</option>
   </select>
   <select id="market-filter">
     <option value="">All Markets</option>
@@ -323,7 +335,7 @@
       <button class="modal-close">&times;</button>
     </div>
     <div class="modal-body">
-      <!-- Sector (customers only) -->
+      <!-- Sector (advertisers only) -->
       <div class="detail-section" id="sector-section" style="display:none">
         <h3><span class="icon">🏷️</span> Sector</h3>
         <div class="sector-row">
@@ -341,6 +353,9 @@
             <option value="">-- No AE Assigned --</option>
           </select>
         </div>
+        <div class="ae-history-timeline" id="detail-ae-history">
+          <div class="no-data">No assignment history</div>
+        </div>
       </div>
 
       <!-- EDI Billing (agencies only) -->
@@ -352,7 +367,7 @@
         </div>
       </div>
 
-      <!-- PO Number (customers only) -->
+      <!-- PO Number (advertisers only) -->
       <div class="detail-section" id="po-section" style="display:none">
         <h3><span class="icon">💰</span> Billing</h3>
         <div class="form-field" style="max-width:300px">
@@ -641,7 +656,7 @@
     const noContacts = currentData.filter(d => d.contact_count === 0).length;
     document.getElementById('stats').innerHTML = `
       <div class="stat agencies"><div class="val">${agencies}</div><div class="lbl">Agencies</div></div>
-      <div class="stat customers"><div class="val">${customers}</div><div class="lbl">Customers</div></div>
+      <div class="stat customers"><div class="val">${customers}</div><div class="lbl">Advertisers</div></div>
       <div class="stat"><div class="val">${withContacts}</div><div class="lbl">With Contacts</div></div>
       <div class="stat warn"><div class="val">${noContacts}</div><div class="lbl">Missing Contacts</div></div>`;
     document.getElementById('count').textContent = `${currentData.length} entities`;
@@ -686,7 +701,7 @@
         <tr class="${isSelected ? 'selected' : ''}" data-key="${key}" data-type="${e.entity_type}" data-id="${e.entity_id}">
           <td class="checkbox-cell"><input type="checkbox" class="row-select" ${isSelected ? 'checked' : ''}></td>
           <td class="name-cell">${esc(e.entity_name)}${inactiveTag}</td>
-          <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span></td>
+          <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Advertiser'}</span></td>
           <td>${esc(e.sector_name || '-')}</td>
           <td>${e.assigned_ae ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>` : '-'}</td>
           <td>${esc(e.primary_contact || '-')}</td>
@@ -842,7 +857,7 @@
         <div class="card-header">
           <h4 class="entity-name">${esc(e.entity_name)}${inactiveBadge}</h4>
           <div class="header-badges">
-            <span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Customer'}</span>
+            <span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Advertiser'}</span>
             ${sectorBadge}
             ${aeBadge}
           </div>
@@ -875,7 +890,7 @@
 
     document.getElementById('detail-name').textContent = currentEntity.entity_name;
     const badge = document.getElementById('detail-type-badge');
-    badge.textContent = type === 'agency' ? 'Agency' : 'Customer';
+    badge.textContent = type === 'agency' ? 'Agency' : 'Advertiser';
     badge.className = 'type-badge ' + type;
 
     // Sector (customers only)
@@ -938,6 +953,9 @@
     // Activities
     loadActivities();
 
+    // AE History
+    loadAEHistory();
+
     // Reset state
     hasUnsavedChanges = false;
     document.getElementById('save-status').textContent = '';
@@ -985,6 +1003,37 @@
       }).join('');
     } catch (e) {
       container.innerHTML = '<div class="no-data">Failed to load activities</div>';
+    }
+  }
+
+  async function loadAEHistory() {
+    const container = document.getElementById('detail-ae-history');
+    try {
+      const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae-history`);
+      const history = await r.json();
+
+      if (!history || history.length === 0) {
+        container.innerHTML = '<div class="no-data">No assignment history</div>';
+        return;
+      }
+
+      container.innerHTML = history.map(h => {
+        const isActive = !h.ended_date;
+        const start = h.assigned_date ? formatDate(h.assigned_date.split('T')[0].split(' ')[0]) : '';
+        const end = h.ended_date ? formatDate(h.ended_date.split('T')[0].split(' ')[0]) : 'Present';
+        const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : 'Manual assignment';
+        return `
+          <div class="ae-history-item">
+            <div class="ae-history-dot ${isActive ? 'active' : 'ended'}"></div>
+            <div class="ae-history-info">
+              <div class="ae-history-name">${esc(h.ae_name)}</div>
+              <div class="ae-history-dates">${start} — ${end}</div>
+              <div class="ae-history-source">${source}</div>
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      container.innerHTML = '<div class="no-data">Failed to load history</div>';
     }
   }
 
@@ -1390,6 +1439,7 @@
       status.textContent = '✓ Saved';
       status.className = 'save-status success';
       hasUnsavedChanges = false;
+      loadAEHistory(); // Refresh AE history timeline
       loadData(); // Refresh grid
     } catch (e) {
       status.textContent = '✗ Error saving';
