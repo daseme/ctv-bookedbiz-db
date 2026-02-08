@@ -331,7 +331,7 @@
 <div class="modal-overlay" id="detail-modal">
   <div class="detail-modal">
     <div class="modal-header">
-      <h2><span id="detail-name"></span> <span class="type-badge" id="detail-type-badge"></span></h2>
+      <h2><span id="detail-name"></span> <span class="type-badge" id="detail-type-badge"></span> <a id="detail-page-link" href="#" target="_blank" title="Open detail page" style="font-size:14px;color:#0ea5e9;text-decoration:none;display:none">↗</a></h2>
       <button class="modal-close">&times;</button>
     </div>
     <div class="modal-body">
@@ -893,6 +893,15 @@
     badge.textContent = type === 'agency' ? 'Agency' : 'Advertiser';
     badge.className = 'type-badge ' + type;
 
+    // Detail page link (customers only)
+    const pageLink = document.getElementById('detail-page-link');
+    if (type === 'customer') {
+      pageLink.href = `/reports/customer/${id}`;
+      pageLink.style.display = 'inline';
+    } else {
+      pageLink.style.display = 'none';
+    }
+
     // Sector (customers only)
     const sectorSection = document.getElementById('sector-section');
     if (type === 'customer') {
@@ -1056,7 +1065,7 @@
                        rev >= 1000 ? `$${(rev/1000).toFixed(0)}K` :
                        rev > 0 ? `$${rev.toFixed(0)}` : '-';
         return `<tr>
-          <td>${esc(c.customer_name)}</td>
+          <td><a href="/reports/customer/${c.customer_id}" target="_blank" style="color:#0ea5e9;text-decoration:none">${esc(c.customer_name)}</a></td>
           <td>${esc(c.sector_name || '-')}</td>
           <td><input class="po-input" data-customer-id="${c.customer_id}" value="${esc(c.po_number || '')}" placeholder="—"><span class="po-saved">✓</span></td>
           <td class="spots">${c.spot_count || '-'}</td>
