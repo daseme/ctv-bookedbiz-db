@@ -1,3 +1,17 @@
+# AE Account Ownership with History - COMPLETED ✅
+
+Implemented 2026-02-08.
+
+- ✅ Created `ae_assignments` table for CRM-style assignment history tracking
+- ✅ Backfilled 107 entities (34 agencies + 73 customers) from 2025+ spot activity
+- ✅ Updated `api_update_ae()` to manage history (end old assignment, create new)
+- ✅ Added `GET /ae-history` endpoint returning assignment timeline
+- ✅ Added AE history timeline UI in entity detail modal
+- ✅ Agencies with AE badges: 3 → 35; customers: 0 → 73
+- Files: `007_backfill_assigned_ae.sql`, `address_book.py`, `address_book.html`
+
+---
+
 # Consistent Breadcrumbs - COMPLETED ✅
 
 Deployed to production 2026-02-07. PR #102.
