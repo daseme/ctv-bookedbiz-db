@@ -1093,7 +1093,7 @@ def api_create_activity(entity_type, entity_id):
 
 @address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/ae", methods=["PUT"])
 def api_update_ae(entity_type, entity_id):
-    """Update assigned AE for an entity."""
+    """Update assigned AE for an entity. Manages ae_assignments history."""
     if entity_type not in ("agency", "customer"):
         return jsonify({"error": "Invalid entity type"}), 400
 
@@ -1116,6 +1116,21 @@ def api_update_ae(entity_type, entity_id):
 
             old_ae = row["assigned_ae"]
 
+            # End any current active assignment
+            conn.execute("""
+                UPDATE ae_assignments
+                SET ended_date = datetime('now')
+                WHERE entity_type = ? AND entity_id = ? AND ended_date IS NULL
+            """, [entity_type, entity_id])
+
+            # Insert new assignment if AE is set
+            if assigned_ae:
+                conn.execute("""
+                    INSERT INTO ae_assignments (entity_type, entity_id, ae_name, created_by)
+                    VALUES (?, ?, ?, 'web_user')
+                """, [entity_type, entity_id, assigned_ae])
+
+            # Update denormalized value on main table
             conn.execute(
                 f"UPDATE {table} SET assigned_ae = ? WHERE {id_col} = ?",
                 [assigned_ae, entity_id]
@@ -1137,6 +1152,23 @@ def api_update_ae(entity_type, entity_id):
         except Exception as e:
             conn.rollback()
             return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/ae-history")
+def api_ae_history(entity_type, entity_id):
+    """Get AE assignment history for an entity."""
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "Invalid entity type"}), 400
+
+    with _db_ro() as conn:
+        rows = conn.execute("""
+            SELECT ae_name, assigned_date, ended_date, created_by, notes
+            FROM ae_assignments
+            WHERE entity_type = ? AND entity_id = ?
+            ORDER BY assigned_date DESC
+        """, [entity_type, entity_id]).fetchall()
+
+        return jsonify([dict(r) for r in rows])
 
 
 @address_book_bp.route("/api/address-book/ae-list")
