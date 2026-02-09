@@ -28,14 +28,19 @@
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
+        /* Kill base template chrome on index page */
+        .header { display: none; }
+        .breadcrumb { display: none; }
+        .content-wrapper { padding: 0; }
+
         .index-content {
-            padding: 24px 32px;
+            padding: 20px 28px;
         }
 
-        /* Search bar - promoted to top */
+        /* Search bar */
         .search-bar {
-            max-width: 420px;
-            margin: 0 auto 24px auto;
+            max-width: 380px;
+            margin: 0 auto 20px auto;
             position: relative;
         }
 
@@ -66,15 +71,96 @@
             pointer-events: none;
         }
 
-        /* Compact category headers - left-aligned labels */
+        .search-hint {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 11px;
+            color: var(--nord3);
+            background: var(--nord5);
+            padding: 2px 6px;
+            border-radius: 4px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+
+        .search-bar input:focus ~ .search-hint { display: none; }
+
+        /* Featured / quick-access row */
+        .featured-section {
+            margin-bottom: 24px;
+        }
+
+        .featured-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--nord3);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .featured-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .featured-card {
+            background: linear-gradient(135deg, var(--nord0) 0%, var(--nord1) 50%, var(--nord2) 100%);
+            border-radius: 10px;
+            overflow: hidden;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .featured-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(46, 52, 64, 0.25);
+        }
+
+        .featured-card a.card-link {
+            display: block;
+            padding: 18px 20px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .featured-card .card-header {
+            margin-bottom: 8px;
+        }
+
+        .featured-card .card-icon {
+            background: linear-gradient(135deg, var(--nord8), var(--nord7));
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .featured-card h3 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--nord6);
+            margin: 0;
+            flex: 1;
+            line-height: 1.3;
+        }
+
+        .featured-card p {
+            color: var(--nord4);
+            font-size: 12px;
+            line-height: 1.4;
+            margin: 0;
+        }
+
+        /* Compact category headers */
         .category-header {
             font-size: 13px;
             font-weight: 700;
             color: var(--nord3);
             text-transform: uppercase;
             letter-spacing: 1px;
-            margin: 28px 0 12px 0;
-            padding-bottom: 8px;
+            margin: 24px 0 10px 0;
+            padding-bottom: 6px;
             border-bottom: 2px solid var(--nord4);
         }
 
@@ -86,8 +172,8 @@
         .report-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 8px;
+            gap: 12px;
+            margin-bottom: 4px;
         }
 
         /* Compact clickable cards */
@@ -108,7 +194,7 @@
 
         .report-card a.card-link {
             display: block;
-            padding: 16px 20px;
+            padding: 14px 16px;
             text-decoration: none;
             color: inherit;
         }
@@ -117,7 +203,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
 
         .card-icon {
@@ -181,8 +267,8 @@
 
         /* Inactive section styling */
         .inactive-section {
-            margin-top: 32px;
-            padding-top: 24px;
+            margin-top: 28px;
+            padding-top: 20px;
             border-top: 2px dashed var(--nord4);
         }
 
@@ -220,18 +306,18 @@
 
         /* Responsive */
         @media (max-width: 1024px) {
-            .report-grid { grid-template-columns: repeat(2, 1fr); }
+            .report-grid, .featured-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
         @media (max-width: 640px) {
             .index-content { padding: 16px; }
-            .report-grid { grid-template-columns: 1fr; gap: 12px; }
+            .report-grid, .featured-grid { grid-template-columns: 1fr; gap: 10px; }
         }
 
         /* Stagger animation */
-        .report-card { animation: fadeInUp 0.4s ease-out both; }
-        .report-card:nth-child(2) { animation-delay: 0.05s; }
-        .report-card:nth-child(3) { animation-delay: 0.1s; }
+        .report-card, .featured-card { animation: fadeInUp 0.4s ease-out both; }
+        .report-card:nth-child(2), .featured-card:nth-child(2) { animation-delay: 0.05s; }
+        .report-card:nth-child(3), .featured-card:nth-child(3) { animation-delay: 0.1s; }
         .report-card:nth-child(4) { animation-delay: 0.15s; }
         .report-card:nth-child(5) { animation-delay: 0.2s; }
         .report-card:nth-child(6) { animation-delay: 0.25s; }
@@ -243,6 +329,7 @@
 
         .report-card.hidden { display: none; }
         .category-section.hidden { display: none; }
+        .featured-section.hidden { display: none; }
         .no-results {
             text-align: center;
             color: var(--nord3);
@@ -257,8 +344,45 @@
 <div class="index-content">
         <div class="search-bar">
             <input type="text" id="reportSearch" placeholder="Filter reports..." autocomplete="off">
+            <span class="search-hint">/</span>
         </div>
         <div class="no-results" id="noResults">No reports match your search.</div>
+
+        <!-- Featured quick-access row -->
+        <div class="featured-section" id="featuredSection">
+            <div class="featured-label">Quick Access</div>
+            <div class="featured-grid">
+                <div class="featured-card" data-title="customer revenue dashboard" data-desc="interactive customer-level monthly revenue breakdown">
+                    <a href="/reports/revenue-dashboard-customer" class="card-link">
+                        <div class="card-header">
+                            <div class="card-icon">🎯</div>
+                            <h3>Customer Revenue Dashboard</h3>
+                        </div>
+                        <p>Interactive customer-level monthly revenue breakdown with filtering and export.</p>
+                    </a>
+                </div>
+
+                <div class="featured-card" data-title="ae performance dashboard" data-desc="account executive performance metrics">
+                    <a href="/reports/ae-dashboard" class="card-link">
+                        <div class="card-header">
+                            <div class="card-icon">👤</div>
+                            <h3>AE Performance Dashboard</h3>
+                        </div>
+                        <p>Account executive performance metrics, revenue contributions, and team analytics.</p>
+                    </a>
+                </div>
+
+                <div class="featured-card" data-title="management performance" data-desc="quarterly performance with budget pacing">
+                    <a href="/reports/management-performance" class="card-link">
+                        <div class="card-header">
+                            <div class="card-icon">📊</div>
+                            <h3>Management Performance</h3>
+                        </div>
+                        <p>Company and AE quarterly performance with budget pacing and YoY comparisons.</p>
+                    </a>
+                </div>
+            </div>
+        </div>
 
         <div class="category-section">
             <div class="category-header">Reporting & Analytics</div>
@@ -486,27 +610,62 @@
 
 {% block scripts %}
 <script>
-document.getElementById('reportSearch').addEventListener('input', function() {
-    const query = this.value.toLowerCase().trim();
+(function() {
+    const searchInput = document.getElementById('reportSearch');
+    const noResults = document.getElementById('noResults');
+    const featuredSection = document.getElementById('featuredSection');
     const cards = document.querySelectorAll('.category-section .report-card');
     const sections = document.querySelectorAll('.category-section');
-    const noResults = document.getElementById('noResults');
+    const featuredCards = document.querySelectorAll('.featured-card');
 
-    cards.forEach(card => {
-        const title = card.querySelector('h3').textContent.toLowerCase();
-        const desc = card.querySelector('p').textContent.toLowerCase();
-        card.classList.toggle('hidden', query && !title.includes(query) && !desc.includes(query));
+    // Filter on input
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toLowerCase().trim();
+
+        // Filter regular cards
+        cards.forEach(card => {
+            const title = card.querySelector('h3').textContent.toLowerCase();
+            const desc = card.querySelector('p').textContent.toLowerCase();
+            card.classList.toggle('hidden', query && !title.includes(query) && !desc.includes(query));
+        });
+
+        // Hide empty category sections
+        let anyVisible = false;
+        sections.forEach(section => {
+            const visibleCards = section.querySelectorAll('.report-card:not(.hidden)');
+            section.classList.toggle('hidden', query && visibleCards.length === 0);
+            if (visibleCards.length > 0) anyVisible = true;
+        });
+
+        // Filter featured cards too
+        let anyFeaturedVisible = false;
+        featuredCards.forEach(card => {
+            const title = (card.dataset.title || '');
+            const desc = (card.dataset.desc || '');
+            const hidden = query && !title.includes(query) && !desc.includes(query);
+            card.style.display = hidden ? 'none' : '';
+            if (!hidden) anyFeaturedVisible = true;
+        });
+        featuredSection.classList.toggle('hidden', query && !anyFeaturedVisible);
+        if (anyFeaturedVisible) anyVisible = true;
+
+        noResults.style.display = (query && !anyVisible) ? 'block' : 'none';
     });
 
-    // Hide category sections where all cards are hidden
-    let anyVisible = false;
-    sections.forEach(section => {
-        const visibleCards = section.querySelectorAll('.report-card:not(.hidden)');
-        section.classList.toggle('hidden', query && visibleCards.length === 0);
-        if (visibleCards.length > 0) anyVisible = true;
+    // "/" keyboard shortcut to focus search
+    document.addEventListener('keydown', function(e) {
+        if (e.key === '/' && document.activeElement !== searchInput &&
+            !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+            e.preventDefault();
+            searchInput.focus();
+        }
+        // Escape to blur and clear
+        if (e.key === 'Escape' && document.activeElement === searchInput) {
+            searchInput.value = '';
+            searchInput.dispatchEvent(new Event('input'));
+            searchInput.blur();
+        }
     });
-
-    noResults.style.display = (query && !anyVisible) ? 'block' : 'none';
-});
+})();
 </script>
 {% endblock %}
