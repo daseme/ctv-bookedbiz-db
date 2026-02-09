@@ -1,3 +1,38 @@
+# Reports Index Redesign - COMPLETED ✅
+
+Implemented 2026-02-08. PRs #106–#110.
+
+## Round 1: Bug Fixes & Quick Wins
+- ✅ Fixed copy-pasted description on Monthly Revenue Summary
+- ✅ Fixed animation-fill-mode flash on staggered card entrance
+- ✅ Deduplicated icons (5 cards shared 📈, 2 shared 🌐 → all unique)
+- ✅ Merged broken split report-grid divs + fixed indentation on pricing cards
+- ✅ Added search/filter bar with live card filtering by title/description
+
+## Round 2: Density & Usability Overhaul
+- ✅ Made entire cards clickable (removed separate buttons)
+- ✅ Compact layout: padding 36→14px, icons 56→36px, gaps 32→12px
+- ✅ One-line descriptions with text-overflow ellipsis, expand on hover
+- ✅ Removed hero header banner, promoted search bar to top
+- ✅ 3-column forced grid, smaller left-aligned uppercase category headers
+
+## Round 3: Chrome Removal & Featured Row
+- ✅ Hidden ghost `.header` div (empty title/subtitle wasting ~80px)
+- ✅ Hidden breadcrumb ("Home" on home page is redundant)
+- ✅ Zeroed double padding (content-wrapper 32px + index-content 24px → single 20px)
+- ✅ Added dark-themed Quick Access row (Customer Revenue, Address Book, Planning Hub)
+- ✅ Added `/` keyboard shortcut to focus search, `Escape` to clear
+- ✅ Featured card icons tinted to match category colors (blue/purple/green)
+
+## Round 4: Section Rebalancing
+- ✅ Split 3 Pricing reports into dedicated Pricing section
+- ✅ Removed duplicate Monthly Revenue Summary from Coming Soon
+- ✅ Final layout: Quick Access (3) → Reporting (6) → Pricing (3) → Data Management (5) → Budget (2) → Coming Soon (3)
+
+Files: `src/web/templates/index.html`
+
+---
+
 # AE Account Ownership with History - COMPLETED ✅
 
 Implemented 2026-02-08.
