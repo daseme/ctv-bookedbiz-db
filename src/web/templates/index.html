@@ -132,8 +132,19 @@
         }
 
         .featured-card .card-icon {
-            background: linear-gradient(135deg, var(--nord8), var(--nord7));
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .featured-card.feat-reporting .card-icon {
+            background: linear-gradient(135deg, var(--nord8), var(--nord7));
+        }
+
+        .featured-card.feat-data .card-icon {
+            background: linear-gradient(135deg, var(--nord15), var(--nord10));
+        }
+
+        .featured-card.feat-budget .card-icon {
+            background: linear-gradient(135deg, var(--nord14), var(--nord7));
         }
 
         .featured-card h3 {
@@ -352,7 +363,7 @@
         <div class="featured-section" id="featuredSection">
             <div class="featured-label">Quick Access</div>
             <div class="featured-grid">
-                <div class="featured-card" data-title="customer revenue dashboard" data-desc="interactive customer-level monthly revenue breakdown">
+                <div class="featured-card feat-reporting" data-title="customer revenue dashboard" data-desc="interactive customer-level monthly revenue breakdown">
                     <a href="/reports/revenue-dashboard-customer" class="card-link">
                         <div class="card-header">
                             <div class="card-icon">🎯</div>
@@ -362,7 +373,7 @@
                     </a>
                 </div>
 
-                <div class="featured-card" data-title="address book" data-desc="unified directory of agencies and customers with contacts and addresses">
+                <div class="featured-card feat-data" data-title="address book" data-desc="unified directory of agencies and customers with contacts and addresses">
                     <a href="/address-book" class="card-link">
                         <div class="card-header">
                             <div class="card-icon">📇</div>
@@ -372,7 +383,7 @@
                     </a>
                 </div>
 
-                <div class="featured-card" data-title="planning hub" data-desc="central planning dashboard for forecasting and goal setting">
+                <div class="featured-card feat-budget" data-title="planning hub" data-desc="central planning dashboard for forecasting and goal setting">
                     <a href="/planning/" class="card-link">
                         <div class="card-header">
                             <div class="card-icon">📋</div>
