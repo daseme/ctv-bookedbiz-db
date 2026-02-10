@@ -758,40 +758,52 @@
     return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  // ===== Centralized fetch helper =====
+  async function apiFetch(url, options = {}) {
+    try {
+      const r = await fetch(url, options);
+      if (r.ok) {
+        const data = await r.json().catch(() => null);
+        return { ok: true, data, status: r.status };
+      }
+      const errData = await r.json().catch(() => null);
+      return { ok: false, data: errData, error: errData?.error || `Request failed (${r.status})`, status: r.status };
+    } catch (e) {
+      return { ok: false, data: null, error: 'Network error. Please try again.', status: 0 };
+    }
+  }
+
   // ===== Load sectors =====
   async function loadSectors() {
-    try {
-      const r = await fetch(`${API}/sectors`);
-      sectorsData = await r.json();
-      document.getElementById('sector-filter').innerHTML = '<option value="">All Sectors</option>' +
-        sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
-      document.getElementById('detail-sector').innerHTML = '<option value="">-- No Sector --</option>' +
-        sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
-    } catch (e) { console.error('Failed to load sectors:', e); }
+    const { ok, data } = await apiFetch(`${API}/sectors`);
+    if (!ok) { console.error('Failed to load sectors'); return; }
+    sectorsData = data;
+    document.getElementById('sector-filter').innerHTML = '<option value="">All Sectors</option>' +
+      sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+    document.getElementById('detail-sector').innerHTML = '<option value="">-- No Sector --</option>' +
+      sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
   }
 
   // ===== Load markets =====
   async function loadMarkets() {
-    try {
-      const r = await fetch(`${API}/markets`);
-      marketsData = await r.json();
-      document.getElementById('market-filter').innerHTML = '<option value="">All Markets</option>' +
-        marketsData.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
-    } catch (e) { console.error('Failed to load markets:', e); }
+    const { ok, data } = await apiFetch(`${API}/markets`);
+    if (!ok) { console.error('Failed to load markets'); return; }
+    marketsData = data;
+    document.getElementById('market-filter').innerHTML = '<option value="">All Markets</option>' +
+      marketsData.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
   }
 
   // ===== Load AE list =====
   async function loadAEList() {
-    try {
-      const r = await fetch(`${API}/ae-list`);
-      aeListData = await r.json();
-      const filterEl = document.getElementById('ae-filter');
-      filterEl.innerHTML = '<option value="">All AEs</option><option value="__none__">Unassigned</option>' +
-        aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
-      const detailEl = document.getElementById('detail-ae');
-      detailEl.innerHTML = '<option value="">-- No AE Assigned --</option>' +
-        aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
-    } catch (e) { console.error('Failed to load AE list:', e); }
+    const { ok, data } = await apiFetch(`${API}/ae-list`);
+    if (!ok) { console.error('Failed to load AE list'); return; }
+    aeListData = data;
+    const filterEl = document.getElementById('ae-filter');
+    filterEl.innerHTML = '<option value="">All AEs</option><option value="__none__">Unassigned</option>' +
+      aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
+    const detailEl = document.getElementById('detail-ae');
+    detailEl.innerHTML = '<option value="">-- No AE Assigned --</option>' +
+      aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
   }
 
   // ===== Load data =====
@@ -810,17 +822,16 @@
       sort: document.getElementById('sort-filter').value,
       include_inactive: document.getElementById('inactive-filter').checked ? '1' : '0'
     });
-    try {
-      const r = await fetch(`${API}?${params}`);
-      currentData = await r.json();
+    const { ok, data, error } = await apiFetch(`${API}?${params}`);
+    if (ok) {
+      currentData = data;
       updateStats();
       renderGrid();
-    } catch (e) {
+    } else {
       countEl.textContent = 'Error loading';
-      console.error('Load error:', e);
-    } finally {
-      countEl.classList.remove('loading');
+      console.error('Load error:', error);
     }
+    countEl.classList.remove('loading');
   }
 
   function updateStats() {
@@ -989,6 +1000,34 @@
     document.getElementById('export-csv').click();
   });
 
+  document.getElementById('bulk-set-sector').addEventListener('click', async () => {
+    const customerKeys = Array.from(selectedEntities).filter(k => k.startsWith('customer:'));
+    if (customerKeys.length === 0) {
+      alert('No advertisers selected. Sector can only be set on advertisers, not agencies.');
+      return;
+    }
+    const options = sectorsData.map(s => `${s.sector_id}: ${s.sector_name}`).join('\n');
+    const input = prompt(`Set sector for ${customerKeys.length} advertiser(s).\n\nEnter sector ID:\n${options}`);
+    if (!input) return;
+    const sectorId = parseInt(input);
+    if (!sectorId || !sectorsData.find(s => s.sector_id === sectorId)) {
+      alert('Invalid sector ID.');
+      return;
+    }
+    let ok = 0, fail = 0;
+    for (const key of customerKeys) {
+      const id = key.split(':')[1];
+      const { ok: success } = await apiFetch(`${API}/customer/${id}/sector`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ sector_id: sectorId })
+      });
+      if (success) ok++; else fail++;
+    }
+    alert(`Sector updated: ${ok} succeeded${fail ? `, ${fail} failed` : ''}.`);
+    loadData();
+  });
+
   function renderCard(e) {
     const sectorBadge = e.entity_type === 'customer'
       ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}</span>`
@@ -1056,9 +1095,9 @@
   const modal = document.getElementById('detail-modal');
 
   async function openDetail(type, id) {
-    const r = await fetch(`${API}/${type}/${id}`);
-    if (!r.ok) { alert('Failed to load entity'); return; }
-    currentEntity = await r.json();
+    const { ok, data, error } = await apiFetch(`${API}/${type}/${id}`);
+    if (!ok) { alert(error || 'Failed to load entity'); return; }
+    currentEntity = data;
     currentEntity.entity_type = type;
     currentEntity.entity_id = id;
 
@@ -1162,6 +1201,18 @@
     document.getElementById('add-address-form').classList.remove('active');
     document.getElementById('add-activity-form').classList.remove('active');
 
+    // Track unsaved changes on editable fields
+    const trackChange = () => { hasUnsavedChanges = true; };
+    ['detail-notes', 'detail-address', 'detail-city', 'detail-state', 'detail-zip',
+     'detail-sector', 'detail-agency', 'detail-ae', 'detail-po-number'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', trackChange, { once: true });
+    });
+    ['detail-edi-billing', 'detail-affidavit-required'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', trackChange, { once: true });
+    });
+
     modal.classList.add('active');
   }
 
@@ -1175,65 +1226,53 @@
 
   async function loadActivities() {
     const container = document.getElementById('detail-activities');
-    try {
-      const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`);
-      const activities = await r.json();
-
-      if (!activities || activities.length === 0) {
-        container.innerHTML = '<div class="no-data">No activity recorded</div>';
-        return;
-      }
-
-      container.innerHTML = activities.map(a => {
-        const icon = ACTIVITY_ICONS[a.activity_type] || '📋';
-        const date = a.activity_date ? formatDateTime(a.activity_date) : '';
-        return `
-          <div class="activity-item">
-            <div class="activity-icon ${a.activity_type}">${icon}</div>
-            <div class="activity-content">
-              <div class="activity-header">
-                <span class="activity-type">${a.activity_type}</span>
-                <span>${date}</span>
-                ${a.contact_name ? `<span>with ${esc(a.contact_name)}</span>` : ''}
-              </div>
-              ${a.description ? `<div class="activity-desc">${esc(a.description)}</div>` : ''}
-            </div>
-          </div>`;
-      }).join('');
-    } catch (e) {
-      container.innerHTML = '<div class="no-data">Failed to load activities</div>';
+    const { ok, data: activities } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`);
+    if (!ok || !activities || activities.length === 0) {
+      container.innerHTML = `<div class="no-data">${ok ? 'No activity recorded' : 'Failed to load activities'}</div>`;
+      return;
     }
+
+    container.innerHTML = activities.map(a => {
+      const icon = ACTIVITY_ICONS[a.activity_type] || '📋';
+      const date = a.activity_date ? formatDateTime(a.activity_date) : '';
+      return `
+        <div class="activity-item">
+          <div class="activity-icon ${a.activity_type}">${icon}</div>
+          <div class="activity-content">
+            <div class="activity-header">
+              <span class="activity-type">${a.activity_type}</span>
+              <span>${date}</span>
+              ${a.contact_name ? `<span>with ${esc(a.contact_name)}</span>` : ''}
+            </div>
+            ${a.description ? `<div class="activity-desc">${esc(a.description)}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
   }
 
   async function loadAEHistory() {
     const container = document.getElementById('detail-ae-history');
-    try {
-      const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae-history`);
-      const history = await r.json();
-
-      if (!history || history.length === 0) {
-        container.innerHTML = '<div class="no-data">No assignment history</div>';
-        return;
-      }
-
-      container.innerHTML = history.map(h => {
-        const isActive = !h.ended_date;
-        const start = h.assigned_date ? formatDate(h.assigned_date.split('T')[0].split(' ')[0]) : '';
-        const end = h.ended_date ? formatDate(h.ended_date.split('T')[0].split(' ')[0]) : 'Present';
-        const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : 'Manual assignment';
-        return `
-          <div class="ae-history-item">
-            <div class="ae-history-dot ${isActive ? 'active' : 'ended'}"></div>
-            <div class="ae-history-info">
-              <div class="ae-history-name">${esc(h.ae_name)}</div>
-              <div class="ae-history-dates">${start} — ${end}</div>
-              <div class="ae-history-source">${source}</div>
-            </div>
-          </div>`;
-      }).join('');
-    } catch (e) {
-      container.innerHTML = '<div class="no-data">Failed to load history</div>';
+    const { ok, data: history } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae-history`);
+    if (!ok || !history || history.length === 0) {
+      container.innerHTML = `<div class="no-data">${ok ? 'No assignment history' : 'Failed to load history'}</div>`;
+      return;
     }
+
+    container.innerHTML = history.map(h => {
+      const isActive = !h.ended_date;
+      const start = h.assigned_date ? formatDate(h.assigned_date.split('T')[0].split(' ')[0]) : '';
+      const end = h.ended_date ? formatDate(h.ended_date.split('T')[0].split(' ')[0]) : 'Present';
+      const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : 'Manual assignment';
+      return `
+        <div class="ae-history-item">
+          <div class="ae-history-dot ${isActive ? 'active' : 'ended'}"></div>
+          <div class="ae-history-info">
+            <div class="ae-history-name">${esc(h.ae_name)}</div>
+            <div class="ae-history-dates">${start} — ${end}</div>
+            <div class="ae-history-source">${source}</div>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   async function loadAgencyClients(agencyId) {
@@ -1241,8 +1280,8 @@
     const countEl = document.getElementById('agency-clients-count');
     tbody.innerHTML = '<tr><td colspan="5" class="no-data">Loading...</td></tr>';
     try {
-      const r = await fetch(`${API}/agency/${agencyId}/customers`);
-      const data = await r.json();
+      const { ok, data } = await apiFetch(`${API}/agency/${agencyId}/customers`);
+      if (!ok) throw new Error('Failed to load');
       const clients = data.customers || [];
       countEl.textContent = `(${clients.length})`;
       if (clients.length === 0) {
@@ -1269,7 +1308,7 @@
         input.addEventListener('change', async () => {
           const custId = input.dataset.customerId;
           const saved = input.nextElementSibling;
-          const res = await fetch(`${API}/customer/${custId}/billing-info`, {
+          const { ok } = await apiFetch(`${API}/customer/${custId}/billing-info`, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1277,7 +1316,7 @@
               edi_billing: !!(client && client.edi_billing)
             })
           });
-          if (res.ok) {
+          if (ok) {
             saved.classList.add('show');
             setTimeout(() => saved.classList.remove('show'), 1500);
           }
@@ -1307,19 +1346,19 @@
     const activityType = document.getElementById('new-activity-type').value;
     const description = document.getElementById('new-activity-desc').value.trim();
 
-    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`, {
+    const { ok, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ activity_type: activityType, description: description || null })
     });
 
-    if (r.ok) {
+    if (ok) {
       document.getElementById('add-activity-form').classList.remove('active');
       document.getElementById('new-activity-type').value = 'note';
       document.getElementById('new-activity-desc').value = '';
       loadActivities();
     } else {
-      alert('Failed to add activity');
+      alert(error || 'Failed to add activity');
     }
   });
 
@@ -1431,12 +1470,13 @@
         const addrId = btn.closest('.address-card').dataset.addressId;
         const addr = currentEntity.addresses.find(a => a.address_id == addrId);
         if (!addr) return;
-        const r = await fetch(`${API}/addresses/${addrId}`, {
+        const { ok, error } = await apiFetch(`${API}/addresses/${addrId}`, {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ ...addr, is_primary: true })
         });
-        if (r.ok) refreshAddresses();
+        if (ok) refreshAddresses();
+        else alert(error || 'Failed to set primary address');
       });
     });
     list.querySelectorAll('.delete').forEach(btn => {
@@ -1444,16 +1484,17 @@
         e.stopPropagation();
         if (!confirm('Delete this address?')) return;
         const addrId = btn.closest('.address-card').dataset.addressId;
-        const r = await fetch(`${API}/addresses/${addrId}`, { method: 'DELETE' });
-        if (r.ok) refreshAddresses();
+        const { ok, error } = await apiFetch(`${API}/addresses/${addrId}`, { method: 'DELETE' });
+        if (ok) refreshAddresses();
+        else alert(error || 'Failed to delete address');
       });
     });
   }
 
   async function refreshAddresses() {
-    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`);
-    if (r.ok) {
-      currentEntity.addresses = await r.json();
+    const { ok, data } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`);
+    if (ok) {
+      currentEntity.addresses = data;
       renderAddresses();
     }
   }
@@ -1469,7 +1510,7 @@
   document.getElementById('save-new-address').addEventListener('click', async () => {
     const label = document.getElementById('new-address-label').value;
     if (!label) { alert('Label is required'); return; }
-    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`, {
+    const { ok, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -1482,13 +1523,12 @@
         notes: document.getElementById('new-address-notes').value.trim() || null
       })
     });
-    if (r.ok) {
+    if (ok) {
       document.getElementById('add-address-form').classList.remove('active');
       clearNewAddressForm();
       refreshAddresses();
     } else {
-      const err = await r.json().catch(() => ({}));
-      alert(err.error || 'Failed to add address');
+      alert(error || 'Failed to add address');
     }
   });
 
@@ -1548,7 +1588,7 @@
   async function saveContactEdit(card, contactId) {
     const name = card.querySelector('.edit-name').value.trim();
     if (!name) { alert('Name is required'); return; }
-    const r = await fetch(`/api/contacts/${contactId}`, {
+    const { ok, error } = await apiFetch(`/api/contacts/${contactId}`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -1559,44 +1599,41 @@
         contact_role: card.querySelector('.edit-role').value
       })
     });
-    if (r.ok) {
-      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
-      const data = await detail.json();
-      currentEntity.contacts = data.contacts;
-      renderContacts();
+    if (ok) {
+      const detail = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      if (detail.ok) { currentEntity.contacts = detail.data.contacts; renderContacts(); }
     } else {
-      const err = await r.json().catch(() => null);
-      alert(err?.error || 'Failed to update contact');
+      alert(error || 'Failed to update contact');
     }
   }
 
   async function markContacted(contactId) {
-    const r = await fetch(`/api/contacts/${contactId}/touched`, { method: 'POST' });
-    if (r.ok) {
-      // Refresh contacts
-      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
-      const data = await detail.json();
-      currentEntity.contacts = data.contacts;
-      renderContacts();
+    const { ok, error } = await apiFetch(`/api/contacts/${contactId}/touched`, { method: 'POST' });
+    if (ok) {
+      const detail = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      if (detail.ok) { currentEntity.contacts = detail.data.contacts; renderContacts(); }
+    } else {
+      alert(error || 'Failed to mark as contacted');
     }
   }
 
   async function setPrimaryContact(contactId) {
-    const r = await fetch(`/api/contacts/${contactId}/primary`, { method: 'POST' });
-    if (r.ok) {
-      // Refresh contacts
-      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
-      const data = await detail.json();
-      currentEntity.contacts = data.contacts;
-      renderContacts();
+    const { ok, error } = await apiFetch(`/api/contacts/${contactId}/primary`, { method: 'POST' });
+    if (ok) {
+      const detail = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      if (detail.ok) { currentEntity.contacts = detail.data.contacts; renderContacts(); }
+    } else {
+      alert(error || 'Failed to set primary contact');
     }
   }
 
   async function deleteContact(contactId) {
-    const r = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
-    if (r.ok) {
+    const { ok, error } = await apiFetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
+    if (ok) {
       currentEntity.contacts = currentEntity.contacts.filter(c => c.contact_id != contactId);
       renderContacts();
+    } else {
+      alert(error || 'Failed to delete contact');
     }
   }
 
@@ -1612,7 +1649,7 @@
   document.getElementById('save-new-contact').addEventListener('click', async () => {
     const name = document.getElementById('new-contact-name').value.trim();
     if (!name) { alert('Name is required'); return; }
-    const r = await fetch(`/api/contacts/${currentEntity.entity_type}/${currentEntity.entity_id}`, {
+    const { ok, error } = await apiFetch(`/api/contacts/${currentEntity.entity_type}/${currentEntity.entity_id}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -1624,17 +1661,13 @@
         is_primary: document.getElementById('new-contact-primary').checked
       })
     });
-    if (r.ok) {
-      const result = await r.json();
-      // Refresh contacts
-      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
-      const data = await detail.json();
-      currentEntity.contacts = data.contacts;
-      renderContacts();
+    if (ok) {
+      const detail = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      if (detail.ok) { currentEntity.contacts = detail.data.contacts; renderContacts(); }
       document.getElementById('add-contact-form').classList.remove('active');
       clearNewContactForm();
     } else {
-      alert('Failed to add contact');
+      alert(error || 'Failed to add contact');
     }
   });
 
@@ -1657,74 +1690,52 @@
     status.className = 'save-status';
 
     try {
-      // Save address
-      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/address`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
+      const putJson = (url, body) => apiFetch(url, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+      });
+
+      // Save address + notes in parallel
+      const [addrRes, notesRes] = await Promise.all([
+        putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/address`, {
           address: document.getElementById('detail-address').value.trim() || null,
           city: document.getElementById('detail-city').value.trim() || null,
           state: document.getElementById('detail-state').value.trim() || null,
           zip: document.getElementById('detail-zip').value.trim() || null
+        }),
+        putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/notes`, {
+          notes: document.getElementById('detail-notes').value.trim() || null
         })
-      });
+      ]);
 
-      // Save notes
-      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/notes`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ notes: document.getElementById('detail-notes').value.trim() || null })
-      });
-
-      // Save sector (customers only)
+      // Save customer-specific fields
       if (currentEntity.entity_type === 'customer') {
-        await fetch(`${API}/customer/${currentEntity.entity_id}/sector`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ sector_id: document.getElementById('detail-sector').value || null })
-        });
-        // Save agency
-        await fetch(`${API}/customer/${currentEntity.entity_id}/agency`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ agency_id: document.getElementById('detail-agency').value || null })
-        });
+        await Promise.all([
+          putJson(`${API}/customer/${currentEntity.entity_id}/sector`, {
+            sector_id: document.getElementById('detail-sector').value || null
+          }),
+          putJson(`${API}/customer/${currentEntity.entity_id}/agency`, {
+            agency_id: document.getElementById('detail-agency').value || null
+          })
+        ]);
       }
 
-      // Save AE
-      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ assigned_ae: document.getElementById('detail-ae').value || null })
-      });
+      // Save AE + billing in parallel
+      const billingBody = currentEntity.entity_type === 'agency'
+        ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked }
+        : { po_number: document.getElementById('detail-po-number').value.trim() || null, edi_billing: false, affidavit_required: document.getElementById('detail-affidavit-required').checked };
 
-      // Save billing info: EDI for agencies, PO for customers
-      if (currentEntity.entity_type === 'agency') {
-        await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            po_number: null,
-            edi_billing: document.getElementById('detail-edi-billing').checked
-          })
-        });
-      } else {
-        await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            po_number: document.getElementById('detail-po-number').value.trim() || null,
-            edi_billing: false,
-            affidavit_required: document.getElementById('detail-affidavit-required').checked
-          })
-        });
-      }
+      await Promise.all([
+        putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae`, {
+          assigned_ae: document.getElementById('detail-ae').value || null
+        }),
+        putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, billingBody)
+      ]);
 
       status.textContent = '✓ Saved';
       status.className = 'save-status success';
       hasUnsavedChanges = false;
-      loadAEHistory(); // Refresh AE history timeline
-      loadData(); // Refresh grid
+      loadAEHistory();
+      loadData();
     } catch (e) {
       status.textContent = '✗ Error saving';
       status.className = 'save-status error';
@@ -1736,8 +1747,10 @@
 
   // Close modal
   function closeModal() {
+    if (hasUnsavedChanges && !confirm('You have unsaved changes. Close anyway?')) return;
     modal.classList.remove('active');
     currentEntity = null;
+    hasUnsavedChanges = false;
   }
   modal.querySelector('.modal-close').addEventListener('click', closeModal);
   document.getElementById('close-detail').addEventListener('click', closeModal);
@@ -1759,13 +1772,12 @@
   let savedFiltersData = [];
 
   async function loadSavedFilters() {
-    try {
-      const r = await fetch(`${API}/filters`);
-      savedFiltersData = await r.json();
-      const select = document.getElementById('saved-filter');
-      select.innerHTML = '<option value="">Saved Filters...</option>' +
-        savedFiltersData.map(f => `<option value="${f.filter_id}">${esc(f.filter_name)}</option>`).join('');
-    } catch (e) { console.error('Failed to load saved filters:', e); }
+    const { ok, data } = await apiFetch(`${API}/filters`);
+    if (!ok) { console.error('Failed to load saved filters'); return; }
+    savedFiltersData = data;
+    const select = document.getElementById('saved-filter');
+    select.innerHTML = '<option value="">Saved Filters...</option>' +
+      savedFiltersData.map(f => `<option value="${f.filter_id}">${esc(f.filter_name)}</option>`).join('');
   }
 
   document.getElementById('saved-filter').addEventListener('change', function() {
@@ -1796,16 +1808,16 @@
       has_contacts: document.getElementById('contacts-filter').value,
       sort: document.getElementById('sort-filter').value
     };
-    const r = await fetch(`${API}/filters`, {
+    const { ok, error } = await apiFetch(`${API}/filters`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ filter_name: filterName, filter_config: filterConfig })
     });
-    if (r.ok) {
+    if (ok) {
       alert('Filter saved!');
       loadSavedFilters();
     } else {
-      alert('Failed to save filter');
+      alert(error || 'Failed to save filter');
     }
   });
 
@@ -1940,22 +1952,21 @@
       const cRole = document.getElementById('create-contact-role').value;
       if (cRole) body.contact_role = cRole;
 
-      const r = await fetch(`${API}/entities`, {
+      const { ok, data: result, error, status } = await apiFetch(`${API}/entities`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
       });
-      const result = await r.json();
 
-      if (r.status === 201) {
+      if (status === 201) {
         closeCreateModal();
         await loadData();
         openDetail(result.entity_type, result.entity_id);
-      } else if (r.status === 409) {
-        errorEl.innerHTML = `${esc(result.error)}. <a onclick="document.getElementById('create-modal').classList.remove('active');openDetail('${createType}',${result.existing_id})">Open existing?</a>`;
+      } else if (status === 409) {
+        errorEl.innerHTML = `${esc(result?.error || error)}. <a onclick="document.getElementById('create-modal').classList.remove('active');openDetail('${createType}',${result?.existing_id})">Open existing?</a>`;
         errorEl.classList.add('active');
       } else {
-        errorEl.textContent = result.error || 'Failed to create entity.';
+        errorEl.textContent = error || 'Failed to create entity.';
         errorEl.classList.add('active');
       }
     } catch (e) {
