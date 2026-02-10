@@ -19,6 +19,7 @@ dependencies = [
     "dropbox",
     "python-dotenv",
     "anthropic>=0.67.0",
+    "tqdm>=4.67.3",
 ]
 requires-python = ">=3.10"
 
