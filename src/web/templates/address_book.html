@@ -119,6 +119,15 @@
   .contact-edit-form .btn-cancel{background:#fff;border:1px solid #e2e8f0;color:#64748b}
   .contact-edit-form .btn-save{background:#0ea5e9;border:1px solid #0284c7;color:#fff}
   .contact-edit-form .btn-save:hover{background:#0284c7}
+  .address-edit-form{padding:12px;background:#f0fdf4;border:1px solid #22c55e;border-radius:8px}
+  .address-edit-form .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .address-edit-form .form-field label{display:block;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
+  .address-edit-form .form-field input,.address-edit-form .form-field select,.address-edit-form .form-field textarea{width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box}
+  .address-edit-form .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+  .address-edit-form .btn{padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer}
+  .address-edit-form .btn-cancel{background:#fff;border:1px solid #e2e8f0;color:#64748b}
+  .address-edit-form .btn-save{background:#22c55e;border:1px solid #16a34a;color:#fff}
+  .address-edit-form .btn-save:hover{background:#16a34a}
 
   .role-badge{font-size:10px;padding:2px 6px;background:#e0e7ff;color:#4338ca;border-radius:4px;font-weight:500}
 
@@ -1457,6 +1466,7 @@
           ${a.notes ? `<div class="address-notes">${esc(a.notes)}</div>` : ''}
         </div>
         <div class="address-actions">
+          <button class="edit-addr" title="Edit address">✏️</button>
           ${!a.is_primary ? `<button class="set-primary-addr" title="Set as primary">⭐</button>` : ''}
           <button class="delete" title="Delete address">🗑️</button>
         </div>
@@ -1479,6 +1489,15 @@
         else alert(error || 'Failed to set primary address');
       });
     });
+    list.querySelectorAll('.edit-addr').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const card = btn.closest('.address-card');
+        const addrId = card.dataset.addressId;
+        const addr = currentEntity.addresses.find(a => a.address_id == addrId);
+        if (addr) showEditAddressForm(card, addr);
+      });
+    });
     list.querySelectorAll('.delete').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -1489,6 +1508,78 @@
         else alert(error || 'Failed to delete address');
       });
     });
+  }
+
+  function showEditAddressForm(card, addr) {
+    const labelOptions = ['Billing', 'Shipping', 'PO Box', 'Office', 'Other'];
+    card.innerHTML = `
+      <div class="address-edit-form">
+        <div class="form-row">
+          <div class="form-field">
+            <label>Label</label>
+            <select class="edit-addr-label">
+              ${labelOptions.map(l => `<option value="${l}" ${l === addr.address_label ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Street</label>
+            <input type="text" class="edit-addr-street" value="${esc(addr.address || '')}" placeholder="Street address">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>City</label>
+            <input type="text" class="edit-addr-city" value="${esc(addr.city || '')}" placeholder="City">
+          </div>
+          <div class="form-field">
+            <label>State</label>
+            <input type="text" class="edit-addr-state" value="${esc(addr.state || '')}" placeholder="State">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>ZIP</label>
+            <input type="text" class="edit-addr-zip" value="${esc(addr.zip || '')}" placeholder="ZIP code">
+          </div>
+          <div class="form-field">
+            <label>Notes</label>
+            <input type="text" class="edit-addr-notes" value="${esc(addr.notes || '')}" placeholder="Notes">
+          </div>
+        </div>
+        <div style="margin-top:8px">
+          <label style="font-size:13px;color:#475569;cursor:pointer">
+            <input type="checkbox" class="edit-addr-primary" ${addr.is_primary ? 'checked' : ''}> Primary address
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-cancel edit-addr-cancel">Cancel</button>
+          <button class="btn btn-save edit-addr-save">Save</button>
+        </div>
+      </div>`;
+    card.querySelector('.edit-addr-cancel').addEventListener('click', () => renderAddresses());
+    card.querySelector('.edit-addr-save').addEventListener('click', () => saveAddressEdit(card, addr.address_id));
+    card.querySelector('.edit-addr-street').focus();
+  }
+
+  async function saveAddressEdit(card, addressId) {
+    const { ok, error } = await apiFetch(`${API}/addresses/${addressId}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        address_label: card.querySelector('.edit-addr-label').value,
+        address: card.querySelector('.edit-addr-street').value.trim() || '',
+        city: card.querySelector('.edit-addr-city').value.trim() || '',
+        state: card.querySelector('.edit-addr-state').value.trim() || '',
+        zip: card.querySelector('.edit-addr-zip').value.trim() || '',
+        notes: card.querySelector('.edit-addr-notes').value.trim() || '',
+        is_primary: card.querySelector('.edit-addr-primary').checked
+      })
+    });
+    if (ok) {
+      refreshAddresses();
+    } else {
+      alert(error || 'Failed to update address');
+    }
   }
 
   async function refreshAddresses() {
