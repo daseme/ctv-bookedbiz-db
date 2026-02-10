@@ -7,7 +7,7 @@ or no recent activity for human review/triage.
 from flask import Blueprint, render_template, jsonify, request, current_app
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 stale_customers_bp = Blueprint("stale_customers", __name__)
 
@@ -68,19 +68,22 @@ def api_stale_stats():
     cutoff = f"{date.today().year - threshold_years}-01-01"
 
     with _db_ro() as conn:
-        # Zero-spot customers (active, no spots at all)
+        # Zero-spot customers (active, no spots, not created in last 90 days)
+        grace_cutoff = (date.today() - timedelta(days=90)).isoformat()
         zero_spot_customers = conn.execute("""
             SELECT COUNT(*) as cnt FROM customers c
             WHERE c.is_active = 1
+            AND (c.created_date IS NULL OR c.created_date < ?)
             AND NOT EXISTS (SELECT 1 FROM spots s WHERE s.customer_id = c.customer_id)
-        """).fetchone()["cnt"]
+        """, [grace_cutoff]).fetchone()["cnt"]
 
         # Zero-spot agencies
         zero_spot_agencies = conn.execute("""
             SELECT COUNT(*) as cnt FROM agencies a
             WHERE a.is_active = 1
+            AND (a.created_date IS NULL OR a.created_date < ?)
             AND NOT EXISTS (SELECT 1 FROM spots s WHERE s.agency_id = a.agency_id)
-        """).fetchone()["cnt"]
+        """, [grace_cutoff]).fetchone()["cnt"]
 
         # Stale customers (have spots, but none after cutoff)
         stale_customers = conn.execute("""
@@ -154,6 +157,7 @@ def api_stale_entities():
         threshold_years = 2
 
     cutoff = f"{date.today().year - threshold_years}-01-01"
+    grace_cutoff = (date.today() - timedelta(days=90)).isoformat()
     results = []
 
     with _db_ro() as conn:
@@ -230,7 +234,8 @@ def api_stale_entities():
                     c.sector_id,
                     s.sector_name,
                     c.assigned_ae,
-                    c.notes
+                    c.notes,
+                    c.created_date
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
                 WHERE 1=1 {active_clause}
@@ -247,8 +252,11 @@ def api_stale_entities():
                 row["alias_count"] = customer_alias_counts.get(cid, 0)
                 row["is_agency_client"] = ":" in (row["entity_name"] or "")
 
-                # Classify
+                # Classify — skip zero-spot entities created in last 90 days
+                created = row.get("created_date") or ""
                 if row["spot_count"] == 0:
+                    if created >= grace_cutoff:
+                        continue  # recently created, not stale yet
                     row["category"] = "zero_spot"
                 elif row["last_active"] and row["last_active"] < cutoff:
                     row["category"] = "stale"
@@ -269,7 +277,8 @@ def api_stale_entities():
                     NULL as sector_id,
                     NULL as sector_name,
                     a.assigned_ae,
-                    a.notes
+                    a.notes,
+                    a.created_date
                 FROM agencies a
                 WHERE 1=1 {active_clause}
                 ORDER BY a.agency_name
@@ -285,8 +294,11 @@ def api_stale_entities():
                 row["alias_count"] = agency_alias_counts.get(aid, 0)
                 row["is_agency_client"] = False
 
-                # Classify
+                # Classify — skip zero-spot entities created in last 90 days
+                created = row.get("created_date") or ""
                 if row["spot_count"] == 0:
+                    if created >= grace_cutoff:
+                        continue  # recently created, not stale yet
                     row["category"] = "zero_spot"
                 elif row["last_active"] and row["last_active"] < cutoff:
                     row["category"] = "stale"
