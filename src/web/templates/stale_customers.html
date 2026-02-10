@@ -166,6 +166,7 @@
         <th>AE</th>
         <th style="text-align:right">Spots</th>
         <th style="text-align:right">Revenue</th>
+        <th>Added</th>
         <th>Last Active</th>
         <th>Aliases</th>
         <th>Actions</th>
@@ -348,6 +349,7 @@
       const ae = e.assigned_ae || '-';
       const spots = e.spot_count || 0;
       const rev = e.total_revenue ? fmt$(e.total_revenue) : '-';
+      const added = e.created_date ? e.created_date.split(' ')[0] : '-';
       const lastActive = e.last_active || 'Never';
       const aliases = e.alias_count || 0;
 
@@ -365,6 +367,7 @@
         '<td>' + ae + '</td>' +
         '<td class="spots">' + spots + '</td>' +
         '<td class="revenue">' + rev + '</td>' +
+        '<td>' + added + '</td>' +
         '<td>' + lastActive + '</td>' +
         '<td>' + aliases + '</td>' +
         '<td>' + deactivateBtn + ' ' + viewBtn + '</td>' +
