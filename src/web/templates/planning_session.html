@@ -1032,7 +1032,7 @@ To hit forecast by end of period."
                 <th class="entity-header-col">AE / Metric</th>
                 {% for period in all_periods %}
                 <th class="number month-header {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
-                    {{ period.display }}
+                    {{ period.display }}{% if period in past_periods %} <span style="font-size:10px;opacity:0.7">(Actual)</span>{% endif %}
                 </th>
                 {% endfor %}
                 <th class="number total-header">Total</th>
@@ -1105,8 +1105,8 @@ To hit forecast by end of period."
                            data-original="{{ row.forecast_entered.amount if row else 0 }}"
                            data-booked="{{ row.booked.amount if row else 0 }}"
                            data-is-past="{{ 'true' if is_past else 'false' }}"
-                           value="{{ "{:,.0f}".format(row.forecast.amount if row else 0) }}"
-                           {% if is_past %}readonly title="Past month - read only"{% endif %}
+                           value="{{ "{:,.0f}".format(row.booked.amount if (row and is_past) else (row.forecast.amount if row else 0)) }}"
+                           {% if is_past %}readonly title="Past month - showing actuals"{% endif %}
                            {% if booked_exceeds %}title="Booked (${{ "{:,.0f}".format(row.booked.amount) }}) exceeds entered forecast. Consider updating."{% endif %}
                            onchange="markModified(this)"
                            onkeydown="handleKeydown(event, this)">
@@ -1118,8 +1118,19 @@ To hit forecast by end of period."
                     {% endif %}
                 </td>
                 {% endfor %}
+                {% set ns = namespace(effective_total=0) %}
+                {% for period in all_periods %}
+                    {% set row = ed.rows_by_period.get(period.key) %}
+                    {% if row %}
+                        {% if period in past_periods %}
+                            {% set ns.effective_total = ns.effective_total + row.booked.amount %}
+                        {% else %}
+                            {% set ns.effective_total = ns.effective_total + row.forecast.amount %}
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
                 <td class="number total-col" id="total-forecast-{{ ed.entity.entity_name|replace(' ', '-') }}">
-                    ${{ "{:,.0f}".format(ed.total_forecast.amount) }}
+                    ${{ "{:,.0f}".format(ns.effective_total) }}
                 </td>
             </tr>
             
@@ -1160,10 +1171,10 @@ To hit forecast by end of period."
                 {% for period in all_periods %}
                 {% set p = company.periods_by_key.get(period.key) %}
                 <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %}">
-                    ${{ "{:,.0f}".format(p.forecast.amount if p else 0) }}
+                    ${{ "{:,.0f}".format(p.effective.amount if p else 0) }}
                 </td>
                 {% endfor %}
-                <td class="number total-col">${{ "{:,.0f}".format(company.total_forecast.amount) }}</td>
+                <td class="number total-col">${{ "{:,.0f}".format(company.total_effective.amount) }}</td>
             </tr>
         </tbody>
     </table>
@@ -1194,7 +1205,7 @@ To hit forecast by end of period."
     Yellow highlight indicates modified forecasts.
     Green highlight indicates Booked exceeds entered forecast.
     Blue highlighted columns are the active planning window.
-    Grey inputs are closed months (read-only).
+    Grey inputs are closed months (read-only, showing actual booked revenue).
     Burn Rate shows required daily pace to hit forecast for active months.
 </div>
 <!-- Booked Detail Modal -->

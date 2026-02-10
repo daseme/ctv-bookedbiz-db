@@ -179,9 +179,9 @@ def configure_container_from_environment():
     # Build configuration with validation
     config = {
         "PROJECT_ROOT": project_root,
-        "DB_PATH": os.environ.get(
-            "DB_PATH", os.path.join(project_root, "data/database/production.db")
-        ),
+        "DB_PATH": os.environ.get("DB_PATH")
+        or os.environ.get("DATABASE_PATH")
+        or os.path.join(project_root, "data/database/production.db"),
         "DATA_PATH": os.environ.get(
             "DATA_PATH", os.path.join(project_root, "data/processed")
         ),
