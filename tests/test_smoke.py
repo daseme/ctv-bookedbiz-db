@@ -2,16 +2,18 @@
 Route smoke tests — hit every GET endpoint and assert no 500s.
 
 Run with:  pytest tests/test_smoke.py -v
+Fast only: pytest tests/test_smoke.py -v -m "smoke and not slow"
+Slow only: pytest tests/test_smoke.py -v -m slow
 Or:        pytest -m smoke
 """
 
 import pytest
 
 # ---------------------------------------------------------------------------
-# Every GET route in the app, grouped by blueprint.
-# For routes with dynamic params, use known IDs from dev.db.
+# FAST routes — lightweight pages / APIs that return in <3s on the Pi.
+# Pre-push hook runs only these (~20-30s total).
 # ---------------------------------------------------------------------------
-ROUTES = [
+FAST_ROUTES = [
     # -- App-level routes (app.py) --
     "/",
     "/health",
@@ -19,15 +21,9 @@ ROUTES = [
 
     # -- Reports blueprint (/reports) --
     "/reports/",
-    "/reports/revenue-dashboard-customer",
     "/reports/customer-sector-manager",
-    "/reports/ae-dashboard",
     "/reports/contracts-added",
-    "/reports/management-performance",
-    "/reports/management-performance/2025",
-    "/reports/monthly/revenue-summary",
     "/reports/report4",
-    "/reports/market-analysis",
     "/reports/language-blocks",
 
     # -- Customer detail routes (under /reports) --
@@ -35,26 +31,11 @@ ROUTES = [
 
     # -- API blueprint (/api) --
     "/api/health",
-    "/api/revenue/summary",
-    "/api/ae/1/summary",
-    "/api/export/ae-performance",
 
     # -- Health blueprint (/health) --
     "/health/",
     "/health/database",
     "/health/metrics",
-
-    # -- Language blocks API (/api/language-blocks) --
-    "/api/language-blocks/metadata/available-periods",
-    "/api/language-blocks/test",
-    "/api/language-blocks/summary",
-    "/api/language-blocks/top-performers",
-    "/api/language-blocks/language-performance",
-    "/api/language-blocks/market-performance",
-    "/api/language-blocks/time-slot-performance",
-    "/api/language-blocks/recent-activity",
-    "/api/language-blocks/insights",
-    "/api/language-blocks/report",
 
     # -- Entity resolution --
     "/entity-resolution",
@@ -99,23 +80,52 @@ ROUTES = [
     # -- Planning --
     "/planning/",
 
-    # -- Pricing --
-    "/pricing/",
-
-    # -- Pricing trends --
+    # -- Pricing trends (individual trend pages are fast) --
     "/pricing/trends/",
     "/pricing/trends/rate-trends",
     "/pricing/trends/margin-trends",
     "/pricing/trends/pricing-consistency",
     "/pricing/trends/yoy-comparison",
-    "/pricing/trends/concentration",
-
-    # -- Length analysis --
-    "/length-analysis/",
-    "/length-analysis/by-language",
 
     # -- User management (public pages only) --
     "/users/login",
+]
+
+# ---------------------------------------------------------------------------
+# SLOW routes — heavy DB queries that take >3s each on the Pi.
+# Skipped by pre-push hook; run with full suite or `-m slow`.
+# ---------------------------------------------------------------------------
+SLOW_ROUTES = [
+    # -- Language blocks API (6-20s each, heavy analytics queries) --
+    "/api/language-blocks/metadata/available-periods",
+    "/api/language-blocks/test",
+    "/api/language-blocks/summary",
+    "/api/language-blocks/top-performers",
+    "/api/language-blocks/language-performance",
+    "/api/language-blocks/market-performance",
+    "/api/language-blocks/time-slot-performance",
+    "/api/language-blocks/recent-activity",
+    "/api/language-blocks/insights",
+    "/api/language-blocks/report",
+
+    # -- Revenue dashboards (3-9s each) --
+    "/reports/revenue-dashboard-customer",
+    "/reports/management-performance",
+    "/reports/management-performance/2025",
+    "/reports/monthly/revenue-summary",
+    "/reports/ae-dashboard",
+    "/reports/market-analysis",
+    "/api/revenue/summary",
+    "/api/ae/1/summary",
+    "/api/export/ae-performance",
+
+    # -- Length analysis (8-10s each) --
+    "/length-analysis/",
+    "/length-analysis/by-language",
+
+    # -- Pricing (4-9s) --
+    "/pricing/",
+    "/pricing/trends/concentration",
 ]
 
 # ---------------------------------------------------------------------------
@@ -144,9 +154,20 @@ KNOWN_BROKEN = {
 
 
 @pytest.mark.smoke
-@pytest.mark.parametrize("path", ROUTES, ids=ROUTES)
+@pytest.mark.parametrize("path", FAST_ROUTES, ids=FAST_ROUTES)
 def test_route_no_500(client, path):
     """Every GET route must not return a 500 server error."""
+    response = client.get(path)
+    assert response.status_code < 500, (
+        f"{path} returned {response.status_code}"
+    )
+
+
+@pytest.mark.smoke
+@pytest.mark.slow
+@pytest.mark.parametrize("path", SLOW_ROUTES, ids=SLOW_ROUTES)
+def test_slow_route_no_500(client, path):
+    """Heavy-query routes — same assertion, marked slow for selective runs."""
     response = client.get(path)
     assert response.status_code < 500, (
         f"{path} returned {response.status_code}"
