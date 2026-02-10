@@ -149,6 +149,8 @@
   .save-bar .btn-save{background:#0ea5e9;border:1px solid #0284c7;color:#fff}
   .save-bar .btn-save:hover{background:#0284c7}
   .save-bar .btn-save:disabled{background:#94a3b8;border-color:#94a3b8;cursor:not-allowed}
+  .save-bar .btn-deactivate{background:#fff;border:1px solid #ef4444;color:#ef4444;margin-right:auto}
+  .save-bar .btn-deactivate:hover{background:#fef2f2}
   .save-status{font-size:13px;color:#64748b;display:flex;align-items:center;margin-right:auto}
   .save-status.success{color:#16a34a}
   .save-status.error{color:#dc2626}
@@ -620,6 +622,7 @@
       </div>
     </div>
     <div class="save-bar">
+      <button class="btn btn-deactivate" id="deactivate-entity" title="Deactivate this entity">Deactivate</button>
       <span class="save-status" id="save-status"></span>
       <button class="btn btn-close" id="close-detail">Close</button>
       <button class="btn btn-save" id="save-detail">Save Changes</button>
@@ -1833,6 +1836,24 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Save Changes';
+    }
+  });
+
+  // Deactivate entity
+  document.getElementById('deactivate-entity').addEventListener('click', async () => {
+    if (!currentEntity) return;
+    const name = currentEntity.entity_name || 'this entity';
+    if (!confirm(`Deactivate "${name}"? This will hide it from the default view.`)) return;
+    const { ok, data, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/deactivate`, {
+      method: 'POST'
+    });
+    if (ok) {
+      alert(data?.message || 'Entity deactivated.');
+      hasUnsavedChanges = false;
+      closeModal();
+      loadData();
+    } else {
+      alert(error || 'Failed to deactivate entity');
     }
   });
 
