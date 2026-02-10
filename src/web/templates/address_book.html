@@ -119,6 +119,15 @@
   .contact-edit-form .btn-cancel{background:#fff;border:1px solid #e2e8f0;color:#64748b}
   .contact-edit-form .btn-save{background:#0ea5e9;border:1px solid #0284c7;color:#fff}
   .contact-edit-form .btn-save:hover{background:#0284c7}
+  .address-edit-form{padding:12px;background:#f0fdf4;border:1px solid #22c55e;border-radius:8px}
+  .address-edit-form .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .address-edit-form .form-field label{display:block;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
+  .address-edit-form .form-field input,.address-edit-form .form-field select,.address-edit-form .form-field textarea{width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box}
+  .address-edit-form .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+  .address-edit-form .btn{padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer}
+  .address-edit-form .btn-cancel{background:#fff;border:1px solid #e2e8f0;color:#64748b}
+  .address-edit-form .btn-save{background:#22c55e;border:1px solid #16a34a;color:#fff}
+  .address-edit-form .btn-save:hover{background:#16a34a}
 
   .role-badge{font-size:10px;padding:2px 6px;background:#e0e7ff;color:#4338ca;border-radius:4px;font-weight:500}
 
@@ -140,6 +149,8 @@
   .save-bar .btn-save{background:#0ea5e9;border:1px solid #0284c7;color:#fff}
   .save-bar .btn-save:hover{background:#0284c7}
   .save-bar .btn-save:disabled{background:#94a3b8;border-color:#94a3b8;cursor:not-allowed}
+  .save-bar .btn-deactivate{background:#fff;border:1px solid #ef4444;color:#ef4444;margin-right:auto}
+  .save-bar .btn-deactivate:hover{background:#fef2f2}
   .save-status{font-size:13px;color:#64748b;display:flex;align-items:center;margin-right:auto}
   .save-status.success{color:#16a34a}
   .save-status.error{color:#dc2626}
@@ -183,6 +194,15 @@
   .activity-icon.email{background:#fef3c7;color:#ca8a04}
   .activity-icon.meeting{background:#ede9fe;color:#7c3aed}
   .activity-icon.status_change{background:#fee2e2;color:#dc2626}
+  .activity-icon.follow_up{background:#fef3c7;color:#d97706}
+  .follow-up-date{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500}
+  .follow-up-date.overdue{background:#fee2e2;color:#dc2626}
+  .follow-up-date.due-today{background:#fed7aa;color:#c2410c}
+  .follow-up-date.due-soon{background:#fef3c7;color:#ca8a04}
+  .follow-up-date.upcoming{background:#e0e7ff;color:#4338ca}
+  .follow-up-date.completed{background:#dcfce7;color:#16a34a;text-decoration:line-through}
+  .follow-up-check{cursor:pointer;width:16px;height:16px;accent-color:#22c55e}
+  .follow-up-date-input{padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;margin-bottom:8px}
   .activity-content{flex:1;min-width:0}
   .activity-header{font-size:12px;color:#64748b;display:flex;gap:8px;align-items:center}
   .activity-type{font-weight:600;text-transform:capitalize}
@@ -325,6 +345,8 @@
   </label>
   <button id="save-filter" title="Save current filter">Save</button>
   <button id="export-csv" title="Export to CSV">Export</button>
+  <button id="import-csv" title="Import contacts from CSV" style="background:#7c3aed;color:#fff;border:1px solid #6d28d9">Import</button>
+  <input type="file" id="import-file" accept=".csv" style="display:none">
   <button id="add-new" title="Add New Agency or Advertiser">+ Add New</button>
   <button id="refresh">Refresh</button>
   <div class="view-toggle">
@@ -598,7 +620,9 @@
             <option value="call">Call</option>
             <option value="email">Email</option>
             <option value="meeting">Meeting</option>
+            <option value="follow_up">Follow-up</option>
           </select>
+          <input type="date" id="new-activity-due-date" class="follow-up-date-input" style="display:none">
           <textarea id="new-activity-desc" placeholder="Describe the activity..."></textarea>
           <div style="display:flex;gap:8px;justify-content:flex-end">
             <button class="btn btn-cancel" id="cancel-add-activity">Cancel</button>
@@ -611,6 +635,7 @@
       </div>
     </div>
     <div class="save-bar">
+      <button class="btn btn-deactivate" id="deactivate-entity" title="Deactivate this entity">Deactivate</button>
       <span class="save-status" id="save-status"></span>
       <button class="btn btn-close" id="close-detail">Close</button>
       <button class="btn btn-save" id="save-detail">Save Changes</button>
@@ -758,40 +783,52 @@
     return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  // ===== Centralized fetch helper =====
+  async function apiFetch(url, options = {}) {
+    try {
+      const r = await fetch(url, options);
+      if (r.ok) {
+        const data = await r.json().catch(() => null);
+        return { ok: true, data, status: r.status };
+      }
+      const errData = await r.json().catch(() => null);
+      return { ok: false, data: errData, error: errData?.error || `Request failed (${r.status})`, status: r.status };
+    } catch (e) {
+      return { ok: false, data: null, error: 'Network error. Please try again.', status: 0 };
+    }
+  }
+
   // ===== Load sectors =====
   async function loadSectors() {
-    try {
-      const r = await fetch(`${API}/sectors`);
-      sectorsData = await r.json();
-      document.getElementById('sector-filter').innerHTML = '<option value="">All Sectors</option>' +
-        sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
-      document.getElementById('detail-sector').innerHTML = '<option value="">-- No Sector --</option>' +
-        sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
-    } catch (e) { console.error('Failed to load sectors:', e); }
+    const { ok, data } = await apiFetch(`${API}/sectors`);
+    if (!ok) { console.error('Failed to load sectors'); return; }
+    sectorsData = data;
+    document.getElementById('sector-filter').innerHTML = '<option value="">All Sectors</option>' +
+      sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+    document.getElementById('detail-sector').innerHTML = '<option value="">-- No Sector --</option>' +
+      sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
   }
 
   // ===== Load markets =====
   async function loadMarkets() {
-    try {
-      const r = await fetch(`${API}/markets`);
-      marketsData = await r.json();
-      document.getElementById('market-filter').innerHTML = '<option value="">All Markets</option>' +
-        marketsData.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
-    } catch (e) { console.error('Failed to load markets:', e); }
+    const { ok, data } = await apiFetch(`${API}/markets`);
+    if (!ok) { console.error('Failed to load markets'); return; }
+    marketsData = data;
+    document.getElementById('market-filter').innerHTML = '<option value="">All Markets</option>' +
+      marketsData.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
   }
 
   // ===== Load AE list =====
   async function loadAEList() {
-    try {
-      const r = await fetch(`${API}/ae-list`);
-      aeListData = await r.json();
-      const filterEl = document.getElementById('ae-filter');
-      filterEl.innerHTML = '<option value="">All AEs</option><option value="__none__">Unassigned</option>' +
-        aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
-      const detailEl = document.getElementById('detail-ae');
-      detailEl.innerHTML = '<option value="">-- No AE Assigned --</option>' +
-        aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
-    } catch (e) { console.error('Failed to load AE list:', e); }
+    const { ok, data } = await apiFetch(`${API}/ae-list`);
+    if (!ok) { console.error('Failed to load AE list'); return; }
+    aeListData = data;
+    const filterEl = document.getElementById('ae-filter');
+    filterEl.innerHTML = '<option value="">All AEs</option><option value="__none__">Unassigned</option>' +
+      aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
+    const detailEl = document.getElementById('detail-ae');
+    detailEl.innerHTML = '<option value="">-- No AE Assigned --</option>' +
+      aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
   }
 
   // ===== Load data =====
@@ -810,17 +847,16 @@
       sort: document.getElementById('sort-filter').value,
       include_inactive: document.getElementById('inactive-filter').checked ? '1' : '0'
     });
-    try {
-      const r = await fetch(`${API}?${params}`);
-      currentData = await r.json();
+    const { ok, data, error } = await apiFetch(`${API}?${params}`);
+    if (ok) {
+      currentData = data;
       updateStats();
       renderGrid();
-    } catch (e) {
+    } else {
       countEl.textContent = 'Error loading';
-      console.error('Load error:', e);
-    } finally {
-      countEl.classList.remove('loading');
+      console.error('Load error:', error);
     }
+    countEl.classList.remove('loading');
   }
 
   function updateStats() {
@@ -989,6 +1025,34 @@
     document.getElementById('export-csv').click();
   });
 
+  document.getElementById('bulk-set-sector').addEventListener('click', async () => {
+    const customerKeys = Array.from(selectedEntities).filter(k => k.startsWith('customer:'));
+    if (customerKeys.length === 0) {
+      alert('No advertisers selected. Sector can only be set on advertisers, not agencies.');
+      return;
+    }
+    const options = sectorsData.map(s => `${s.sector_id}: ${s.sector_name}`).join('\n');
+    const input = prompt(`Set sector for ${customerKeys.length} advertiser(s).\n\nEnter sector ID:\n${options}`);
+    if (!input) return;
+    const sectorId = parseInt(input);
+    if (!sectorId || !sectorsData.find(s => s.sector_id === sectorId)) {
+      alert('Invalid sector ID.');
+      return;
+    }
+    let ok = 0, fail = 0;
+    for (const key of customerKeys) {
+      const id = key.split(':')[1];
+      const { ok: success } = await apiFetch(`${API}/customer/${id}/sector`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ sector_id: sectorId })
+      });
+      if (success) ok++; else fail++;
+    }
+    alert(`Sector updated: ${ok} succeeded${fail ? `, ${fail} failed` : ''}.`);
+    loadData();
+  });
+
   function renderCard(e) {
     const sectorBadge = e.entity_type === 'customer'
       ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}</span>`
@@ -1056,9 +1120,9 @@
   const modal = document.getElementById('detail-modal');
 
   async function openDetail(type, id) {
-    const r = await fetch(`${API}/${type}/${id}`);
-    if (!r.ok) { alert('Failed to load entity'); return; }
-    currentEntity = await r.json();
+    const { ok, data, error } = await apiFetch(`${API}/${type}/${id}`);
+    if (!ok) { alert(error || 'Failed to load entity'); return; }
+    currentEntity = data;
     currentEntity.entity_type = type;
     currentEntity.entity_id = id;
 
@@ -1162,6 +1226,18 @@
     document.getElementById('add-address-form').classList.remove('active');
     document.getElementById('add-activity-form').classList.remove('active');
 
+    // Track unsaved changes on editable fields
+    const trackChange = () => { hasUnsavedChanges = true; };
+    ['detail-notes', 'detail-address', 'detail-city', 'detail-state', 'detail-zip',
+     'detail-sector', 'detail-agency', 'detail-ae', 'detail-po-number'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', trackChange, { once: true });
+    });
+    ['detail-edi-billing', 'detail-affidavit-required'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', trackChange, { once: true });
+    });
+
     modal.classList.add('active');
   }
 
@@ -1170,70 +1246,89 @@
     'call': '📞',
     'email': '📧',
     'meeting': '🤝',
-    'status_change': '🔄'
+    'status_change': '🔄',
+    'follow_up': '📅'
   };
+
+  function getFollowUpUrgency(dueDate, isCompleted) {
+    if (isCompleted) return 'completed';
+    if (!dueDate) return 'upcoming';
+    const today = new Date().toISOString().slice(0, 10);
+    if (dueDate < today) return 'overdue';
+    if (dueDate === today) return 'due-today';
+    const soon = new Date();
+    soon.setDate(soon.getDate() + 3);
+    if (dueDate <= soon.toISOString().slice(0, 10)) return 'due-soon';
+    return 'upcoming';
+  }
 
   async function loadActivities() {
     const container = document.getElementById('detail-activities');
-    try {
-      const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`);
-      const activities = await r.json();
-
-      if (!activities || activities.length === 0) {
-        container.innerHTML = '<div class="no-data">No activity recorded</div>';
-        return;
-      }
-
-      container.innerHTML = activities.map(a => {
-        const icon = ACTIVITY_ICONS[a.activity_type] || '📋';
-        const date = a.activity_date ? formatDateTime(a.activity_date) : '';
-        return `
-          <div class="activity-item">
-            <div class="activity-icon ${a.activity_type}">${icon}</div>
-            <div class="activity-content">
-              <div class="activity-header">
-                <span class="activity-type">${a.activity_type}</span>
-                <span>${date}</span>
-                ${a.contact_name ? `<span>with ${esc(a.contact_name)}</span>` : ''}
-              </div>
-              ${a.description ? `<div class="activity-desc">${esc(a.description)}</div>` : ''}
-            </div>
-          </div>`;
-      }).join('');
-    } catch (e) {
-      container.innerHTML = '<div class="no-data">Failed to load activities</div>';
+    const { ok, data: activities } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`);
+    if (!ok || !activities || activities.length === 0) {
+      container.innerHTML = `<div class="no-data">${ok ? 'No activity recorded' : 'Failed to load activities'}</div>`;
+      return;
     }
+
+    container.innerHTML = activities.map(a => {
+      const icon = ACTIVITY_ICONS[a.activity_type] || '📋';
+      const date = a.activity_date ? formatDateTime(a.activity_date) : '';
+      const isFollowUp = a.activity_type === 'follow_up';
+      const urgency = isFollowUp ? getFollowUpUrgency(a.due_date, a.is_completed) : '';
+      const dueBadge = isFollowUp && a.due_date
+        ? `<span class="follow-up-date ${urgency}">Due: ${formatDate(a.due_date)}</span>` : '';
+      const checkbox = isFollowUp
+        ? `<input type="checkbox" class="follow-up-check" data-activity-id="${a.activity_id}" ${a.is_completed ? 'checked' : ''} title="Mark ${a.is_completed ? 'incomplete' : 'complete'}">` : '';
+      return `
+        <div class="activity-item">
+          ${checkbox}
+          <div class="activity-icon ${a.activity_type}">${icon}</div>
+          <div class="activity-content">
+            <div class="activity-header">
+              <span class="activity-type">${a.activity_type.replace('_', ' ')}</span>
+              ${dueBadge}
+              <span>${date}</span>
+              ${a.contact_name ? `<span>with ${esc(a.contact_name)}</span>` : ''}
+            </div>
+            ${a.description ? `<div class="activity-desc">${esc(a.description)}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Attach follow-up checkbox handlers
+    container.querySelectorAll('.follow-up-check').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const actId = cb.dataset.activityId;
+        const { ok } = await apiFetch(`${API}/activities/${actId}/complete`, { method: 'POST' });
+        if (ok) loadActivities();
+        else { cb.checked = !cb.checked; alert('Failed to update follow-up status'); }
+      });
+    });
   }
 
   async function loadAEHistory() {
     const container = document.getElementById('detail-ae-history');
-    try {
-      const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae-history`);
-      const history = await r.json();
-
-      if (!history || history.length === 0) {
-        container.innerHTML = '<div class="no-data">No assignment history</div>';
-        return;
-      }
-
-      container.innerHTML = history.map(h => {
-        const isActive = !h.ended_date;
-        const start = h.assigned_date ? formatDate(h.assigned_date.split('T')[0].split(' ')[0]) : '';
-        const end = h.ended_date ? formatDate(h.ended_date.split('T')[0].split(' ')[0]) : 'Present';
-        const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : 'Manual assignment';
-        return `
-          <div class="ae-history-item">
-            <div class="ae-history-dot ${isActive ? 'active' : 'ended'}"></div>
-            <div class="ae-history-info">
-              <div class="ae-history-name">${esc(h.ae_name)}</div>
-              <div class="ae-history-dates">${start} — ${end}</div>
-              <div class="ae-history-source">${source}</div>
-            </div>
-          </div>`;
-      }).join('');
-    } catch (e) {
-      container.innerHTML = '<div class="no-data">Failed to load history</div>';
+    const { ok, data: history } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae-history`);
+    if (!ok || !history || history.length === 0) {
+      container.innerHTML = `<div class="no-data">${ok ? 'No assignment history' : 'Failed to load history'}</div>`;
+      return;
     }
+
+    container.innerHTML = history.map(h => {
+      const isActive = !h.ended_date;
+      const start = h.assigned_date ? formatDate(h.assigned_date.split('T')[0].split(' ')[0]) : '';
+      const end = h.ended_date ? formatDate(h.ended_date.split('T')[0].split(' ')[0]) : 'Present';
+      const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : 'Manual assignment';
+      return `
+        <div class="ae-history-item">
+          <div class="ae-history-dot ${isActive ? 'active' : 'ended'}"></div>
+          <div class="ae-history-info">
+            <div class="ae-history-name">${esc(h.ae_name)}</div>
+            <div class="ae-history-dates">${start} — ${end}</div>
+            <div class="ae-history-source">${source}</div>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   async function loadAgencyClients(agencyId) {
@@ -1241,8 +1336,8 @@
     const countEl = document.getElementById('agency-clients-count');
     tbody.innerHTML = '<tr><td colspan="5" class="no-data">Loading...</td></tr>';
     try {
-      const r = await fetch(`${API}/agency/${agencyId}/customers`);
-      const data = await r.json();
+      const { ok, data } = await apiFetch(`${API}/agency/${agencyId}/customers`);
+      if (!ok) throw new Error('Failed to load');
       const clients = data.customers || [];
       countEl.textContent = `(${clients.length})`;
       if (clients.length === 0) {
@@ -1269,7 +1364,7 @@
         input.addEventListener('change', async () => {
           const custId = input.dataset.customerId;
           const saved = input.nextElementSibling;
-          const res = await fetch(`${API}/customer/${custId}/billing-info`, {
+          const { ok } = await apiFetch(`${API}/customer/${custId}/billing-info`, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1277,7 +1372,7 @@
               edi_billing: !!(client && client.edi_billing)
             })
           });
-          if (res.ok) {
+          if (ok) {
             saved.classList.add('show');
             setTimeout(() => saved.classList.remove('show'), 1500);
           }
@@ -1302,24 +1397,45 @@
     document.getElementById('add-activity-form').classList.remove('active');
     document.getElementById('new-activity-type').value = 'note';
     document.getElementById('new-activity-desc').value = '';
+    document.getElementById('new-activity-due-date').style.display = 'none';
+    document.getElementById('new-activity-due-date').value = '';
+  });
+  document.getElementById('new-activity-type').addEventListener('change', (e) => {
+    const dueDateInput = document.getElementById('new-activity-due-date');
+    if (e.target.value === 'follow_up') {
+      dueDateInput.style.display = 'block';
+      if (!dueDateInput.value) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        dueDateInput.value = tomorrow.toISOString().slice(0, 10);
+      }
+    } else {
+      dueDateInput.style.display = 'none';
+    }
   });
   document.getElementById('save-new-activity').addEventListener('click', async () => {
     const activityType = document.getElementById('new-activity-type').value;
     const description = document.getElementById('new-activity-desc').value.trim();
+    const dueDate = document.getElementById('new-activity-due-date').value;
 
-    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`, {
+    const payload = { activity_type: activityType, description: description || null };
+    if (activityType === 'follow_up') payload.due_date = dueDate;
+
+    const { ok, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ activity_type: activityType, description: description || null })
+      body: JSON.stringify(payload)
     });
 
-    if (r.ok) {
+    if (ok) {
       document.getElementById('add-activity-form').classList.remove('active');
       document.getElementById('new-activity-type').value = 'note';
       document.getElementById('new-activity-desc').value = '';
+      document.getElementById('new-activity-due-date').style.display = 'none';
+      document.getElementById('new-activity-due-date').value = '';
       loadActivities();
     } else {
-      alert('Failed to add activity');
+      alert(error || 'Failed to add activity');
     }
   });
 
@@ -1418,6 +1534,7 @@
           ${a.notes ? `<div class="address-notes">${esc(a.notes)}</div>` : ''}
         </div>
         <div class="address-actions">
+          <button class="edit-addr" title="Edit address">✏️</button>
           ${!a.is_primary ? `<button class="set-primary-addr" title="Set as primary">⭐</button>` : ''}
           <button class="delete" title="Delete address">🗑️</button>
         </div>
@@ -1431,12 +1548,22 @@
         const addrId = btn.closest('.address-card').dataset.addressId;
         const addr = currentEntity.addresses.find(a => a.address_id == addrId);
         if (!addr) return;
-        const r = await fetch(`${API}/addresses/${addrId}`, {
+        const { ok, error } = await apiFetch(`${API}/addresses/${addrId}`, {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ ...addr, is_primary: true })
         });
-        if (r.ok) refreshAddresses();
+        if (ok) refreshAddresses();
+        else alert(error || 'Failed to set primary address');
+      });
+    });
+    list.querySelectorAll('.edit-addr').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const card = btn.closest('.address-card');
+        const addrId = card.dataset.addressId;
+        const addr = currentEntity.addresses.find(a => a.address_id == addrId);
+        if (addr) showEditAddressForm(card, addr);
       });
     });
     list.querySelectorAll('.delete').forEach(btn => {
@@ -1444,16 +1571,89 @@
         e.stopPropagation();
         if (!confirm('Delete this address?')) return;
         const addrId = btn.closest('.address-card').dataset.addressId;
-        const r = await fetch(`${API}/addresses/${addrId}`, { method: 'DELETE' });
-        if (r.ok) refreshAddresses();
+        const { ok, error } = await apiFetch(`${API}/addresses/${addrId}`, { method: 'DELETE' });
+        if (ok) refreshAddresses();
+        else alert(error || 'Failed to delete address');
       });
     });
   }
 
+  function showEditAddressForm(card, addr) {
+    const labelOptions = ['Billing', 'Shipping', 'PO Box', 'Office', 'Other'];
+    card.innerHTML = `
+      <div class="address-edit-form">
+        <div class="form-row">
+          <div class="form-field">
+            <label>Label</label>
+            <select class="edit-addr-label">
+              ${labelOptions.map(l => `<option value="${l}" ${l === addr.address_label ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Street</label>
+            <input type="text" class="edit-addr-street" value="${esc(addr.address || '')}" placeholder="Street address">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>City</label>
+            <input type="text" class="edit-addr-city" value="${esc(addr.city || '')}" placeholder="City">
+          </div>
+          <div class="form-field">
+            <label>State</label>
+            <input type="text" class="edit-addr-state" value="${esc(addr.state || '')}" placeholder="State">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>ZIP</label>
+            <input type="text" class="edit-addr-zip" value="${esc(addr.zip || '')}" placeholder="ZIP code">
+          </div>
+          <div class="form-field">
+            <label>Notes</label>
+            <input type="text" class="edit-addr-notes" value="${esc(addr.notes || '')}" placeholder="Notes">
+          </div>
+        </div>
+        <div style="margin-top:8px">
+          <label style="font-size:13px;color:#475569;cursor:pointer">
+            <input type="checkbox" class="edit-addr-primary" ${addr.is_primary ? 'checked' : ''}> Primary address
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-cancel edit-addr-cancel">Cancel</button>
+          <button class="btn btn-save edit-addr-save">Save</button>
+        </div>
+      </div>`;
+    card.querySelector('.edit-addr-cancel').addEventListener('click', () => renderAddresses());
+    card.querySelector('.edit-addr-save').addEventListener('click', () => saveAddressEdit(card, addr.address_id));
+    card.querySelector('.edit-addr-street').focus();
+  }
+
+  async function saveAddressEdit(card, addressId) {
+    const { ok, error } = await apiFetch(`${API}/addresses/${addressId}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        address_label: card.querySelector('.edit-addr-label').value,
+        address: card.querySelector('.edit-addr-street').value.trim() || '',
+        city: card.querySelector('.edit-addr-city').value.trim() || '',
+        state: card.querySelector('.edit-addr-state').value.trim() || '',
+        zip: card.querySelector('.edit-addr-zip').value.trim() || '',
+        notes: card.querySelector('.edit-addr-notes').value.trim() || '',
+        is_primary: card.querySelector('.edit-addr-primary').checked
+      })
+    });
+    if (ok) {
+      refreshAddresses();
+    } else {
+      alert(error || 'Failed to update address');
+    }
+  }
+
   async function refreshAddresses() {
-    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`);
-    if (r.ok) {
-      currentEntity.addresses = await r.json();
+    const { ok, data } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`);
+    if (ok) {
+      currentEntity.addresses = data;
       renderAddresses();
     }
   }
@@ -1469,7 +1669,7 @@
   document.getElementById('save-new-address').addEventListener('click', async () => {
     const label = document.getElementById('new-address-label').value;
     if (!label) { alert('Label is required'); return; }
-    const r = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`, {
+    const { ok, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/addresses`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -1482,13 +1682,12 @@
         notes: document.getElementById('new-address-notes').value.trim() || null
       })
     });
-    if (r.ok) {
+    if (ok) {
       document.getElementById('add-address-form').classList.remove('active');
       clearNewAddressForm();
       refreshAddresses();
     } else {
-      const err = await r.json().catch(() => ({}));
-      alert(err.error || 'Failed to add address');
+      alert(error || 'Failed to add address');
     }
   });
 
@@ -1548,7 +1747,7 @@
   async function saveContactEdit(card, contactId) {
     const name = card.querySelector('.edit-name').value.trim();
     if (!name) { alert('Name is required'); return; }
-    const r = await fetch(`/api/contacts/${contactId}`, {
+    const { ok, error } = await apiFetch(`/api/contacts/${contactId}`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -1559,44 +1758,41 @@
         contact_role: card.querySelector('.edit-role').value
       })
     });
-    if (r.ok) {
-      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
-      const data = await detail.json();
-      currentEntity.contacts = data.contacts;
-      renderContacts();
+    if (ok) {
+      const detail = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      if (detail.ok) { currentEntity.contacts = detail.data.contacts; renderContacts(); }
     } else {
-      const err = await r.json().catch(() => null);
-      alert(err?.error || 'Failed to update contact');
+      alert(error || 'Failed to update contact');
     }
   }
 
   async function markContacted(contactId) {
-    const r = await fetch(`/api/contacts/${contactId}/touched`, { method: 'POST' });
-    if (r.ok) {
-      // Refresh contacts
-      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
-      const data = await detail.json();
-      currentEntity.contacts = data.contacts;
-      renderContacts();
+    const { ok, error } = await apiFetch(`/api/contacts/${contactId}/touched`, { method: 'POST' });
+    if (ok) {
+      const detail = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      if (detail.ok) { currentEntity.contacts = detail.data.contacts; renderContacts(); }
+    } else {
+      alert(error || 'Failed to mark as contacted');
     }
   }
 
   async function setPrimaryContact(contactId) {
-    const r = await fetch(`/api/contacts/${contactId}/primary`, { method: 'POST' });
-    if (r.ok) {
-      // Refresh contacts
-      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
-      const data = await detail.json();
-      currentEntity.contacts = data.contacts;
-      renderContacts();
+    const { ok, error } = await apiFetch(`/api/contacts/${contactId}/primary`, { method: 'POST' });
+    if (ok) {
+      const detail = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      if (detail.ok) { currentEntity.contacts = detail.data.contacts; renderContacts(); }
+    } else {
+      alert(error || 'Failed to set primary contact');
     }
   }
 
   async function deleteContact(contactId) {
-    const r = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
-    if (r.ok) {
+    const { ok, error } = await apiFetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
+    if (ok) {
       currentEntity.contacts = currentEntity.contacts.filter(c => c.contact_id != contactId);
       renderContacts();
+    } else {
+      alert(error || 'Failed to delete contact');
     }
   }
 
@@ -1612,7 +1808,7 @@
   document.getElementById('save-new-contact').addEventListener('click', async () => {
     const name = document.getElementById('new-contact-name').value.trim();
     if (!name) { alert('Name is required'); return; }
-    const r = await fetch(`/api/contacts/${currentEntity.entity_type}/${currentEntity.entity_id}`, {
+    const { ok, error } = await apiFetch(`/api/contacts/${currentEntity.entity_type}/${currentEntity.entity_id}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -1624,17 +1820,13 @@
         is_primary: document.getElementById('new-contact-primary').checked
       })
     });
-    if (r.ok) {
-      const result = await r.json();
-      // Refresh contacts
-      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
-      const data = await detail.json();
-      currentEntity.contacts = data.contacts;
-      renderContacts();
+    if (ok) {
+      const detail = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      if (detail.ok) { currentEntity.contacts = detail.data.contacts; renderContacts(); }
       document.getElementById('add-contact-form').classList.remove('active');
       clearNewContactForm();
     } else {
-      alert('Failed to add contact');
+      alert(error || 'Failed to add contact');
     }
   });
 
@@ -1657,74 +1849,52 @@
     status.className = 'save-status';
 
     try {
-      // Save address
-      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/address`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
+      const putJson = (url, body) => apiFetch(url, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+      });
+
+      // Save address + notes in parallel
+      const [addrRes, notesRes] = await Promise.all([
+        putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/address`, {
           address: document.getElementById('detail-address').value.trim() || null,
           city: document.getElementById('detail-city').value.trim() || null,
           state: document.getElementById('detail-state').value.trim() || null,
           zip: document.getElementById('detail-zip').value.trim() || null
+        }),
+        putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/notes`, {
+          notes: document.getElementById('detail-notes').value.trim() || null
         })
-      });
+      ]);
 
-      // Save notes
-      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/notes`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ notes: document.getElementById('detail-notes').value.trim() || null })
-      });
-
-      // Save sector (customers only)
+      // Save customer-specific fields
       if (currentEntity.entity_type === 'customer') {
-        await fetch(`${API}/customer/${currentEntity.entity_id}/sector`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ sector_id: document.getElementById('detail-sector').value || null })
-        });
-        // Save agency
-        await fetch(`${API}/customer/${currentEntity.entity_id}/agency`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ agency_id: document.getElementById('detail-agency').value || null })
-        });
+        await Promise.all([
+          putJson(`${API}/customer/${currentEntity.entity_id}/sector`, {
+            sector_id: document.getElementById('detail-sector').value || null
+          }),
+          putJson(`${API}/customer/${currentEntity.entity_id}/agency`, {
+            agency_id: document.getElementById('detail-agency').value || null
+          })
+        ]);
       }
 
-      // Save AE
-      await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ assigned_ae: document.getElementById('detail-ae').value || null })
-      });
+      // Save AE + billing in parallel
+      const billingBody = currentEntity.entity_type === 'agency'
+        ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked }
+        : { po_number: document.getElementById('detail-po-number').value.trim() || null, edi_billing: false, affidavit_required: document.getElementById('detail-affidavit-required').checked };
 
-      // Save billing info: EDI for agencies, PO for customers
-      if (currentEntity.entity_type === 'agency') {
-        await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            po_number: null,
-            edi_billing: document.getElementById('detail-edi-billing').checked
-          })
-        });
-      } else {
-        await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            po_number: document.getElementById('detail-po-number').value.trim() || null,
-            edi_billing: false,
-            affidavit_required: document.getElementById('detail-affidavit-required').checked
-          })
-        });
-      }
+      await Promise.all([
+        putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae`, {
+          assigned_ae: document.getElementById('detail-ae').value || null
+        }),
+        putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/billing-info`, billingBody)
+      ]);
 
       status.textContent = '✓ Saved';
       status.className = 'save-status success';
       hasUnsavedChanges = false;
-      loadAEHistory(); // Refresh AE history timeline
-      loadData(); // Refresh grid
+      loadAEHistory();
+      loadData();
     } catch (e) {
       status.textContent = '✗ Error saving';
       status.className = 'save-status error';
@@ -1734,10 +1904,30 @@
     }
   });
 
+  // Deactivate entity
+  document.getElementById('deactivate-entity').addEventListener('click', async () => {
+    if (!currentEntity) return;
+    const name = currentEntity.entity_name || 'this entity';
+    if (!confirm(`Deactivate "${name}"? This will hide it from the default view.`)) return;
+    const { ok, data, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/deactivate`, {
+      method: 'POST'
+    });
+    if (ok) {
+      alert(data?.message || 'Entity deactivated.');
+      hasUnsavedChanges = false;
+      closeModal();
+      loadData();
+    } else {
+      alert(error || 'Failed to deactivate entity');
+    }
+  });
+
   // Close modal
   function closeModal() {
+    if (hasUnsavedChanges && !confirm('You have unsaved changes. Close anyway?')) return;
     modal.classList.remove('active');
     currentEntity = null;
+    hasUnsavedChanges = false;
   }
   modal.querySelector('.modal-close').addEventListener('click', closeModal);
   document.getElementById('close-detail').addEventListener('click', closeModal);
@@ -1759,13 +1949,12 @@
   let savedFiltersData = [];
 
   async function loadSavedFilters() {
-    try {
-      const r = await fetch(`${API}/filters`);
-      savedFiltersData = await r.json();
-      const select = document.getElementById('saved-filter');
-      select.innerHTML = '<option value="">Saved Filters...</option>' +
-        savedFiltersData.map(f => `<option value="${f.filter_id}">${esc(f.filter_name)}</option>`).join('');
-    } catch (e) { console.error('Failed to load saved filters:', e); }
+    const { ok, data } = await apiFetch(`${API}/filters`);
+    if (!ok) { console.error('Failed to load saved filters'); return; }
+    savedFiltersData = data;
+    const select = document.getElementById('saved-filter');
+    select.innerHTML = '<option value="">Saved Filters...</option>' +
+      savedFiltersData.map(f => `<option value="${f.filter_id}">${esc(f.filter_name)}</option>`).join('');
   }
 
   document.getElementById('saved-filter').addEventListener('change', function() {
@@ -1796,16 +1985,16 @@
       has_contacts: document.getElementById('contacts-filter').value,
       sort: document.getElementById('sort-filter').value
     };
-    const r = await fetch(`${API}/filters`, {
+    const { ok, error } = await apiFetch(`${API}/filters`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ filter_name: filterName, filter_config: filterConfig })
     });
-    if (r.ok) {
+    if (ok) {
       alert('Filter saved!');
       loadSavedFilters();
     } else {
-      alert('Failed to save filter');
+      alert(error || 'Failed to save filter');
     }
   });
 
@@ -1820,6 +2009,31 @@
       sector_id: document.getElementById('sector-filter').value
     });
     window.location.href = `${API}/export?${params}`;
+  });
+
+  // ===== CSV Import =====
+  document.getElementById('import-csv').addEventListener('click', () => {
+    document.getElementById('import-file').click();
+  });
+  document.getElementById('import-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    const { ok, data, error } = await apiFetch(`${API}/import-contacts`, {
+      method: 'POST',
+      body: formData
+    });
+    e.target.value = '';
+    if (ok) {
+      let msg = `Import complete: ${data.imported} contacts imported`;
+      if (data.skipped) msg += `, ${data.skipped} skipped`;
+      if (data.errors && data.errors.length > 0) msg += `\n\nErrors:\n${data.errors.join('\n')}`;
+      alert(msg);
+      loadData();
+    } else {
+      alert(error || 'Import failed');
+    }
   });
 
   // ===== Create Entity Modal =====
@@ -1940,22 +2154,39 @@
       const cRole = document.getElementById('create-contact-role').value;
       if (cRole) body.contact_role = cRole;
 
-      const r = await fetch(`${API}/entities`, {
+      const { ok, data: result, error, status } = await apiFetch(`${API}/entities`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
       });
-      const result = await r.json();
 
-      if (r.status === 201) {
+      if (status === 201) {
         closeCreateModal();
         await loadData();
         openDetail(result.entity_type, result.entity_id);
-      } else if (r.status === 409) {
-        errorEl.innerHTML = `${esc(result.error)}. <a onclick="document.getElementById('create-modal').classList.remove('active');openDetail('${createType}',${result.existing_id})">Open existing?</a>`;
+      } else if (result?.needs_confirmation) {
+        const matches = result.similar_entities.map(e => `  ${e.name} (${e.score}% match)`).join('\n');
+        if (confirm(`Similar entities found:\n${matches}\n\nCreate "${body.name}" anyway?`)) {
+          body.force = true;
+          const retry = await apiFetch(`${API}/entities`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+          });
+          if (retry.status === 201) {
+            closeCreateModal();
+            await loadData();
+            openDetail(retry.data.entity_type, retry.data.entity_id);
+          } else {
+            errorEl.textContent = retry.error || 'Failed to create entity.';
+            errorEl.classList.add('active');
+          }
+        }
+      } else if (status === 409) {
+        errorEl.innerHTML = `${esc(result?.error || error)}. <a onclick="document.getElementById('create-modal').classList.remove('active');openDetail('${createType}',${result?.existing_id})">Open existing?</a>`;
         errorEl.classList.add('active');
       } else {
-        errorEl.textContent = result.error || 'Failed to create entity.';
+        errorEl.textContent = error || 'Failed to create entity.';
         errorEl.classList.add('active');
       }
     } catch (e) {
@@ -1973,7 +2204,16 @@
   });
 
   // Init
-  Promise.all([loadSectors(), loadMarkets(), loadAEList(), loadSavedFilters()]).then(() => loadData());
+  Promise.all([loadSectors(), loadMarkets(), loadAEList(), loadSavedFilters()]).then(async () => {
+    await loadData();
+    // Handle ?open=type:id from external links (e.g., Tasks Due widget)
+    const openParam = new URLSearchParams(window.location.search).get('open');
+    if (openParam) {
+      const [type, id] = openParam.split(':');
+      if (type && id) openDetail(type, parseInt(id));
+      history.replaceState(null, '', window.location.pathname);
+    }
+  });
 })();
 </script>
 {% endblock %}

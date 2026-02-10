@@ -8,6 +8,7 @@ import sqlite3
 import json
 import csv
 import io
+from src.services.customer_resolution_service import _score_name
 from contextlib import contextmanager
 
 address_book_bp = Blueprint("address_book", __name__)
@@ -732,6 +733,8 @@ def api_create_entity():
     contact_phone = (data.get("contact_phone") or "").strip() or None
     contact_role = (data.get("contact_role") or "").strip() or None
 
+    force = data.get("force", False)
+
     if entity_type not in ("agency", "customer"):
         return jsonify({"error": "entity_type must be 'agency' or 'customer'"}), 400
     if not name:
@@ -739,7 +742,7 @@ def api_create_entity():
 
     with _db_rw() as conn:
         try:
-            # Duplicate check (case-insensitive)
+            # Exact duplicate check (case-insensitive)
             if entity_type == "agency":
                 existing = conn.execute(
                     "SELECT agency_id FROM agencies WHERE agency_name = ? COLLATE NOCASE",
@@ -750,6 +753,24 @@ def api_create_entity():
                         "error": f"Agency '{name}' already exists",
                         "existing_id": existing["agency_id"]
                     }), 409
+
+                # Fuzzy duplicate check (skip if user confirmed)
+                if not force:
+                    rows = conn.execute(
+                        "SELECT agency_id, agency_name FROM agencies WHERE is_active = 1"
+                    ).fetchall()
+                    similar = []
+                    for row in rows:
+                        score = _score_name(name, row["agency_name"])
+                        if score >= 0.60:
+                            similar.append({"id": row["agency_id"], "name": row["agency_name"],
+                                            "score": round(score * 100)})
+                    if similar:
+                        similar.sort(key=lambda x: x["score"], reverse=True)
+                        return jsonify({
+                            "needs_confirmation": True,
+                            "similar_entities": similar[:5]
+                        }), 200
 
                 conn.execute("""
                     INSERT INTO agencies (agency_name, po_number, assigned_ae,
@@ -767,6 +788,24 @@ def api_create_entity():
                         "error": f"Advertiser '{name}' already exists",
                         "existing_id": existing["customer_id"]
                     }), 409
+
+                # Fuzzy duplicate check (skip if user confirmed)
+                if not force:
+                    rows = conn.execute(
+                        "SELECT customer_id, normalized_name FROM customers WHERE is_active = 1"
+                    ).fetchall()
+                    similar = []
+                    for row in rows:
+                        score = _score_name(name, row["normalized_name"])
+                        if score >= 0.60:
+                            similar.append({"id": row["customer_id"], "name": row["normalized_name"],
+                                            "score": round(score * 100)})
+                    if similar:
+                        similar.sort(key=lambda x: x["score"], reverse=True)
+                        return jsonify({
+                            "needs_confirmation": True,
+                            "similar_entities": similar[:5]
+                        }), 200
 
                 # Validate sector_id if provided
                 if sector_id is not None:
@@ -832,6 +871,51 @@ def api_create_entity():
                 "entity_id": entity_id,
                 "name": name
             }), 201
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/deactivate", methods=["POST"])
+def api_deactivate_entity(entity_type, entity_id):
+    """Soft-deactivate an entity (set is_active=0)."""
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "Invalid entity type"}), 400
+
+    table = "agencies" if entity_type == "agency" else "customers"
+    id_col = "agency_id" if entity_type == "agency" else "customer_id"
+    name_col = "agency_name" if entity_type == "agency" else "normalized_name"
+
+    with _db_rw() as conn:
+        try:
+            row = conn.execute(
+                f"SELECT {name_col} AS name, is_active FROM {table} WHERE {id_col} = ?",
+                [entity_id]
+            ).fetchone()
+
+            if not row:
+                return jsonify({"error": "Entity not found"}), 404
+            if not row["is_active"]:
+                return jsonify({"error": "Entity is already inactive"}), 400
+
+            conn.execute(
+                f"UPDATE {table} SET is_active = 0 WHERE {id_col} = ?",
+                [entity_id]
+            )
+
+            conn.execute("""
+                INSERT INTO canon_audit (actor, action, key, value, extra)
+                VALUES (?, 'DEACTIVATE_ENTITY', ?, ?, ?)
+            """, [
+                "web_user",
+                f"{entity_type}:{entity_id}",
+                row["name"],
+                f"type={entity_type}"
+            ])
+
+            conn.commit()
+            return jsonify({"success": True, "message": f"{row['name']} has been deactivated"})
 
         except Exception as e:
             conn.rollback()
@@ -1201,10 +1285,107 @@ def api_export_csv():
 
 
 # ============================================================
+# CSV Import for Contacts
+# ============================================================
+
+VALID_IMPORT_ROLES = ['decision_maker', 'account_manager', 'billing', 'technical', 'other']
+
+
+@address_book_bp.route("/api/address-book/import-contacts", methods=["POST"])
+def api_import_contacts():
+    """Import contacts from a CSV file. Expected columns: Entity Name, Type, Contact Name, Title, Email, Phone, Role."""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files['file']
+    if not file.filename or not file.filename.endswith('.csv'):
+        return jsonify({"error": "File must be a .csv"}), 400
+
+    try:
+        content = file.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return jsonify({"error": "File must be UTF-8 encoded"}), 400
+
+    reader = csv.DictReader(io.StringIO(content))
+    required_cols = {'Entity Name', 'Type', 'Contact Name'}
+    if not required_cols.issubset(set(reader.fieldnames or [])):
+        return jsonify({"error": f"CSV must have columns: {', '.join(sorted(required_cols))}"}), 400
+
+    imported = 0
+    skipped = 0
+    errors = []
+
+    with _db_rw() as conn:
+        for i, row in enumerate(reader, start=2):
+            entity_name = (row.get('Entity Name') or '').strip()
+            entity_type = (row.get('Type') or '').strip().lower()
+            contact_name = (row.get('Contact Name') or '').strip()
+
+            if not entity_name or not entity_type or not contact_name:
+                errors.append(f"Row {i}: Missing required field (Entity Name, Type, or Contact Name)")
+                skipped += 1
+                continue
+
+            if entity_type not in ('agency', 'customer'):
+                errors.append(f"Row {i}: Type must be 'agency' or 'customer', got '{entity_type}'")
+                skipped += 1
+                continue
+
+            # Look up entity
+            if entity_type == 'agency':
+                entity = conn.execute(
+                    "SELECT agency_id FROM agencies WHERE agency_name = ? COLLATE NOCASE AND is_active = 1",
+                    [entity_name]
+                ).fetchone()
+                entity_id = entity["agency_id"] if entity else None
+            else:
+                entity = conn.execute(
+                    "SELECT customer_id FROM customers WHERE normalized_name = ? COLLATE NOCASE AND is_active = 1",
+                    [entity_name]
+                ).fetchone()
+                entity_id = entity["customer_id"] if entity else None
+
+            if not entity_id:
+                errors.append(f"Row {i}: Entity '{entity_name}' ({entity_type}) not found")
+                skipped += 1
+                continue
+
+            role = (row.get('Role') or '').strip().lower() or None
+            if role and role not in VALID_IMPORT_ROLES:
+                role = None
+
+            try:
+                conn.execute("""
+                    INSERT INTO entity_contacts
+                        (entity_type, entity_id, contact_name, contact_title, email, phone,
+                         contact_role, is_primary, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'csv_import')
+                """, [
+                    entity_type, entity_id, contact_name,
+                    (row.get('Title') or '').strip() or None,
+                    (row.get('Email') or '').strip() or None,
+                    (row.get('Phone') or '').strip() or None,
+                    role
+                ])
+                imported += 1
+            except Exception as e:
+                errors.append(f"Row {i}: {str(e)}")
+                skipped += 1
+
+        conn.commit()
+
+    return jsonify({
+        "imported": imported,
+        "skipped": skipped,
+        "errors": errors[:20]
+    })
+
+
+# ============================================================
 # Activity Log
 # ============================================================
 
-VALID_ACTIVITY_TYPES = ['note', 'call', 'email', 'meeting', 'status_change']
+VALID_ACTIVITY_TYPES = ['note', 'call', 'email', 'meeting', 'status_change', 'follow_up']
 
 
 @address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/activities")
@@ -1227,6 +1408,9 @@ def api_get_activities(entity_type, entity_id):
                 ea.created_by,
                 ea.created_date,
                 ea.contact_id,
+                ea.due_date,
+                ea.is_completed,
+                ea.completed_date,
                 ec.contact_name
             FROM entity_activity ea
             LEFT JOIN entity_contacts ec ON ea.contact_id = ec.contact_id
@@ -1248,12 +1432,16 @@ def api_create_activity(entity_type, entity_id):
     activity_type = data.get("activity_type", "").strip()
     description = data.get("description", "").strip()
     contact_id = data.get("contact_id")
+    due_date = data.get("due_date", "").strip() or None
 
     if not activity_type:
         return jsonify({"error": "activity_type is required"}), 400
 
     if activity_type not in VALID_ACTIVITY_TYPES:
         return jsonify({"error": f"Invalid activity_type. Must be one of: {VALID_ACTIVITY_TYPES}"}), 400
+
+    if activity_type == 'follow_up' and not due_date:
+        return jsonify({"error": "due_date is required for follow_up activities"}), 400
 
     with _db_rw() as conn:
         try:
@@ -1275,9 +1463,9 @@ def api_create_activity(entity_type, entity_id):
             # Insert activity
             conn.execute("""
                 INSERT INTO entity_activity
-                    (entity_type, entity_id, activity_type, description, created_by, contact_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, [entity_type, entity_id, activity_type, description or None, "web_user", contact_id])
+                    (entity_type, entity_id, activity_type, description, created_by, contact_id, due_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, [entity_type, entity_id, activity_type, description or None, "web_user", contact_id, due_date])
 
             activity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             conn.commit()
@@ -1291,6 +1479,85 @@ def api_create_activity(entity_type, entity_id):
         except Exception as e:
             conn.rollback()
             return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/activities/<int:activity_id>/complete", methods=["POST"])
+def api_complete_activity(activity_id):
+    """Mark a follow-up activity as completed."""
+    with _db_rw() as conn:
+        try:
+            activity = conn.execute(
+                "SELECT activity_type, is_completed FROM entity_activity WHERE activity_id = ?",
+                [activity_id]
+            ).fetchone()
+
+            if not activity:
+                return jsonify({"error": "Activity not found"}), 404
+
+            if activity["activity_type"] != "follow_up":
+                return jsonify({"error": "Only follow_up activities can be completed"}), 400
+
+            new_status = 0 if activity["is_completed"] else 1
+            conn.execute("""
+                UPDATE entity_activity
+                SET is_completed = ?, completed_date = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+                WHERE activity_id = ?
+            """, [new_status, new_status, activity_id])
+
+            conn.commit()
+            return jsonify({"success": True, "is_completed": new_status})
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/follow-ups")
+def api_get_follow_ups():
+    """Get all incomplete follow-up activities for the dashboard, plus recently completed."""
+    with _db_ro() as conn:
+        follow_ups = conn.execute("""
+            SELECT
+                ea.activity_id,
+                ea.entity_type,
+                ea.entity_id,
+                ea.description,
+                ea.due_date,
+                ea.is_completed,
+                ea.completed_date,
+                ea.activity_date,
+                CASE ea.entity_type
+                    WHEN 'agency' THEN (SELECT agency_name FROM agencies WHERE agency_id = ea.entity_id)
+                    WHEN 'customer' THEN (SELECT normalized_name FROM customers WHERE customer_id = ea.entity_id)
+                END AS entity_name
+            FROM entity_activity ea
+            WHERE ea.activity_type = 'follow_up'
+              AND (ea.is_completed = 0 OR ea.completed_date >= datetime('now', '-7 days'))
+            ORDER BY ea.is_completed ASC, ea.due_date ASC
+        """).fetchall()
+
+        today = __import__('datetime').date.today().isoformat()
+        results = []
+        for f in follow_ups:
+            d = dict(f)
+            if d['is_completed']:
+                d['urgency'] = 'completed'
+            elif d['due_date'] and d['due_date'] < today:
+                d['urgency'] = 'overdue'
+            elif d['due_date'] and d['due_date'] == today:
+                d['urgency'] = 'due-today'
+            elif d['due_date']:
+                from datetime import date, timedelta
+                due = date.fromisoformat(d['due_date'])
+                if due <= date.today() + timedelta(days=3):
+                    d['urgency'] = 'due-soon'
+                else:
+                    d['urgency'] = 'upcoming'
+            else:
+                d['urgency'] = 'upcoming'
+            results.append(d)
+
+        return jsonify(results)
 
 
 # ============================================================

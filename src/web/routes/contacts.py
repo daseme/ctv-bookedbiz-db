@@ -8,7 +8,7 @@ contacts_bp = Blueprint("contacts", __name__)
 
 def _get_service():
     from src.services.contact_service import ContactService
-    db_path = current_app.config.get("DB_PATH") or "./data/database/production.db"
+    db_path = current_app.config.get("DB_PATH") or "./.data/dev.db"
     return ContactService(db_path)
 
 
