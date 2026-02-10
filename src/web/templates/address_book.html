@@ -1726,9 +1726,9 @@
       aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
     const agencies = currentData
       .filter(d => d.entity_type === 'agency' && d.is_active)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.entity_name.localeCompare(b.entity_name));
     document.getElementById('create-agency').innerHTML = '<option value="">-- No Agency (Direct) --</option>' +
-      agencies.map(a => `<option value="${a.entity_id}">${esc(a.name)}</option>`).join('');
+      agencies.map(a => `<option value="${a.entity_id}">${esc(a.entity_name)}</option>`).join('');
     createModal.classList.add('active');
     document.getElementById('create-name').focus();
   }
