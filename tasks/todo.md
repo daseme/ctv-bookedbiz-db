@@ -1,3 +1,29 @@
+# Address Book Enhancement — 9 Features, 3 Phases - COMPLETED ✅
+
+Implemented 2026-02-10. 6 commits on dev branch.
+
+## Phase 1: Foundation (commit 7e727f6)
+- ✅ Feature 1: Fix DB path fallback in contacts.py (`.data/dev.db`)
+- ✅ Feature 2: `apiFetch()` helper — refactored all 18+ fetch calls, consistent error handling
+- ✅ Feature 3: `hasUnsavedChanges` warning on modal close (tracks 11 editable fields)
+- ✅ Feature 4: Bulk Set Sector button wired for selected advertisers
+
+## Phase 2: CRM Features (commits 56f7bdd, e88cb8d)
+- ✅ Feature 5: Inline address editing (mirrors contact edit pattern, green-tinted forms)
+- ✅ Feature 6: Entity deactivate button (POST endpoint + red button in save-bar + audit)
+
+## Phase 3: Adoption Enablers (commits 6a2e4d7, a6aa380, 76d7332)
+- ✅ Feature 7: Fuzzy duplicate detection on create (threshold 0.60, confirm to force)
+- ✅ Feature 8: CSV import for contacts (multipart upload, entity lookup, error reporting)
+- ✅ Feature 9: Follow-up task reminders (migration 009, 3 new endpoints, dashboard widget)
+
+### Migration Required
+Run `sql/migrations/009_follow_up_activities.sql` on production before deploying.
+
+Files changed: `contacts.py`, `address_book.py` (+5 endpoints), `address_book.html`, `index.html`, `009_follow_up_activities.sql`
+
+---
+
 # Planning Page Revenue Fix + DB Path Alignment - COMPLETED ✅
 
 Implemented 2026-02-10. PRs #117–#121.
