@@ -1,3 +1,37 @@
+# Planning Page Revenue Fix + DB Path Alignment - COMPLETED ✅
+
+Implemented 2026-02-10. PRs #117–#121.
+
+## Fix 1: DB Path Mismatch (PR #117, #118)
+- ✅ `factory.py`: Added `DATABASE_PATH` env var fallback so service layer uses correct DB
+- ✅ `import_closed_data.py`: CLI default now checks `DB_PATH` / `DATABASE_PATH` before project-local fallback
+- ✅ `daily_update.py`: Same fix as above
+- ✅ `/etc/ctv-db-sync.env`: Fixed Dropbox backup to sync canonical production DB (`/var/lib/...`)
+- ✅ Re-ran January import against correct production DB → $164,171 matches expected total
+
+## Fix 2: Planning Page Shows Actuals for Closed Months (PR #117)
+- ✅ TOTAL row: shows booked for past months, forecast for future
+- ✅ Entity forecast inputs: display booked value (readonly) for past months
+- ✅ Column headers: "(Actual)" label on closed month headers
+- ✅ Year total: new `total_effective` sums booked (past) + forecast (future)
+- ✅ Added `effective` property to `PeriodDataWrapper`, `total_effective` to `CompanySummaryWrapper`
+- Files: `factory.py`, `planning_service.py`, `planning.py`, `planning_session.html`
+
+## Fix 3: Address Book Create Modal (PR #120)
+- ✅ Modal crashed silently on open — agency dropdown JS used `a.name` but API returns `entity_name`
+- ✅ `undefined.localeCompare()` TypeError killed `openCreateModal()` before showing modal
+
+## Fix 4: Agency Assignment in Detail Panel (PR #121)
+- ✅ Customer detail API was missing `agency_id`/`agency_name` from query
+- ✅ Added Agency dropdown to customer detail panel (between Sector and AE)
+- ✅ New PUT endpoint `/api/address-book/customer/<id>/agency`
+- ✅ XQ Institute → We Are Rally assignment was in DB but invisible in UI
+
+## Lessons Captured
+- ✅ Rule 21 added to `tasks/lessons.md`: Canonical production DB path pattern
+
+---
+
 # Reports Index Redesign - COMPLETED ✅
 
 Implemented 2026-02-08. PRs #106–#110.
