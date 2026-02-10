@@ -258,5 +258,39 @@ app.config['DB_PATH'] = '.data/dev.db'
 
 ---
 
-**Last Updated**: 2026-02-06
-**Session Context**: Address book enhancements deployment — search fix appeared broken on dev due to data differences, not code.
+### Rule 21: Canonical Production DB Path — Never Hardcode Project-Local Defaults
+**Context**: Planning page showed $163,017 instead of $164,171 for January. The CLI import (`import_closed_data.py`) wrote 28,073 records to `data/database/production.db` (project-local skeleton) instead of `/var/lib/ctv-bookedbiz-db/production.db` (canonical production DB). The Dropbox backup timer was also syncing the wrong file.
+**Pattern**: Four components had the same bug — hardcoded `data/database/production.db` as default:
+- `factory.py` (service layer) — fixed PR #117
+- `import_closed_data.py` (CLI) — fixed PR #118
+- `daily_update.py` (CLI) — fixed PR #118
+- `/etc/ctv-db-sync.env` (backup timer) — fixed manually
+
+**The canonical DB path resolution chain**:
+```
+DB_PATH env var > DATABASE_PATH env var > data/database/production.db (fallback)
+```
+
+**Production paths**:
+- App env (`/etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env`): `DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db`
+- Backup env (`/etc/ctv-db-sync.env`): `DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db`
+- CLI scripts: Now check `DB_PATH` / `DATABASE_PATH` env vars before falling back
+
+**When adding new CLI tools or services**: Always resolve the DB path with:
+```python
+db_path = os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH") or "data/database/production.db"
+```
+
+**How to verify you're hitting the right DB**:
+```bash
+# Check record counts differ significantly between the two
+sqlite3 /var/lib/ctv-bookedbiz-db/production.db "SELECT COUNT(*) FROM spots WHERE broadcast_month='Jan-26';"
+sqlite3 data/database/production.db "SELECT COUNT(*) FROM spots WHERE broadcast_month='Jan-26';"
+```
+
+**Action**: Never hardcode `data/database/production.db` without also checking env vars. When data looks wrong, first verify which DB file the component is actually reading/writing.
+
+---
+
+**Last Updated**: 2026-02-10
+**Session Context**: Planning page revenue discrepancy — CLI import and backup timer were using wrong DB path, causing stale data on production.
