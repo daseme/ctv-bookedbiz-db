@@ -706,6 +706,20 @@
           <input type="text" id="create-contact-phone" placeholder="(555) 123-4567">
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label>Role</label>
+          <select id="create-contact-role">
+            <option value="">-- Select Role --</option>
+            <option value="decision_maker">Decision Maker</option>
+            <option value="account_manager">Account Manager</option>
+            <option value="billing">Billing</option>
+            <option value="technical">Technical</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-field"></div>
+      </div>
 
       <div class="error-msg" id="create-error"></div>
       <div class="form-actions">
@@ -1743,6 +1757,7 @@
     document.getElementById('create-contact-title').value = '';
     document.getElementById('create-contact-email').value = '';
     document.getElementById('create-contact-phone').value = '';
+    document.getElementById('create-contact-role').value = '';
     // Customer-only fields hidden for agency default
     document.getElementById('create-sector-field').style.display = 'none';
     document.getElementById('create-agency-field').style.display = 'none';
@@ -1835,6 +1850,8 @@
       if (cEmail) body.contact_email = cEmail;
       const cPhone = document.getElementById('create-contact-phone').value.trim();
       if (cPhone) body.contact_phone = cPhone;
+      const cRole = document.getElementById('create-contact-role').value;
+      if (cRole) body.contact_role = cRole;
 
       const r = await fetch(`${API}/entities`, {
         method: 'POST',
