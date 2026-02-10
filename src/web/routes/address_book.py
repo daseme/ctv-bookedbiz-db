@@ -1285,6 +1285,103 @@ def api_export_csv():
 
 
 # ============================================================
+# CSV Import for Contacts
+# ============================================================
+
+VALID_IMPORT_ROLES = ['decision_maker', 'account_manager', 'billing', 'technical', 'other']
+
+
+@address_book_bp.route("/api/address-book/import-contacts", methods=["POST"])
+def api_import_contacts():
+    """Import contacts from a CSV file. Expected columns: Entity Name, Type, Contact Name, Title, Email, Phone, Role."""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files['file']
+    if not file.filename or not file.filename.endswith('.csv'):
+        return jsonify({"error": "File must be a .csv"}), 400
+
+    try:
+        content = file.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return jsonify({"error": "File must be UTF-8 encoded"}), 400
+
+    reader = csv.DictReader(io.StringIO(content))
+    required_cols = {'Entity Name', 'Type', 'Contact Name'}
+    if not required_cols.issubset(set(reader.fieldnames or [])):
+        return jsonify({"error": f"CSV must have columns: {', '.join(sorted(required_cols))}"}), 400
+
+    imported = 0
+    skipped = 0
+    errors = []
+
+    with _db_rw() as conn:
+        for i, row in enumerate(reader, start=2):
+            entity_name = (row.get('Entity Name') or '').strip()
+            entity_type = (row.get('Type') or '').strip().lower()
+            contact_name = (row.get('Contact Name') or '').strip()
+
+            if not entity_name or not entity_type or not contact_name:
+                errors.append(f"Row {i}: Missing required field (Entity Name, Type, or Contact Name)")
+                skipped += 1
+                continue
+
+            if entity_type not in ('agency', 'customer'):
+                errors.append(f"Row {i}: Type must be 'agency' or 'customer', got '{entity_type}'")
+                skipped += 1
+                continue
+
+            # Look up entity
+            if entity_type == 'agency':
+                entity = conn.execute(
+                    "SELECT agency_id FROM agencies WHERE agency_name = ? COLLATE NOCASE AND is_active = 1",
+                    [entity_name]
+                ).fetchone()
+                entity_id = entity["agency_id"] if entity else None
+            else:
+                entity = conn.execute(
+                    "SELECT customer_id FROM customers WHERE normalized_name = ? COLLATE NOCASE AND is_active = 1",
+                    [entity_name]
+                ).fetchone()
+                entity_id = entity["customer_id"] if entity else None
+
+            if not entity_id:
+                errors.append(f"Row {i}: Entity '{entity_name}' ({entity_type}) not found")
+                skipped += 1
+                continue
+
+            role = (row.get('Role') or '').strip().lower() or None
+            if role and role not in VALID_IMPORT_ROLES:
+                role = None
+
+            try:
+                conn.execute("""
+                    INSERT INTO entity_contacts
+                        (entity_type, entity_id, contact_name, contact_title, email, phone,
+                         contact_role, is_primary, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'csv_import')
+                """, [
+                    entity_type, entity_id, contact_name,
+                    (row.get('Title') or '').strip() or None,
+                    (row.get('Email') or '').strip() or None,
+                    (row.get('Phone') or '').strip() or None,
+                    role
+                ])
+                imported += 1
+            except Exception as e:
+                errors.append(f"Row {i}: {str(e)}")
+                skipped += 1
+
+        conn.commit()
+
+    return jsonify({
+        "imported": imported,
+        "skipped": skipped,
+        "errors": errors[:20]
+    })
+
+
+# ============================================================
 # Activity Log
 # ============================================================
 

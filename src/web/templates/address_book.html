@@ -336,6 +336,8 @@
   </label>
   <button id="save-filter" title="Save current filter">Save</button>
   <button id="export-csv" title="Export to CSV">Export</button>
+  <button id="import-csv" title="Import contacts from CSV" style="background:#7c3aed;color:#fff;border:1px solid #6d28d9">Import</button>
+  <input type="file" id="import-file" accept=".csv" style="display:none">
   <button id="add-new" title="Add New Agency or Advertiser">+ Add New</button>
   <button id="refresh">Refresh</button>
   <div class="view-toggle">
@@ -1944,6 +1946,31 @@
       sector_id: document.getElementById('sector-filter').value
     });
     window.location.href = `${API}/export?${params}`;
+  });
+
+  // ===== CSV Import =====
+  document.getElementById('import-csv').addEventListener('click', () => {
+    document.getElementById('import-file').click();
+  });
+  document.getElementById('import-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    const { ok, data, error } = await apiFetch(`${API}/import-contacts`, {
+      method: 'POST',
+      body: formData
+    });
+    e.target.value = '';
+    if (ok) {
+      let msg = `Import complete: ${data.imported} contacts imported`;
+      if (data.skipped) msg += `, ${data.skipped} skipped`;
+      if (data.errors && data.errors.length > 0) msg += `\n\nErrors:\n${data.errors.join('\n')}`;
+      alert(msg);
+      loadData();
+    } else {
+      alert(error || 'Import failed');
+    }
   });
 
   // ===== Create Entity Modal =====
