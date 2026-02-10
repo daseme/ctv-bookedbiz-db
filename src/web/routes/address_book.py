@@ -633,6 +633,90 @@ def api_spots_link(entity_type, entity_id):
 
 
 # ============================================================
+# Create New Entity
+# ============================================================
+
+@address_book_bp.route("/api/address-book/entities", methods=["POST"])
+def api_create_entity():
+    """Create a new agency or advertiser (customer)."""
+    data = request.get_json() or {}
+    entity_type = data.get("entity_type", "").strip()
+    name = data.get("name", "").strip()
+    sector_id = data.get("sector_id")
+    notes = data.get("notes", "").strip() or None
+
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "entity_type must be 'agency' or 'customer'"}), 400
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    with _db_rw() as conn:
+        try:
+            # Duplicate check (case-insensitive)
+            if entity_type == "agency":
+                existing = conn.execute(
+                    "SELECT agency_id FROM agencies WHERE agency_name = ? COLLATE NOCASE",
+                    [name]
+                ).fetchone()
+                if existing:
+                    return jsonify({
+                        "error": f"Agency '{name}' already exists",
+                        "existing_id": existing["agency_id"]
+                    }), 409
+
+                conn.execute(
+                    "INSERT INTO agencies (agency_name, notes, is_active) VALUES (?, ?, 1)",
+                    [name, notes]
+                )
+                entity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            else:
+                existing = conn.execute(
+                    "SELECT customer_id FROM customers WHERE normalized_name = ? COLLATE NOCASE",
+                    [name]
+                ).fetchone()
+                if existing:
+                    return jsonify({
+                        "error": f"Advertiser '{name}' already exists",
+                        "existing_id": existing["customer_id"]
+                    }), 409
+
+                # Validate sector_id if provided
+                if sector_id is not None:
+                    try:
+                        sector_id = int(sector_id) if sector_id else None
+                    except (ValueError, TypeError):
+                        return jsonify({"error": "Invalid sector_id"}), 400
+
+                conn.execute(
+                    "INSERT INTO customers (normalized_name, sector_id, notes, is_active) VALUES (?, ?, ?, 1)",
+                    [name, sector_id, notes]
+                )
+                entity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            # Audit trail
+            conn.execute("""
+                INSERT INTO canon_audit (actor, action, key, value, extra)
+                VALUES (?, 'CREATE_ENTITY', ?, ?, ?)
+            """, [
+                "web_user",
+                f"{entity_type}:{entity_id}",
+                name,
+                f"type={entity_type}|sector_id={sector_id or 'none'}"
+            ])
+
+            conn.commit()
+            return jsonify({
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "name": name
+            }), 201
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+
+
+# ============================================================
 # Additional Addresses CRUD
 # ============================================================
 

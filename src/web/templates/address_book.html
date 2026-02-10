@@ -240,6 +240,28 @@
 
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
   .count.loading{animation:pulse 1s ease-in-out infinite}
+
+  /* Create Entity Modal */
+  .create-modal{background:#fff;border-radius:12px;width:100%;max-width:480px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .create-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+  .create-modal .modal-header h2{margin:0;font-size:20px}
+  .create-modal .modal-body{padding:24px;display:flex;flex-direction:column;gap:16px}
+  .create-modal .type-selector{display:flex;gap:8px}
+  .create-modal .type-btn{flex:1;padding:10px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font-size:14px;font-weight:500;text-align:center;transition:all 0.15s}
+  .create-modal .type-btn:hover{border-color:#cbd5e1}
+  .create-modal .type-btn.active.agency{border-color:#0ea5e9;background:#e0f2fe;color:#0369a1}
+  .create-modal .type-btn.active.customer{border-color:#8b5cf6;background:#ede9fe;color:#6d28d9}
+  .create-modal .error-msg{padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626;font-size:13px;display:none}
+  .create-modal .error-msg.active{display:block}
+  .create-modal .error-msg a{color:#0ea5e9;cursor:pointer;text-decoration:underline}
+  .create-modal .form-actions{display:flex;gap:8px;justify-content:flex-end;padding-top:8px}
+  .create-modal .btn{padding:10px 20px;border-radius:6px;font-size:14px;cursor:pointer}
+  .create-modal .btn-cancel{background:#fff;border:1px solid #e2e8f0;color:#475569}
+  .create-modal .btn-create{background:#059669;border:1px solid #047857;color:#fff}
+  .create-modal .btn-create:hover{background:#047857}
+  .create-modal .btn-create:disabled{background:#94a3b8;border-color:#94a3b8;cursor:not-allowed}
+  .filter-bar button#add-new{background:#059669;color:#fff;border-color:#047857}
+  .filter-bar button#add-new:hover{background:#047857}
 </style>
 {% endblock %}
 
@@ -290,6 +312,7 @@
   </label>
   <button id="save-filter" title="Save current filter">Save</button>
   <button id="export-csv" title="Export to CSV">Export</button>
+  <button id="add-new" title="Add New Agency or Advertiser">+ Add New</button>
   <button id="refresh">Refresh</button>
   <div class="view-toggle">
     <button id="view-cards" class="active" title="Card View">Cards</button>
@@ -565,6 +588,44 @@
     </div>
   </div>
 </div>
+<!-- Create Entity Modal -->
+<div class="modal-overlay" id="create-modal">
+  <div class="create-modal">
+    <div class="modal-header">
+      <h2>Add New Entity</h2>
+      <button class="modal-close" id="create-modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <label style="display:block;font-size:11px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Type</label>
+        <div class="type-selector">
+          <button class="type-btn agency active" data-type="agency">Agency</button>
+          <button class="type-btn customer" data-type="customer">Advertiser</button>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Name *</label>
+        <input type="text" id="create-name" placeholder="Entity name">
+      </div>
+      <div class="form-field" id="create-sector-field" style="display:none">
+        <label>Sector</label>
+        <select id="create-sector">
+          <option value="">-- No Sector --</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Notes</label>
+        <textarea id="create-notes" placeholder="Optional notes" style="min-height:60px"></textarea>
+      </div>
+      <div class="error-msg" id="create-error"></div>
+      <div class="form-actions">
+        <button class="btn btn-cancel" id="create-cancel">Cancel</button>
+        <button class="btn btn-create" id="create-submit">Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -1545,6 +1606,103 @@
       sector_id: document.getElementById('sector-filter').value
     });
     window.location.href = `${API}/export?${params}`;
+  });
+
+  // ===== Create Entity Modal =====
+  const createModal = document.getElementById('create-modal');
+  let createType = 'agency';
+
+  function openCreateModal() {
+    createType = 'agency';
+    document.querySelectorAll('.create-modal .type-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.create-modal .type-btn.agency').classList.add('active');
+    document.getElementById('create-name').value = '';
+    document.getElementById('create-notes').value = '';
+    document.getElementById('create-sector-field').style.display = 'none';
+    const errorEl = document.getElementById('create-error');
+    errorEl.classList.remove('active');
+    errorEl.textContent = '';
+    // Populate sector dropdown from already-loaded sectorsData
+    document.getElementById('create-sector').innerHTML = '<option value="">-- No Sector --</option>' +
+      sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+    createModal.classList.add('active');
+    document.getElementById('create-name').focus();
+  }
+
+  function closeCreateModal() {
+    createModal.classList.remove('active');
+  }
+
+  document.getElementById('add-new').addEventListener('click', openCreateModal);
+  document.getElementById('create-modal-close').addEventListener('click', closeCreateModal);
+  document.getElementById('create-cancel').addEventListener('click', closeCreateModal);
+  createModal.addEventListener('click', e => { if (e.target === createModal) closeCreateModal(); });
+
+  // Type selector toggle
+  document.querySelectorAll('.create-modal .type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      createType = btn.dataset.type;
+      document.querySelectorAll('.create-modal .type-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('create-sector-field').style.display = createType === 'customer' ? 'block' : 'none';
+    });
+  });
+
+  // Submit create
+  document.getElementById('create-submit').addEventListener('click', async () => {
+    const name = document.getElementById('create-name').value.trim();
+    const errorEl = document.getElementById('create-error');
+    errorEl.classList.remove('active');
+
+    if (!name) {
+      errorEl.textContent = 'Name is required.';
+      errorEl.classList.add('active');
+      return;
+    }
+
+    const btn = document.getElementById('create-submit');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+
+    try {
+      const body = { entity_type: createType, name };
+      if (createType === 'customer') {
+        const sectorVal = document.getElementById('create-sector').value;
+        if (sectorVal) body.sector_id = parseInt(sectorVal);
+      }
+      const notesVal = document.getElementById('create-notes').value.trim();
+      if (notesVal) body.notes = notesVal;
+
+      const r = await fetch(`${API}/entities`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      });
+      const result = await r.json();
+
+      if (r.status === 201) {
+        closeCreateModal();
+        await loadData();
+        openDetail(result.entity_type, result.entity_id);
+      } else if (r.status === 409) {
+        errorEl.innerHTML = `${esc(result.error)}. <a onclick="document.getElementById('create-modal').classList.remove('active');openDetail('${createType}',${result.existing_id})">Open existing?</a>`;
+        errorEl.classList.add('active');
+      } else {
+        errorEl.textContent = result.error || 'Failed to create entity.';
+        errorEl.classList.add('active');
+      }
+    } catch (e) {
+      errorEl.textContent = 'Network error. Please try again.';
+      errorEl.classList.add('active');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create';
+    }
+  });
+
+  // Enter key submits the create form
+  document.getElementById('create-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('create-submit').click();
   });
 
   // Init
