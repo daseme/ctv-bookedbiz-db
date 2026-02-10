@@ -1,3 +1,48 @@
+# Multi-Sector Support for Customers - COMPLETED ✅
+
+Implemented 2026-02-10. 3 commits on dev branch.
+
+## Migration (010_customer_sectors.sql)
+- ✅ `customer_sectors` junction table with UNIQUE(customer_id, sector_id)
+- ✅ 3 indexes: (customer_id, is_primary DESC), (sector_id), partial (customer_id WHERE is_primary=1)
+- ✅ Backfilled 179 rows from customers.sector_id (all is_primary=1)
+- ✅ 3 triggers: INSERT primary, UPDATE primary, DELETE primary → sync customers.sector_id cache
+
+## Backend
+- ✅ New `PUT /api/address-book/customer/<id>/sectors` — replaces all sector assignments
+- ✅ Updated `PUT .../sector` — backward compat, writes to junction table via upsert
+- ✅ Entity detail returns `sectors` array with sector_id, sector_name, sector_code, is_primary
+- ✅ List endpoint returns `sector_count` for badge display
+- ✅ Sector filter queries junction table (matches ANY position, not just primary)
+- ✅ Create entity inserts into junction table
+- ✅ `customer_sector_api.py`: update_customer_sector and bulk_update use junction table
+- ✅ `customer_sector_api.py`: delete_sector removes from junction table (triggers handle cache)
+- ✅ `canon_tools.py`: create_customer inserts into junction table
+
+## Frontend (address_book.html)
+- ✅ Detail panel: multi-sector tag UI with star (primary) and remove buttons
+- ✅ Add sector dropdown filters out already-assigned sectors
+- ✅ Sectors save inline (no more Save button needed for sectors)
+- ✅ Card display: primary sector badge + "+N" count for additional sectors
+- ✅ Table display: same "+N" treatment
+- ✅ Bulk Set Sector: sets as primary, preserves existing secondary sectors
+- ✅ Create modal: unchanged (single sector dropdown for simplicity)
+
+### Migration Required
+Run `sql/migrations/010_customer_sectors.sql` on production before deploying.
+
+### Files Changed
+- `sql/migrations/010_customer_sectors.sql` (new)
+- `src/web/routes/address_book.py` (~6 sections)
+- `src/web/routes/customer_sector_api.py` (3 functions)
+- `src/web/routes/canon_tools.py` (1 function)
+- `src/web/templates/address_book.html` (HTML + CSS + JS)
+
+### 39 LEFT JOIN queries across 14 files: UNCHANGED
+All existing read queries continue reading `customers.sector_id` — no migration needed for reports.
+
+---
+
 # Address Book Enhancement — 9 Features, 3 Phases - COMPLETED ✅
 
 Implemented 2026-02-10. 6 commits on dev branch.
