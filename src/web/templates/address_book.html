@@ -194,6 +194,15 @@
   .activity-icon.email{background:#fef3c7;color:#ca8a04}
   .activity-icon.meeting{background:#ede9fe;color:#7c3aed}
   .activity-icon.status_change{background:#fee2e2;color:#dc2626}
+  .activity-icon.follow_up{background:#fef3c7;color:#d97706}
+  .follow-up-date{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500}
+  .follow-up-date.overdue{background:#fee2e2;color:#dc2626}
+  .follow-up-date.due-today{background:#fed7aa;color:#c2410c}
+  .follow-up-date.due-soon{background:#fef3c7;color:#ca8a04}
+  .follow-up-date.upcoming{background:#e0e7ff;color:#4338ca}
+  .follow-up-date.completed{background:#dcfce7;color:#16a34a;text-decoration:line-through}
+  .follow-up-check{cursor:pointer;width:16px;height:16px;accent-color:#22c55e}
+  .follow-up-date-input{padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;margin-bottom:8px}
   .activity-content{flex:1;min-width:0}
   .activity-header{font-size:12px;color:#64748b;display:flex;gap:8px;align-items:center}
   .activity-type{font-weight:600;text-transform:capitalize}
@@ -611,7 +620,9 @@
             <option value="call">Call</option>
             <option value="email">Email</option>
             <option value="meeting">Meeting</option>
+            <option value="follow_up">Follow-up</option>
           </select>
+          <input type="date" id="new-activity-due-date" class="follow-up-date-input" style="display:none">
           <textarea id="new-activity-desc" placeholder="Describe the activity..."></textarea>
           <div style="display:flex;gap:8px;justify-content:flex-end">
             <button class="btn btn-cancel" id="cancel-add-activity">Cancel</button>
@@ -1235,8 +1246,21 @@
     'call': '📞',
     'email': '📧',
     'meeting': '🤝',
-    'status_change': '🔄'
+    'status_change': '🔄',
+    'follow_up': '📅'
   };
+
+  function getFollowUpUrgency(dueDate, isCompleted) {
+    if (isCompleted) return 'completed';
+    if (!dueDate) return 'upcoming';
+    const today = new Date().toISOString().slice(0, 10);
+    if (dueDate < today) return 'overdue';
+    if (dueDate === today) return 'due-today';
+    const soon = new Date();
+    soon.setDate(soon.getDate() + 3);
+    if (dueDate <= soon.toISOString().slice(0, 10)) return 'due-soon';
+    return 'upcoming';
+  }
 
   async function loadActivities() {
     const container = document.getElementById('detail-activities');
@@ -1249,12 +1273,20 @@
     container.innerHTML = activities.map(a => {
       const icon = ACTIVITY_ICONS[a.activity_type] || '📋';
       const date = a.activity_date ? formatDateTime(a.activity_date) : '';
+      const isFollowUp = a.activity_type === 'follow_up';
+      const urgency = isFollowUp ? getFollowUpUrgency(a.due_date, a.is_completed) : '';
+      const dueBadge = isFollowUp && a.due_date
+        ? `<span class="follow-up-date ${urgency}">Due: ${formatDate(a.due_date)}</span>` : '';
+      const checkbox = isFollowUp
+        ? `<input type="checkbox" class="follow-up-check" data-activity-id="${a.activity_id}" ${a.is_completed ? 'checked' : ''} title="Mark ${a.is_completed ? 'incomplete' : 'complete'}">` : '';
       return `
         <div class="activity-item">
+          ${checkbox}
           <div class="activity-icon ${a.activity_type}">${icon}</div>
           <div class="activity-content">
             <div class="activity-header">
-              <span class="activity-type">${a.activity_type}</span>
+              <span class="activity-type">${a.activity_type.replace('_', ' ')}</span>
+              ${dueBadge}
               <span>${date}</span>
               ${a.contact_name ? `<span>with ${esc(a.contact_name)}</span>` : ''}
             </div>
@@ -1262,6 +1294,16 @@
           </div>
         </div>`;
     }).join('');
+
+    // Attach follow-up checkbox handlers
+    container.querySelectorAll('.follow-up-check').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const actId = cb.dataset.activityId;
+        const { ok } = await apiFetch(`${API}/activities/${actId}/complete`, { method: 'POST' });
+        if (ok) loadActivities();
+        else { cb.checked = !cb.checked; alert('Failed to update follow-up status'); }
+      });
+    });
   }
 
   async function loadAEHistory() {
@@ -1355,21 +1397,42 @@
     document.getElementById('add-activity-form').classList.remove('active');
     document.getElementById('new-activity-type').value = 'note';
     document.getElementById('new-activity-desc').value = '';
+    document.getElementById('new-activity-due-date').style.display = 'none';
+    document.getElementById('new-activity-due-date').value = '';
+  });
+  document.getElementById('new-activity-type').addEventListener('change', (e) => {
+    const dueDateInput = document.getElementById('new-activity-due-date');
+    if (e.target.value === 'follow_up') {
+      dueDateInput.style.display = 'block';
+      if (!dueDateInput.value) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        dueDateInput.value = tomorrow.toISOString().slice(0, 10);
+      }
+    } else {
+      dueDateInput.style.display = 'none';
+    }
   });
   document.getElementById('save-new-activity').addEventListener('click', async () => {
     const activityType = document.getElementById('new-activity-type').value;
     const description = document.getElementById('new-activity-desc').value.trim();
+    const dueDate = document.getElementById('new-activity-due-date').value;
+
+    const payload = { activity_type: activityType, description: description || null };
+    if (activityType === 'follow_up') payload.due_date = dueDate;
 
     const { ok, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/activities`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ activity_type: activityType, description: description || null })
+      body: JSON.stringify(payload)
     });
 
     if (ok) {
       document.getElementById('add-activity-form').classList.remove('active');
       document.getElementById('new-activity-type').value = 'note';
       document.getElementById('new-activity-desc').value = '';
+      document.getElementById('new-activity-due-date').style.display = 'none';
+      document.getElementById('new-activity-due-date').value = '';
       loadActivities();
     } else {
       alert(error || 'Failed to add activity');
@@ -2141,7 +2204,16 @@
   });
 
   // Init
-  Promise.all([loadSectors(), loadMarkets(), loadAEList(), loadSavedFilters()]).then(() => loadData());
+  Promise.all([loadSectors(), loadMarkets(), loadAEList(), loadSavedFilters()]).then(async () => {
+    await loadData();
+    // Handle ?open=type:id from external links (e.g., Tasks Due widget)
+    const openParam = new URLSearchParams(window.location.search).get('open');
+    if (openParam) {
+      const [type, id] = openParam.split(':');
+      if (type && id) openDetail(type, parseInt(id));
+      history.replaceState(null, '', window.location.pathname);
+    }
+  });
 })();
 </script>
 {% endblock %}

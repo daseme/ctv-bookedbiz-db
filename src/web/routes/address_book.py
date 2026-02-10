@@ -1385,7 +1385,7 @@ def api_import_contacts():
 # Activity Log
 # ============================================================
 
-VALID_ACTIVITY_TYPES = ['note', 'call', 'email', 'meeting', 'status_change']
+VALID_ACTIVITY_TYPES = ['note', 'call', 'email', 'meeting', 'status_change', 'follow_up']
 
 
 @address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/activities")
@@ -1408,6 +1408,9 @@ def api_get_activities(entity_type, entity_id):
                 ea.created_by,
                 ea.created_date,
                 ea.contact_id,
+                ea.due_date,
+                ea.is_completed,
+                ea.completed_date,
                 ec.contact_name
             FROM entity_activity ea
             LEFT JOIN entity_contacts ec ON ea.contact_id = ec.contact_id
@@ -1429,12 +1432,16 @@ def api_create_activity(entity_type, entity_id):
     activity_type = data.get("activity_type", "").strip()
     description = data.get("description", "").strip()
     contact_id = data.get("contact_id")
+    due_date = data.get("due_date", "").strip() or None
 
     if not activity_type:
         return jsonify({"error": "activity_type is required"}), 400
 
     if activity_type not in VALID_ACTIVITY_TYPES:
         return jsonify({"error": f"Invalid activity_type. Must be one of: {VALID_ACTIVITY_TYPES}"}), 400
+
+    if activity_type == 'follow_up' and not due_date:
+        return jsonify({"error": "due_date is required for follow_up activities"}), 400
 
     with _db_rw() as conn:
         try:
@@ -1456,9 +1463,9 @@ def api_create_activity(entity_type, entity_id):
             # Insert activity
             conn.execute("""
                 INSERT INTO entity_activity
-                    (entity_type, entity_id, activity_type, description, created_by, contact_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, [entity_type, entity_id, activity_type, description or None, "web_user", contact_id])
+                    (entity_type, entity_id, activity_type, description, created_by, contact_id, due_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, [entity_type, entity_id, activity_type, description or None, "web_user", contact_id, due_date])
 
             activity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             conn.commit()
@@ -1472,6 +1479,85 @@ def api_create_activity(entity_type, entity_id):
         except Exception as e:
             conn.rollback()
             return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/activities/<int:activity_id>/complete", methods=["POST"])
+def api_complete_activity(activity_id):
+    """Mark a follow-up activity as completed."""
+    with _db_rw() as conn:
+        try:
+            activity = conn.execute(
+                "SELECT activity_type, is_completed FROM entity_activity WHERE activity_id = ?",
+                [activity_id]
+            ).fetchone()
+
+            if not activity:
+                return jsonify({"error": "Activity not found"}), 404
+
+            if activity["activity_type"] != "follow_up":
+                return jsonify({"error": "Only follow_up activities can be completed"}), 400
+
+            new_status = 0 if activity["is_completed"] else 1
+            conn.execute("""
+                UPDATE entity_activity
+                SET is_completed = ?, completed_date = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+                WHERE activity_id = ?
+            """, [new_status, new_status, activity_id])
+
+            conn.commit()
+            return jsonify({"success": True, "is_completed": new_status})
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/follow-ups")
+def api_get_follow_ups():
+    """Get all incomplete follow-up activities for the dashboard, plus recently completed."""
+    with _db_ro() as conn:
+        follow_ups = conn.execute("""
+            SELECT
+                ea.activity_id,
+                ea.entity_type,
+                ea.entity_id,
+                ea.description,
+                ea.due_date,
+                ea.is_completed,
+                ea.completed_date,
+                ea.activity_date,
+                CASE ea.entity_type
+                    WHEN 'agency' THEN (SELECT agency_name FROM agencies WHERE agency_id = ea.entity_id)
+                    WHEN 'customer' THEN (SELECT normalized_name FROM customers WHERE customer_id = ea.entity_id)
+                END AS entity_name
+            FROM entity_activity ea
+            WHERE ea.activity_type = 'follow_up'
+              AND (ea.is_completed = 0 OR ea.completed_date >= datetime('now', '-7 days'))
+            ORDER BY ea.is_completed ASC, ea.due_date ASC
+        """).fetchall()
+
+        today = __import__('datetime').date.today().isoformat()
+        results = []
+        for f in follow_ups:
+            d = dict(f)
+            if d['is_completed']:
+                d['urgency'] = 'completed'
+            elif d['due_date'] and d['due_date'] < today:
+                d['urgency'] = 'overdue'
+            elif d['due_date'] and d['due_date'] == today:
+                d['urgency'] = 'due-today'
+            elif d['due_date']:
+                from datetime import date, timedelta
+                due = date.fromisoformat(d['due_date'])
+                if due <= date.today() + timedelta(days=3):
+                    d['urgency'] = 'due-soon'
+                else:
+                    d['urgency'] = 'upcoming'
+            else:
+                d['urgency'] = 'upcoming'
+            results.append(d)
+
+        return jsonify(results)
 
 
 # ============================================================
