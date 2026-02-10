@@ -47,6 +47,16 @@
   .entity-type.customer{background:#ede9fe;color:#6d28d9}
   .sector-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;background:#fef3c7;color:#92400e}
   .sector-badge.none{background:#f1f5f9;color:#64748b}
+  .sector-badge .extra-count{font-size:10px;color:#92400e;margin-left:2px}
+  .sector-tags{display:flex;flex-wrap:wrap;gap:6px}
+  .sector-tag{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:500;background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+  .sector-tag .star{cursor:pointer;font-size:14px;line-height:1;opacity:0.5;transition:opacity 0.15s}
+  .sector-tag .star:hover{opacity:1}
+  .sector-tag .star.primary{opacity:1;color:#f59e0b}
+  .sector-tag .remove{cursor:pointer;font-size:14px;line-height:1;opacity:0.4;margin-left:2px}
+  .sector-tag .remove:hover{opacity:1;color:#dc2626}
+  .sector-add-row{display:flex;gap:6px}
+  .sector-add-row select{font-size:12px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff}
   .market-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
   .market-chip{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500;background:#dcfce7;color:#166534}
   .market-chip.more{background:#f1f5f9;color:#64748b}
@@ -393,13 +403,14 @@
       <button class="modal-close">&times;</button>
     </div>
     <div class="modal-body">
-      <!-- Sector (advertisers only) -->
+      <!-- Sectors (advertisers only) -->
       <div class="detail-section" id="sector-section" style="display:none">
-        <h3><span class="icon">🏷️</span> Sector</h3>
-        <div class="sector-row">
-          <div class="form-field">
-            <select id="detail-sector"></select>
-          </div>
+        <h3><span class="icon">🏷️</span> Sectors</h3>
+        <div class="sector-tags" id="sector-tags"></div>
+        <div class="sector-add-row" style="margin-top:8px">
+          <select id="sector-add-select" style="flex:1;min-width:0">
+            <option value="">+ Add sector...</option>
+          </select>
         </div>
       </div>
 
@@ -805,9 +816,94 @@
     sectorsData = data;
     document.getElementById('sector-filter').innerHTML = '<option value="">All Sectors</option>' +
       sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
-    document.getElementById('detail-sector').innerHTML = '<option value="">-- No Sector --</option>' +
+    // Create modal still uses single select
+    document.getElementById('create-sector').innerHTML = '<option value="">-- No Sector --</option>' +
       sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
   }
+
+  // ===== Multi-sector tag UI =====
+  let currentSectors = []; // [{sector_id, sector_name, sector_code, is_primary}]
+
+  function renderSectorTags() {
+    const container = document.getElementById('sector-tags');
+    if (currentSectors.length === 0) {
+      container.innerHTML = '<span style="color:#94a3b8;font-size:12px">No sectors assigned</span>';
+    } else {
+      container.innerHTML = currentSectors.map(s => `
+        <span class="sector-tag" data-sector-id="${s.sector_id}">
+          <span class="star ${s.is_primary ? 'primary' : ''}" title="${s.is_primary ? 'Primary sector' : 'Click to make primary'}">&#9733;</span>
+          ${esc(s.sector_name)}
+          <span class="remove" title="Remove sector">&times;</span>
+        </span>
+      `).join('');
+    }
+    updateSectorAddDropdown();
+  }
+
+  function updateSectorAddDropdown() {
+    const assignedIds = new Set(currentSectors.map(s => s.sector_id));
+    const available = sectorsData.filter(s => !assignedIds.has(s.sector_id));
+    document.getElementById('sector-add-select').innerHTML =
+      '<option value="">+ Add sector...</option>' +
+      available.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+  }
+
+  async function saveSectors() {
+    if (!currentEntity || currentEntity.entity_type !== 'customer') return;
+    const sectors = currentSectors.map(s => ({
+      sector_id: s.sector_id,
+      is_primary: !!s.is_primary
+    }));
+    const { ok, data, error } = await apiFetch(`${API}/customer/${currentEntity.entity_id}/sectors`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ sectors })
+    });
+    if (!ok) { alert(error || 'Failed to save sectors'); return; }
+    currentSectors = data.sectors || [];
+    renderSectorTags();
+    loadData(); // refresh list to show updated badges
+  }
+
+  // Event delegation for sector tags
+  document.getElementById('sector-tags').addEventListener('click', async (e) => {
+    const tag = e.target.closest('.sector-tag');
+    if (!tag) return;
+    const sectorId = parseInt(tag.dataset.sectorId);
+
+    if (e.target.classList.contains('remove')) {
+      currentSectors = currentSectors.filter(s => s.sector_id !== sectorId);
+      // If we removed the primary, auto-promote first remaining
+      if (currentSectors.length > 0 && !currentSectors.some(s => s.is_primary)) {
+        currentSectors[0].is_primary = 1;
+      }
+      renderSectorTags();
+      await saveSectors();
+    } else if (e.target.classList.contains('star')) {
+      // Make this the primary
+      currentSectors.forEach(s => { s.is_primary = s.sector_id === sectorId ? 1 : 0; });
+      renderSectorTags();
+      await saveSectors();
+    }
+  });
+
+  // Add sector from dropdown
+  document.getElementById('sector-add-select').addEventListener('change', async function() {
+    const sectorId = parseInt(this.value);
+    if (!sectorId) return;
+    const sector = sectorsData.find(s => s.sector_id === sectorId);
+    if (!sector) return;
+    const isPrimary = currentSectors.length === 0 ? 1 : 0; // first sector becomes primary
+    currentSectors.push({
+      sector_id: sector.sector_id,
+      sector_name: sector.sector_name,
+      sector_code: sector.sector_code,
+      is_primary: isPrimary
+    });
+    renderSectorTags();
+    this.value = '';
+    await saveSectors();
+  });
 
   // ===== Load markets =====
   async function loadMarkets() {
@@ -912,7 +1008,7 @@
           <td class="checkbox-cell"><input type="checkbox" class="row-select" ${isSelected ? 'checked' : ''}></td>
           <td class="name-cell">${esc(e.entity_name)}${inactiveTag}</td>
           <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Advertiser'}</span></td>
-          <td>${esc(e.sector_name || '-')}</td>
+          <td>${e.sector_name ? esc(e.sector_name) + ((e.sector_count || 0) > 1 ? ` <span class="extra-count">+${e.sector_count - 1}</span>` : '') : '-'}</td>
           <td>${e.assigned_ae ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>` : '-'}</td>
           <td>${esc(e.primary_contact || '-')}</td>
           <td>${lastActive}</td>
@@ -1032,7 +1128,7 @@
       return;
     }
     const options = sectorsData.map(s => `${s.sector_id}: ${s.sector_name}`).join('\n');
-    const input = prompt(`Set sector for ${customerKeys.length} advertiser(s).\n\nEnter sector ID:\n${options}`);
+    const input = prompt(`Set PRIMARY sector for ${customerKeys.length} advertiser(s).\nExisting secondary sectors will be preserved.\n\nEnter sector ID:\n${options}`);
     if (!input) return;
     const sectorId = parseInt(input);
     if (!sectorId || !sectorsData.find(s => s.sector_id === sectorId)) {
@@ -1042,6 +1138,7 @@
     let ok = 0, fail = 0;
     for (const key of customerKeys) {
       const id = key.split(':')[1];
+      // Use the single-sector endpoint which sets as primary (preserves other sectors via upsert)
       const { ok: success } = await apiFetch(`${API}/customer/${id}/sector`, {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
@@ -1049,13 +1146,14 @@
       });
       if (success) ok++; else fail++;
     }
-    alert(`Sector updated: ${ok} succeeded${fail ? `, ${fail} failed` : ''}.`);
+    alert(`Primary sector updated: ${ok} succeeded${fail ? `, ${fail} failed` : ''}.`);
     loadData();
   });
 
   function renderCard(e) {
+    const extraSectors = (e.sector_count || 0) > 1 ? ` <span class="extra-count">+${e.sector_count - 1}</span>` : '';
     const sectorBadge = e.entity_type === 'customer'
-      ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}</span>`
+      ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}${extraSectors}</span>`
       : '';
     const aeBadge = e.assigned_ae
       ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>`
@@ -1140,13 +1238,15 @@
       pageLink.style.display = 'none';
     }
 
-    // Sector (customers only)
+    // Sectors (customers only) — multi-sector tag UI
     const sectorSection = document.getElementById('sector-section');
     if (type === 'customer') {
       sectorSection.style.display = 'block';
-      document.getElementById('detail-sector').value = currentEntity.sector_id || '';
+      currentSectors = (currentEntity.sectors || []).map(s => ({...s}));
+      renderSectorTags();
     } else {
       sectorSection.style.display = 'none';
+      currentSectors = [];
     }
 
     // Agency (customers only)
@@ -1229,7 +1329,7 @@
     // Track unsaved changes on editable fields
     const trackChange = () => { hasUnsavedChanges = true; };
     ['detail-notes', 'detail-address', 'detail-city', 'detail-state', 'detail-zip',
-     'detail-sector', 'detail-agency', 'detail-ae', 'detail-po-number'].forEach(id => {
+     'detail-agency', 'detail-ae', 'detail-po-number'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', trackChange, { once: true });
     });
@@ -1866,16 +1966,11 @@
         })
       ]);
 
-      // Save customer-specific fields
+      // Save customer-specific fields (sectors are saved inline via tag UI)
       if (currentEntity.entity_type === 'customer') {
-        await Promise.all([
-          putJson(`${API}/customer/${currentEntity.entity_id}/sector`, {
-            sector_id: document.getElementById('detail-sector').value || null
-          }),
-          putJson(`${API}/customer/${currentEntity.entity_id}/agency`, {
-            agency_id: document.getElementById('detail-agency').value || null
-          })
-        ]);
+        await putJson(`${API}/customer/${currentEntity.entity_id}/agency`, {
+          agency_id: document.getElementById('detail-agency').value || null
+        });
       }
 
       // Save AE + billing in parallel

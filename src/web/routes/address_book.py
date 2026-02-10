@@ -208,7 +208,9 @@ def api_address_book():
                      WHERE ec.entity_type = 'customer' AND ec.entity_id = c.customer_id AND ec.is_active = 1) as contact_count,
                     (SELECT contact_name FROM entity_contacts ec
                      WHERE ec.entity_type = 'customer' AND ec.entity_id = c.customer_id
-                     AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact
+                     AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact,
+                    (SELECT COUNT(*) FROM customer_sectors cs
+                     WHERE cs.customer_id = c.customer_id) as sector_count
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
                 {active_clause}
@@ -267,7 +269,16 @@ def api_address_book():
     if sector_filter:
         try:
             sid = int(sector_filter)
-            results = [r for r in results if r.get("sector_id") == sid]
+            # Match customers with this sector in ANY position (primary or secondary)
+            with _db_ro() as conn:
+                sector_customer_ids = set(
+                    r["customer_id"] for r in conn.execute(
+                        "SELECT customer_id FROM customer_sectors WHERE sector_id = ?", [sid]
+                    ).fetchall()
+                )
+            results = [r for r in results if (
+                r.get("entity_type") == "customer" and r.get("entity_id") in sector_customer_ids
+            )]
         except ValueError:
             pass
 
@@ -405,6 +416,17 @@ def api_entity_detail(entity_type, entity_id):
 
         result["markets"] = [m["market_name"] for m in markets]
 
+        # Get all sectors from junction table (customers only)
+        if entity_type == "customer":
+            sectors = conn.execute("""
+                SELECT cs.sector_id, s.sector_name, s.sector_code, cs.is_primary
+                FROM customer_sectors cs
+                JOIN sectors s ON cs.sector_id = s.sector_id
+                WHERE cs.customer_id = ?
+                ORDER BY cs.is_primary DESC, s.sector_name
+            """, [entity_id]).fetchall()
+            result["sectors"] = [dict(s) for s in sectors]
+
         return jsonify(result)
 
 
@@ -505,7 +527,7 @@ def api_update_billing_info(entity_type, entity_id):
 
 @address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/sector", methods=["PUT"])
 def api_update_sector(entity_type, entity_id):
-    """Update sector for a customer (agencies don't have sectors)."""
+    """Update primary sector for a customer via junction table (backward compat)."""
     if entity_type != "customer":
         return jsonify({"error": "Only customers have sectors"}), 400
 
@@ -521,11 +543,24 @@ def api_update_sector(entity_type, entity_id):
 
     with _db_rw() as conn:
         try:
-            conn.execute("""
-                UPDATE customers
-                SET sector_id = ?
-                WHERE customer_id = ?
-            """, [sector_id, entity_id])
+            if sector_id:
+                # Upsert into junction table as primary; triggers sync customers.sector_id
+                conn.execute("""
+                    INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
+                    VALUES (?, ?, 1, 'web_user')
+                    ON CONFLICT(customer_id, sector_id) DO UPDATE SET is_primary = 1
+                """, [entity_id, sector_id])
+            else:
+                # Clear all sectors
+                conn.execute(
+                    "DELETE FROM customer_sectors WHERE customer_id = ?",
+                    [entity_id]
+                )
+                # Trigger handles NULL cache, but be explicit for no-row case
+                conn.execute(
+                    "UPDATE customers SET sector_id = NULL WHERE customer_id = ?",
+                    [entity_id]
+                )
 
             conn.commit()
 
@@ -540,6 +575,85 @@ def api_update_sector(entity_type, entity_id):
                 sector_name = None
 
             return jsonify({"success": True, "sector_name": sector_name})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/customer/<int:entity_id>/sectors", methods=["PUT"])
+def api_update_sectors(entity_id):
+    """Replace all sector assignments for a customer.
+    Body: { "sectors": [{"sector_id": 1, "is_primary": true}, {"sector_id": 3}] }
+    """
+    data = request.get_json() or {}
+    sectors = data.get("sectors", [])
+
+    # Validate input
+    if not isinstance(sectors, list):
+        return jsonify({"error": "sectors must be an array"}), 400
+
+    primary_count = sum(1 for s in sectors if s.get("is_primary"))
+    if len(sectors) > 0 and primary_count != 1:
+        return jsonify({"error": "Exactly one sector must be marked as primary"}), 400
+
+    with _db_rw() as conn:
+        try:
+            # Get current state for audit
+            old_sectors = conn.execute(
+                "SELECT sector_id, is_primary FROM customer_sectors WHERE customer_id = ?",
+                [entity_id]
+            ).fetchall()
+
+            # Delete existing assignments
+            conn.execute(
+                "DELETE FROM customer_sectors WHERE customer_id = ?",
+                [entity_id]
+            )
+
+            # If clearing all sectors, set cache to NULL explicitly
+            if not sectors:
+                conn.execute(
+                    "UPDATE customers SET sector_id = NULL WHERE customer_id = ?",
+                    [entity_id]
+                )
+            else:
+                # Insert new assignments (primary first so trigger fires correctly)
+                for s in sorted(sectors, key=lambda x: not x.get("is_primary", False)):
+                    sid = int(s["sector_id"])
+                    is_primary = 1 if s.get("is_primary") else 0
+                    conn.execute("""
+                        INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
+                        VALUES (?, ?, ?, 'web_user')
+                    """, [entity_id, sid, is_primary])
+
+            # Audit
+            old_ids = [r["sector_id"] for r in old_sectors]
+            new_ids = [s["sector_id"] for s in sectors]
+            conn.execute("""
+                INSERT INTO canon_audit (actor, action, key, value, extra)
+                VALUES (?, 'SECTOR_ASSIGN', ?, ?, ?)
+            """, [
+                "web_user",
+                f"customer:{entity_id}",
+                f"sectors={new_ids}",
+                f"old_sectors={old_ids}"
+            ])
+
+            conn.commit()
+
+            # Return updated sectors
+            rows = conn.execute("""
+                SELECT cs.sector_id, s.sector_name, s.sector_code, cs.is_primary
+                FROM customer_sectors cs
+                JOIN sectors s ON cs.sector_id = s.sector_id
+                WHERE cs.customer_id = ?
+                ORDER BY cs.is_primary DESC, s.sector_name
+            """, [entity_id]).fetchall()
+
+            return jsonify({
+                "success": True,
+                "sectors": [dict(r) for r in rows]
+            })
         except Exception as e:
             conn.rollback()
             return jsonify({"success": False, "error": str(e)}), 500
@@ -836,6 +950,13 @@ def api_create_entity():
                 """, [name, sector_id, agency_id, po_number, affidavit_required,
                       assigned_ae, address, city, state, zip_code, notes])
                 entity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            # Sector junction table (customers only) — trigger syncs customers.sector_id
+            if entity_type == "customer" and sector_id:
+                conn.execute("""
+                    INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
+                    VALUES (?, ?, 1, 'web_user')
+                """, [entity_id, sector_id])
 
             # AE assignment history (same pattern as api_update_ae)
             if assigned_ae:
@@ -1232,7 +1353,19 @@ def api_export_csv():
         results = [r for r in results if not r.get("address") and not r.get("city")]
 
     if sector_filter:
-        results = [r for r in results if str(r.get("sector_id")) == sector_filter]
+        try:
+            sid = int(sector_filter)
+            with _db_ro() as sconn:
+                export_sector_ids = set(
+                    r["customer_id"] for r in sconn.execute(
+                        "SELECT customer_id FROM customer_sectors WHERE sector_id = ?", [sid]
+                    ).fetchall()
+                )
+            results = [r for r in results if (
+                r.get("entity_type") == "customer" and r.get("entity_id") in export_sector_ids
+            )]
+        except ValueError:
+            pass
 
     if market_filter:
         results = [r for r in results if market_filter in (r.get("markets") or "")]
