@@ -242,24 +242,28 @@
   .count.loading{animation:pulse 1s ease-in-out infinite}
 
   /* Create Entity Modal */
-  .create-modal{background:#fff;border-radius:12px;width:100%;max-width:480px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
-  .create-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+  .create-modal{background:#fff;border-radius:12px;width:100%;max-width:600px;box-shadow:0 20px 40px rgba(0,0,0,0.25);max-height:90vh;display:flex;flex-direction:column}
+  .create-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
   .create-modal .modal-header h2{margin:0;font-size:20px}
-  .create-modal .modal-body{padding:24px;display:flex;flex-direction:column;gap:16px}
+  .create-modal .modal-body{padding:24px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
   .create-modal .type-selector{display:flex;gap:8px}
   .create-modal .type-btn{flex:1;padding:10px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font-size:14px;font-weight:500;text-align:center;transition:all 0.15s}
   .create-modal .type-btn:hover{border-color:#cbd5e1}
   .create-modal .type-btn.active.agency{border-color:#0ea5e9;background:#e0f2fe;color:#0369a1}
   .create-modal .type-btn.active.customer{border-color:#8b5cf6;background:#ede9fe;color:#6d28d9}
+  .create-modal .section-label{font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:4px;border-bottom:1px solid #f1f5f9;margin-bottom:-4px}
+  .create-modal .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .create-modal .error-msg{padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626;font-size:13px;display:none}
   .create-modal .error-msg.active{display:block}
   .create-modal .error-msg a{color:#0ea5e9;cursor:pointer;text-decoration:underline}
-  .create-modal .form-actions{display:flex;gap:8px;justify-content:flex-end;padding-top:8px}
+  .create-modal .form-actions{display:flex;gap:8px;justify-content:flex-end;padding-top:8px;flex-shrink:0}
   .create-modal .btn{padding:10px 20px;border-radius:6px;font-size:14px;cursor:pointer}
   .create-modal .btn-cancel{background:#fff;border:1px solid #e2e8f0;color:#475569}
   .create-modal .btn-create{background:#059669;border:1px solid #047857;color:#fff}
   .create-modal .btn-create:hover{background:#047857}
   .create-modal .btn-create:disabled{background:#94a3b8;border-color:#94a3b8;cursor:not-allowed}
+  .create-modal .affidavit-toggle{display:flex;align-items:center;gap:8px;padding-top:6px}
+  .create-modal .affidavit-toggle label{font-size:13px;color:#475569;cursor:pointer}
   .filter-bar button#add-new{background:#059669;color:#fff;border-color:#047857}
   .filter-bar button#add-new:hover{background:#047857}
 </style>
@@ -390,12 +394,18 @@
         </div>
       </div>
 
-      <!-- PO Number (advertisers only) -->
+      <!-- PO Number + Affidavit (advertisers only) -->
       <div class="detail-section" id="po-section" style="display:none">
         <h3><span class="icon">💰</span> Billing</h3>
-        <div class="form-field" style="max-width:300px">
-          <label>PO Number</label>
-          <input type="text" id="detail-po-number" placeholder="Purchase order number">
+        <div class="billing-row">
+          <div class="form-field" style="max-width:300px">
+            <label>PO Number</label>
+            <input type="text" id="detail-po-number" placeholder="Purchase order number">
+          </div>
+          <div class="edi-toggle">
+            <input type="checkbox" id="detail-affidavit-required">
+            <label for="detail-affidavit-required">Affidavit Required</label>
+          </div>
         </div>
       </div>
 
@@ -596,6 +606,7 @@
       <button class="modal-close" id="create-modal-close">&times;</button>
     </div>
     <div class="modal-body">
+      <!-- Entity Info -->
       <div>
         <label style="display:block;font-size:11px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Type</label>
         <div class="type-selector">
@@ -613,10 +624,73 @@
           <option value="">-- No Sector --</option>
         </select>
       </div>
+      <div class="form-row" id="create-customer-fields" style="display:none">
+        <div class="form-field">
+          <label>PO Number</label>
+          <input type="text" id="create-po-number" placeholder="Purchase order number">
+        </div>
+        <div class="form-field">
+          <div class="affidavit-toggle" style="margin-top:20px">
+            <input type="checkbox" id="create-affidavit">
+            <label for="create-affidavit">Affidavit Required</label>
+          </div>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Assigned AE</label>
+        <select id="create-ae">
+          <option value="">-- No AE --</option>
+        </select>
+      </div>
       <div class="form-field">
         <label>Notes</label>
         <textarea id="create-notes" placeholder="Optional notes" style="min-height:60px"></textarea>
       </div>
+
+      <!-- Address -->
+      <div class="section-label">Address</div>
+      <div class="form-field">
+        <label>Street</label>
+        <input type="text" id="create-address" placeholder="123 Main St">
+      </div>
+      <div class="form-row" style="grid-template-columns:1fr 80px 100px">
+        <div class="form-field">
+          <label>City</label>
+          <input type="text" id="create-city" placeholder="City">
+        </div>
+        <div class="form-field">
+          <label>State</label>
+          <input type="text" id="create-state" placeholder="CA" maxlength="2">
+        </div>
+        <div class="form-field">
+          <label>ZIP</label>
+          <input type="text" id="create-zip" placeholder="12345" maxlength="10">
+        </div>
+      </div>
+
+      <!-- Contact -->
+      <div class="section-label">Primary Contact</div>
+      <div class="form-row">
+        <div class="form-field">
+          <label>Contact Name</label>
+          <input type="text" id="create-contact-name" placeholder="Full name">
+        </div>
+        <div class="form-field">
+          <label>Title</label>
+          <input type="text" id="create-contact-title" placeholder="Job title">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label>Email</label>
+          <input type="email" id="create-contact-email" placeholder="email@example.com">
+        </div>
+        <div class="form-field">
+          <label>Phone</label>
+          <input type="text" id="create-contact-phone" placeholder="(555) 123-4567">
+        </div>
+      </div>
+
       <div class="error-msg" id="create-error"></div>
       <div class="form-actions">
         <button class="btn btn-cancel" id="create-cancel">Cancel</button>
@@ -986,6 +1060,7 @@
       ediSection.style.display = 'none';
       poSection.style.display = 'block';
       document.getElementById('detail-po-number').value = currentEntity.po_number || '';
+      document.getElementById('detail-affidavit-required').checked = !!currentEntity.affidavit_required;
     }
 
     // Markets
@@ -1501,7 +1576,8 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             po_number: document.getElementById('detail-po-number').value.trim() || null,
-            edi_billing: false
+            edi_billing: false,
+            affidavit_required: document.getElementById('detail-affidavit-required').checked
           })
         });
       }
@@ -1616,15 +1692,31 @@
     createType = 'agency';
     document.querySelectorAll('.create-modal .type-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('.create-modal .type-btn.agency').classList.add('active');
+    // Reset all fields
     document.getElementById('create-name').value = '';
     document.getElementById('create-notes').value = '';
+    document.getElementById('create-po-number').value = '';
+    document.getElementById('create-affidavit').checked = false;
+    document.getElementById('create-ae').value = '';
+    document.getElementById('create-address').value = '';
+    document.getElementById('create-city').value = '';
+    document.getElementById('create-state').value = '';
+    document.getElementById('create-zip').value = '';
+    document.getElementById('create-contact-name').value = '';
+    document.getElementById('create-contact-title').value = '';
+    document.getElementById('create-contact-email').value = '';
+    document.getElementById('create-contact-phone').value = '';
+    // Customer-only fields hidden for agency default
     document.getElementById('create-sector-field').style.display = 'none';
+    document.getElementById('create-customer-fields').style.display = 'none';
     const errorEl = document.getElementById('create-error');
     errorEl.classList.remove('active');
     errorEl.textContent = '';
-    // Populate sector dropdown from already-loaded sectorsData
+    // Populate dropdowns from already-loaded data
     document.getElementById('create-sector').innerHTML = '<option value="">-- No Sector --</option>' +
       sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+    document.getElementById('create-ae').innerHTML = '<option value="">-- No AE --</option>' +
+      aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
     createModal.classList.add('active');
     document.getElementById('create-name').focus();
   }
@@ -1644,7 +1736,9 @@
       createType = btn.dataset.type;
       document.querySelectorAll('.create-modal .type-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById('create-sector-field').style.display = createType === 'customer' ? 'block' : 'none';
+      const isCustomer = createType === 'customer';
+      document.getElementById('create-sector-field').style.display = isCustomer ? 'block' : 'none';
+      document.getElementById('create-customer-fields').style.display = isCustomer ? 'grid' : 'none';
     });
   });
 
@@ -1669,9 +1763,32 @@
       if (createType === 'customer') {
         const sectorVal = document.getElementById('create-sector').value;
         if (sectorVal) body.sector_id = parseInt(sectorVal);
+        const poVal = document.getElementById('create-po-number').value.trim();
+        if (poVal) body.po_number = poVal;
+        body.affidavit_required = document.getElementById('create-affidavit').checked;
       }
+      const aeVal = document.getElementById('create-ae').value;
+      if (aeVal) body.assigned_ae = aeVal;
       const notesVal = document.getElementById('create-notes').value.trim();
       if (notesVal) body.notes = notesVal;
+      // Address
+      const addrVal = document.getElementById('create-address').value.trim();
+      if (addrVal) body.address = addrVal;
+      const cityVal = document.getElementById('create-city').value.trim();
+      if (cityVal) body.city = cityVal;
+      const stateVal = document.getElementById('create-state').value.trim();
+      if (stateVal) body.state = stateVal;
+      const zipVal = document.getElementById('create-zip').value.trim();
+      if (zipVal) body.zip = zipVal;
+      // Contact
+      const cName = document.getElementById('create-contact-name').value.trim();
+      if (cName) body.contact_name = cName;
+      const cTitle = document.getElementById('create-contact-title').value.trim();
+      if (cTitle) body.contact_title = cTitle;
+      const cEmail = document.getElementById('create-contact-email').value.trim();
+      if (cEmail) body.contact_email = cEmail;
+      const cPhone = document.getElementById('create-contact-phone').value.trim();
+      if (cPhone) body.contact_phone = cPhone;
 
       const r = await fetch(`${API}/entities`, {
         method: 'POST',
