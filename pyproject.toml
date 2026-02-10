@@ -39,7 +39,10 @@ packages = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["smoke: Route smoke tests (hit every GET, assert no 500)"]
+markers = [
+    "smoke: Route smoke tests (hit every GET, assert no 500)",
+    "slow: Routes with heavy DB queries (>3s on Pi)",
+]
 
 [tool.uv]
 # Optional: pin UV-specific settings
