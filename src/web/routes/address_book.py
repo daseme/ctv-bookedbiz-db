@@ -651,6 +651,7 @@ def api_create_entity():
     entity_type = data.get("entity_type", "").strip()
     name = data.get("name", "").strip()
     sector_id = data.get("sector_id")
+    agency_id = data.get("agency_id")
     notes = data.get("notes", "").strip() or None
     po_number = (data.get("po_number") or "").strip() or None
     affidavit_required = 1 if data.get("affidavit_required") else 0
@@ -711,12 +712,27 @@ def api_create_entity():
                     except (ValueError, TypeError):
                         return jsonify({"error": "Invalid sector_id"}), 400
 
+                # Validate agency_id if provided
+                if agency_id is not None:
+                    try:
+                        agency_id = int(agency_id) if agency_id else None
+                    except (ValueError, TypeError):
+                        return jsonify({"error": "Invalid agency_id"}), 400
+                    if agency_id:
+                        agency_check = conn.execute(
+                            "SELECT agency_id FROM agencies WHERE agency_id = ? AND is_active = 1",
+                            [agency_id]
+                        ).fetchone()
+                        if not agency_check:
+                            return jsonify({"error": "Selected agency does not exist or is inactive"}), 400
+
                 conn.execute("""
-                    INSERT INTO customers (normalized_name, sector_id, po_number, affidavit_required,
-                                           assigned_ae, address, city, state, zip, notes, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                """, [name, sector_id, po_number, affidavit_required, assigned_ae,
-                      address, city, state, zip_code, notes])
+                    INSERT INTO customers (normalized_name, sector_id, agency_id, po_number,
+                                           affidavit_required, assigned_ae, address, city,
+                                           state, zip, notes, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """, [name, sector_id, agency_id, po_number, affidavit_required,
+                      assigned_ae, address, city, state, zip_code, notes])
                 entity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
             # AE assignment history (same pattern as api_update_ae)
@@ -744,7 +760,7 @@ def api_create_entity():
                 "web_user",
                 f"{entity_type}:{entity_id}",
                 name,
-                f"type={entity_type}|sector_id={sector_id or 'none'}"
+                f"type={entity_type}|sector_id={sector_id or 'none'}|agency_id={agency_id or 'none'}"
             ])
 
             conn.commit()

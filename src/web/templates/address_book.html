@@ -624,6 +624,12 @@
           <option value="">-- No Sector --</option>
         </select>
       </div>
+      <div class="form-field" id="create-agency-field" style="display:none">
+        <label>Agency</label>
+        <select id="create-agency">
+          <option value="">-- No Agency (Direct) --</option>
+        </select>
+      </div>
       <div class="form-row" id="create-customer-fields" style="display:none">
         <div class="form-field">
           <label>PO Number</label>
@@ -1708,6 +1714,7 @@
     document.getElementById('create-contact-phone').value = '';
     // Customer-only fields hidden for agency default
     document.getElementById('create-sector-field').style.display = 'none';
+    document.getElementById('create-agency-field').style.display = 'none';
     document.getElementById('create-customer-fields').style.display = 'none';
     const errorEl = document.getElementById('create-error');
     errorEl.classList.remove('active');
@@ -1717,6 +1724,11 @@
       sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
     document.getElementById('create-ae').innerHTML = '<option value="">-- No AE --</option>' +
       aeListData.map(ae => `<option value="${esc(ae)}">${esc(ae)}</option>`).join('');
+    const agencies = currentData
+      .filter(d => d.entity_type === 'agency' && d.is_active)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    document.getElementById('create-agency').innerHTML = '<option value="">-- No Agency (Direct) --</option>' +
+      agencies.map(a => `<option value="${a.entity_id}">${esc(a.name)}</option>`).join('');
     createModal.classList.add('active');
     document.getElementById('create-name').focus();
   }
@@ -1738,6 +1750,7 @@
       btn.classList.add('active');
       const isCustomer = createType === 'customer';
       document.getElementById('create-sector-field').style.display = isCustomer ? 'block' : 'none';
+      document.getElementById('create-agency-field').style.display = isCustomer ? 'block' : 'none';
       document.getElementById('create-customer-fields').style.display = isCustomer ? 'grid' : 'none';
     });
   });
@@ -1763,6 +1776,8 @@
       if (createType === 'customer') {
         const sectorVal = document.getElementById('create-sector').value;
         if (sectorVal) body.sector_id = parseInt(sectorVal);
+        const agencyVal = document.getElementById('create-agency').value;
+        if (agencyVal) body.agency_id = parseInt(agencyVal);
         const poVal = document.getElementById('create-po-number').value.trim();
         if (poVal) body.po_number = poVal;
         body.affidavit_required = document.getElementById('create-affidavit').checked;
