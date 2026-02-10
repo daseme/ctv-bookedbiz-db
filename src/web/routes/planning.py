@@ -59,6 +59,10 @@ class CompanySummaryWrapper:
         return self._data.get("total_booked")
 
     @property
+    def total_effective(self):
+        return self._data.get("total_effective")
+
+    @property
     def total_pipeline(self):
         return self._data.get("total_pipeline")
 
@@ -116,6 +120,13 @@ class PeriodDataWrapper:
     @property
     def is_past(self):
         return self._data.get("is_past", False)
+
+    @property
+    def effective(self):
+        """Booked for past months, forecast for current/future."""
+        if self.is_past:
+            return self._data["booked"]
+        return self._data["forecast"]
 
 
 # ============================================================================

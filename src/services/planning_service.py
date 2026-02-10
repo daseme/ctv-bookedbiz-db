@@ -296,6 +296,7 @@ class PlanningService(BaseService):
         total_budget = Money.zero()
         total_forecast = Money.zero()
         total_booked = Money.zero()
+        total_effective = Money.zero()
 
         period_details = []
         periods_by_key = {}
@@ -305,6 +306,9 @@ class PlanningService(BaseService):
             total_budget = total_budget + totals["budget"]
             total_forecast = total_forecast + totals["forecast"]
             total_booked = total_booked + totals["booked"]
+            # Effective = booked for past months, forecast for current/future
+            effective = totals["booked"] if period in past_periods else totals["forecast"]
+            total_effective = total_effective + effective
 
             period_data = {
                 "period": period,
@@ -329,6 +333,7 @@ class PlanningService(BaseService):
             "total_budget": total_budget,
             "total_forecast": total_forecast,
             "total_booked": total_booked,
+            "total_effective": total_effective,
             "total_pipeline": total_forecast - total_booked,
             "total_variance": total_forecast - total_budget,
             "periods": period_details,
