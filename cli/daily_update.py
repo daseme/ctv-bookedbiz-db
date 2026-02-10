@@ -166,7 +166,7 @@ class DailyUpdateConfig:
     verbose: bool = False
     unattended: bool = False
     log_file: Optional[Path] = None
-    db_path: Path = Path("data/database/production.db")
+    db_path: Path = Path(os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH") or "data/database/production.db")
 
     @classmethod
     def from_args(cls, args) -> DailyUpdateConfig:
@@ -1832,8 +1832,8 @@ Enhanced Multi-Sheet Features:
     )
     parser.add_argument(
         "--db-path",
-        default="data/database/production.db",
-        help="Database path (default: production.db)",
+        default=os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH") or "data/database/production.db",
+        help="Database path (default: $DB_PATH or $DATABASE_PATH or data/database/production.db)",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Preview import without making changes"

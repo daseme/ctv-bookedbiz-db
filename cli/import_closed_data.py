@@ -712,7 +712,9 @@ Features:
         help="Automatically create missing markets and schedule assignments",
     )
     parser.add_argument(
-        "--db-path", default="data/database/production.db", help="Database path"
+        "--db-path",
+        default=os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH") or "data/database/production.db",
+        help="Database path (default: $DB_PATH or $DATABASE_PATH or data/database/production.db)"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Preview import without making changes"
