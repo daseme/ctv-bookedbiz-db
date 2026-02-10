@@ -372,6 +372,16 @@
         </div>
       </div>
 
+      <!-- Agency (advertisers only) -->
+      <div class="detail-section" id="agency-section" style="display:none">
+        <h3><span class="icon">🏢</span> Agency</h3>
+        <div class="form-field">
+          <select id="detail-agency">
+            <option value="">-- No Agency (Direct) --</option>
+          </select>
+        </div>
+      </div>
+
       <!-- AE Assignment -->
       <div class="detail-section">
         <h3><span class="icon">👔</span> Assigned AE</h3>
@@ -1052,6 +1062,21 @@
       sectorSection.style.display = 'none';
     }
 
+    // Agency (customers only)
+    const agencySection = document.getElementById('agency-section');
+    if (type === 'customer') {
+      agencySection.style.display = 'block';
+      const agencySelect = document.getElementById('detail-agency');
+      const agencies = currentData
+        .filter(d => d.entity_type === 'agency' && d.is_active)
+        .sort((a, b) => a.entity_name.localeCompare(b.entity_name));
+      agencySelect.innerHTML = '<option value="">-- No Agency (Direct) --</option>' +
+        agencies.map(a => `<option value="${a.entity_id}">${esc(a.entity_name)}</option>`).join('');
+      agencySelect.value = currentEntity.agency_id || '';
+    } else {
+      agencySection.style.display = 'none';
+    }
+
     // AE
     document.getElementById('detail-ae').value = currentEntity.assigned_ae || '';
 
@@ -1556,6 +1581,12 @@
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ sector_id: document.getElementById('detail-sector').value || null })
+        });
+        // Save agency
+        await fetch(`${API}/customer/${currentEntity.entity_id}/agency`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ agency_id: document.getElementById('detail-agency').value || null })
         });
       }
 
