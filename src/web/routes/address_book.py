@@ -350,7 +350,7 @@ def api_entity_detail(entity_type, entity_id):
             entity = conn.execute("""
                 SELECT c.customer_id as entity_id, 'customer' as entity_type, c.normalized_name as entity_name,
                        c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae,
-                       c.po_number, c.edi_billing,
+                       c.po_number, c.edi_billing, c.affidavit_required,
                        c.sector_id, s.sector_name
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
@@ -473,17 +473,25 @@ def api_update_billing_info(entity_type, entity_id):
     data = request.get_json() or {}
     po_number = (data.get("po_number") or "").strip() or None
     edi_billing = 1 if data.get("edi_billing") else 0
+    affidavit_required = 1 if data.get("affidavit_required") else 0
 
     with _db_rw() as conn:
         try:
             table = "agencies" if entity_type == "agency" else "customers"
             id_col = "agency_id" if entity_type == "agency" else "customer_id"
 
-            conn.execute(f"""
-                UPDATE {table}
-                SET po_number = ?, edi_billing = ?
-                WHERE {id_col} = ?
-            """, [po_number, edi_billing, entity_id])
+            if entity_type == "customer":
+                conn.execute(f"""
+                    UPDATE {table}
+                    SET po_number = ?, edi_billing = ?, affidavit_required = ?
+                    WHERE {id_col} = ?
+                """, [po_number, edi_billing, affidavit_required, entity_id])
+            else:
+                conn.execute(f"""
+                    UPDATE {table}
+                    SET po_number = ?, edi_billing = ?
+                    WHERE {id_col} = ?
+                """, [po_number, edi_billing, entity_id])
 
             conn.commit()
             return jsonify({"success": True})
@@ -638,12 +646,27 @@ def api_spots_link(entity_type, entity_id):
 
 @address_book_bp.route("/api/address-book/entities", methods=["POST"])
 def api_create_entity():
-    """Create a new agency or advertiser (customer)."""
+    """Create a new agency or advertiser (customer) with optional address, contact, and AE."""
     data = request.get_json() or {}
     entity_type = data.get("entity_type", "").strip()
     name = data.get("name", "").strip()
     sector_id = data.get("sector_id")
     notes = data.get("notes", "").strip() or None
+    po_number = (data.get("po_number") or "").strip() or None
+    affidavit_required = 1 if data.get("affidavit_required") else 0
+    assigned_ae = (data.get("assigned_ae") or "").strip() or None
+
+    # Address fields
+    address = (data.get("address") or "").strip() or None
+    city = (data.get("city") or "").strip() or None
+    state = (data.get("state") or "").strip() or None
+    zip_code = (data.get("zip") or "").strip() or None
+
+    # Contact fields
+    contact_name = (data.get("contact_name") or "").strip() or None
+    contact_title = (data.get("contact_title") or "").strip() or None
+    contact_email = (data.get("contact_email") or "").strip() or None
+    contact_phone = (data.get("contact_phone") or "").strip() or None
 
     if entity_type not in ("agency", "customer"):
         return jsonify({"error": "entity_type must be 'agency' or 'customer'"}), 400
@@ -664,10 +687,11 @@ def api_create_entity():
                         "existing_id": existing["agency_id"]
                     }), 409
 
-                conn.execute(
-                    "INSERT INTO agencies (agency_name, notes, is_active) VALUES (?, ?, 1)",
-                    [name, notes]
-                )
+                conn.execute("""
+                    INSERT INTO agencies (agency_name, po_number, assigned_ae,
+                                          address, city, state, zip, notes, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """, [name, po_number, assigned_ae, address, city, state, zip_code, notes])
                 entity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             else:
                 existing = conn.execute(
@@ -687,11 +711,30 @@ def api_create_entity():
                     except (ValueError, TypeError):
                         return jsonify({"error": "Invalid sector_id"}), 400
 
-                conn.execute(
-                    "INSERT INTO customers (normalized_name, sector_id, notes, is_active) VALUES (?, ?, ?, 1)",
-                    [name, sector_id, notes]
-                )
+                conn.execute("""
+                    INSERT INTO customers (normalized_name, sector_id, po_number, affidavit_required,
+                                           assigned_ae, address, city, state, zip, notes, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """, [name, sector_id, po_number, affidavit_required, assigned_ae,
+                      address, city, state, zip_code, notes])
                 entity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            # AE assignment history (same pattern as api_update_ae)
+            if assigned_ae:
+                conn.execute("""
+                    INSERT INTO ae_assignments (entity_type, entity_id, ae_name, created_by)
+                    VALUES (?, ?, ?, 'web_user')
+                """, [entity_type, entity_id, assigned_ae])
+
+            # Primary contact
+            if contact_name:
+                conn.execute("""
+                    INSERT INTO entity_contacts
+                        (entity_type, entity_id, contact_name, contact_title, email, phone,
+                         is_primary, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 'web_user')
+                """, [entity_type, entity_id, contact_name, contact_title,
+                      contact_email, contact_phone])
 
             # Audit trail
             conn.execute("""
