@@ -26,7 +26,7 @@ cd /opt/apps/ctv-bookedbiz-db
 source .venv/bin/activate
 
 # Copy current year's cash revenue recap - use current year
-./scripts/update_yearly_recap.sh 2025 
+./scripts/update_yearly_recap.sh 2026 
 ```
 
 ### 3. Import Closed Data (IMPORTANT: No --skip-closed flag)
@@ -34,7 +34,7 @@ source .venv/bin/activate
 # Process the updated annual recap into database
 # IMPORTANT: Do NOT use --skip-closed flag for monthly closing
 # The absence of --skip-closed triggers HISTORICAL mode which closes imported months
-uv run python cli/import_closed_data.py data/raw/2025.xlsx --year 2025 --closed-by "Jenna"
+uv run python cli/import_closed_data.py data/raw/2026.xlsx --year 2026 --closed-by "Jenna"
 
 # Verify import completed successfully and months were closed
 echo "Import completed. Check logs to confirm months were closed."
