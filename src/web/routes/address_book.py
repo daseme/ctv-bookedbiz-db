@@ -730,6 +730,7 @@ def api_create_entity():
     contact_title = (data.get("contact_title") or "").strip() or None
     contact_email = (data.get("contact_email") or "").strip() or None
     contact_phone = (data.get("contact_phone") or "").strip() or None
+    contact_role = (data.get("contact_role") or "").strip() or None
 
     if entity_type not in ("agency", "customer"):
         return jsonify({"error": "entity_type must be 'agency' or 'customer'"}), 400
@@ -809,10 +810,10 @@ def api_create_entity():
                 conn.execute("""
                     INSERT INTO entity_contacts
                         (entity_type, entity_id, contact_name, contact_title, email, phone,
-                         is_primary, created_by)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, 'web_user')
+                         is_primary, contact_role, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'web_user')
                 """, [entity_type, entity_id, contact_name, contact_title,
-                      contact_email, contact_phone])
+                      contact_email, contact_phone, contact_role])
 
             # Audit trail
             conn.execute("""
