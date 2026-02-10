@@ -8,6 +8,7 @@ import sqlite3
 import json
 import csv
 import io
+from src.services.customer_resolution_service import _score_name
 from contextlib import contextmanager
 
 address_book_bp = Blueprint("address_book", __name__)
@@ -732,6 +733,8 @@ def api_create_entity():
     contact_phone = (data.get("contact_phone") or "").strip() or None
     contact_role = (data.get("contact_role") or "").strip() or None
 
+    force = data.get("force", False)
+
     if entity_type not in ("agency", "customer"):
         return jsonify({"error": "entity_type must be 'agency' or 'customer'"}), 400
     if not name:
@@ -739,7 +742,7 @@ def api_create_entity():
 
     with _db_rw() as conn:
         try:
-            # Duplicate check (case-insensitive)
+            # Exact duplicate check (case-insensitive)
             if entity_type == "agency":
                 existing = conn.execute(
                     "SELECT agency_id FROM agencies WHERE agency_name = ? COLLATE NOCASE",
@@ -750,6 +753,24 @@ def api_create_entity():
                         "error": f"Agency '{name}' already exists",
                         "existing_id": existing["agency_id"]
                     }), 409
+
+                # Fuzzy duplicate check (skip if user confirmed)
+                if not force:
+                    rows = conn.execute(
+                        "SELECT agency_id, agency_name FROM agencies WHERE is_active = 1"
+                    ).fetchall()
+                    similar = []
+                    for row in rows:
+                        score = _score_name(name, row["agency_name"])
+                        if score >= 0.60:
+                            similar.append({"id": row["agency_id"], "name": row["agency_name"],
+                                            "score": round(score * 100)})
+                    if similar:
+                        similar.sort(key=lambda x: x["score"], reverse=True)
+                        return jsonify({
+                            "needs_confirmation": True,
+                            "similar_entities": similar[:5]
+                        }), 200
 
                 conn.execute("""
                     INSERT INTO agencies (agency_name, po_number, assigned_ae,
@@ -767,6 +788,24 @@ def api_create_entity():
                         "error": f"Advertiser '{name}' already exists",
                         "existing_id": existing["customer_id"]
                     }), 409
+
+                # Fuzzy duplicate check (skip if user confirmed)
+                if not force:
+                    rows = conn.execute(
+                        "SELECT customer_id, normalized_name FROM customers WHERE is_active = 1"
+                    ).fetchall()
+                    similar = []
+                    for row in rows:
+                        score = _score_name(name, row["normalized_name"])
+                        if score >= 0.60:
+                            similar.append({"id": row["customer_id"], "name": row["normalized_name"],
+                                            "score": round(score * 100)})
+                    if similar:
+                        similar.sort(key=lambda x: x["score"], reverse=True)
+                        return jsonify({
+                            "needs_confirmation": True,
+                            "similar_entities": similar[:5]
+                        }), 200
 
                 # Validate sector_id if provided
                 if sector_id is not None:

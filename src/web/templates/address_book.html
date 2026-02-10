@@ -2074,6 +2074,24 @@
         closeCreateModal();
         await loadData();
         openDetail(result.entity_type, result.entity_id);
+      } else if (result?.needs_confirmation) {
+        const matches = result.similar_entities.map(e => `  ${e.name} (${e.score}% match)`).join('\n');
+        if (confirm(`Similar entities found:\n${matches}\n\nCreate "${body.name}" anyway?`)) {
+          body.force = true;
+          const retry = await apiFetch(`${API}/entities`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+          });
+          if (retry.status === 201) {
+            closeCreateModal();
+            await loadData();
+            openDetail(retry.data.entity_type, retry.data.entity_id);
+          } else {
+            errorEl.textContent = retry.error || 'Failed to create entity.';
+            errorEl.classList.add('active');
+          }
+        }
       } else if (status === 409) {
         errorEl.innerHTML = `${esc(result?.error || error)}. <a onclick="document.getElementById('create-modal').classList.remove('active');openDetail('${createType}',${result?.existing_id})">Open existing?</a>`;
         errorEl.classList.add('active');
