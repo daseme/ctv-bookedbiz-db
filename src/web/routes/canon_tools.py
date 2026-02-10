@@ -217,7 +217,15 @@ def create_customer():
             (normalized_name, sector_id)
         )
         customer_id = cursor.lastrowid
-        
+
+        # Insert into junction table (trigger syncs customers.sector_id)
+        if sector_id:
+            conn.execute(
+                """INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
+                   VALUES (?, ?, 1, 'canon_tools')""",
+                (customer_id, sector_id)
+            )
+
         conn.execute("COMMIT;")
         
         _audit(

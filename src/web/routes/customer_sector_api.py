@@ -879,15 +879,20 @@ def update_customer_sector(customer_id):
                 {"success": False, "error": f"Customer with ID {customer_id} not found"}
             ), 404
 
-        # UPDATE CUSTOMER SECTOR
+        # UPDATE CUSTOMER SECTOR via junction table (trigger syncs customers.sector_id)
         logger.info(f"Updating customer {customer_id} to sector_id {sector_id}")
         cursor.execute(
             """
-            UPDATE customers 
-            SET sector_id = ?, updated_date = CURRENT_TIMESTAMP
-            WHERE customer_id = ?
+            INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
+            VALUES (?, ?, 1, 'web_user')
+            ON CONFLICT(customer_id, sector_id) DO UPDATE SET is_primary = 1
             """,
-            (sector_id, customer_id),
+            (customer_id, sector_id),
+        )
+        # Also update timestamp on customer
+        cursor.execute(
+            "UPDATE customers SET updated_date = CURRENT_TIMESTAMP WHERE customer_id = ?",
+            (customer_id,),
         )
 
         rows_affected = cursor.rowcount
@@ -1062,14 +1067,18 @@ def bulk_update_sectors():
                     f"Created new customer record: {customer_name} (ID: {customer_id})"
                 )
 
-            # Update customer sector
+            # Update customer sector via junction table (trigger syncs cache)
             cursor.execute(
                 """
-                UPDATE customers 
-                SET sector_id = ?, updated_date = CURRENT_TIMESTAMP
-                WHERE customer_id = ?
+                INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
+                VALUES (?, ?, 1, 'bulk_update')
+                ON CONFLICT(customer_id, sector_id) DO UPDATE SET is_primary = 1
             """,
-                (sector_id, customer_id),
+                (customer_id, sector_id),
+            )
+            cursor.execute(
+                "UPDATE customers SET updated_date = CURRENT_TIMESTAMP WHERE customer_id = ?",
+                (customer_id,),
             )
 
             if cursor.rowcount > 0:
@@ -1078,7 +1087,7 @@ def bulk_update_sectors():
                 try:
                     cursor.execute(
                         """
-                        INSERT INTO sector_assignment_audit 
+                        INSERT INTO sector_assignment_audit
                         (customer_id, new_sector_id, assignment_method, assigned_by)
                         VALUES (?, ?, 'bulk_update', 'web_interface')
                     """,
@@ -1332,20 +1341,17 @@ def delete_sector(sector_id):
         conn = db.connect()
         cursor = conn.cursor()
 
-        # First, unassign all customers from this sector
+        # First, remove all junction table entries for this sector
+        # (delete triggers will auto-promote or NULL the customers.sector_id cache)
         cursor.execute(
-            """
-            UPDATE customers 
-            SET sector_id = NULL, updated_date = CURRENT_TIMESTAMP
-            WHERE sector_id = ?
-        """,
+            "DELETE FROM customer_sectors WHERE sector_id = ?",
             (sector_id,),
         )
 
         # Then deactivate the sector (don't hard delete)
         cursor.execute(
             """
-            UPDATE sectors 
+            UPDATE sectors
             SET is_active = 0, updated_date = CURRENT_TIMESTAMP
             WHERE sector_id = ?
         """,
