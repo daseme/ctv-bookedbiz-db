@@ -110,6 +110,15 @@
   .contact-card .contact-actions button{background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px 6px;font-size:12px;border-radius:4px}
   .contact-card .contact-actions button:hover{background:#e2e8f0;color:#334155}
   .contact-card .contact-actions button.delete:hover{background:#fee2e2;color:#dc2626}
+  .contact-card .contact-actions button.edit:hover{background:#dbeafe;color:#2563eb}
+
+  .contact-edit-form{padding:12px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:8px}
+  .contact-edit-form .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .contact-edit-form .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+  .contact-edit-form .btn{padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer}
+  .contact-edit-form .btn-cancel{background:#fff;border:1px solid #e2e8f0;color:#64748b}
+  .contact-edit-form .btn-save{background:#0ea5e9;border:1px solid #0284c7;color:#fff}
+  .contact-edit-form .btn-save:hover{background:#0284c7}
 
   .role-badge{font-size:10px;padding:2px 6px;background:#e0e7ff;color:#4338ca;border-radius:4px;font-weight:500}
 
@@ -1347,6 +1356,7 @@
           </div>
         </div>
         <div class="contact-actions">
+          <button class="edit" title="Edit contact">✏️</button>
           <button class="mark-contacted" title="Mark as contacted">📞</button>
           ${!c.is_primary ? `<button class="set-primary" title="Set as primary">⭐</button>` : ''}
           <button class="delete" title="Delete contact">🗑️</button>
@@ -1375,6 +1385,15 @@
         e.stopPropagation();
         const contactId = btn.closest('.contact-card').dataset.contactId;
         await markContacted(contactId);
+      });
+    });
+    list.querySelectorAll('.edit').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const card = btn.closest('.contact-card');
+        const contactId = card.dataset.contactId;
+        const contact = currentEntity.contacts.find(c => c.contact_id == contactId);
+        if (contact) showEditContactForm(card, contact);
       });
     });
   }
@@ -1481,6 +1500,74 @@
     document.getElementById('new-address-zip').value = '';
     document.getElementById('new-address-notes').value = '';
     document.getElementById('new-address-primary').checked = false;
+  }
+
+  function showEditContactForm(card, contact) {
+    const roleOptions = ['', 'decision_maker', 'account_manager', 'billing', 'technical', 'other'];
+    const roleLabels = {'': '-- Select Role --', ...ROLE_LABELS};
+    card.innerHTML = `
+      <div class="contact-edit-form">
+        <div class="form-row">
+          <div class="form-field">
+            <label>Name *</label>
+            <input type="text" class="edit-name" value="${esc(contact.contact_name || '')}" placeholder="Full name">
+          </div>
+          <div class="form-field">
+            <label>Title</label>
+            <input type="text" class="edit-title" value="${esc(contact.contact_title || '')}" placeholder="Job title">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Email</label>
+            <input type="email" class="edit-email" value="${esc(contact.email || '')}" placeholder="email@example.com">
+          </div>
+          <div class="form-field">
+            <label>Phone</label>
+            <input type="text" class="edit-phone" value="${esc(contact.phone || '')}" placeholder="(555) 123-4567">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Role</label>
+            <select class="edit-role">
+              ${roleOptions.map(r => `<option value="${r}" ${r === (contact.contact_role || '') ? 'selected' : ''}>${roleLabels[r] || r}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-cancel edit-cancel">Cancel</button>
+          <button class="btn btn-save edit-save">Save</button>
+        </div>
+      </div>`;
+    card.querySelector('.edit-cancel').addEventListener('click', () => renderContacts());
+    card.querySelector('.edit-save').addEventListener('click', () => saveContactEdit(card, contact.contact_id));
+    card.querySelector('.edit-name').focus();
+  }
+
+  async function saveContactEdit(card, contactId) {
+    const name = card.querySelector('.edit-name').value.trim();
+    if (!name) { alert('Name is required'); return; }
+    const r = await fetch(`/api/contacts/${contactId}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        contact_name: name,
+        contact_title: card.querySelector('.edit-title').value.trim() || null,
+        email: card.querySelector('.edit-email').value.trim() || null,
+        phone: card.querySelector('.edit-phone').value.trim() || null,
+        contact_role: card.querySelector('.edit-role').value || null
+      })
+    });
+    if (r.ok) {
+      const detail = await fetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}`);
+      const data = await detail.json();
+      currentEntity.contacts = data.contacts;
+      renderContacts();
+    } else {
+      const err = await r.json().catch(() => null);
+      alert(err?.error || 'Failed to update contact');
+    }
   }
 
   async function markContacted(contactId) {
