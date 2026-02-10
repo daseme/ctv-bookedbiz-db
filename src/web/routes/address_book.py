@@ -654,6 +654,29 @@ def api_agency_customers(agency_id):
                     result_customers.append(dict(c))
                     seen_ids.add(c["customer_id"])
 
+        # Also include customers with agency_id directly assigned
+        assigned_customers = conn.execute("""
+            SELECT
+                c.customer_id,
+                c.normalized_name as customer_name,
+                c.sector_id,
+                s.sector_name,
+                c.po_number,
+                c.edi_billing,
+                COALESCE((SELECT SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
+                    THEN sp.gross_rate ELSE 0 END) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as revenue_via_agency,
+                COALESCE((SELECT COUNT(*) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as spot_count,
+                (SELECT MAX(sp.air_date) FROM spots sp WHERE sp.customer_id = c.customer_id) as last_active
+            FROM customers c
+            LEFT JOIN sectors s ON c.sector_id = s.sector_id
+            WHERE c.agency_id = ? AND c.is_active = 1
+        """, [agency_id]).fetchall()
+
+        for c in assigned_customers:
+            if c["customer_id"] not in seen_ids:
+                result_customers.append(dict(c))
+                seen_ids.add(c["customer_id"])
+
         # Sort by revenue descending
         result_customers.sort(key=lambda x: -(x.get("revenue_via_agency") or 0))
 
