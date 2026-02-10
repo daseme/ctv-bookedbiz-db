@@ -1553,10 +1553,10 @@
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         contact_name: name,
-        contact_title: card.querySelector('.edit-title').value.trim() || null,
-        email: card.querySelector('.edit-email').value.trim() || null,
-        phone: card.querySelector('.edit-phone').value.trim() || null,
-        contact_role: card.querySelector('.edit-role').value || null
+        contact_title: card.querySelector('.edit-title').value.trim(),
+        email: card.querySelector('.edit-email').value.trim(),
+        phone: card.querySelector('.edit-phone').value.trim(),
+        contact_role: card.querySelector('.edit-role').value
       })
     });
     if (r.ok) {
