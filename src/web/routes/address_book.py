@@ -351,9 +351,11 @@ def api_entity_detail(entity_type, entity_id):
                 SELECT c.customer_id as entity_id, 'customer' as entity_type, c.normalized_name as entity_name,
                        c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae,
                        c.po_number, c.edi_billing, c.affidavit_required,
-                       c.sector_id, s.sector_name
+                       c.sector_id, s.sector_name,
+                       c.agency_id, a.agency_name
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
+                LEFT JOIN agencies a ON c.agency_id = a.agency_id
                 WHERE c.customer_id = ? AND c.is_active = 1
             """, [entity_id]).fetchone()
 
@@ -537,6 +539,43 @@ def api_update_sector(entity_type, entity_id):
                 sector_name = None
 
             return jsonify({"success": True, "sector_name": sector_name})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/customer/<int:entity_id>/agency", methods=["PUT"])
+def api_update_agency(entity_id):
+    """Update agency assignment for a customer."""
+    data = request.get_json() or {}
+    agency_id = data.get("agency_id")
+
+    if agency_id is not None:
+        try:
+            agency_id = int(agency_id) if agency_id else None
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid agency_id"}), 400
+
+    if agency_id:
+        with _db_ro() as conn:
+            agency = conn.execute(
+                "SELECT agency_name FROM agencies WHERE agency_id = ? AND is_active = 1",
+                [agency_id]
+            ).fetchone()
+            if not agency:
+                return jsonify({"error": "Agency not found or inactive"}), 400
+            agency_name = agency["agency_name"]
+    else:
+        agency_name = None
+
+    with _db_rw() as conn:
+        try:
+            conn.execute(
+                "UPDATE customers SET agency_id = ? WHERE customer_id = ?",
+                [agency_id, entity_id]
+            )
+            conn.commit()
+            return jsonify({"success": True, "agency_name": agency_name})
         except Exception as e:
             conn.rollback()
             return jsonify({"success": False, "error": str(e)}), 500
