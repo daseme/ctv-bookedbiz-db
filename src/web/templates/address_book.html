@@ -722,6 +722,20 @@
           </div>
         </div>
       </div>
+      <div class="form-row" id="create-agency-fields">
+        <div class="form-field">
+          <label>Commission Rate (%)</label>
+          <input type="number" id="create-commission-rate" step="0.01" min="0" max="100" placeholder="15.00">
+        </div>
+        <div class="form-field">
+          <label>Order Rate Basis</label>
+          <select id="create-order-rate-basis">
+            <option value="">-- Not Set --</option>
+            <option value="gross">Gross</option>
+            <option value="net">Net</option>
+          </select>
+        </div>
+      </div>
       <div class="form-field">
         <label>Assigned AE</label>
         <select id="create-ae">
@@ -2232,10 +2246,13 @@
     document.getElementById('create-contact-email').value = '';
     document.getElementById('create-contact-phone').value = '';
     document.getElementById('create-contact-role').value = '';
-    // Customer-only fields hidden for agency default
+    document.getElementById('create-commission-rate').value = '';
+    document.getElementById('create-order-rate-basis').value = '';
+    // Customer-only fields hidden for agency default; agency-only fields shown
     document.getElementById('create-sector-field').style.display = 'none';
     document.getElementById('create-agency-field').style.display = 'none';
     document.getElementById('create-customer-fields').style.display = 'none';
+    document.getElementById('create-agency-fields').style.display = 'grid';
     const errorEl = document.getElementById('create-error');
     errorEl.classList.remove('active');
     errorEl.textContent = '';
@@ -2272,6 +2289,7 @@
       document.getElementById('create-sector-field').style.display = isCustomer ? 'block' : 'none';
       document.getElementById('create-agency-field').style.display = isCustomer ? 'block' : 'none';
       document.getElementById('create-customer-fields').style.display = isCustomer ? 'grid' : 'none';
+      document.getElementById('create-agency-fields').style.display = isCustomer ? 'none' : 'grid';
     });
   });
 
@@ -2301,6 +2319,11 @@
         const poVal = document.getElementById('create-po-number').value.trim();
         if (poVal) body.po_number = poVal;
         body.affidavit_required = document.getElementById('create-affidavit').checked;
+      } else {
+        const commVal = document.getElementById('create-commission-rate').value;
+        if (commVal) body.commission_rate = parseFloat(commVal);
+        const basisVal = document.getElementById('create-order-rate-basis').value;
+        if (basisVal) body.order_rate_basis = basisVal;
       }
       const aeVal = document.getElementById('create-ae').value;
       if (aeVal) body.assigned_ae = aeVal;

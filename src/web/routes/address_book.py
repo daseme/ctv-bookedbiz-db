@@ -854,6 +854,20 @@ def api_create_entity():
     po_number = (data.get("po_number") or "").strip() or None
     affidavit_required = 1 if data.get("affidavit_required") else 0
     assigned_ae = (data.get("assigned_ae") or "").strip() or None
+    # Agency commission fields
+    commission_rate = data.get("commission_rate")
+    if commission_rate is not None and commission_rate != "":
+        try:
+            commission_rate = float(commission_rate)
+        except (ValueError, TypeError):
+            commission_rate = None
+        if commission_rate is not None and not (0 <= commission_rate <= 100):
+            return jsonify({"error": "Commission rate must be 0-100"}), 400
+    else:
+        commission_rate = None
+    order_rate_basis = data.get("order_rate_basis") or None
+    if order_rate_basis is not None and order_rate_basis not in ("gross", "net"):
+        return jsonify({"error": "Order rate basis must be 'gross' or 'net'"}), 400
 
     # Address fields
     address = (data.get("address") or "").strip() or None
@@ -909,9 +923,11 @@ def api_create_entity():
 
                 conn.execute("""
                     INSERT INTO agencies (agency_name, po_number, assigned_ae,
-                                          address, city, state, zip, notes, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-                """, [name, po_number, assigned_ae, address, city, state, zip_code, notes])
+                                          address, city, state, zip, notes, is_active,
+                                          commission_rate, order_rate_basis)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """, [name, po_number, assigned_ae, address, city, state, zip_code, notes,
+                      commission_rate, order_rate_basis])
                 entity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             else:
                 existing = conn.execute(
