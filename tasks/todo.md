@@ -1,3 +1,51 @@
+# Sector Taxonomy Cleanup & Tags Rename - COMPLETED ✅
+
+Implemented 2026-02-11. Single commit on dev branch.
+
+## Migration (011_sector_taxonomy_cleanup.sql)
+- ✅ Updated `sector_group` for all 21 sectors (Commercial/Financial/Healthcare/Outreach/Political/Other)
+- ✅ Renamed sector 4: "Outreach" → "General Outreach"
+- ✅ Renamed sector 18: "Political-Outreach" → "Political Outreach"
+- ✅ Deactivated sector 19 (POLITICALOUTREACH) — 0 customers, 0 expectations
+- ✅ Reassigned customer 331 (Imprenta:PG&E) → Utility(21) via DELETE+INSERT
+- ✅ Reassigned customer 333 (Innocean:UC Davis) → Education(12) via DELETE+INSERT
+- ✅ Audit log entry
+
+## Backend — sector_group ordering
+- ✅ `address_book.py`: Sectors API now returns ordered by group CASE then name
+- ✅ `customer_sector_api.py`: Added `sector_group` field to response, group-ordered
+- ✅ `sector_expectation_repository.py`: Added `sector_group` to available sectors query, group-ordered
+
+## Frontend — optgroup dropdowns
+- ✅ `address_book.html`: `buildSectorOptions()` helper groups sectors into `<optgroup>` elements
+- ✅ Updated 3 dropdown sites: sector filter, create modal, add-tag dropdown
+- ✅ `customer-sector-ui.js`: `_buildOptgroups()` helper, updated `generateSectorOptions()`, `populateSectorSpecificFilter()`, `populateBulkSectorSelect()`
+- ✅ `budget_entry.html`: `loadAvailableSectors()` now builds optgroups
+
+## UI — "Tags" rename + info modal
+- ✅ Section header: "🏷️ Sector & Tags" with ? info button
+- ✅ "Add tag..." placeholder (was "Add sector...")
+- ✅ "No sector assigned" empty state (was "No sectors assigned")
+- ✅ Star tooltip: "Click to set as primary sector"
+- ✅ Remove tooltip: "Remove tag"
+- ✅ +N tooltip: "N additional tag(s)"
+- ✅ Bulk set prompt: "Existing tags will be preserved"
+- ✅ Info modal with 4 sections: Primary Sector, Tags, Sector Groups, Best Practices
+
+### Files Changed
+- `sql/migrations/011_sector_taxonomy_cleanup.sql` (new)
+- `src/web/routes/address_book.py` (sector query ordering)
+- `src/web/routes/customer_sector_api.py` (sector query ordering + sector_group field)
+- `src/repositories/sector_expectation_repository.py` (sector_group + ordering)
+- `src/web/templates/address_book.html` (optgroup helper, dropdowns, tags terminology, info modal)
+- `src/web/static/js/modules/customer-sector-ui.js` (optgroup helpers for 3 methods)
+- `src/web/templates/budget_entry.html` (optgroup in loadAvailableSectors)
+
+### Migration Required
+Run `sql/migrations/011_sector_taxonomy_cleanup.sql` on production before deploying.
+
+---
+
 # Multi-Sector Support for Customers - COMPLETED ✅
 
 Implemented 2026-02-10. 3 commits on dev branch.

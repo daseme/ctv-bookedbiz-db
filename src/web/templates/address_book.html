@@ -57,6 +57,16 @@
   .sector-tag .remove:hover{opacity:1;color:#dc2626}
   .sector-add-row{display:flex;gap:6px}
   .sector-add-row select{font-size:12px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff}
+  .info-btn{width:22px;height:22px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;line-height:1;vertical-align:middle;margin-left:6px}
+  .info-btn:hover{background:#f0f9ff;border-color:#0ea5e9;color:#0ea5e9}
+  .info-modal{background:#fff;border-radius:12px;width:100%;max-width:560px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .info-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff}
+  .info-modal .modal-header h3{margin:0;font-size:18px;color:#0369a1}
+  .info-modal .modal-body{padding:24px;max-height:70vh;overflow-y:auto}
+  .info-modal .info-section{margin-bottom:20px}
+  .info-modal .info-section:last-child{margin-bottom:0}
+  .info-modal .info-section h4{margin:0 0 6px;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .info-modal .info-section p{margin:0;font-size:13px;color:#475569;line-height:1.5}
   .market-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
   .market-chip{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500;background:#dcfce7;color:#166534}
   .market-chip.more{background:#f1f5f9;color:#64748b}
@@ -405,11 +415,11 @@
     <div class="modal-body">
       <!-- Sectors (advertisers only) -->
       <div class="detail-section" id="sector-section" style="display:none">
-        <h3><span class="icon">🏷️</span> Sectors</h3>
+        <h3><span class="icon">🏷️</span> Sector &amp; Tags <button class="info-btn" onclick="document.getElementById('sector-info-modal').classList.add('active')" title="About sectors & tags">?</button></h3>
         <div class="sector-tags" id="sector-tags"></div>
         <div class="sector-add-row" style="margin-top:8px">
           <select id="sector-add-select" style="flex:1;min-width:0">
-            <option value="">+ Add sector...</option>
+            <option value="">+ Add tag...</option>
           </select>
         </div>
       </div>
@@ -775,6 +785,34 @@
   </div>
 </div>
 
+<!-- Sector Info Modal -->
+<div class="modal-overlay" id="sector-info-modal">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>Sector &amp; Tags</h3>
+      <button class="modal-close" onclick="document.getElementById('sector-info-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>Primary Sector</h4>
+        <p>Each advertiser has one primary sector that drives budget planning, revenue attribution, and sector-level reporting. The starred (&starf;) tag is the primary. Click any star to change which sector is primary.</p>
+      </div>
+      <div class="info-section">
+        <h4>Tags</h4>
+        <p>Additional sector labels for cross-referencing and filtering. A customer's primary sector might be Government, but a Political tag captures that they also do political advertising. Tags don't affect budget math &mdash; they're for classification and discovery.</p>
+      </div>
+      <div class="info-section">
+        <h4>Sector Groups</h4>
+        <p>Sectors are organized into groups (Commercial, Financial, Healthcare, Outreach, Political, Other) for rollup reporting. The group comes from the primary sector.</p>
+      </div>
+      <div class="info-section">
+        <h4>Best Practices</h4>
+        <p>The primary sector should be stable within a budget period. Changing it mid-quarter moves booked revenue between sector buckets in variance reports. Add/remove tags freely anytime.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -809,16 +847,36 @@
     }
   }
 
+  // ===== Sector optgroup helper =====
+  const SECTOR_GROUP_ORDER = ['Commercial','Financial','Healthcare','Outreach','Political','Other'];
+
+  function buildSectorOptions(sectors, emptyText) {
+    // Group sectors by sector_group, preserving API order within each group
+    const groups = {};
+    sectors.forEach(s => {
+      const g = s.sector_group || 'Other';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(s);
+    });
+    let html = `<option value="">${esc(emptyText)}</option>`;
+    SECTOR_GROUP_ORDER.forEach(g => {
+      if (!groups[g] || groups[g].length === 0) return;
+      html += `<optgroup label="${esc(g)}">`;
+      groups[g].forEach(s => {
+        html += `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`;
+      });
+      html += '</optgroup>';
+    });
+    return html;
+  }
+
   // ===== Load sectors =====
   async function loadSectors() {
     const { ok, data } = await apiFetch(`${API}/sectors`);
     if (!ok) { console.error('Failed to load sectors'); return; }
     sectorsData = data;
-    document.getElementById('sector-filter').innerHTML = '<option value="">All Sectors</option>' +
-      sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
-    // Create modal still uses single select
-    document.getElementById('create-sector').innerHTML = '<option value="">-- No Sector --</option>' +
-      sectorsData.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+    document.getElementById('sector-filter').innerHTML = buildSectorOptions(sectorsData, 'All Sectors');
+    document.getElementById('create-sector').innerHTML = buildSectorOptions(sectorsData, '-- No Sector --');
   }
 
   // ===== Multi-sector tag UI =====
@@ -827,13 +885,13 @@
   function renderSectorTags() {
     const container = document.getElementById('sector-tags');
     if (currentSectors.length === 0) {
-      container.innerHTML = '<span style="color:#94a3b8;font-size:12px">No sectors assigned</span>';
+      container.innerHTML = '<span style="color:#94a3b8;font-size:12px">No sector assigned</span>';
     } else {
       container.innerHTML = currentSectors.map(s => `
         <span class="sector-tag" data-sector-id="${s.sector_id}">
-          <span class="star ${s.is_primary ? 'primary' : ''}" title="${s.is_primary ? 'Primary sector' : 'Click to make primary'}">&#9733;</span>
+          <span class="star ${s.is_primary ? 'primary' : ''}" title="${s.is_primary ? 'Primary sector' : 'Click to set as primary sector'}">&#9733;</span>
           ${esc(s.sector_name)}
-          <span class="remove" title="Remove sector">&times;</span>
+          <span class="remove" title="Remove tag">&times;</span>
         </span>
       `).join('');
     }
@@ -843,9 +901,7 @@
   function updateSectorAddDropdown() {
     const assignedIds = new Set(currentSectors.map(s => s.sector_id));
     const available = sectorsData.filter(s => !assignedIds.has(s.sector_id));
-    document.getElementById('sector-add-select').innerHTML =
-      '<option value="">+ Add sector...</option>' +
-      available.map(s => `<option value="${s.sector_id}">${esc(s.sector_name)}</option>`).join('');
+    document.getElementById('sector-add-select').innerHTML = buildSectorOptions(available, '+ Add tag...');
   }
 
   async function saveSectors() {
@@ -1008,7 +1064,7 @@
           <td class="checkbox-cell"><input type="checkbox" class="row-select" ${isSelected ? 'checked' : ''}></td>
           <td class="name-cell">${esc(e.entity_name)}${inactiveTag}</td>
           <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Advertiser'}</span></td>
-          <td>${e.sector_name ? esc(e.sector_name) + ((e.sector_count || 0) > 1 ? ` <span class="extra-count">+${e.sector_count - 1}</span>` : '') : '-'}</td>
+          <td>${e.sector_name ? esc(e.sector_name) + ((e.sector_count || 0) > 1 ? ` <span class="extra-count" title="${e.sector_count - 1} additional tag${e.sector_count - 1 > 1 ? 's' : ''}">+${e.sector_count - 1}</span>` : '') : '-'}</td>
           <td>${e.assigned_ae ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>` : '-'}</td>
           <td>${esc(e.primary_contact || '-')}</td>
           <td>${lastActive}</td>
@@ -1128,7 +1184,7 @@
       return;
     }
     const options = sectorsData.map(s => `${s.sector_id}: ${s.sector_name}`).join('\n');
-    const input = prompt(`Set PRIMARY sector for ${customerKeys.length} advertiser(s).\nExisting secondary sectors will be preserved.\n\nEnter sector ID:\n${options}`);
+    const input = prompt(`Set PRIMARY sector for ${customerKeys.length} advertiser(s).\nExisting tags will be preserved.\n\nEnter sector ID:\n${options}`);
     if (!input) return;
     const sectorId = parseInt(input);
     if (!sectorId || !sectorsData.find(s => s.sector_id === sectorId)) {
@@ -1151,7 +1207,7 @@
   });
 
   function renderCard(e) {
-    const extraSectors = (e.sector_count || 0) > 1 ? ` <span class="extra-count">+${e.sector_count - 1}</span>` : '';
+    const extraSectors = (e.sector_count || 0) > 1 ? ` <span class="extra-count" title="${e.sector_count - 1} additional tag${e.sector_count - 1 > 1 ? 's' : ''}">+${e.sector_count - 1}</span>` : '';
     const sectorBadge = e.entity_type === 'customer'
       ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}${extraSectors}</span>`
       : '';
@@ -2027,6 +2083,11 @@
   modal.querySelector('.modal-close').addEventListener('click', closeModal);
   document.getElementById('close-detail').addEventListener('click', closeModal);
   modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  // Sector info modal — close on overlay click
+  document.getElementById('sector-info-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+  });
 
   // Filter handlers
   document.getElementById('search').addEventListener('input', debounce(loadData, 300));
