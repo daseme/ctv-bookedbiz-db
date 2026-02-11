@@ -447,13 +447,28 @@
         </div>
       </div>
 
-      <!-- EDI Billing (agencies only) -->
+      <!-- EDI Billing + Commission (agencies only) -->
       <div class="detail-section" id="edi-section" style="display:none">
         <h3><span class="icon">💰</span> Billing</h3>
         <div class="edi-toggle">
           <input type="checkbox" id="detail-edi-billing">
           <label for="detail-edi-billing">EDI Billing</label>
         </div>
+        <div class="billing-row" style="margin-top:12px">
+          <div class="form-field" style="max-width:180px">
+            <label>Commission Rate (%)</label>
+            <input type="number" id="detail-commission-rate" step="0.01" min="0" max="100" placeholder="15.00">
+          </div>
+          <div class="form-field" style="max-width:180px">
+            <label>Order Rate Basis</label>
+            <select id="detail-order-rate-basis">
+              <option value="">-- Not Set --</option>
+              <option value="gross">Gross</option>
+              <option value="net">Net</option>
+            </select>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">Gross = order amounts include commission; Net = amounts exclude commission</div>
       </div>
 
       <!-- PO Number + Affidavit (advertisers only) -->
@@ -1330,6 +1345,8 @@
       ediSection.style.display = 'block';
       poSection.style.display = 'none';
       document.getElementById('detail-edi-billing').checked = !!currentEntity.edi_billing;
+      document.getElementById('detail-commission-rate').value = currentEntity.commission_rate ?? '';
+      document.getElementById('detail-order-rate-basis').value = currentEntity.order_rate_basis || '';
     } else {
       ediSection.style.display = 'none';
       poSection.style.display = 'block';
@@ -1385,11 +1402,11 @@
     // Track unsaved changes on editable fields
     const trackChange = () => { hasUnsavedChanges = true; };
     ['detail-notes', 'detail-address', 'detail-city', 'detail-state', 'detail-zip',
-     'detail-agency', 'detail-ae', 'detail-po-number'].forEach(id => {
+     'detail-agency', 'detail-ae', 'detail-po-number', 'detail-commission-rate'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', trackChange, { once: true });
     });
-    ['detail-edi-billing', 'detail-affidavit-required'].forEach(id => {
+    ['detail-edi-billing', 'detail-affidavit-required', 'detail-order-rate-basis'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', trackChange, { once: true });
     });
@@ -2031,7 +2048,7 @@
 
       // Save AE + billing in parallel
       const billingBody = currentEntity.entity_type === 'agency'
-        ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked }
+        ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked, commission_rate: document.getElementById('detail-commission-rate').value || null, order_rate_basis: document.getElementById('detail-order-rate-basis').value || null }
         : { po_number: document.getElementById('detail-po-number').value.trim() || null, edi_billing: false, affidavit_required: document.getElementById('detail-affidavit-required').checked };
 
       await Promise.all([
