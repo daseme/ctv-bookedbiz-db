@@ -848,6 +848,7 @@
 <script>
 (function() {
   const API = '/api/address-book';
+  let allData = [];
   let currentData = [];
   let sectorsData = [];
   let marketsData = [];
@@ -1019,25 +1020,135 @@
     countEl.classList.add('loading');
 
     const params = new URLSearchParams({
-      search: document.getElementById('search').value.trim(),
-      type: document.getElementById('type-filter').value,
-      market: document.getElementById('market-filter').value,
-      ae: document.getElementById('ae-filter').value,
-      has_contacts: document.getElementById('contacts-filter').value,
-      sector_id: document.getElementById('sector-filter').value,
-      sort: document.getElementById('sort-filter').value,
       include_inactive: document.getElementById('inactive-filter').checked ? '1' : '0'
     });
     const { ok, data, error } = await apiFetch(`${API}?${params}`);
     if (ok) {
-      currentData = data;
-      updateStats();
-      renderGrid();
+      allData = data;
+      applyFilters();
     } else {
       countEl.textContent = 'Error loading';
       console.error('Load error:', error);
     }
     countEl.classList.remove('loading');
+  }
+
+  // ===== Client-side filtering =====
+  function applyFilters() {
+    const search = document.getElementById('search').value.trim().toLowerCase();
+    const typeFilter = document.getElementById('type-filter').value;
+    const marketFilter = document.getElementById('market-filter').value;
+    const aeFilter = document.getElementById('ae-filter').value;
+    const contactsFilter = document.getElementById('contacts-filter').value;
+    const sectorFilter = document.getElementById('sector-filter').value;
+    const sortBy = document.getElementById('sort-filter').value;
+
+    let filtered = allData;
+
+    // Type filter
+    if (typeFilter && typeFilter !== 'all') {
+      filtered = filtered.filter(r => r.entity_type === typeFilter);
+    }
+
+    // Search — match on entity_name, notes, sector_name, sector_code, primary_contact
+    if (search) {
+      filtered = filtered.filter(r =>
+        (r.entity_name || '').toLowerCase().includes(search) ||
+        (r.notes || '').toLowerCase().includes(search) ||
+        (r.sector_name || '').toLowerCase().includes(search) ||
+        (r.sector_code || '').toLowerCase().includes(search) ||
+        (r.primary_contact || '').toLowerCase().includes(search)
+      );
+    }
+
+    // Has contacts filter
+    if (contactsFilter === 'yes') {
+      filtered = filtered.filter(r => r.contact_count > 0);
+    } else if (contactsFilter === 'no') {
+      filtered = filtered.filter(r => r.contact_count === 0);
+    }
+
+    // Sector filter — match against sector_ids (comma-separated string of all assigned sector IDs)
+    if (sectorFilter) {
+      const sid = sectorFilter;
+      filtered = filtered.filter(r => {
+        if (r.entity_type !== 'customer') return false;
+        const ids = (r.sector_ids || '').split(',');
+        return ids.includes(sid);
+      });
+    }
+
+    // Market filter
+    if (marketFilter) {
+      filtered = filtered.filter(r => {
+        const markets = (r.markets || '').split(',');
+        return markets.includes(marketFilter);
+      });
+    }
+
+    // AE filter
+    if (aeFilter) {
+      if (aeFilter === '__none__') {
+        filtered = filtered.filter(r => !r.assigned_ae);
+      } else {
+        filtered = filtered.filter(r => r.assigned_ae === aeFilter);
+      }
+    }
+
+    // Sort
+    filtered = [...filtered];
+    if (sortBy === 'sector') {
+      filtered.sort((a, b) => {
+        const an = a.sector_name, bn = b.sector_name;
+        if (!an && bn) return 1;
+        if (an && !bn) return -1;
+        if (an && bn) { const c = an.toLowerCase().localeCompare(bn.toLowerCase()); if (c) return c; }
+        return a.entity_name.toLowerCase().localeCompare(b.entity_name.toLowerCase());
+      });
+    } else if (sortBy === 'type') {
+      filtered.sort((a, b) => {
+        const ta = a.entity_type === 'agency' ? 0 : 1, tb = b.entity_type === 'agency' ? 0 : 1;
+        if (ta !== tb) return ta - tb;
+        return a.entity_name.toLowerCase().localeCompare(b.entity_name.toLowerCase());
+      });
+    } else if (sortBy === 'market') {
+      filtered.sort((a, b) => {
+        const am = a.markets || '', bm = b.markets || '';
+        if (!am && bm) return 1;
+        if (am && !bm) return -1;
+        if (am && bm) { const c = am.toLowerCase().localeCompare(bm.toLowerCase()); if (c) return c; }
+        return a.entity_name.toLowerCase().localeCompare(b.entity_name.toLowerCase());
+      });
+    } else if (sortBy === 'last_active') {
+      filtered.sort((a, b) => {
+        const al = a.last_active || '', bl = b.last_active || '';
+        if (!al && bl) return 1;
+        if (al && !bl) return -1;
+        if (al && bl) { const c = bl.localeCompare(al); if (c) return c; }
+        return a.entity_name.toLowerCase().localeCompare(b.entity_name.toLowerCase());
+      });
+    } else if (sortBy === 'revenue') {
+      filtered.sort((a, b) => {
+        const ar = a.total_revenue || 0, br = b.total_revenue || 0;
+        if (ar !== br) return br - ar;
+        return a.entity_name.toLowerCase().localeCompare(b.entity_name.toLowerCase());
+      });
+    } else if (sortBy === 'ae') {
+      filtered.sort((a, b) => {
+        const aa = a.assigned_ae, ba = b.assigned_ae;
+        if (!aa && ba) return 1;
+        if (aa && !ba) return -1;
+        if (aa && ba) { const c = aa.toLowerCase().localeCompare(ba.toLowerCase()); if (c) return c; }
+        return a.entity_name.toLowerCase().localeCompare(b.entity_name.toLowerCase());
+      });
+    } else {
+      // Default: sort by name
+      filtered.sort((a, b) => a.entity_name.toLowerCase().localeCompare(b.entity_name.toLowerCase()));
+    }
+
+    currentData = filtered;
+    updateStats();
+    renderGrid();
   }
 
   function updateStats() {
@@ -2120,17 +2231,16 @@
     if (e.target === this) this.classList.remove('active');
   });
 
-  // Filter handlers
-  document.getElementById('search').addEventListener('input', debounce(loadData, 300));
-  ['type-filter', 'market-filter', 'ae-filter', 'sector-filter', 'contacts-filter', 'sort-filter'].forEach(id => {
-    document.getElementById(id).addEventListener('change', loadData);
-  });
-  document.getElementById('inactive-filter').addEventListener('change', loadData);
-  document.getElementById('refresh').addEventListener('click', loadData);
-
+  // Filter handlers — client-side filters call applyFilters(), server-fetch triggers call loadData()
   function debounce(fn, ms) {
     let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
+  document.getElementById('search').addEventListener('input', debounce(applyFilters, 100));
+  ['type-filter', 'market-filter', 'ae-filter', 'sector-filter', 'contacts-filter', 'sort-filter'].forEach(id => {
+    document.getElementById(id).addEventListener('change', applyFilters);
+  });
+  document.getElementById('inactive-filter').addEventListener('change', loadData);
+  document.getElementById('refresh').addEventListener('click', loadData);
 
   // ===== Saved Filters =====
   let savedFiltersData = [];
@@ -2157,7 +2267,7 @@
     if (cfg.sector_id) document.getElementById('sector-filter').value = cfg.sector_id;
     if (cfg.has_contacts) document.getElementById('contacts-filter').value = cfg.has_contacts;
     if (cfg.sort) document.getElementById('sort-filter').value = cfg.sort;
-    loadData();
+    applyFilters();
   });
 
   document.getElementById('save-filter').addEventListener('click', async function() {
