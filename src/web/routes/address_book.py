@@ -53,7 +53,11 @@ def api_sectors():
             SELECT sector_id, sector_code, sector_name, sector_group
             FROM sectors
             WHERE is_active = 1
-            ORDER BY sector_name
+            ORDER BY CASE sector_group
+                WHEN 'Commercial' THEN 1 WHEN 'Financial' THEN 2
+                WHEN 'Healthcare' THEN 3 WHEN 'Outreach' THEN 4
+                WHEN 'Political' THEN 5 WHEN 'Other' THEN 6 ELSE 7
+            END, sector_name
         """).fetchall()
         return jsonify([dict(s) for s in sectors])
 

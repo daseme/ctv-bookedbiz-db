@@ -700,13 +700,18 @@ def get_sectors():
         db = container.get("database_connection")
 
         query = """
-        SELECT 
+        SELECT
             sector_id,
             sector_name as name,
-            COALESCE(sector_group, 'Business sector') as description
+            COALESCE(sector_group, 'Other') as sector_group,
+            COALESCE(sector_group, 'Other') as description
         FROM sectors
         WHERE is_active = 1
-        ORDER BY sector_name
+        ORDER BY CASE sector_group
+            WHEN 'Commercial' THEN 1 WHEN 'Financial' THEN 2
+            WHEN 'Healthcare' THEN 3 WHEN 'Outreach' THEN 4
+            WHEN 'Political' THEN 5 WHEN 'Other' THEN 6 ELSE 7
+        END, sector_name
         """
 
         conn = db.connect()
@@ -731,7 +736,8 @@ def get_sectors():
                 {
                     "id": row[0],
                     "name": row[1],
-                    "description": row[2],
+                    "sector_group": row[2],
+                    "description": row[3],
                     "color": colors[i % len(colors)],
                 }
             )
