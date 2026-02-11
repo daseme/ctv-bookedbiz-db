@@ -1190,35 +1190,33 @@ def api_export_csv():
     results = []
 
     with _db_ro() as conn:
-        # Combined agency metrics lookup (one scan)
-        agency_metrics = {}
-        rows = conn.execute("""
-            SELECT agency_id,
-                MAX(air_date) as last_active,
-                SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
-                    THEN gross_rate ELSE 0 END) as total_revenue,
-                COUNT(*) as spot_count
-            FROM spots WHERE agency_id IS NOT NULL GROUP BY agency_id
-        """).fetchall()
-        for row in rows:
-            agency_metrics[row["agency_id"]] = dict(row)
+        # Read pre-computed metrics from entity_metrics cache
+        metrics_count = conn.execute("SELECT COUNT(*) FROM entity_metrics").fetchone()[0]
+        if metrics_count == 0:
+            with _db_rw() as rw_conn:
+                refresh_entity_metrics(rw_conn)
+                rw_conn.commit()
 
-        # Combined customer metrics + agency-client detection (one scan)
+        agency_metrics = {}
         customer_metrics = {}
         agency_client_ids_from_spots = set()
-        rows = conn.execute("""
-            SELECT customer_id,
-                MAX(air_date) as last_active,
-                SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
-                    THEN gross_rate ELSE 0 END) as total_revenue,
-                COUNT(*) as spot_count,
-                COUNT(agency_id) as agency_spot_count
-            FROM spots WHERE customer_id IS NOT NULL GROUP BY customer_id
-        """).fetchall()
-        for row in rows:
-            customer_metrics[row["customer_id"]] = dict(row)
-            if row["agency_spot_count"] == row["spot_count"]:
-                agency_client_ids_from_spots.add(row["customer_id"])
+
+        for row in conn.execute("SELECT * FROM entity_metrics").fetchall():
+            eid = row["entity_id"]
+            if row["entity_type"] == "agency":
+                agency_metrics[eid] = {
+                    "last_active": row["last_active"],
+                    "total_revenue": float(row["total_revenue"] or 0),
+                    "markets": row["markets"] or ""
+                }
+            else:
+                customer_metrics[eid] = {
+                    "last_active": row["last_active"],
+                    "total_revenue": float(row["total_revenue"] or 0),
+                    "markets": row["markets"] or ""
+                }
+                if row["agency_spot_count"] == row["spot_count"]:
+                    agency_client_ids_from_spots.add(eid)
 
         # Get agencies
         if entity_type in ("all", "agency"):
@@ -1234,9 +1232,7 @@ def api_export_csv():
                         AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_email,
                        (SELECT phone FROM entity_contacts ec
                         WHERE ec.entity_type = 'agency' AND ec.entity_id = a.agency_id
-                        AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_phone,
-                       (SELECT GROUP_CONCAT(DISTINCT market_name) FROM spots
-                        WHERE agency_id = a.agency_id AND market_name IS NOT NULL) as markets
+                        AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_phone
                 FROM agencies a WHERE a.is_active = 1
             """).fetchall()
             for a in agencies:
@@ -1244,6 +1240,7 @@ def api_export_csv():
                 m = agency_metrics.get(row["entity_id"], {})
                 row["last_active"] = m.get("last_active", "")
                 row["total_revenue"] = m.get("total_revenue", 0)
+                row["markets"] = m.get("markets", "")
                 results.append(row)
 
         # Get customers (exclude agency-booked)
@@ -1260,9 +1257,7 @@ def api_export_csv():
                         AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_email,
                        (SELECT phone FROM entity_contacts ec
                         WHERE ec.entity_type = 'customer' AND ec.entity_id = c.customer_id
-                        AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_phone,
-                       (SELECT GROUP_CONCAT(DISTINCT market_name) FROM spots
-                        WHERE customer_id = c.customer_id AND market_name IS NOT NULL) as markets
+                        AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_phone
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
                 WHERE c.is_active = 1
@@ -1275,6 +1270,7 @@ def api_export_csv():
                 m = customer_metrics.get(row["entity_id"], {})
                 row["last_active"] = m.get("last_active", "")
                 row["total_revenue"] = m.get("total_revenue", 0)
+                row["markets"] = m.get("markets", "")
                 results.append(row)
 
     # Apply filters
