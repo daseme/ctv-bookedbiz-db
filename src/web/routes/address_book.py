@@ -359,6 +359,7 @@ def api_entity_detail(entity_type, entity_id):
                 SELECT agency_id as entity_id, 'agency' as entity_type, agency_name as entity_name,
                        address, city, state, zip, notes, assigned_ae,
                        po_number, edi_billing,
+                       commission_rate, order_rate_basis,
                        NULL as sector_id, NULL as sector_name
                 FROM agencies WHERE agency_id = ? AND is_active = 1
             """, [entity_id]).fetchone()
@@ -516,11 +517,27 @@ def api_update_billing_info(entity_type, entity_id):
                     WHERE {id_col} = ?
                 """, [po_number, edi_billing, affidavit_required, entity_id])
             else:
+                # Parse commission fields (agency only)
+                commission_rate = data.get("commission_rate")
+                if commission_rate is not None and commission_rate != "":
+                    try:
+                        commission_rate = float(commission_rate)
+                    except (ValueError, TypeError):
+                        return jsonify({"error": "Commission rate must be a number"}), 400
+                    if not (0 <= commission_rate <= 100):
+                        return jsonify({"error": "Commission rate must be 0-100"}), 400
+                else:
+                    commission_rate = None
+
+                order_rate_basis = data.get("order_rate_basis") or None
+                if order_rate_basis is not None and order_rate_basis not in ("gross", "net"):
+                    return jsonify({"error": "Order rate basis must be 'gross' or 'net'"}), 400
+
                 conn.execute(f"""
                     UPDATE {table}
-                    SET po_number = ?, edi_billing = ?
+                    SET po_number = ?, edi_billing = ?, commission_rate = ?, order_rate_basis = ?
                     WHERE {id_col} = ?
-                """, [po_number, edi_billing, entity_id])
+                """, [po_number, edi_billing, commission_rate, order_rate_basis, entity_id])
 
             conn.commit()
             return jsonify({"success": True})
