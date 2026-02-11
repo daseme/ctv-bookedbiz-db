@@ -1,3 +1,41 @@
+# Materialized Entity Metrics Cache - COMPLETED ✅
+
+Implemented 2026-02-11. Single commit on dev branch.
+
+## Problem
+Address book API took ~2.3s on initial page load due to two GROUP BY queries scanning 1.2M spots rows.
+
+## Solution
+Pre-compute aggregates in `entity_metrics` table, refreshed after each import.
+
+## Migration (013_entity_metrics_cache.sql)
+- ✅ `entity_metrics` table with PRIMARY KEY (entity_type, entity_id)
+- ✅ Columns: markets, last_active, total_revenue, spot_count, agency_spot_count
+- ✅ Initial population: 425 rows (79 agencies + 346 customers)
+
+## Route Changes (address_book.py)
+- ✅ `refresh_entity_metrics(conn)` module-level function (DELETE + re-INSERT)
+- ✅ `api_address_book()` reads from entity_metrics instead of spots GROUP BY
+- ✅ Safety net: auto-refresh via RW connection if entity_metrics is empty
+
+## Import Hook (broadcast_month_import_service.py)
+- ✅ Calls `refresh_entity_metrics(conn)` after `_complete_import_batch()`
+
+## Performance
+- Before: 2.3s (100% in spots GROUP BY)
+- After: 0.011s average (200x speedup)
+- Safety net first-load: 2.4s (one-time, then instant)
+
+### Files Changed
+- `sql/migrations/013_entity_metrics_cache.sql` (new)
+- `src/web/routes/address_book.py` (refresh function + cache read)
+- `src/services/broadcast_month_import_service.py` (import hook)
+
+### Migration Required
+Run `sql/migrations/013_entity_metrics_cache.sql` on production before deploying.
+
+---
+
 # Sector Taxonomy Cleanup & Tags Rename - COMPLETED ✅
 
 Implemented 2026-02-11. Single commit on dev branch.
