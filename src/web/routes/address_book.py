@@ -79,31 +79,37 @@ def api_markets():
 @address_book_bp.route("/api/address-book")
 def api_address_book():
     """
-    Get all entities (agencies + customers) with their addresses, contacts, sectors, markets, and notes.
-
-    Query params:
-        search: filter by name
-        type: 'all', 'agency', 'customer'
-        has_contacts: 'all', 'yes', 'no'
-        has_address: 'all', 'yes', 'no'
-        sector_id: filter by sector (customers only)
-        market: filter by market name
-        ae: filter by assigned AE name
-        sort: 'name', 'sector', 'type', 'market', 'ae' (default: 'name')
+    Get all entities (agencies + customers) with contacts, sectors, markets, and metrics.
+    Filtering/sorting is done client-side. Only include_inactive controls the SQL WHERE.
     """
-    search = request.args.get("search", "").strip()
-    entity_type = request.args.get("type", "all")
-    has_contacts = request.args.get("has_contacts", "all")
-    has_address = request.args.get("has_address", "all")
-    sector_filter = request.args.get("sector_id", "")
-    market_filter = request.args.get("market", "")
-    ae_filter = request.args.get("ae", "")
-    sort_by = request.args.get("sort", "name")
     include_inactive = request.args.get("include_inactive", "0") == "1"
 
     results = []
 
     with _db_ro() as conn:
+        # Batch: contact stats for all entities (fixes N+1)
+        contact_stats = {}
+        for row in conn.execute("""
+            SELECT entity_type, entity_id, COUNT(*) as contact_count,
+                   MAX(CASE WHEN is_primary = 1 THEN contact_name END) as primary_contact
+            FROM entity_contacts WHERE is_active = 1
+            GROUP BY entity_type, entity_id
+        """).fetchall():
+            contact_stats[(row["entity_type"], row["entity_id"])] = {
+                "contact_count": row["contact_count"],
+                "primary_contact": row["primary_contact"]
+            }
+
+        # Batch: sector counts + sector_ids per customer (fixes N+1)
+        sector_counts = {}
+        customer_sector_ids = {}
+        for row in conn.execute("""
+            SELECT customer_id, COUNT(*) as cnt, GROUP_CONCAT(sector_id) as sids
+            FROM customer_sectors GROUP BY customer_id
+        """).fetchall():
+            sector_counts[row["customer_id"]] = row["cnt"]
+            customer_sector_ids[row["customer_id"]] = row["sids"] or ""
+
         # Combined agency query: markets + metrics in one scan
         agency_markets = {}
         agency_metrics = {}
@@ -149,199 +155,83 @@ def api_address_book():
                 "total_revenue": float(row["total_revenue"] or 0),
                 "spot_count": row["spot_count"]
             }
-            # All spots booked through agency = agency client
             if row["agency_spot_count"] == row["spot_count"]:
                 agency_client_ids_from_spots.add(row["customer_id"])
 
         # Get agencies (no sector for agencies)
-        if entity_type in ("all", "agency"):
-            active_clause = "" if include_inactive else "WHERE a.is_active = 1"
-            agencies = conn.execute(f"""
-                SELECT
-                    a.agency_id as entity_id,
-                    'agency' as entity_type,
-                    a.agency_name as entity_name,
-                    a.address,
-                    a.city,
-                    a.state,
-                    a.zip,
-                    a.notes,
-                    a.assigned_ae,
-                    a.is_active,
-                    NULL as sector_id,
-                    NULL as sector_name,
-                    NULL as sector_code,
-                    (SELECT COUNT(*) FROM entity_contacts ec
-                     WHERE ec.entity_type = 'agency' AND ec.entity_id = a.agency_id AND ec.is_active = 1) as contact_count,
-                    (SELECT contact_name FROM entity_contacts ec
-                     WHERE ec.entity_type = 'agency' AND ec.entity_id = a.agency_id
-                     AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact
-                FROM agencies a
-                {active_clause}
-                ORDER BY a.agency_name
-            """).fetchall()
+        active_clause = "" if include_inactive else "WHERE a.is_active = 1"
+        agencies = conn.execute(f"""
+            SELECT
+                a.agency_id as entity_id,
+                'agency' as entity_type,
+                a.agency_name as entity_name,
+                a.address,
+                a.city,
+                a.state,
+                a.zip,
+                a.notes,
+                a.assigned_ae,
+                a.is_active,
+                NULL as sector_id,
+                NULL as sector_name,
+                NULL as sector_code
+            FROM agencies a
+            {active_clause}
+            ORDER BY a.agency_name
+        """).fetchall()
 
-            for a in agencies:
-                row = dict(a)
-                row["markets"] = agency_markets.get(row["entity_id"], "")
-                metrics = agency_metrics.get(row["entity_id"], {})
-                row["last_active"] = metrics.get("last_active")
-                row["total_revenue"] = metrics.get("total_revenue", 0)
-                row["spot_count"] = metrics.get("spot_count", 0)
-                results.append(row)
+        for a in agencies:
+            row = dict(a)
+            cs = contact_stats.get(("agency", row["entity_id"]), {})
+            row["contact_count"] = cs.get("contact_count", 0)
+            row["primary_contact"] = cs.get("primary_contact")
+            row["sector_count"] = 0
+            row["sector_ids"] = ""
+            row["markets"] = agency_markets.get(row["entity_id"], "")
+            metrics = agency_metrics.get(row["entity_id"], {})
+            row["last_active"] = metrics.get("last_active")
+            row["total_revenue"] = metrics.get("total_revenue", 0)
+            row["spot_count"] = metrics.get("spot_count", 0)
+            results.append(row)
 
         # Get customers with sector info (exclude agency-booked)
-        if entity_type in ("all", "customer"):
-            active_clause = "" if include_inactive else "WHERE c.is_active = 1"
-            customers = conn.execute(f"""
-                SELECT
-                    c.customer_id as entity_id,
-                    'customer' as entity_type,
-                    c.normalized_name as entity_name,
-                    c.address,
-                    c.city,
-                    c.state,
-                    c.zip,
-                    c.notes,
-                    c.assigned_ae,
-                    c.is_active,
-                    c.sector_id,
-                    s.sector_name,
-                    s.sector_code,
-                    (SELECT COUNT(*) FROM entity_contacts ec
-                     WHERE ec.entity_type = 'customer' AND ec.entity_id = c.customer_id AND ec.is_active = 1) as contact_count,
-                    (SELECT contact_name FROM entity_contacts ec
-                     WHERE ec.entity_type = 'customer' AND ec.entity_id = c.customer_id
-                     AND ec.is_active = 1 AND ec.is_primary = 1 LIMIT 1) as primary_contact,
-                    (SELECT COUNT(*) FROM customer_sectors cs
-                     WHERE cs.customer_id = c.customer_id) as sector_count
-                FROM customers c
-                LEFT JOIN sectors s ON c.sector_id = s.sector_id
-                {active_clause}
-                ORDER BY c.normalized_name
-            """).fetchall()
+        active_clause = "" if include_inactive else "WHERE c.is_active = 1"
+        customers = conn.execute(f"""
+            SELECT
+                c.customer_id as entity_id,
+                'customer' as entity_type,
+                c.normalized_name as entity_name,
+                c.address,
+                c.city,
+                c.state,
+                c.zip,
+                c.notes,
+                c.assigned_ae,
+                c.is_active,
+                c.sector_id,
+                s.sector_name,
+                s.sector_code
+            FROM customers c
+            LEFT JOIN sectors s ON c.sector_id = s.sector_id
+            {active_clause}
+            ORDER BY c.normalized_name
+        """).fetchall()
 
-            for c in customers:
-                row = dict(c)
-                # Skip agency clients: name contains ':' or all spots booked via agency
-                if ':' in row["entity_name"] or row["entity_id"] in agency_client_ids_from_spots:
-                    continue
-                row["markets"] = customer_markets.get(row["entity_id"], "")
-                metrics = customer_metrics.get(row["entity_id"], {})
-                row["last_active"] = metrics.get("last_active")
-                row["total_revenue"] = metrics.get("total_revenue", 0)
-                row["spot_count"] = metrics.get("spot_count", 0)
-                results.append(row)
-
-    # Apply filters
-    if search:
-        q = search.lower()
-        # Build set of entities matching via contacts (name, email, notes)
-        contact_matches = set()
-        with _db_ro() as conn:
-            contact_rows = conn.execute("""
-                SELECT DISTINCT entity_type, entity_id
-                FROM entity_contacts
-                WHERE is_active = 1 AND (
-                    LOWER(contact_name) LIKE ? OR
-                    LOWER(email) LIKE ? OR
-                    LOWER(notes) LIKE ?
-                )
-            """, [f"%{q}%", f"%{q}%", f"%{q}%"]).fetchall()
-            for cr in contact_rows:
-                contact_matches.add((cr["entity_type"], cr["entity_id"]))
-
-        # Filter: match name, notes, sector, or contact lookup
-        results = [r for r in results if (
-            q in r["entity_name"].lower() or
-            q in (r.get("notes") or "").lower() or
-            q in (r.get("sector_name") or "").lower() or
-            q in (r.get("sector_code") or "").lower() or
-            (r["entity_type"], r["entity_id"]) in contact_matches
-        )]
-
-    if has_contacts == "yes":
-        results = [r for r in results if r["contact_count"] > 0]
-    elif has_contacts == "no":
-        results = [r for r in results if r["contact_count"] == 0]
-
-    if has_address == "yes":
-        results = [r for r in results if r["address"] or r["city"]]
-    elif has_address == "no":
-        results = [r for r in results if not r["address"] and not r["city"]]
-
-    if sector_filter:
-        try:
-            sid = int(sector_filter)
-            # Match customers with this sector in ANY position (primary or secondary)
-            with _db_ro() as conn:
-                sector_customer_ids = set(
-                    r["customer_id"] for r in conn.execute(
-                        "SELECT customer_id FROM customer_sectors WHERE sector_id = ?", [sid]
-                    ).fetchall()
-                )
-            results = [r for r in results if (
-                r.get("entity_type") == "customer" and r.get("entity_id") in sector_customer_ids
-            )]
-        except ValueError:
-            pass
-
-    if market_filter:
-        # Filter to entities that have run spots in this market
-        results = [r for r in results if market_filter in (r.get("markets") or "").split(",")]
-
-    if ae_filter:
-        if ae_filter == "__none__":
-            results = [r for r in results if not r.get("assigned_ae")]
-        else:
-            results = [r for r in results if r.get("assigned_ae") == ae_filter]
-
-    # Sort
-    if sort_by == "sector":
-        # Sort by sector name (nulls last), then by name
-        results.sort(key=lambda r: (
-            r["sector_name"] is None,
-            (r["sector_name"] or "").lower(),
-            r["entity_name"].lower()
-        ))
-    elif sort_by == "type":
-        # Sort by type (agency first), then by name
-        results.sort(key=lambda r: (
-            0 if r["entity_type"] == "agency" else 1,
-            r["entity_name"].lower()
-        ))
-    elif sort_by == "market":
-        # Sort by first market (nulls last), then by name
-        results.sort(key=lambda r: (
-            not r.get("markets"),
-            (r.get("markets") or "").lower(),
-            r["entity_name"].lower()
-        ))
-    elif sort_by == "last_active":
-        # Sort by most recently active first (nulls last)
-        # Use a tuple: (has_no_date, negative_date_for_desc_sort)
-        results.sort(key=lambda r: (
-            0 if r.get("last_active") else 1,  # nulls last
-            "" if not r.get("last_active") else r.get("last_active")
-        ), reverse=True)
-        # Re-sort to put nulls at end (reverse messes this up)
-        results.sort(key=lambda r: r.get("last_active") is None)
-    elif sort_by == "revenue":
-        # Sort by highest revenue first
-        results.sort(key=lambda r: (
-            -(r.get("total_revenue") or 0),
-            r["entity_name"].lower()
-        ))
-    elif sort_by == "ae":
-        # Sort by AE name (nulls last), then by name
-        results.sort(key=lambda r: (
-            r.get("assigned_ae") is None,
-            (r.get("assigned_ae") or "").lower(),
-            r["entity_name"].lower()
-        ))
-    else:
-        # Default: sort by name
-        results.sort(key=lambda r: r["entity_name"].lower())
+        for c in customers:
+            row = dict(c)
+            if ':' in row["entity_name"] or row["entity_id"] in agency_client_ids_from_spots:
+                continue
+            cs = contact_stats.get(("customer", row["entity_id"]), {})
+            row["contact_count"] = cs.get("contact_count", 0)
+            row["primary_contact"] = cs.get("primary_contact")
+            row["sector_count"] = sector_counts.get(row["entity_id"], 0)
+            row["sector_ids"] = customer_sector_ids.get(row["entity_id"], "")
+            row["markets"] = customer_markets.get(row["entity_id"], "")
+            metrics = customer_metrics.get(row["entity_id"], {})
+            row["last_active"] = metrics.get("last_active")
+            row["total_revenue"] = metrics.get("total_revenue", 0)
+            row["spot_count"] = metrics.get("spot_count", 0)
+            results.append(row)
 
     return jsonify(results)
 
