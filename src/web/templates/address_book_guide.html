@@ -1,0 +1,708 @@
+{% extends "base.html" %}
+
+{% block title %}Address Book Guide - SpotOps{% endblock %}
+
+{% block header_title %}Address Book Guide{% endblock %}
+{% block header_subtitle %}Feature reference and workflow guide{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<a href="/address-book">Data Management</a>
+<span class="breadcrumb-separator">›</span>
+<a href="/address-book">Address Book</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Guide</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* Hide default header — we use a custom hero */
+    .header { display: none; }
+    .content-wrapper { padding: 0; }
+
+    .guide-layout {
+        display: flex;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    /* ── Sidebar TOC ── */
+    .guide-toc {
+        width: 220px;
+        flex-shrink: 0;
+        position: sticky;
+        top: 120px;
+        align-self: flex-start;
+        padding: 24px 0 24px 24px;
+        max-height: calc(100vh - 140px);
+        overflow-y: auto;
+    }
+    .guide-toc h3 {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--nord3);
+        margin: 0 0 12px 0;
+    }
+    .guide-toc a {
+        display: block;
+        padding: 5px 12px;
+        font-size: 13px;
+        color: var(--nord3);
+        text-decoration: none;
+        border-left: 2px solid transparent;
+        transition: all 0.15s;
+        line-height: 1.4;
+    }
+    .guide-toc a:hover {
+        color: var(--nord10);
+        border-left-color: var(--nord8);
+    }
+    .guide-toc a.active {
+        color: var(--nord10);
+        border-left-color: var(--nord10);
+        font-weight: 600;
+    }
+
+    /* ── Main content ── */
+    .guide-main {
+        flex: 1;
+        min-width: 0;
+        padding: 32px 40px 64px 40px;
+    }
+
+    /* Hero */
+    .guide-hero {
+        text-align: center;
+        margin-bottom: 40px;
+        padding-bottom: 32px;
+        border-bottom: 1px solid var(--nord4);
+    }
+    .guide-hero h1 {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--nord0);
+        margin: 0 0 8px 0;
+    }
+    .guide-hero p {
+        font-size: 15px;
+        color: var(--nord3);
+        margin: 0 0 16px 0;
+    }
+    .guide-hero .back-link {
+        display: inline-block;
+        padding: 8px 20px;
+        background: linear-gradient(135deg, var(--nord8), var(--nord7));
+        color: #fff;
+        text-decoration: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        transition: transform 0.15s;
+    }
+    .guide-hero .back-link:hover { transform: translateY(-1px); }
+
+    /* Section cards */
+    .guide-section {
+        background: #fff;
+        border: 1px solid var(--nord4);
+        border-radius: 10px;
+        padding: 28px 32px;
+        margin-bottom: 28px;
+        scroll-margin-top: 130px;
+    }
+    .guide-section h2 {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--nord0);
+        margin: 0 0 16px 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .guide-section h2 .section-icon {
+        font-size: 22px;
+    }
+    .guide-section h3 {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--nord1);
+        margin: 20px 0 8px 0;
+    }
+    .guide-section p, .guide-section li {
+        font-size: 14px;
+        color: var(--nord2);
+        line-height: 1.7;
+    }
+    .guide-section ul {
+        padding-left: 20px;
+        margin: 8px 0;
+    }
+    .guide-section li { margin-bottom: 4px; }
+
+    /* Inline code-style badge */
+    .g-badge {
+        display: inline-block;
+        padding: 1px 7px;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 4px;
+        background: var(--nord5);
+        color: var(--nord1);
+        font-family: SFMono-Regular, Menlo, monospace;
+    }
+
+    /* Signal examples */
+    .signal-example {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .signal-example.churned   { background: #fee2e2; color: #991b1b; }
+    .signal-example.declining { background: #ffedd5; color: #9a3412; }
+    .signal-example.gone_quiet{ background: #fef9c3; color: #854d0e; }
+    .signal-example.new_account{ background: #dcfce7; color: #166534; }
+    .signal-example.growing   { background: #dbeafe; color: #1e40af; }
+
+    /* Signal grid */
+    .signal-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin: 16px 0;
+    }
+    .signal-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+    .signal-card.churned    { background: #fef2f2; border-color: #fecaca; }
+    .signal-card.declining  { background: #fff7ed; border-color: #fed7aa; }
+    .signal-card.gone_quiet { background: #fefce8; border-color: #fde68a; }
+    .signal-card.new_account{ background: #f0fdf4; border-color: #bbf7d0; }
+    .signal-card.growing    { background: #eff6ff; border-color: #bfdbfe; }
+    .signal-card .sig-icon  { font-size: 20px; flex-shrink: 0; }
+    .signal-card .sig-body  { flex: 1; min-width: 0; }
+    .signal-card .sig-name  { font-weight: 700; font-size: 14px; color: #0f172a; }
+    .signal-card .sig-desc  { font-size: 13px; color: #475569; margin-top: 2px; line-height: 1.5; }
+    .signal-card .sig-action{ font-size: 12px; color: var(--nord10); margin-top: 6px; font-weight: 600; }
+
+    /* Tip callout */
+    .guide-tip {
+        background: #e0f2fe;
+        border-left: 4px solid var(--nord8);
+        padding: 12px 16px;
+        border-radius: 0 6px 6px 0;
+        margin: 16px 0;
+        font-size: 13px;
+        color: var(--nord1);
+        line-height: 1.6;
+    }
+    .guide-tip strong { color: var(--nord0); }
+
+    /* Key combo */
+    kbd {
+        display: inline-block;
+        padding: 2px 6px;
+        font-size: 12px;
+        font-family: SFMono-Regular, Menlo, monospace;
+        background: var(--nord5);
+        border: 1px solid var(--nord4);
+        border-radius: 4px;
+        box-shadow: 0 1px 0 var(--nord4);
+        color: var(--nord1);
+    }
+
+    /* Feature list (for detail modal walkthrough) */
+    .feature-list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin: 12px 0;
+    }
+    .feature-item {
+        padding: 10px 14px;
+        background: var(--nord6);
+        border-radius: 6px;
+        font-size: 13px;
+        color: var(--nord1);
+        line-height: 1.5;
+    }
+    .feature-item strong { display: block; font-size: 13px; color: var(--nord0); margin-bottom: 2px; }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+        .guide-toc { display: none; }
+        .guide-main { padding: 24px 24px 48px 24px; }
+
+        /* Mobile TOC — horizontal */
+        .guide-toc-mobile {
+            display: flex;
+            gap: 0;
+            overflow-x: auto;
+            padding: 12px 24px;
+            border-bottom: 1px solid var(--nord4);
+            background: #fff;
+            position: sticky;
+            top: 64px;
+            z-index: 50;
+            -webkit-overflow-scrolling: touch;
+        }
+        .guide-toc-mobile a {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--nord3);
+            text-decoration: none;
+            border-radius: 16px;
+            white-space: nowrap;
+            transition: all 0.15s;
+        }
+        .guide-toc-mobile a:hover,
+        .guide-toc-mobile a.active {
+            background: var(--nord5);
+            color: var(--nord10);
+        }
+    }
+    @media (min-width: 1025px) {
+        .guide-toc-mobile { display: none; }
+    }
+    @media (max-width: 640px) {
+        .guide-section { padding: 20px 18px; }
+        .feature-list { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Mobile TOC -->
+<nav class="guide-toc-mobile" id="toc-mobile">
+    <a href="#overview">Overview</a>
+    <a href="#stats">Stats</a>
+    <a href="#filters">Filters</a>
+    <a href="#sorting">Sorting</a>
+    <a href="#views">Views</a>
+    <a href="#signals">Signals</a>
+    <a href="#saved-filters">Saved Filters</a>
+    <a href="#detail-modal">Detail Modal</a>
+    <a href="#creating">Creating</a>
+    <a href="#csv">CSV</a>
+    <a href="#tips">Tips</a>
+</nav>
+
+<div class="guide-layout">
+    <!-- Desktop TOC sidebar -->
+    <nav class="guide-toc" id="toc-desktop">
+        <h3>On This Page</h3>
+        <a href="#overview">Overview</a>
+        <a href="#stats">Stats Row</a>
+        <a href="#filters">Search &amp; Filters</a>
+        <a href="#sorting">Sort Options</a>
+        <a href="#views">Views</a>
+        <a href="#signals">Health Signals</a>
+        <a href="#saved-filters">Saved Filters</a>
+        <a href="#detail-modal">Detail Modal</a>
+        <a href="#creating">Creating Entities</a>
+        <a href="#csv">CSV Export &amp; Import</a>
+        <a href="#tips">Tips &amp; Shortcuts</a>
+    </nav>
+
+    <main class="guide-main">
+        <!-- Hero -->
+        <div class="guide-hero">
+            <h1>Address Book Guide</h1>
+            <p>Everything you need to know about the unified directory of agencies and advertisers.</p>
+            <a href="/address-book" class="back-link">Open Address Book</a>
+        </div>
+
+        <!-- ════════ 1. Overview ════════ -->
+        <section id="overview" class="guide-section">
+            <h2><span class="section-icon">📖</span> Overview</h2>
+            <p>
+                The Address Book is a unified directory for every <strong>agency</strong> and <strong>advertiser (customer)</strong>
+                in SpotOps. It combines contact info, addresses, revenue metrics, AE assignments, and CRM health
+                signals into a single searchable interface.
+            </p>
+            <h3>Where does the data come from?</h3>
+            <p>
+                Entities are populated automatically from spots imports. When a new advertiser or agency name appears
+                in the billing data, it goes through entity resolution and gets added to the directory. You don't
+                need to create entries manually for most accounts — they appear here once they have booked spots.
+            </p>
+            <h3>Agencies vs. Advertisers</h3>
+            <ul>
+                <li><strong>Agencies</strong> — The ad buyers / media buyers placing orders. They don't have sector assignments.</li>
+                <li><strong>Advertisers</strong> — The end clients whose products are advertised. They have sector assignments (e.g., Healthcare, Financial).</li>
+            </ul>
+        </section>
+
+        <!-- ════════ 2. Stats Row ════════ -->
+        <section id="stats" class="guide-section">
+            <h2><span class="section-icon">📊</span> Stats Row</h2>
+            <p>At the top of the Address Book, three counters summarize your directory:</p>
+            <ul>
+                <li><strong>Agencies</strong> — Total active agency records</li>
+                <li><strong>Advertisers</strong> — Total active advertiser records</li>
+                <li><strong>Needs Attention</strong> — Entities with at least one health signal (churned, declining, or gone quiet)</li>
+            </ul>
+            <div class="guide-tip">
+                <strong>Tip:</strong> Click the "Needs Attention" stat card to instantly filter the list to only entities with warning signals.
+            </div>
+        </section>
+
+        <!-- ════════ 3. Search & Filters ════════ -->
+        <section id="filters" class="guide-section">
+            <h2><span class="section-icon">🔍</span> Search &amp; Filters</h2>
+            <p>The filter bar lets you drill down to exactly the entities you need. All filters combine with <strong>AND</strong> logic — each one narrows the results further.</p>
+
+            <h3>Text Search</h3>
+            <p>Type in the search box to find entities by name, contact names, or notes. Press <kbd>/</kbd> to focus the search box from anywhere on the page.</p>
+
+            <h3>Type Filter</h3>
+            <p>Switch between <span class="g-badge">All Types</span>, <span class="g-badge">Agencies Only</span>, or <span class="g-badge">Advertisers Only</span>.</p>
+
+            <h3>Market Filter</h3>
+            <p>Filter to entities that have booked spots in a specific market.</p>
+
+            <h3>Sector Filter</h3>
+            <p>Filter advertisers by their assigned sector (Commercial, Financial, Healthcare, etc.). Agencies don't have sectors, so they're hidden when a sector is selected.</p>
+
+            <h3>AE Filter</h3>
+            <p>Filter by assigned Account Executive. Select <span class="g-badge">Unassigned</span> to find entities that need an AE assignment.</p>
+
+            <h3>Contacts Filter</h3>
+            <p>Find entities with <span class="g-badge">Has Contacts</span> or <span class="g-badge">Missing Contacts</span> to identify records that need contact information added.</p>
+
+            <h3>Signal Filter</h3>
+            <p>Filter by CRM health signal: <span class="g-badge">Needs Attention</span> (any warning), individual signal types, or <span class="g-badge">No Signals</span> for clean accounts.</p>
+
+            <h3>Show Deactivated</h3>
+            <p>Check this toggle to include deactivated entities in results. By default, only active entities are shown.</p>
+
+            <div class="guide-tip">
+                <strong>Filter count:</strong> The result count at the bottom of the filter bar updates instantly as you change filters, showing how many entities match.
+            </div>
+        </section>
+
+        <!-- ════════ 4. Sort Options ════════ -->
+        <section id="sorting" class="guide-section">
+            <h2><span class="section-icon">↕️</span> Sort Options</h2>
+            <p>Use the sort dropdown to change the order of results:</p>
+            <ul>
+                <li><strong>Name</strong> — Alphabetical (A–Z)</li>
+                <li><strong>Last Active</strong> — Most recently active first</li>
+                <li><strong>Revenue</strong> — Highest revenue first</li>
+                <li><strong>Market</strong> — Grouped by market</li>
+                <li><strong>Sector</strong> — Grouped by sector</li>
+                <li><strong>Type</strong> — Agencies first, then advertisers</li>
+                <li><strong>AE</strong> — Grouped by account executive</li>
+                <li><strong>Health Signal</strong> — Most urgent signals first (churned → declining → gone quiet → new → growing)</li>
+            </ul>
+            <div class="guide-tip">
+                <strong>Tip:</strong> Combine the "Health Signal" sort with the "Needs Attention" signal filter to prioritize your outreach — the most urgent accounts appear first.
+            </div>
+        </section>
+
+        <!-- ════════ 5. Views ════════ -->
+        <section id="views" class="guide-section">
+            <h2><span class="section-icon">👁️</span> Views</h2>
+
+            <h3>Card View</h3>
+            <p>The default view. Each entity gets a card showing:</p>
+            <ul>
+                <li>Entity name and type badge (Agency / Advertiser)</li>
+                <li>Health signal badge (if any)</li>
+                <li>Revenue, spot count, last active date</li>
+                <li>Primary contact name and email</li>
+                <li>Assigned AE</li>
+                <li>Sector (advertisers only)</li>
+            </ul>
+            <p>Click any card to open the entity detail modal.</p>
+
+            <h3>Table View</h3>
+            <p>A compact spreadsheet-style layout showing one entity per row. Columns include name, type, market, revenue, last active, contacts, and signals. Click any row to open the detail modal.</p>
+
+            <h3>Bulk View</h3>
+            <p>Similar to table view but adds checkboxes for selecting multiple entities. Use this for bulk operations like exporting a subset or performing bulk updates.</p>
+        </section>
+
+        <!-- ════════ 6. Health Signals ════════ -->
+        <section id="signals" class="guide-section">
+            <h2><span class="section-icon">🚦</span> Health Signals</h2>
+            <p>
+                Health signals are <strong>objective, exception-based</strong> indicators computed automatically from spots data.
+                They highlight accounts that may need attention — not based on gut feel, but on booking patterns and revenue trends.
+            </p>
+
+            <div class="signal-grid">
+                <div class="signal-card churned">
+                    <span class="sig-icon">🔴</span>
+                    <div class="sig-body">
+                        <div class="sig-name">Churned</div>
+                        <div class="sig-desc">
+                            Was spending $10K+ in the prior year but has dropped to $0 with no future spots booked.
+                            This is the most urgent signal — the account has fully stopped.
+                        </div>
+                        <div class="sig-action">Action: Reach out to understand why they stopped and attempt to re-engage.</div>
+                    </div>
+                </div>
+
+                <div class="signal-card declining">
+                    <span class="sig-icon">🟠</span>
+                    <div class="sig-body">
+                        <div class="sig-name">Declining</div>
+                        <div class="sig-desc">
+                            Revenue is down 30%+ compared to the prior year period, and future bookings don't close the gap.
+                            The account is still active but shrinking.
+                        </div>
+                        <div class="sig-action">Action: Review what changed — lost dayparts, reduced frequency, or budget cuts.</div>
+                    </div>
+                </div>
+
+                <div class="signal-card gone_quiet">
+                    <span class="sig-icon">🟡</span>
+                    <div class="sig-body">
+                        <div class="sig-name">Gone Quiet</div>
+                        <div class="sig-desc">
+                            The account broke its normal booking pattern. A monthly booker that hasn't placed
+                            in 90+ days, or a seasonal booker that missed their cycle. No future spots booked.
+                        </div>
+                        <div class="sig-action">Action: Check in — they may have moved to a competitor or be planning to return.</div>
+                    </div>
+                </div>
+
+                <div class="signal-card new_account">
+                    <span class="sig-icon">🟢</span>
+                    <div class="sig-body">
+                        <div class="sig-name">New Account</div>
+                        <div class="sig-desc">
+                            First appeared within the last 12 months. New relationships need nurturing
+                            to develop into long-term business.
+                        </div>
+                        <div class="sig-action">Action: Ensure great service, build the relationship, and understand their goals.</div>
+                    </div>
+                </div>
+
+                <div class="signal-card growing">
+                    <span class="sig-icon">🔵</span>
+                    <div class="sig-body">
+                        <div class="sig-name">Growing</div>
+                        <div class="sig-desc">
+                            Revenue is up 30%+ over the prior year. This is a positive signal — the account
+                            is investing more.
+                        </div>
+                        <div class="sig-action">Action: Acknowledge growth, explore upsell opportunities, protect the relationship.</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>How signals are computed</h3>
+            <p>
+                Signals are recalculated each time spots data is imported — they are <strong>not</strong> real-time.
+                The system compares trailing 12-month revenue against the prior 12 months, checks booking cadence,
+                and evaluates future bookings. Only the highest-priority signal shows on entity cards
+                (churned > declining > gone quiet > new account > growing).
+            </p>
+            <p>
+                To see all signals for an entity, open the detail modal — the signals section there shows every
+                active signal with its specific metrics.
+            </p>
+        </section>
+
+        <!-- ════════ 7. Saved Filters ════════ -->
+        <section id="saved-filters" class="guide-section">
+            <h2><span class="section-icon">💾</span> Saved Filters</h2>
+            <p>Save frequently-used filter combinations so you can switch between views with one click.</p>
+
+            <h3>Saving a filter</h3>
+            <ol>
+                <li>Set your desired filters, sort, and view mode</li>
+                <li>Click the <span class="g-badge">Save</span> button</li>
+                <li>Enter a name (e.g., "My churned advertisers" or "Unassigned agencies")</li>
+            </ol>
+
+            <h3>Loading a saved filter</h3>
+            <p>Select from the <span class="g-badge">Saved Filters...</span> dropdown. All filter values, sort order, and view mode are restored.</p>
+
+            <h3>Deleting a saved filter</h3>
+            <p>Load the filter, then click the delete option that appears. Saved filters are stored in your browser's local storage — they're specific to your device.</p>
+        </section>
+
+        <!-- ════════ 8. Detail Modal ════════ -->
+        <section id="detail-modal" class="guide-section">
+            <h2><span class="section-icon">📋</span> Entity Detail Modal</h2>
+            <p>Click any card or table row to open the full detail modal. It contains everything known about the entity, organized into sections:</p>
+
+            <div class="feature-list">
+                <div class="feature-item">
+                    <strong>Header</strong>
+                    Entity name, type badge, active/inactive status, and quick action buttons.
+                </div>
+                <div class="feature-item">
+                    <strong>Health Signals</strong>
+                    All active signals with specific metrics (e.g., "$145K → $82K (-43%)").
+                </div>
+                <div class="feature-item">
+                    <strong>Sector &amp; Agency</strong>
+                    Primary sector assignment (advertisers) and associated agency relationships.
+                </div>
+                <div class="feature-item">
+                    <strong>AE Assignment</strong>
+                    Current account executive with assignment history. Editable inline.
+                </div>
+                <div class="feature-item">
+                    <strong>Contacts</strong>
+                    Phone, email, and other contacts. Add, edit, or remove contacts inline.
+                </div>
+                <div class="feature-item">
+                    <strong>Addresses</strong>
+                    Physical addresses. Add, edit, or remove addresses inline.
+                </div>
+                <div class="feature-item">
+                    <strong>Activity Log</strong>
+                    Notes and activity history. Add new entries with timestamps.
+                </div>
+                <div class="feature-item">
+                    <strong>Follow-Up Reminders</strong>
+                    Set due dates for follow-ups. Mark complete when done.
+                </div>
+                <div class="feature-item">
+                    <strong>Revenue Chart</strong>
+                    Monthly revenue trend over time with interactive Chart.js visualization.
+                </div>
+                <div class="feature-item">
+                    <strong>Spot History</strong>
+                    Recent spots with air dates, lengths, and rates.
+                </div>
+                <div class="feature-item">
+                    <strong>PO &amp; Billing</strong>
+                    PO number and EDI billing info, editable inline.
+                </div>
+                <div class="feature-item">
+                    <strong>Notes</strong>
+                    Free-text notes field for anything that doesn't fit elsewhere.
+                </div>
+            </div>
+
+            <div class="guide-tip">
+                <strong>Inline editing:</strong> Most fields in the detail modal can be edited directly — look for pencil icons or click on field values. Changes save automatically via the API.
+            </div>
+        </section>
+
+        <!-- ════════ 9. Creating Entities ════════ -->
+        <section id="creating" class="guide-section">
+            <h2><span class="section-icon">➕</span> Creating Entities</h2>
+            <p>
+                Most entities are created automatically through spots imports. But you can manually create records
+                when needed — for example, a prospective client you're pitching who hasn't booked yet.
+            </p>
+            <p>Click <span class="g-badge">+ Add New</span> in the filter bar and choose:</p>
+            <ul>
+                <li><strong>Create Agency</strong> — Requires: agency name. Optional: address, contacts, notes.</li>
+                <li><strong>Create Advertiser</strong> — Requires: advertiser name. Optional: sector, address, contacts, notes.</li>
+            </ul>
+            <div class="guide-tip">
+                <strong>Note:</strong> Manually created entities won't have revenue metrics or spot history until they appear in the billing data through spots imports.
+            </div>
+        </section>
+
+        <!-- ════════ 10. CSV Export & Import ════════ -->
+        <section id="csv" class="guide-section">
+            <h2><span class="section-icon">📁</span> CSV Export &amp; Import</h2>
+
+            <h3>Export</h3>
+            <p>
+                Click <span class="g-badge">Export</span> to download a CSV of the currently filtered entities.
+                The export includes: name, type, status, sector, AE, contacts, addresses, revenue, and spot count.
+                Apply filters first to export just the subset you need, or export with no filters for the full directory.
+            </p>
+
+            <h3>Import</h3>
+            <p>
+                Click <span class="g-badge">Import</span> to upload a CSV to update contact information in bulk.
+                The CSV should include an entity name column for matching, plus the fields you want to update.
+                The import matches by name and updates existing records — it does not create new entities.
+            </p>
+            <div class="guide-tip">
+                <strong>Tip:</strong> Export first, make changes in your spreadsheet, then import the updated CSV. This ensures the column format matches what the system expects.
+            </div>
+        </section>
+
+        <!-- ════════ 11. Tips & Shortcuts ════════ -->
+        <section id="tips" class="guide-section">
+            <h2><span class="section-icon">⌨️</span> Tips &amp; Shortcuts</h2>
+
+            <h3>Keyboard shortcuts</h3>
+            <ul>
+                <li><kbd>/</kbd> — Focus the search box</li>
+                <li><kbd>Escape</kbd> — Clear search / close modal</li>
+            </ul>
+
+            <h3>Common workflows</h3>
+            <ul>
+                <li><strong>Find accounts missing contacts:</strong> Set Contacts filter to <span class="g-badge">Missing Contacts</span>, sort by Revenue (highest-value accounts first)</li>
+                <li><strong>Review churned accounts:</strong> Set Signal filter to <span class="g-badge">Churned</span>, sort by Revenue to prioritize outreach</li>
+                <li><strong>Check your AE portfolio:</strong> Select your name in the AE filter, sort by Health Signal to see which of your accounts need attention</li>
+                <li><strong>Find unassigned high-value accounts:</strong> Set AE to <span class="g-badge">Unassigned</span>, sort by Revenue</li>
+                <li><strong>Explore new business:</strong> Set Signal filter to <span class="g-badge">New Account</span> to see all first-year accounts</li>
+                <li><strong>Quick status check:</strong> Set Signal to <span class="g-badge">Needs Attention</span> and sort by Health Signal — churned accounts appear first, then declining, then gone quiet</li>
+            </ul>
+
+            <div class="guide-tip">
+                <strong>Tip:</strong> Save your most-used workflows with the Saved Filters feature so you can switch between them instantly.
+            </div>
+        </section>
+
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // Scroll-spy: highlight active TOC link
+    const sections = document.querySelectorAll('.guide-section');
+    const tocLinks = document.querySelectorAll('.guide-toc a, .guide-toc-mobile a');
+
+    function updateActiveLink() {
+        let current = '';
+        const scrollY = window.scrollY + 160;
+
+        sections.forEach(function(section) {
+            if (section.offsetTop <= scrollY) {
+                current = section.id;
+            }
+        });
+
+        tocLinks.forEach(function(link) {
+            link.classList.toggle('active', link.getAttribute('href') === '#' + current);
+        });
+    }
+
+    window.addEventListener('scroll', updateActiveLink, { passive: true });
+    updateActiveLink();
+
+    // Smooth-scroll TOC links
+    tocLinks.forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                history.replaceState(null, '', this.getAttribute('href'));
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

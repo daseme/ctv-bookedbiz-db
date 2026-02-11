@@ -315,6 +315,8 @@
   .create-modal .affidavit-toggle label{font-size:13px;color:#475569;cursor:pointer}
   .filter-bar button#add-new{background:#059669;color:#fff;border-color:#047857}
   .filter-bar button#add-new:hover{background:#047857}
+  .filter-bar .guide-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;border:1px solid #cbd5e1;background:#fff;color:#64748b;font-size:15px;font-weight:700;text-decoration:none;transition:all 0.15s;flex-shrink:0}
+  .filter-bar .guide-btn:hover{background:#e0f2fe;color:#0284c7;border-color:#0284c7}
 
   /* Signal Badges */
   .signal-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap}
@@ -402,6 +404,7 @@
   <input type="file" id="import-file" accept=".csv" style="display:none">
   <button id="add-new" title="Add New Agency or Advertiser">+ Add New</button>
   <button id="refresh">Refresh</button>
+  <a href="/address-book/guide" target="_blank" class="guide-btn" title="Address Book Guide">?</a>
   <div class="view-toggle">
     <button id="view-cards" class="active" title="Card View">Cards</button>
     <button id="view-table" title="Table View">Table</button>
