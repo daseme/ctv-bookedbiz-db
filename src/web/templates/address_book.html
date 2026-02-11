@@ -648,8 +648,8 @@
 
       <!-- Activity Log -->
       <div class="detail-section">
-        <h3><span class="icon">📋</span> Activity Log</h3>
-        <button class="add-contact-btn" id="show-add-activity">+ Add Note or Activity</button>
+        <h3><span class="icon">📋</span> Activity Log <button class="info-btn" onclick="document.getElementById('activity-info-modal').classList.add('active')" title="About activity types">?</button></h3>
+        <button class="add-contact-btn" id="show-add-activity">+ Add Note, Activity, or Follow-up Reminder</button>
         <div class="add-activity-form" id="add-activity-form">
           <select id="new-activity-type">
             <option value="note">Note</option>
@@ -837,6 +837,45 @@
       <div class="info-section">
         <h4>Best Practices</h4>
         <p>The primary sector should be stable within a budget period. Changing it mid-quarter moves booked revenue between sector buckets in variance reports. Add/remove tags freely anytime.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="activity-info-modal">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>Activity Types</h3>
+      <button class="modal-close" onclick="document.getElementById('activity-info-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>📝 Note</h4>
+        <p>General-purpose log entry. Use for internal observations, account history, or anything that doesn't fit the other types.</p>
+      </div>
+      <div class="info-section">
+        <h4>📞 Call</h4>
+        <p>Record a phone conversation &mdash; what was discussed, next steps, or a quick summary for the team.</p>
+      </div>
+      <div class="info-section">
+        <h4>📧 Email</h4>
+        <p>Log an email exchange. Useful for tracking outreach, proposals sent, or important correspondence.</p>
+      </div>
+      <div class="info-section">
+        <h4>🤝 Meeting</h4>
+        <p>Document an in-person or virtual meeting &mdash; attendees, decisions made, and action items.</p>
+      </div>
+      <div class="info-section" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px">
+        <h4>⏰ Follow-up Reminder</h4>
+        <p>Schedule a date-based reminder that shows urgency badges and appears in the dashboard widget. When you select "Follow-up" from the activity type dropdown, a date picker appears. Urgency is color-coded automatically:</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <span class="follow-up-date overdue">Overdue</span>
+          <span class="follow-up-date due-today">Due Today</span>
+          <span class="follow-up-date due-soon">Due Soon (1-3 days)</span>
+          <span class="follow-up-date upcoming">Upcoming</span>
+          <span class="follow-up-date completed">Completed</span>
+        </div>
+        <p style="margin-top:10px">Mark a follow-up complete by clicking its checkbox in the activity timeline. Completed items show a strikethrough badge.</p>
       </div>
     </div>
   </div>
@@ -2228,6 +2267,11 @@
 
   // Sector info modal — close on overlay click
   document.getElementById('sector-info-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+  });
+
+  // Activity info modal — close on overlay click
+  document.getElementById('activity-info-modal').addEventListener('click', function(e) {
     if (e.target === this) this.classList.remove('active');
   });
 
