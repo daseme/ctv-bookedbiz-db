@@ -13,9 +13,40 @@ from contextlib import contextmanager
 
 address_book_bp = Blueprint("address_book", __name__)
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _get_db_path():
     return current_app.config.get("DB_PATH") or "./.data/dev.db"
+
+
+def refresh_entity_metrics(conn):
+    """Rebuild entity_metrics from spots data. Callable from import service."""
+    conn.execute("DELETE FROM entity_metrics")
+    conn.execute("""
+        INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count)
+        SELECT
+            'agency', agency_id,
+            GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END),
+            MAX(air_date),
+            SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END),
+            COUNT(*)
+        FROM spots WHERE agency_id IS NOT NULL
+        GROUP BY agency_id
+    """)
+    conn.execute("""
+        INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count, agency_spot_count)
+        SELECT
+            'customer', customer_id,
+            GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END),
+            MAX(air_date),
+            SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END),
+            COUNT(*),
+            COUNT(agency_id)
+        FROM spots WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+    """)
 
 
 @contextmanager
@@ -110,53 +141,40 @@ def api_address_book():
             sector_counts[row["customer_id"]] = row["cnt"]
             customer_sector_ids[row["customer_id"]] = row["sids"] or ""
 
-        # Combined agency query: markets + metrics in one scan
+        # Read pre-computed metrics from entity_metrics cache
+        metrics_count = conn.execute("SELECT COUNT(*) FROM entity_metrics").fetchone()[0]
+        if metrics_count == 0:
+            # Safety net: auto-refresh if table exists but is empty (first load after migration)
+            # Need a RW connection since the main conn is readonly
+            logger.info("entity_metrics empty — refreshing inline")
+            with _db_rw() as rw_conn:
+                refresh_entity_metrics(rw_conn)
+                rw_conn.commit()
+
         agency_markets = {}
         agency_metrics = {}
-        rows = conn.execute("""
-            SELECT agency_id,
-                GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END) as markets,
-                MAX(air_date) as last_active,
-                SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
-                    THEN gross_rate ELSE 0 END) as total_revenue,
-                COUNT(*) as spot_count
-            FROM spots
-            WHERE agency_id IS NOT NULL
-            GROUP BY agency_id
-        """).fetchall()
-        for row in rows:
-            agency_markets[row["agency_id"]] = row["markets"] or ""
-            agency_metrics[row["agency_id"]] = {
-                "last_active": row["last_active"],
-                "total_revenue": float(row["total_revenue"] or 0),
-                "spot_count": row["spot_count"]
-            }
-
-        # Combined customer query: markets + metrics + agency-client detection in one scan
         customer_markets = {}
         customer_metrics = {}
         agency_client_ids_from_spots = set()
-        rows = conn.execute("""
-            SELECT customer_id,
-                GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END) as markets,
-                MAX(air_date) as last_active,
-                SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
-                    THEN gross_rate ELSE 0 END) as total_revenue,
-                COUNT(*) as spot_count,
-                COUNT(agency_id) as agency_spot_count
-            FROM spots
-            WHERE customer_id IS NOT NULL
-            GROUP BY customer_id
-        """).fetchall()
-        for row in rows:
-            customer_markets[row["customer_id"]] = row["markets"] or ""
-            customer_metrics[row["customer_id"]] = {
-                "last_active": row["last_active"],
-                "total_revenue": float(row["total_revenue"] or 0),
-                "spot_count": row["spot_count"]
-            }
-            if row["agency_spot_count"] == row["spot_count"]:
-                agency_client_ids_from_spots.add(row["customer_id"])
+
+        for row in conn.execute("SELECT * FROM entity_metrics").fetchall():
+            eid = row["entity_id"]
+            if row["entity_type"] == "agency":
+                agency_markets[eid] = row["markets"] or ""
+                agency_metrics[eid] = {
+                    "last_active": row["last_active"],
+                    "total_revenue": float(row["total_revenue"] or 0),
+                    "spot_count": row["spot_count"]
+                }
+            else:
+                customer_markets[eid] = row["markets"] or ""
+                customer_metrics[eid] = {
+                    "last_active": row["last_active"],
+                    "total_revenue": float(row["total_revenue"] or 0),
+                    "spot_count": row["spot_count"]
+                }
+                if row["agency_spot_count"] == row["spot_count"]:
+                    agency_client_ids_from_spots.add(eid)
 
         # Get agencies (no sector for agencies)
         active_clause = "" if include_inactive else "WHERE a.is_active = 1"
