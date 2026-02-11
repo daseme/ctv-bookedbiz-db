@@ -365,15 +365,20 @@ class SectorExpectationRepository(BaseService):
         with self.safe_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT s.sector_id, s.sector_code, s.sector_name
+                SELECT s.sector_id, s.sector_code, s.sector_name,
+                       COALESCE(s.sector_group, 'Other') as sector_group
                 FROM sectors s
                 WHERE s.is_active = 1
                 AND s.sector_id NOT IN (
-                    SELECT DISTINCT sector_id 
-                    FROM sector_expectations 
+                    SELECT DISTINCT sector_id
+                    FROM sector_expectations
                     WHERE ae_name = ? AND year = ?
                 )
-                ORDER BY s.sector_name
+                ORDER BY CASE s.sector_group
+                    WHEN 'Commercial' THEN 1 WHEN 'Financial' THEN 2
+                    WHEN 'Healthcare' THEN 3 WHEN 'Outreach' THEN 4
+                    WHEN 'Political' THEN 5 WHEN 'Other' THEN 6 ELSE 7
+                END, s.sector_name
             """,
                 (ae_name, year),
             )

@@ -208,19 +208,41 @@ class CustomerSectorUI {
     }
 
     /**
-     * Generate sector options HTML for select elements
+     * Generate sector options HTML with optgroup grouping
      * @param {string|null} currentSector - Currently selected sector
      * @returns {string} HTML options string
      */
     generateSectorOptions(currentSector) {
         let options = '<option value="">Unassigned</option>';
-        
-        this.state.sectors.forEach(sector => {
-            const selected = sector.name === currentSector ? 'selected' : '';
-            options += `<option value="${sector.name}" ${selected}>${sector.name}</option>`;
-        });
-        
+        options += this._buildOptgroups(this.state.sectors, currentSector);
         return options;
+    }
+
+    /**
+     * Build optgroup HTML from sectors array
+     * @param {Array} sectors - Array of sector objects with sector_group
+     * @param {string|null} selectedName - Currently selected sector name
+     * @returns {string} HTML string with optgroups
+     */
+    _buildOptgroups(sectors, selectedName) {
+        const groupOrder = ['Commercial','Financial','Healthcare','Outreach','Political','Other'];
+        const groups = {};
+        sectors.forEach(s => {
+            const g = s.sector_group || 'Other';
+            if (!groups[g]) groups[g] = [];
+            groups[g].push(s);
+        });
+        let html = '';
+        groupOrder.forEach(g => {
+            if (!groups[g] || groups[g].length === 0) return;
+            html += `<optgroup label="${g}">`;
+            groups[g].forEach(s => {
+                const sel = s.name === selectedName ? ' selected' : '';
+                html += `<option value="${s.name}"${sel}>${s.name}</option>`;
+            });
+            html += '</optgroup>';
+        });
+        return html;
     }
 
     /**
@@ -317,24 +339,35 @@ class CustomerSectorUI {
     // ============================================================================
 
 /**
- * Populate sector-specific filter dropdown with customer counts
+ * Populate sector-specific filter dropdown with customer counts and optgroups
  */
 populateSectorSpecificFilter() {
     if (!this.elements.sectorSpecificFilter) return;
-   
-    let options = '<option value="">All Sectors</option>';
-    
-    // Get sectors with customer counts
+
     const sectorCounts = this.getSectorCounts();
-    
-    // Sort sectors alphabetically
-    const sortedSectors = Object.keys(sectorCounts).sort();
-    
-    sortedSectors.forEach(sectorName => {
-        const count = sectorCounts[sectorName];
-        options += `<option value="${sectorName}">${sectorName} (${count})</option>`;
+    // Build virtual sector list with counts, grouped via state.sectors
+    const groupOrder = ['Commercial','Financial','Healthcare','Outreach','Political','Other'];
+    const sectorGroupMap = {};
+    this.state.sectors.forEach(s => { sectorGroupMap[s.name] = s.sector_group || 'Other'; });
+
+    const groups = {};
+    Object.keys(sectorCounts).forEach(name => {
+        const g = sectorGroupMap[name] || 'Other';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push({ name, count: sectorCounts[name] });
     });
-   
+
+    let options = '<option value="">All Sectors</option>';
+    groupOrder.forEach(g => {
+        if (!groups[g] || groups[g].length === 0) return;
+        groups[g].sort((a, b) => a.name.localeCompare(b.name));
+        options += `<optgroup label="${g}">`;
+        groups[g].forEach(s => {
+            options += `<option value="${s.name}">${s.name} (${s.count})</option>`;
+        });
+        options += '</optgroup>';
+    });
+
     this.elements.sectorSpecificFilter.innerHTML = options;
 }
 
@@ -359,13 +392,10 @@ getSectorCounts() {
      */
     populateBulkSectorSelect() {
         if (!this.elements.bulkSectorSelect) return;
-        
+
         let options = '<option value="">Assign selected to...</option>';
-        
-        this.state.sectors.forEach(sector => {
-            options += `<option value="${sector.name}">${sector.name}</option>`;
-        });
-        
+        options += this._buildOptgroups(this.state.sectors, null);
+
         this.elements.bulkSectorSelect.innerHTML = options;
     }
 

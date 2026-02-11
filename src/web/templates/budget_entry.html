@@ -1048,14 +1048,25 @@ async function loadAvailableSectors(aeSafe) {
         if (result.success) {
             const select = document.getElementById(`add-sector-${aeSafe}`);
             if (select) {
-                // Clear existing options except first
                 select.innerHTML = '<option value="">+ Add Sector...</option>';
-                
-                result.data.sectors.forEach(sector => {
-                    const option = document.createElement('option');
-                    option.value = sector.sector_id;
-                    option.textContent = `${sector.sector_code} - ${sector.sector_name}`;
-                    select.appendChild(option);
+                const groupOrder = ['Commercial','Financial','Healthcare','Outreach','Political','Other'];
+                const groups = {};
+                result.data.sectors.forEach(s => {
+                    const g = s.sector_group || 'Other';
+                    if (!groups[g]) groups[g] = [];
+                    groups[g].push(s);
+                });
+                groupOrder.forEach(g => {
+                    if (!groups[g] || groups[g].length === 0) return;
+                    const og = document.createElement('optgroup');
+                    og.label = g;
+                    groups[g].forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s.sector_id;
+                        opt.textContent = `${s.sector_code} - ${s.sector_name}`;
+                        og.appendChild(opt);
+                    });
+                    select.appendChild(og);
                 });
             }
         }
