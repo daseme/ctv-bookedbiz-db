@@ -699,9 +699,12 @@ class BroadcastMonthImportService(BaseService):
                 self._complete_import_batch(context.batch_id, result, conn)
 
                 # Refresh materialized entity metrics for address book
-                from src.web.routes.address_book import refresh_entity_metrics
+                from src.web.routes.address_book import refresh_entity_metrics, refresh_entity_signals
                 refresh_entity_metrics(conn)
                 tqdm.write("✅ Entity metrics cache refreshed")
+
+                refresh_entity_signals(conn)
+                tqdm.write("✅ Entity signals cache refreshed")
 
                 result.success = True
                 tqdm.write("✅ Import completed successfully")

@@ -1,3 +1,56 @@
+# CRM Account Health Signals - COMPLETED ✅
+
+Implemented 2026-02-11. Single commit on dev branch.
+
+## Problem
+Address book shows raw metrics but no synthesized view of account health. Users can't quickly identify which accounts need attention.
+
+## Solution
+5 specific, transparent signals computed from spots data — each self-explanatory with clear implied action. Materialized at import time (same pattern as `entity_metrics`).
+
+## Migration (014_entity_signals.sql)
+- ✅ `entity_signals` table with PRIMARY KEY (entity_type, entity_id, signal_type)
+- ✅ Columns: signal_label, signal_priority, trailing_revenue, prior_revenue, computed_at
+- ✅ Signal count: 128 total (44 churned, 17 declining, 9 gone quiet, 28 new, 30 growing)
+
+## Signal Definitions
+- ✅ **Churned** (priority 1): Prior 12mo ≥$10K, trailing+future = $0
+- ✅ **Declining** (priority 2): Prior ≥$10K, trailing < prior×0.70, suppress if future covers 50% gap
+- ✅ **Gone Quiet** (priority 3): Lifetime ≥$10K, tier-based thresholds (90/120/240 days), no future spots
+- ✅ **New Account** (priority 4): First spot within 12mo, lifetime ≥$5K
+- ✅ **Growing** (priority 5): Trailing ≥$10K, prior >0, trailing > prior×1.30
+
+## Route Changes (address_book.py)
+- ✅ `refresh_entity_signals(conn)` — DELETE + batch INSERT, one query per entity type
+- ✅ `_fmt_revenue()` helper: $1.2M / $145K / $800
+- ✅ List endpoint loads signals into lookup dict, merges into each entity
+- ✅ Detail endpoint queries signals for specific entity
+- ✅ Safety net: auto-refresh if entity_signals is empty
+
+## Import Hook (broadcast_month_import_service.py)
+- ✅ Calls `refresh_entity_signals(conn)` after `refresh_entity_metrics()`
+
+## Template Changes (address_book.html)
+- ✅ Signal badge CSS (5 color-coded types: red/amber/yellow/green/blue)
+- ✅ Signal filter dropdown (All/Needs Attention/per-type/No Signals)
+- ✅ Card badge (highest-priority signal shown in header-badges)
+- ✅ Table column (Signal column between AE and Primary Contact)
+- ✅ Stats row: "Needs Attention" count replaces "Missing Contacts"
+- ✅ Detail modal: Signals section with icons and full labels
+- ✅ Sort by Health Signal option
+- ✅ Saved filter support for signal filter
+
+### Files Changed
+- `sql/migrations/014_entity_signals.sql` (new)
+- `src/web/routes/address_book.py` (refresh function + API changes)
+- `src/services/broadcast_month_import_service.py` (import hook)
+- `src/web/templates/address_book.html` (CSS + HTML + JS)
+
+### Migration Required
+Run `sql/migrations/014_entity_signals.sql` on dev and production before deploying.
+
+---
+
 # Materialized Entity Metrics Cache - COMPLETED ✅
 
 Implemented 2026-02-11. Single commit on dev branch.
