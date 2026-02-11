@@ -206,6 +206,12 @@ def address_book_page():
     return render_template("address_book.html")
 
 
+@address_book_bp.route("/address-book/guide")
+def address_book_guide():
+    """Render the address book feature guide."""
+    return render_template("address_book_guide.html")
+
+
 @address_book_bp.route("/api/address-book/sectors")
 def api_sectors():
     """Get list of all sectors for dropdown."""
