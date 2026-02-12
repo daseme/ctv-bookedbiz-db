@@ -590,7 +590,7 @@
                 </div>
                 <div class="feature-item">
                     <strong>Agency Clients</strong>
-                    For agencies: lists all clients booked through the agency with sector, PO, commission rate, spots, and revenue. Inline PO editing. Commission overrides show in purple.
+                    For agencies: lists all clients booked through the agency with sector, PO, commission rate, spots, and revenue. Inline PO editing. Commission overrides show in purple. Each row has a Merge button for quick dedup.
                 </div>
                 <div class="feature-item">
                     <strong>Notes</strong>
@@ -638,6 +638,40 @@
             </ul>
             <div class="guide-tip">
                 <strong>Tip:</strong> After merging, the Agency Clients table refreshes automatically. The merged customer will appear on the Entity Aliases page with its alias record.
+            </div>
+
+            <h3>Inline Client Merge</h3>
+            <p>
+                Each row in the Agency Clients table has a small <strong>Merge</strong> button on the right.
+                This lets you merge duplicate clients directly from the table — no need to leave the agency panel
+                or navigate to another page.
+            </p>
+            <ol>
+                <li>Click <strong>Merge</strong> on the client you want to merge away (the source).</li>
+                <li>An inline row appears below with a dropdown of the other clients in the same agency, sorted by revenue (highest first).</li>
+                <li>Select the target client you want to keep.</li>
+                <li>Click <strong>Confirm</strong> — a confirmation dialog shows both names. All spots and aliases move to the target; the source is deactivated.</li>
+                <li>The table refreshes automatically with the merged result.</li>
+            </ol>
+            <div class="guide-tip">
+                <strong>When to use which?</strong> Use <strong>Find Duplicates</strong> when you want the system to scan for likely matches automatically. Use the row <strong>Merge</strong> button when you can already see two entries that should be combined.
+            </div>
+
+            <h3>Merge Into... (Customer Panel)</h3>
+            <p>
+                When viewing a <strong>customer</strong> detail panel, the <strong>Merge Into...</strong> button in the
+                header lets you merge that customer into any other customer in the system — not just siblings in the
+                same agency.
+            </p>
+            <ol>
+                <li>Open a customer's detail panel.</li>
+                <li>Click <strong>Merge Into...</strong> in the header area.</li>
+                <li>Search for the target customer by name. Results are sorted by revenue.</li>
+                <li>Select the target — a preview shows both entities with their spot counts and revenue.</li>
+                <li>Click <strong>Confirm Merge</strong>. All spots and aliases move to the target; the source is deactivated.</li>
+            </ol>
+            <div class="guide-tip">
+                <strong>Tip:</strong> This is useful when duplicates span different agencies, or when an advertiser was booked both with and without an agency prefix.
             </div>
         </section>
 
