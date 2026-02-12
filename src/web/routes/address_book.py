@@ -437,8 +437,11 @@ def api_entity_detail(entity_type, entity_id):
                 SELECT c.customer_id as entity_id, 'customer' as entity_type, c.normalized_name as entity_name,
                        c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae,
                        c.po_number, c.edi_billing, c.affidavit_required,
+                       c.commission_rate, c.order_rate_basis,
                        c.sector_id, s.sector_name,
-                       c.agency_id, a.agency_name
+                       c.agency_id, a.agency_name,
+                       a.commission_rate AS agency_commission_rate,
+                       a.order_rate_basis AS agency_order_rate_basis
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
                 LEFT JOIN agencies a ON c.agency_id = a.agency_id
@@ -589,11 +592,39 @@ def api_update_billing_info(entity_type, entity_id):
             id_col = "agency_id" if entity_type == "agency" else "customer_id"
 
             if entity_type == "customer":
+                # Build SET clause conditionally — inline PO save from agency clients
+                # table sends only {po_number, edi_billing}, so we must not clobber
+                # commission fields when they aren't in the request body.
+                set_parts = ["po_number = ?", "edi_billing = ?", "affidavit_required = ?"]
+                params = [po_number, edi_billing, affidavit_required]
+
+                if "commission_rate" in data:
+                    cr = data.get("commission_rate")
+                    if cr is not None and cr != "":
+                        try:
+                            cr = float(cr)
+                        except (ValueError, TypeError):
+                            return jsonify({"error": "Commission rate must be a number"}), 400
+                        if not (0 <= cr <= 100):
+                            return jsonify({"error": "Commission rate must be 0-100"}), 400
+                    else:
+                        cr = None
+                    set_parts.append("commission_rate = ?")
+                    params.append(cr)
+
+                if "order_rate_basis" in data:
+                    orb = data.get("order_rate_basis") or None
+                    if orb is not None and orb not in ("gross", "net"):
+                        return jsonify({"error": "Order rate basis must be 'gross' or 'net'"}), 400
+                    set_parts.append("order_rate_basis = ?")
+                    params.append(orb)
+
+                params.append(entity_id)
                 conn.execute(f"""
                     UPDATE {table}
-                    SET po_number = ?, edi_billing = ?, affidavit_required = ?
+                    SET {', '.join(set_parts)}
                     WHERE {id_col} = ?
-                """, [po_number, edi_billing, affidavit_required, entity_id])
+                """, params)
             else:
                 # Parse commission fields (agency only)
                 commission_rate = data.get("commission_rate")
@@ -801,7 +832,7 @@ def api_agency_customers(agency_id):
     with _db_ro() as conn:
         # First verify agency exists
         agency = conn.execute(
-            "SELECT agency_name FROM agencies WHERE agency_id = ? AND is_active = 1",
+            "SELECT agency_name, commission_rate, order_rate_basis FROM agencies WHERE agency_id = ? AND is_active = 1",
             [agency_id]
         ).fetchone()
         if not agency:
@@ -825,6 +856,8 @@ def api_agency_customers(agency_id):
                 s.sector_name,
                 c.po_number,
                 c.edi_billing,
+                c.commission_rate,
+                c.order_rate_basis,
                 SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
                     THEN sp.gross_rate ELSE 0 END) as revenue_via_agency,
                 COUNT(sp.spot_id) as spot_count,
@@ -853,6 +886,8 @@ def api_agency_customers(agency_id):
                     s.sector_name,
                     c.po_number,
                     c.edi_billing,
+                    c.commission_rate,
+                    c.order_rate_basis,
                     COALESCE((SELECT SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
                         THEN sp.gross_rate ELSE 0 END) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as revenue_via_agency,
                     COALESCE((SELECT COUNT(*) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as spot_count,
@@ -877,6 +912,8 @@ def api_agency_customers(agency_id):
                 s.sector_name,
                 c.po_number,
                 c.edi_billing,
+                c.commission_rate,
+                c.order_rate_basis,
                 COALESCE((SELECT SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
                     THEN sp.gross_rate ELSE 0 END) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as revenue_via_agency,
                 COALESCE((SELECT COUNT(*) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) as spot_count,
@@ -897,6 +934,8 @@ def api_agency_customers(agency_id):
         return jsonify({
             "agency_id": agency_id,
             "agency_name": agency["agency_name"],
+            "commission_rate": agency["commission_rate"],
+            "order_rate_basis": agency["order_rate_basis"],
             "customers": result_customers
         })
 
@@ -1060,10 +1099,12 @@ def api_create_entity():
                 conn.execute("""
                     INSERT INTO customers (normalized_name, sector_id, agency_id, po_number,
                                            affidavit_required, assigned_ae, address, city,
-                                           state, zip, notes, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                                           state, zip, notes, is_active,
+                                           commission_rate, order_rate_basis)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 """, [name, sector_id, agency_id, po_number, affidavit_required,
-                      assigned_ae, address, city, state, zip_code, notes])
+                      assigned_ae, address, city, state, zip_code, notes,
+                      commission_rate, order_rate_basis])
                 entity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
             # Sector junction table (customers only) — trigger syncs customers.sector_id

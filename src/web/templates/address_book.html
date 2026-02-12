@@ -514,7 +514,7 @@
         <div style="font-size:11px;color:#64748b;margin-top:4px">Gross = order amounts include commission; Net = amounts exclude commission</div>
       </div>
 
-      <!-- PO Number + Affidavit (advertisers only) -->
+      <!-- PO Number + Affidavit + Commission (advertisers only) -->
       <div class="detail-section" id="po-section" style="display:none">
         <h3><span class="icon">💰</span> Billing</h3>
         <div class="billing-row">
@@ -527,6 +527,21 @@
             <label for="detail-affidavit-required">Affidavit Required</label>
           </div>
         </div>
+        <div class="billing-row" style="margin-top:12px">
+          <div class="form-field" style="max-width:180px">
+            <label>Commission Rate (%)</label>
+            <input type="number" id="detail-cust-commission-rate" step="0.01" min="0" max="100" placeholder="">
+          </div>
+          <div class="form-field" style="max-width:180px">
+            <label>Order Rate Basis</label>
+            <select id="detail-cust-order-rate-basis">
+              <option value="">-- Inherit --</option>
+              <option value="gross">Gross</option>
+              <option value="net">Net</option>
+            </select>
+          </div>
+        </div>
+        <div id="cust-commission-context" style="font-size:11px;color:#64748b;margin-top:4px"></div>
       </div>
 
       <!-- Markets -->
@@ -542,7 +557,7 @@
         <h3><span class="icon">🏢</span> Agency Clients <span id="agency-clients-count" style="font-weight:400;color:#64748b;font-size:12px"></span></h3>
         <div class="sub-customers-scroll">
           <table class="sub-customers-table">
-            <thead><tr><th>Client</th><th>Sector</th><th>PO Number</th><th class="spots">Spots</th><th class="revenue">Revenue</th></tr></thead>
+            <thead><tr><th>Client</th><th>Sector</th><th>PO Number</th><th>Commission</th><th class="spots">Spots</th><th class="revenue">Revenue</th></tr></thead>
             <tbody id="agency-clients-body"></tbody>
           </table>
         </div>
@@ -1619,6 +1634,32 @@
       poSection.style.display = 'block';
       document.getElementById('detail-po-number').value = currentEntity.po_number || '';
       document.getElementById('detail-affidavit-required').checked = !!currentEntity.affidavit_required;
+
+      // Customer commission override fields
+      const custCommInput = document.getElementById('detail-cust-commission-rate');
+      const custBasisSelect = document.getElementById('detail-cust-order-rate-basis');
+      const custContext = document.getElementById('cust-commission-context');
+      custCommInput.value = currentEntity.commission_rate ?? '';
+      custBasisSelect.value = currentEntity.order_rate_basis || '';
+
+      // Show agency defaults as context
+      const agRate = currentEntity.agency_commission_rate;
+      const agBasis = currentEntity.agency_order_rate_basis;
+      if (agRate != null || agBasis) {
+        const rateStr = agRate != null ? agRate + '%' : '—';
+        const basisStr = agBasis || '—';
+        custCommInput.placeholder = agRate != null ? `${agRate} (agency)` : '';
+        custBasisSelect.options[0].textContent = agBasis ? `-- Inherit: ${agBasis} --` : '-- Inherit --';
+        if (currentEntity.commission_rate != null || currentEntity.order_rate_basis) {
+          custContext.textContent = `Agency default: ${rateStr} ${basisStr}. Clear fields to inherit.`;
+        } else {
+          custContext.textContent = `Inheriting from agency: ${rateStr} ${basisStr}`;
+        }
+      } else {
+        custCommInput.placeholder = '';
+        custBasisSelect.options[0].textContent = '-- Inherit --';
+        custContext.textContent = currentEntity.agency_id ? 'Agency has no commission set' : 'No agency assigned';
+      }
     }
 
     // Markets
@@ -1669,11 +1710,13 @@
     // Track unsaved changes on editable fields
     const trackChange = () => { hasUnsavedChanges = true; };
     ['detail-notes', 'detail-address', 'detail-city', 'detail-state', 'detail-zip',
-     'detail-agency', 'detail-ae', 'detail-po-number', 'detail-commission-rate'].forEach(id => {
+     'detail-agency', 'detail-ae', 'detail-po-number', 'detail-commission-rate',
+     'detail-cust-commission-rate'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', trackChange, { once: true });
     });
-    ['detail-edi-billing', 'detail-affidavit-required', 'detail-order-rate-basis'].forEach(id => {
+    ['detail-edi-billing', 'detail-affidavit-required', 'detail-order-rate-basis',
+     'detail-cust-order-rate-basis'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', trackChange, { once: true });
     });
@@ -1774,14 +1817,16 @@
   async function loadAgencyClients(agencyId) {
     const tbody = document.getElementById('agency-clients-body');
     const countEl = document.getElementById('agency-clients-count');
-    tbody.innerHTML = '<tr><td colspan="5" class="no-data">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="no-data">Loading...</td></tr>';
     try {
       const { ok, data } = await apiFetch(`${API}/agency/${agencyId}/customers`);
       if (!ok) throw new Error('Failed to load');
       const clients = data.customers || [];
+      const agencyRate = data.commission_rate;
+      const agencyBasis = data.order_rate_basis;
       countEl.textContent = `(${clients.length})`;
       if (clients.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="no-data">No clients on record</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="no-data">No clients on record</td></tr>';
         return;
       }
       tbody.innerHTML = clients.map(c => {
@@ -1789,10 +1834,22 @@
         const revStr = rev >= 1000000 ? `$${(rev/1000000).toFixed(1)}M` :
                        rev >= 1000 ? `$${(rev/1000).toFixed(0)}K` :
                        rev > 0 ? `$${rev.toFixed(0)}` : '-';
+        // Commission: show override (bold purple) or inherited (gray)
+        const hasOverride = c.commission_rate != null;
+        const effectiveRate = hasOverride ? c.commission_rate : agencyRate;
+        const effectiveBasis = (c.order_rate_basis || agencyBasis || '');
+        let commStr = '-';
+        if (effectiveRate != null) {
+          const basisSuffix = effectiveBasis ? ` ${effectiveBasis}` : '';
+          commStr = hasOverride
+            ? `<span style="color:#8b5cf6;font-weight:600" title="Customer override">${effectiveRate}%${basisSuffix} *</span>`
+            : `<span style="color:#94a3b8" title="Inherited from agency">${effectiveRate}%${basisSuffix}</span>`;
+        }
         return `<tr>
           <td><a href="/reports/customer/${c.customer_id}" target="_blank" style="color:#0ea5e9;text-decoration:none">${esc(c.customer_name)}</a></td>
           <td>${esc(c.sector_name || '-')}</td>
           <td><input class="po-input" data-customer-id="${c.customer_id}" value="${esc(c.po_number || '')}" placeholder="—"><span class="po-saved">✓</span></td>
+          <td>${commStr}</td>
           <td class="spots">${c.spot_count || '-'}</td>
           <td class="revenue">${revStr}</td>
         </tr>`;
@@ -1819,7 +1876,7 @@
         });
       });
     } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="5" class="no-data">Failed to load clients</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="no-data">Failed to load clients</td></tr>';
     }
   }
 
@@ -2316,7 +2373,7 @@
       // Save AE + billing in parallel
       const billingBody = currentEntity.entity_type === 'agency'
         ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked, commission_rate: document.getElementById('detail-commission-rate').value || null, order_rate_basis: document.getElementById('detail-order-rate-basis').value || null }
-        : { po_number: document.getElementById('detail-po-number').value.trim() || null, edi_billing: false, affidavit_required: document.getElementById('detail-affidavit-required').checked };
+        : { po_number: document.getElementById('detail-po-number').value.trim() || null, edi_billing: false, affidavit_required: document.getElementById('detail-affidavit-required').checked, commission_rate: document.getElementById('detail-cust-commission-rate').value || null, order_rate_basis: document.getElementById('detail-cust-order-rate-basis').value || null };
 
       await Promise.all([
         putJson(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/ae`, {
@@ -2548,7 +2605,7 @@
       document.getElementById('create-sector-field').style.display = isCustomer ? 'block' : 'none';
       document.getElementById('create-agency-field').style.display = isCustomer ? 'block' : 'none';
       document.getElementById('create-customer-fields').style.display = isCustomer ? 'grid' : 'none';
-      document.getElementById('create-agency-fields').style.display = isCustomer ? 'none' : 'grid';
+      document.getElementById('create-agency-fields').style.display = 'grid';
     });
   });
 
@@ -2578,12 +2635,12 @@
         const poVal = document.getElementById('create-po-number').value.trim();
         if (poVal) body.po_number = poVal;
         body.affidavit_required = document.getElementById('create-affidavit').checked;
-      } else {
-        const commVal = document.getElementById('create-commission-rate').value;
-        if (commVal) body.commission_rate = parseFloat(commVal);
-        const basisVal = document.getElementById('create-order-rate-basis').value;
-        if (basisVal) body.order_rate_basis = basisVal;
       }
+      // Commission fields apply to both entity types
+      const commVal = document.getElementById('create-commission-rate').value;
+      if (commVal) body.commission_rate = parseFloat(commVal);
+      const basisVal = document.getElementById('create-order-rate-basis').value;
+      if (basisVal) body.order_rate_basis = basisVal;
       const aeVal = document.getElementById('create-ae').value;
       if (aeVal) body.assigned_ae = aeVal;
       const notesVal = document.getElementById('create-notes').value.trim();
