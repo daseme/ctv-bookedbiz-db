@@ -2932,7 +2932,7 @@
   function populateMergeResults(query) {
     const q = query.toLowerCase().trim();
     const sourceId = currentEntity.entity_id;
-    const customers = currentData
+    const customers = allData
       .filter(d => d.entity_type === 'customer' && d.is_active)
       .filter(d => !q || d.entity_name.toLowerCase().includes(q))
       .sort((a, b) => (b.total_revenue || 0) - (a.total_revenue || 0))
