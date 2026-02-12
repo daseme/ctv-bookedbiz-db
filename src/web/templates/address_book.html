@@ -337,6 +337,18 @@
   .dedup-actions .btn-merge{background:#dc2626;border:1px solid #b91c1c;color:#fff}
   .dedup-actions .btn-merge:hover{background:#b91c1c}
 
+  .client-merge-btn{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;cursor:pointer;background:#fff;border:1px solid #f59e0b;color:#b45309;opacity:.6;transition:opacity .15s}
+  .client-merge-btn:hover{opacity:1;background:#fffbeb}
+  .client-merge-row td{padding:0 !important;background:#fffbeb;border:none !important}
+  .client-merge-inner{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:13px;flex-wrap:wrap}
+  .client-merge-inner .merge-label{color:#92400e;font-weight:500;white-space:nowrap}
+  .client-merge-inner select{padding:4px 8px;border:1px solid #fde68a;border-radius:4px;font-size:12px;background:#fff;color:#0f172a;max-width:320px}
+  .client-merge-inner .cm-btn{padding:4px 12px;border-radius:4px;font-size:12px;font-weight:500;cursor:pointer}
+  .client-merge-inner .cm-confirm{background:#dc2626;border:1px solid #b91c1c;color:#fff}
+  .client-merge-inner .cm-confirm:hover{background:#b91c1c}
+  .client-merge-inner .cm-cancel{background:#fff;border:1px solid #e2e8f0;color:#475569}
+  .client-merge-inner .cm-cancel:hover{background:#f1f5f9}
+
   .add-address-form{display:none;padding:16px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:8px;margin-top:10px}
   .add-address-form.active{display:block}
   .add-address-form .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
@@ -615,7 +627,7 @@
         <div id="dedup-results" class="dedup-results" style="display:none"></div>
         <div class="sub-customers-scroll">
           <table class="sub-customers-table">
-            <thead><tr><th>Client</th><th>Sector</th><th>PO Number</th><th>Commission</th><th class="spots">Spots</th><th class="revenue">Revenue</th></tr></thead>
+            <thead><tr><th>Client</th><th>Sector</th><th>PO Number</th><th>Commission</th><th class="spots">Spots</th><th class="revenue">Revenue</th><th style="width:50px"></th></tr></thead>
             <tbody id="agency-clients-body"></tbody>
           </table>
         </div>
@@ -1893,16 +1905,17 @@
   async function loadAgencyClients(agencyId) {
     const tbody = document.getElementById('agency-clients-body');
     const countEl = document.getElementById('agency-clients-count');
-    tbody.innerHTML = '<tr><td colspan="6" class="no-data">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="no-data">Loading...</td></tr>';
     try {
       const { ok, data } = await apiFetch(`${API}/agency/${agencyId}/customers`);
       if (!ok) throw new Error('Failed to load');
       const clients = data.customers || [];
+      _agencyClients = clients;
       const agencyRate = data.commission_rate;
       const agencyBasis = data.order_rate_basis;
       countEl.textContent = `(${clients.length})`;
       if (clients.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="no-data">No clients on record</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="no-data">No clients on record</td></tr>';
         return;
       }
       tbody.innerHTML = clients.map(c => {
@@ -1928,6 +1941,7 @@
           <td>${commStr}</td>
           <td class="spots">${c.spot_count || '-'}</td>
           <td class="revenue">${revStr}</td>
+          <td>${clients.length > 1 ? `<button class="client-merge-btn" onclick="window.startClientMerge(${c.customer_id})">Merge</button>` : ''}</td>
         </tr>`;
       }).join('');
 
@@ -1952,11 +1966,12 @@
         });
       });
     } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="6" class="no-data">Failed to load clients</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="no-data">Failed to load clients</td></tr>';
     }
   }
 
   // ── Dedup functions ──
+  let _agencyClients = [];
   let _dedupPairs = [];
 
   async function findDuplicateClients() {
@@ -2057,6 +2072,88 @@
     } catch (e) {
       mergeBtn.disabled = false;
       mergeBtn.textContent = 'Merge';
+      alert('Merge failed: ' + e.message);
+    }
+  }
+
+  // ── Client-row merge functions ──
+
+  function startClientMerge(sourceId) {
+    // Remove any existing merge row
+    cancelClientMerge();
+    const source = _agencyClients.find(c => c.customer_id === sourceId);
+    if (!source) return;
+    const targets = _agencyClients
+      .filter(c => c.customer_id !== sourceId)
+      .sort((a, b) => (b.revenue_via_agency || 0) - (a.revenue_via_agency || 0));
+    if (targets.length === 0) return;
+
+    const fmtC = c => {
+      const r = c.revenue_via_agency || 0;
+      const rStr = r >= 1000000 ? `$${(r/1000000).toFixed(1)}M` : r >= 1000 ? `$${(r/1000).toFixed(0)}K` : r > 0 ? `$${r.toFixed(0)}` : '$0';
+      return `${c.customer_name} — ${(c.spot_count || 0).toLocaleString()} spots / ${rStr}`;
+    };
+
+    const options = targets.map(t =>
+      `<option value="${t.customer_id}">${esc(fmtC(t))}</option>`
+    ).join('');
+
+    const row = document.createElement('tr');
+    row.className = 'client-merge-row';
+    row.innerHTML = `<td colspan="7"><div class="client-merge-inner">
+      <span class="merge-label">Merge "${esc(source.customer_name)}" (${(source.spot_count||0).toLocaleString()} spots) into:</span>
+      <select id="client-merge-target">${options}</select>
+      <button class="cm-btn cm-confirm" onclick="window.confirmClientMerge(${sourceId})">Confirm</button>
+      <button class="cm-btn cm-cancel" onclick="window.cancelClientMerge()">Cancel</button>
+    </div></td>`;
+
+    // Find the source row and insert after it
+    const tbody = document.getElementById('agency-clients-body');
+    const rows = tbody.querySelectorAll('tr:not(.client-merge-row)');
+    for (const tr of rows) {
+      const btn = tr.querySelector('.client-merge-btn');
+      if (btn && btn.getAttribute('onclick').includes(sourceId)) {
+        tr.after(row);
+        break;
+      }
+    }
+  }
+
+  function cancelClientMerge() {
+    const existing = document.querySelector('.client-merge-row');
+    if (existing) existing.remove();
+  }
+
+  async function confirmClientMerge(sourceId) {
+    const sel = document.getElementById('client-merge-target');
+    if (!sel) return;
+    const targetId = parseInt(sel.value);
+    const source = _agencyClients.find(c => c.customer_id === sourceId);
+    const target = _agencyClients.find(c => c.customer_id === targetId);
+    if (!source || !target) return;
+
+    const msg = `Merge "${source.customer_name}" into "${target.customer_name}"?\n\nAll spots and aliases will move to the target. This cannot be undone.`;
+    if (!confirm(msg)) return;
+
+    const btn = document.querySelector('.client-merge-row .cm-confirm');
+    btn.disabled = true;
+    btn.textContent = 'Merging...';
+    try {
+      const { ok, data, error } = await apiFetch('/api/customer-aliases/merge', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ source_id: sourceId, target_id: targetId })
+      });
+      if (!ok) throw new Error(error || (data && data.error) || 'Merge failed');
+      await apiFetch('/api/address-book/refresh-metrics', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ customer_ids: [sourceId, targetId] })
+      });
+      loadAgencyClients(currentEntity.entity_id);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Confirm';
       alert('Merge failed: ' + e.message);
     }
   }
@@ -3022,6 +3119,9 @@
   }, 200));
 
   // Expose to onclick handlers in HTML
+  window.startClientMerge = startClientMerge;
+  window.cancelClientMerge = cancelClientMerge;
+  window.confirmClientMerge = confirmClientMerge;
   window.findDuplicateClients = findDuplicateClients;
   window.swapDedupPair = swapDedupPair;
   window.dismissDedupPair = dismissDedupPair;
