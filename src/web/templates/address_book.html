@@ -282,6 +282,33 @@
   .address-card .address-actions button.delete:hover{background:#fee2e2;color:#dc2626}
   .addresses-list{display:flex;flex-direction:column;gap:10px}
 
+  /* Dedup */
+  .dedup-btn{padding:4px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:#fff;border:1px solid #f59e0b;color:#b45309;margin-left:auto}
+  .dedup-btn:hover{background:#fffbeb}
+  .dedup-results{margin-bottom:12px}
+  .dedup-msg{font-size:13px;color:#64748b;padding:10px 14px;background:#f8fafc;border-radius:8px;text-align:center}
+  .dedup-pair{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin-bottom:10px}
+  .dedup-pair-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .dedup-score{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#f59e0b;color:#fff}
+  .dedup-pair-body{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:start}
+  .dedup-entity{padding:10px;border-radius:6px;background:#fff;border:1px solid #e2e8f0}
+  .dedup-entity.source{border-color:#fca5a5}
+  .dedup-entity.target{border-color:#86efac}
+  .dedup-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+  .dedup-label.merge{color:#dc2626}
+  .dedup-label.keep{color:#16a34a}
+  .dedup-entity-name{font-size:13px;font-weight:600;color:#0f172a;margin-bottom:2px}
+  .dedup-entity-meta{font-size:11px;color:#64748b}
+  .dedup-arrow{display:flex;align-items:center;font-size:18px;color:#94a3b8;padding-top:18px}
+  .dedup-actions{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}
+  .dedup-actions button{padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer}
+  .dedup-actions .btn-swap{background:#fff;border:1px solid #e2e8f0;color:#475569}
+  .dedup-actions .btn-swap:hover{background:#f1f5f9}
+  .dedup-actions .btn-dismiss{background:#fff;border:1px solid #e2e8f0;color:#94a3b8}
+  .dedup-actions .btn-dismiss:hover{background:#f1f5f9;color:#475569}
+  .dedup-actions .btn-merge{background:#dc2626;border:1px solid #b91c1c;color:#fff}
+  .dedup-actions .btn-merge:hover{background:#b91c1c}
+
   .add-address-form{display:none;padding:16px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:8px;margin-top:10px}
   .add-address-form.active{display:block}
   .add-address-form .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
@@ -554,7 +581,10 @@
 
       <!-- Agency Clients (agencies only) -->
       <div class="detail-section" id="agency-clients-section" style="display:none">
-        <h3><span class="icon">🏢</span> Agency Clients <span id="agency-clients-count" style="font-weight:400;color:#64748b;font-size:12px"></span></h3>
+        <h3 style="display:flex;align-items:center;gap:8px"><span class="icon">🏢</span> Agency Clients <span id="agency-clients-count" style="font-weight:400;color:#64748b;font-size:12px"></span>
+          <button class="dedup-btn" id="find-duplicates-btn" onclick="findDuplicateClients()">Find Duplicates</button>
+        </h3>
+        <div id="dedup-results" class="dedup-results" style="display:none"></div>
         <div class="sub-customers-scroll">
           <table class="sub-customers-table">
             <thead><tr><th>Client</th><th>Sector</th><th>PO Number</th><th>Commission</th><th class="spots">Spots</th><th class="revenue">Revenue</th></tr></thead>
@@ -1672,6 +1702,9 @@
 
     // Agency Clients (agencies only)
     const clientsSection = document.getElementById('agency-clients-section');
+    const dedupResults = document.getElementById('dedup-results');
+    dedupResults.style.display = 'none';
+    dedupResults.innerHTML = '';
     if (type === 'agency') {
       clientsSection.style.display = 'block';
       loadAgencyClients(id);
@@ -1877,6 +1910,111 @@
       });
     } catch (e) {
       tbody.innerHTML = '<tr><td colspan="6" class="no-data">Failed to load clients</td></tr>';
+    }
+  }
+
+  // ── Dedup functions ──
+  let _dedupPairs = [];
+
+  async function findDuplicateClients() {
+    if (!currentEntity || currentEntity.entity_type !== 'agency') return;
+    const agencyId = currentEntity.entity_id;
+    const container = document.getElementById('dedup-results');
+    container.style.display = 'block';
+    container.innerHTML = '<div class="dedup-msg">Scanning for duplicates...</div>';
+    const btn = document.getElementById('find-duplicates-btn');
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    try {
+      const { ok, data, error } = await apiFetch(`${API}/agency/${agencyId}/duplicates`);
+      if (!ok) throw new Error(error || 'Failed to scan');
+      _dedupPairs = data.duplicates || [];
+      if (_dedupPairs.length === 0) {
+        container.innerHTML = '<div class="dedup-msg">No duplicate clients found.</div>';
+        return;
+      }
+      container.innerHTML = _dedupPairs.map((d, i) => renderDedupPair(d, i)).join('');
+    } catch (e) {
+      container.innerHTML = `<div class="dedup-msg" style="color:#dc2626">${esc(e.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Find Duplicates';
+    }
+  }
+
+  function fmtRev(v) {
+    if (!v) return '$0';
+    return v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` :
+           v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v.toFixed(0)}`;
+  }
+
+  function renderDedupPair(d, idx) {
+    const scorePct = Math.round(d.score * 100);
+    return `<div class="dedup-pair" id="dedup-pair-${idx}">
+      <div class="dedup-pair-header">
+        <span class="dedup-score">${scorePct}% match</span>
+      </div>
+      <div class="dedup-pair-body">
+        <div class="dedup-entity source" id="dedup-source-${idx}">
+          <div class="dedup-label merge">Merge Away</div>
+          <div class="dedup-entity-name">${esc(d.source.client_portion)}</div>
+          <div class="dedup-entity-meta">${esc(d.source.customer_name)}</div>
+          <div class="dedup-entity-meta">${fmtRev(d.source.revenue)} &middot; ${d.source.spot_count} spots${d.source.sector_name ? ' &middot; ' + esc(d.source.sector_name) : ''}</div>
+        </div>
+        <div class="dedup-arrow">&rarr;</div>
+        <div class="dedup-entity target" id="dedup-target-${idx}">
+          <div class="dedup-label keep">Keep</div>
+          <div class="dedup-entity-name">${esc(d.target.client_portion)}</div>
+          <div class="dedup-entity-meta">${esc(d.target.customer_name)}</div>
+          <div class="dedup-entity-meta">${fmtRev(d.target.revenue)} &middot; ${d.target.spot_count} spots${d.target.sector_name ? ' &middot; ' + esc(d.target.sector_name) : ''}</div>
+        </div>
+      </div>
+      <div class="dedup-actions">
+        <button class="btn-swap" onclick="swapDedupPair(${idx})">Swap</button>
+        <button class="btn-dismiss" onclick="dismissDedupPair(${idx})">Dismiss</button>
+        <button class="btn-merge" onclick="executeDedupMerge(${idx})">Merge</button>
+      </div>
+    </div>`;
+  }
+
+  function swapDedupPair(idx) {
+    const d = _dedupPairs[idx];
+    if (!d) return;
+    const tmp = d.source;
+    d.source = d.target;
+    d.target = tmp;
+    const pair = document.getElementById(`dedup-pair-${idx}`);
+    if (pair) pair.outerHTML = renderDedupPair(d, idx);
+  }
+
+  function dismissDedupPair(idx) {
+    const pair = document.getElementById(`dedup-pair-${idx}`);
+    if (pair) pair.remove();
+  }
+
+  async function executeDedupMerge(idx) {
+    const d = _dedupPairs[idx];
+    if (!d) return;
+    const msg = `Merge "${d.source.customer_name}" into "${d.target.customer_name}"?\n\nAll spots and aliases will move to the target. This cannot be undone.`;
+    if (!confirm(msg)) return;
+    const pair = document.getElementById(`dedup-pair-${idx}`);
+    const mergeBtn = pair.querySelector('.btn-merge');
+    mergeBtn.disabled = true;
+    mergeBtn.textContent = 'Merging...';
+    try {
+      const { ok, data, error } = await apiFetch('/api/customer-aliases/merge', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ source_id: d.source.customer_id, target_id: d.target.customer_id })
+      });
+      if (!ok) throw new Error(error || (data && data.error) || 'Merge failed');
+      pair.innerHTML = `<div class="dedup-msg" style="color:#16a34a">Merged "${esc(d.source.customer_name)}" into "${esc(d.target.customer_name)}"</div>`;
+      // Refresh clients table
+      loadAgencyClients(currentEntity.entity_id);
+    } catch (e) {
+      mergeBtn.disabled = false;
+      mergeBtn.textContent = 'Merge';
+      alert('Merge failed: ' + e.message);
     }
   }
 
