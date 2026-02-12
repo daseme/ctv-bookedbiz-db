@@ -2864,6 +2864,12 @@
       history.replaceState(null, '', window.location.pathname);
     }
   });
+
+  // Expose to onclick handlers in HTML
+  window.findDuplicateClients = findDuplicateClients;
+  window.swapDedupPair = swapDedupPair;
+  window.dismissDedupPair = dismissDedupPair;
+  window.executeDedupMerge = executeDedupMerge;
 })();
 </script>
 {% endblock %}
