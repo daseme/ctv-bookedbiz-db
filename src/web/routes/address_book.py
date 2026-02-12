@@ -1320,6 +1320,69 @@ def api_deactivate_entity(entity_type, entity_id):
             return jsonify({"error": str(e)}), 500
 
 
+@address_book_bp.route("/api/address-book/refresh-metrics", methods=["POST"])
+def api_refresh_metrics():
+    """Refresh entity_metrics for specific entity IDs after a merge."""
+    data = request.json or {}
+    customer_ids = data.get("customer_ids", [])
+    agency_ids = data.get("agency_ids", [])
+
+    if not customer_ids and not agency_ids:
+        return jsonify({"error": "No IDs provided"}), 400
+
+    with _db_rw() as conn:
+        try:
+            # Delete existing metrics for these IDs
+            for cid in customer_ids:
+                conn.execute(
+                    "DELETE FROM entity_metrics WHERE entity_type='customer' AND entity_id=?",
+                    [int(cid)]
+                )
+            for aid in agency_ids:
+                conn.execute(
+                    "DELETE FROM entity_metrics WHERE entity_type='agency' AND entity_id=?",
+                    [int(aid)]
+                )
+
+            # Re-insert customer metrics
+            if customer_ids:
+                placeholders = ','.join('?' * len(customer_ids))
+                conn.execute(f"""
+                    INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count, agency_spot_count)
+                    SELECT
+                        'customer', customer_id,
+                        GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END),
+                        MAX(air_date),
+                        SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END),
+                        COUNT(*),
+                        COUNT(agency_id)
+                    FROM spots WHERE customer_id IN ({placeholders})
+                    GROUP BY customer_id
+                """, [int(c) for c in customer_ids])
+
+            # Re-insert agency metrics
+            if agency_ids:
+                placeholders = ','.join('?' * len(agency_ids))
+                conn.execute(f"""
+                    INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count)
+                    SELECT
+                        'agency', agency_id,
+                        GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END),
+                        MAX(air_date),
+                        SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END),
+                        COUNT(*)
+                    FROM spots WHERE agency_id IN ({placeholders})
+                    GROUP BY agency_id
+                """, [int(a) for a in agency_ids])
+
+            conn.commit()
+            return jsonify({"success": True, "refreshed": len(customer_ids) + len(agency_ids)})
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+
+
 # ============================================================
 # Additional Addresses CRUD
 # ============================================================
