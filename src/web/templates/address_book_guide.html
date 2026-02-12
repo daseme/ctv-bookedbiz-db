@@ -586,7 +586,11 @@
                 </div>
                 <div class="feature-item">
                     <strong>PO &amp; Billing</strong>
-                    PO number and EDI billing info, editable inline.
+                    PO number, affidavit flag, and commission rate override (advertisers). EDI billing and commission rate/basis (agencies).
+                </div>
+                <div class="feature-item">
+                    <strong>Agency Clients</strong>
+                    For agencies: lists all clients booked through the agency with sector, PO, commission rate, spots, and revenue. Inline PO editing. Commission overrides show in purple.
                 </div>
                 <div class="feature-item">
                     <strong>Notes</strong>
@@ -596,6 +600,21 @@
 
             <div class="guide-tip">
                 <strong>Inline editing:</strong> Most fields in the detail modal can be edited directly — look for pencil icons or click on field values. Changes save automatically via the API.
+            </div>
+
+            <h3>Commission Rate Overrides</h3>
+            <p>
+                Agencies have a default commission rate and order rate basis (gross/net) set in their billing section.
+                Advertisers can <strong>override</strong> the agency's rate on a per-client basis — for example, when an
+                agency charges different rates for different advertisers, or charges 0% for PSA clients.
+            </p>
+            <ul>
+                <li><strong>Blank fields</strong> — The advertiser inherits the agency's commission rate. A placeholder shows the agency's rate and a label confirms inheritance.</li>
+                <li><strong>Set a value</strong> — Overrides the agency default. The context label changes to show the agency default and a reminder to "clear fields to inherit."</li>
+                <li><strong>Agency Clients table</strong> — On agency detail, the Commission column shows the effective rate for each client. Overrides appear in <span style="color:#8b5cf6;font-weight:600">purple with an asterisk (*)</span>; inherited rates appear in gray.</li>
+            </ul>
+            <div class="guide-tip">
+                <strong>Tip:</strong> To clear an override and revert to the agency default, simply clear both the Commission Rate and Order Rate Basis fields, then save.
             </div>
         </section>
 
@@ -608,8 +627,8 @@
             </p>
             <p>Click <span class="g-badge">+ Add New</span> in the filter bar and choose:</p>
             <ul>
-                <li><strong>Create Agency</strong> — Requires: agency name. Optional: address, contacts, notes.</li>
-                <li><strong>Create Advertiser</strong> — Requires: advertiser name. Optional: sector, address, contacts, notes.</li>
+                <li><strong>Create Agency</strong> — Requires: agency name. Optional: commission rate, order rate basis, address, contacts, notes.</li>
+                <li><strong>Create Advertiser</strong> — Requires: advertiser name. Optional: sector, agency, commission rate override, order rate basis, address, contacts, notes.</li>
             </ul>
             <div class="guide-tip">
                 <strong>Note:</strong> Manually created entities won't have revenue metrics or spot history until they appear in the billing data through spots imports.
