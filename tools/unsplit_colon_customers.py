@@ -162,8 +162,17 @@ def discover_cases(
         params.append(limit)
 
     rows = conn.execute(base_query, params).fetchall()
-    return [
-        ColonCase(
+
+    # Deduplicate by source_id (case-insensitive agency joins can
+    # produce multiple rows when e.g. "WorldLink" and "Worldlink" both exist).
+    # Keep the first match (lowest agency_id) for each source.
+    seen_source_ids = set()
+    results = []
+    for r in rows:
+        if r["source_id"] in seen_source_ids:
+            continue
+        seen_source_ids.add(r["source_id"])
+        results.append(ColonCase(
             source_id=r["source_id"],
             source_name=r["source_name"],
             agency_part=r["agency_part"],
@@ -172,9 +181,8 @@ def discover_cases(
             target_name=r["target_name"],
             agency_id=r["agency_id"],
             agency_name=r["agency_name"],
-        )
-        for r in rows
-    ]
+        ))
+    return results
 
 
 # ── Analysis ─────────────────────────────────────────────────────────────────
@@ -590,14 +598,24 @@ def execute_case(conn: sqlite3.Connection, a: CaseAnalysis) -> dict:
             else:
                 stats["steps"].append(f"Skipped preserving alias (conflict: points to #{ea.target_entity_id})")
         else:
-            conn.execute("""
-                INSERT INTO entity_aliases
-                (alias_name, entity_type, target_entity_id, confidence_score,
-                 created_by, notes, is_active)
-                VALUES (?, 'customer', ?, 100, 'unsplit_tool',
-                        'Preserving alias from unsplit of customer ' || ?, 1)
-            """, [c.source_name, c.target_id, c.source_id])
-            stats["steps"].append(f"Created preserving alias '{c.source_name}' -> #{c.target_id}")
+            # Re-check at execution time (another case may have created it)
+            live_check = conn.execute("""
+                SELECT alias_id, target_entity_id FROM entity_aliases
+                WHERE alias_name = ? AND entity_type = 'customer'
+            """, [c.source_name]).fetchone()
+            if live_check:
+                stats["steps"].append(
+                    f"Preserving alias already exists at execution time (alias #{live_check['alias_id']} -> #{live_check['target_entity_id']})"
+                )
+            else:
+                conn.execute("""
+                    INSERT INTO entity_aliases
+                    (alias_name, entity_type, target_entity_id, confidence_score,
+                     created_by, notes, is_active)
+                    VALUES (?, 'customer', ?, 100, 'unsplit_tool',
+                            'Preserving alias from unsplit of customer ' || ?, 1)
+                """, [c.source_name, c.target_id, c.source_id])
+                stats["steps"].append(f"Created preserving alias '{c.source_name}' -> #{c.target_id}")
 
         # Step 5: Copy missing sectors to target
         if a.sectors_to_add:
