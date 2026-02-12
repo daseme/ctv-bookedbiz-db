@@ -940,6 +940,127 @@ def api_agency_customers(agency_id):
         })
 
 
+def _client_portion(name):
+    """Strip agency prefix from compound name: 'Misfit:CA Community Colleges' → 'CA Community Colleges'."""
+    if ':' in name:
+        return name.split(':', 1)[1].strip()
+    return name
+
+
+@address_book_bp.route("/api/address-book/agency/<int:agency_id>/duplicates")
+def api_agency_duplicates(agency_id):
+    """Find potential duplicate clients within an agency using fuzzy name matching."""
+    with _db_ro() as conn:
+        agency = conn.execute(
+            "SELECT agency_name FROM agencies WHERE agency_id = ? AND is_active = 1",
+            [agency_id]
+        ).fetchone()
+        if not agency:
+            return jsonify({"error": "Agency not found"}), 404
+
+        # Collect all agency name variants for prefix matching
+        agency_names = [agency["agency_name"]]
+        for ar in conn.execute(
+            "SELECT alias_name FROM entity_aliases WHERE entity_type = 'agency' AND target_entity_id = ? AND is_active = 1",
+            [agency_id]
+        ).fetchall():
+            agency_names.append(ar["alias_name"])
+
+        # Gather all active clients (same 3-source pattern as api_agency_customers)
+        seen_ids = set()
+        clients = []
+
+        # Source 1: spots with this agency_id
+        for row in conn.execute("""
+            SELECT c.customer_id, c.normalized_name AS customer_name, c.sector_id,
+                   s.sector_name,
+                   SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
+                       THEN sp.gross_rate ELSE 0 END) AS revenue,
+                   COUNT(sp.spot_id) AS spot_count
+            FROM spots sp
+            JOIN customers c ON sp.customer_id = c.customer_id
+            LEFT JOIN sectors s ON c.sector_id = s.sector_id
+            WHERE sp.agency_id = ? AND c.is_active = 1
+            GROUP BY c.customer_id
+        """, [agency_id]).fetchall():
+            if row["customer_id"] not in seen_ids:
+                clients.append(dict(row))
+                seen_ids.add(row["customer_id"])
+
+        # Source 2: name prefix match (AgencyName:...)
+        for name in agency_names:
+            for row in conn.execute("""
+                SELECT c.customer_id, c.normalized_name AS customer_name, c.sector_id,
+                       s.sector_name,
+                       COALESCE((SELECT SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
+                           THEN sp.gross_rate ELSE 0 END) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) AS revenue,
+                       COALESCE((SELECT COUNT(*) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) AS spot_count
+                FROM customers c
+                LEFT JOIN sectors s ON c.sector_id = s.sector_id
+                WHERE c.is_active = 1 AND c.normalized_name LIKE ? || ':%'
+            """, [name]).fetchall():
+                if row["customer_id"] not in seen_ids:
+                    clients.append(dict(row))
+                    seen_ids.add(row["customer_id"])
+
+        # Source 3: directly assigned agency_id
+        for row in conn.execute("""
+            SELECT c.customer_id, c.normalized_name AS customer_name, c.sector_id,
+                   s.sector_name,
+                   COALESCE((SELECT SUM(CASE WHEN sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL
+                       THEN sp.gross_rate ELSE 0 END) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) AS revenue,
+                   COALESCE((SELECT COUNT(*) FROM spots sp WHERE sp.customer_id = c.customer_id), 0) AS spot_count
+            FROM customers c
+            LEFT JOIN sectors s ON c.sector_id = s.sector_id
+            WHERE c.agency_id = ? AND c.is_active = 1
+        """, [agency_id]).fetchall():
+            if row["customer_id"] not in seen_ids:
+                clients.append(dict(row))
+                seen_ids.add(row["customer_id"])
+
+    # Compare all pairs using client portion of name
+    duplicates = []
+    for i in range(len(clients)):
+        for j in range(i + 1, len(clients)):
+            a, b = clients[i], clients[j]
+            portion_a = _client_portion(a["customer_name"])
+            portion_b = _client_portion(b["customer_name"])
+            score = _score_name(portion_a, portion_b)
+            if score >= 0.50:
+                # Higher revenue = target (keep), lower = source (merge)
+                if (a["revenue"] or 0) >= (b["revenue"] or 0):
+                    target, source = a, b
+                else:
+                    target, source = b, a
+                duplicates.append({
+                    "score": round(score, 2),
+                    "source": {
+                        "customer_id": source["customer_id"],
+                        "customer_name": source["customer_name"],
+                        "client_portion": _client_portion(source["customer_name"]),
+                        "revenue": source["revenue"] or 0,
+                        "spot_count": source["spot_count"] or 0,
+                        "sector_name": source.get("sector_name") or ""
+                    },
+                    "target": {
+                        "customer_id": target["customer_id"],
+                        "customer_name": target["customer_name"],
+                        "client_portion": _client_portion(target["customer_name"]),
+                        "revenue": target["revenue"] or 0,
+                        "spot_count": target["spot_count"] or 0,
+                        "sector_name": target.get("sector_name") or ""
+                    }
+                })
+
+    duplicates.sort(key=lambda d: -d["score"])
+
+    return jsonify({
+        "agency_id": agency_id,
+        "agency_name": agency["agency_name"],
+        "duplicates": duplicates
+    })
+
+
 @address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/spots-link")
 def api_spots_link(entity_type, entity_id):
     """Return URL to filtered spots view for this entity."""

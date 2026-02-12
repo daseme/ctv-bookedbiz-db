@@ -616,6 +616,29 @@
             <div class="guide-tip">
                 <strong>Tip:</strong> To clear an override and revert to the agency default, simply clear both the Commission Rate and Order Rate Basis fields, then save.
             </div>
+
+            <h3>Finding Duplicate Clients</h3>
+            <p>
+                Agency clients can accumulate duplicates over time — for example, <code>Misfit:CA Community Colleges</code>
+                and <code>Misfit:California Community Colleges</code> may both exist as separate customer records even though
+                they represent the same advertiser. These duplicates are invisible to the Entity Aliases page because it
+                excludes agency-represented clients.
+            </p>
+            <p>
+                The <strong>Find Duplicates</strong> button (in the Agency Clients section header) scans all clients for a
+                given agency and compares their names using fuzzy matching. It strips the agency prefix (e.g., "Misfit:")
+                and scores the remaining client name portions against each other.
+            </p>
+            <ul>
+                <li><strong>Score badge</strong> — Shows the match confidence (50%+). Higher scores indicate a more likely duplicate.</li>
+                <li><strong>Keep / Merge Away</strong> — The higher-revenue client is pre-selected as "Keep" (target) and the lower-revenue one as "Merge Away" (source). All spots and aliases from the source will move to the target.</li>
+                <li><strong>Swap</strong> — Reverses which client is kept and which is merged away.</li>
+                <li><strong>Dismiss</strong> — Removes the pair from the list without taking action (no data changes).</li>
+                <li><strong>Merge</strong> — After a confirmation dialog, merges the source into the target. The source customer is deactivated and an alias is created pointing to the target. This <strong>cannot be undone</strong>.</li>
+            </ul>
+            <div class="guide-tip">
+                <strong>Tip:</strong> After merging, the Agency Clients table refreshes automatically. The merged customer will appear on the Entity Aliases page with its alias record.
+            </div>
         </section>
 
         <!-- ════════ 9. Creating Entities ════════ -->
