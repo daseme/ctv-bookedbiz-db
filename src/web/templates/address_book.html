@@ -169,11 +169,39 @@
   .save-bar .btn-save{background:#0ea5e9;border:1px solid #0284c7;color:#fff}
   .save-bar .btn-save:hover{background:#0284c7}
   .save-bar .btn-save:disabled{background:#94a3b8;border-color:#94a3b8;cursor:not-allowed}
-  .save-bar .btn-deactivate{background:#fff;border:1px solid #ef4444;color:#ef4444;margin-right:auto}
+  .save-bar .btn-deactivate{background:#fff;border:1px solid #ef4444;color:#ef4444}
   .save-bar .btn-deactivate:hover{background:#fef2f2}
+  .save-bar .btn-merge-into{background:#fff;border:1px solid #d97706;color:#d97706}
+  .save-bar .btn-merge-into:hover{background:#fffbeb}
   .save-status{font-size:13px;color:#64748b;display:flex;align-items:center;margin-right:auto}
   .save-status.success{color:#16a34a}
   .save-status.error{color:#dc2626}
+
+  /* Merge Panel */
+  .merge-panel{display:none;padding:16px 24px;background:#fffbeb;border-top:1px solid #fde68a}
+  .merge-panel.active{display:block}
+  .merge-panel h4{margin:0 0 10px;font-size:14px;color:#92400e}
+  .merge-search{width:100%;padding:8px 12px;border:1px solid #d97706;border-radius:6px;font-size:14px;margin-bottom:8px;box-sizing:border-box}
+  .merge-search:focus{outline:none;border-color:#b45309;box-shadow:0 0 0 2px rgba(217,119,6,0.15)}
+  .merge-results{max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;margin-bottom:10px}
+  .merge-results:empty{display:none}
+  .merge-result-item{padding:8px 12px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f1f5f9}
+  .merge-result-item:last-child{border-bottom:none}
+  .merge-result-item:hover{background:#f0f9ff}
+  .merge-result-item.selected{background:#eff6ff;border-color:#bfdbfe}
+  .merge-result-item.self{opacity:0.4;cursor:default;background:#f8fafc}
+  .merge-result-item .mr-name{font-weight:500;color:#0f172a}
+  .merge-result-item .mr-meta{font-size:11px;color:#64748b}
+  .merge-preview{padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:10px;font-size:13px;line-height:1.6}
+  .merge-preview .merge-arrow{text-align:center;color:#d97706;font-size:18px;margin:4px 0}
+  .merge-preview .merge-entity{padding:6px 0}
+  .merge-preview .merge-entity .me-name{font-weight:600;color:#0f172a}
+  .merge-preview .merge-entity .me-stats{color:#64748b;font-size:12px}
+  .merge-actions{display:flex;gap:8px;justify-content:flex-end}
+  .merge-actions .btn-confirm-merge{background:#d97706;border:1px solid #b45309;color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer}
+  .merge-actions .btn-confirm-merge:hover{background:#b45309}
+  .merge-actions .btn-cancel-merge{background:#fff;border:1px solid #e2e8f0;color:#475569;padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer}
+  .merge-actions .btn-cancel-merge:hover{background:#f8fafc}
 
   /* View Toggle */
   .view-toggle{display:flex;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
@@ -760,9 +788,20 @@
     </div>
     <div class="save-bar">
       <button class="btn btn-deactivate" id="deactivate-entity" title="Deactivate this entity">Deactivate</button>
+      <button class="btn btn-merge-into" id="merge-entity-btn" style="display:none" onclick="window.showMergePanel()" title="Merge this customer into another">Merge Into...</button>
       <span class="save-status" id="save-status"></span>
       <button class="btn btn-close" id="close-detail">Close</button>
       <button class="btn btn-save" id="save-detail">Save Changes</button>
+    </div>
+    <div class="merge-panel" id="merge-panel">
+      <h4>Merge into another customer</h4>
+      <input type="text" class="merge-search" id="merge-search" placeholder="Search for target customer..." autocomplete="off">
+      <div class="merge-results" id="merge-results"></div>
+      <div id="merge-preview" style="display:none"></div>
+      <div class="merge-actions" id="merge-actions" style="display:none">
+        <button class="btn-cancel-merge" onclick="window.closeMergePanel()">Cancel</button>
+        <button class="btn-confirm-merge" id="merge-confirm-btn" onclick="window.executeMerge()">Confirm Merge</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1600,6 +1639,10 @@
     } else {
       pageLink.style.display = 'none';
     }
+
+    // Merge button (customers only)
+    document.getElementById('merge-entity-btn').style.display = type === 'customer' ? '' : 'none';
+    closeMergePanel();
 
     // Sectors (customers only) — multi-sector tag UI
     const sectorSection = document.getElementById('sector-section');
@@ -2865,11 +2908,128 @@
     }
   });
 
+  // ===== Merge Into... panel =====
+  let mergeTargetId = null;
+
+  function showMergePanel() {
+    if (!currentEntity || currentEntity.entity_type !== 'customer') return;
+    const panel = document.getElementById('merge-panel');
+    panel.classList.add('active');
+    document.getElementById('merge-search').value = '';
+    document.getElementById('merge-results').innerHTML = '';
+    document.getElementById('merge-preview').style.display = 'none';
+    document.getElementById('merge-actions').style.display = 'none';
+    mergeTargetId = null;
+    populateMergeResults('');
+    document.getElementById('merge-search').focus();
+  }
+
+  function closeMergePanel() {
+    document.getElementById('merge-panel').classList.remove('active');
+    mergeTargetId = null;
+  }
+
+  function populateMergeResults(query) {
+    const q = query.toLowerCase().trim();
+    const sourceId = currentEntity.entity_id;
+    const customers = currentData
+      .filter(d => d.entity_type === 'customer' && d.is_active)
+      .filter(d => !q || d.entity_name.toLowerCase().includes(q))
+      .sort((a, b) => (b.total_revenue || 0) - (a.total_revenue || 0))
+      .slice(0, 50);
+    const container = document.getElementById('merge-results');
+    if (customers.length === 0) {
+      container.innerHTML = '<div style="padding:12px;color:#64748b;font-size:13px">No matching customers</div>';
+      return;
+    }
+    container.innerHTML = customers.map(c => {
+      const isSelf = c.entity_id === sourceId;
+      return `<div class="merge-result-item${isSelf ? ' self' : ''}" ${isSelf ? '' : `onclick="window.selectMergeTarget(${c.entity_id})"`}>
+        <span class="mr-name">${esc(c.entity_name)}${isSelf ? ' (this customer)' : ''}</span>
+        <span class="mr-meta">${fmtRev(c.total_revenue)} &middot; ${c.spot_count || 0} spots</span>
+      </div>`;
+    }).join('');
+  }
+
+  function selectMergeTarget(targetId) {
+    mergeTargetId = targetId;
+    const target = currentData.find(d => d.entity_type === 'customer' && d.entity_id === targetId);
+    if (!target) return;
+    const source = currentEntity;
+    const preview = document.getElementById('merge-preview');
+    preview.style.display = 'block';
+    preview.innerHTML = `<div class="merge-preview">
+      <div class="merge-entity">
+        <div class="me-name">${esc(source.entity_name)}</div>
+        <div class="me-stats">${source.spot_count || 0} spots &middot; ${fmtRev(source.total_revenue)}</div>
+      </div>
+      <div class="merge-arrow">&darr; merge into &darr;</div>
+      <div class="merge-entity">
+        <div class="me-name">${esc(target.entity_name)}</div>
+        <div class="me-stats">${target.spot_count || 0} spots &middot; ${fmtRev(target.total_revenue)}</div>
+      </div>
+    </div>`;
+    document.getElementById('merge-actions').style.display = 'flex';
+    // Highlight selected item
+    document.querySelectorAll('#merge-results .merge-result-item').forEach(el => el.classList.remove('selected'));
+    const items = document.querySelectorAll('#merge-results .merge-result-item');
+    items.forEach(el => {
+      if (el.getAttribute('onclick')?.includes(targetId)) el.classList.add('selected');
+    });
+  }
+
+  async function executeMerge() {
+    if (!currentEntity || !mergeTargetId) return;
+    const source = currentEntity;
+    const target = currentData.find(d => d.entity_type === 'customer' && d.entity_id === mergeTargetId);
+    if (!target) return;
+    const msg = `Merge "${source.entity_name}" into "${target.entity_name}"?\n\nAll spots and aliases will move to the target. The source will be deactivated. This cannot be undone.`;
+    if (!confirm(msg)) return;
+    const btn = document.getElementById('merge-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Merging...';
+    try {
+      const { ok, data, error } = await apiFetch('/api/customer-aliases/merge', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ source_id: source.entity_id, target_id: mergeTargetId })
+      });
+      if (!ok) throw new Error(error || (data && data.error) || 'Merge failed');
+      // Refresh entity_metrics for affected IDs
+      await apiFetch('/api/address-book/refresh-metrics', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ customer_ids: [source.entity_id, mergeTargetId] })
+      });
+      alert(`Merged "${source.entity_name}" into "${target.entity_name}" successfully.`);
+      hasUnsavedChanges = false;
+      closeMergePanel();
+      closeModal();
+      loadData();
+    } catch (e) {
+      alert('Merge failed: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Confirm Merge';
+    }
+  }
+
+  document.getElementById('merge-search').addEventListener('input', debounce(function(e) {
+    populateMergeResults(e.target.value);
+    document.getElementById('merge-preview').style.display = 'none';
+    document.getElementById('merge-actions').style.display = 'none';
+    mergeTargetId = null;
+  }, 200));
+
   // Expose to onclick handlers in HTML
   window.findDuplicateClients = findDuplicateClients;
   window.swapDedupPair = swapDedupPair;
   window.dismissDedupPair = dismissDedupPair;
   window.executeDedupMerge = executeDedupMerge;
+  window.showMergePanel = showMergePanel;
+  window.closeMergePanel = closeMergePanel;
+  window.selectMergeTarget = selectMergeTarget;
+  window.executeMerge = executeMerge;
 })();
 </script>
 {% endblock %}
