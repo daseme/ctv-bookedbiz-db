@@ -239,6 +239,10 @@ class SQLiteRevenueRepository:
     def __init__(self, db_connection: DatabaseConnection):
         self.db = db_connection
         self.query_builder = RevenueQueryBuilder()
+        # Cache for prior-year customer names (keyed by year).
+        # Prior years are closed/static, so this set never changes
+        # until the service restarts (deploy or daily import).
+        self._prior_year_customers_cache: Dict[int, Set[str]] = {}
 
     def get_new_customers_for_year(self, year: int) -> Set[str]:
         yr = YearRange.from_year(year)
@@ -254,31 +258,44 @@ class SQLiteRevenueRepository:
             AND {base}
         """
 
-        # Build IN-clause for all prior years using indexed broadcast_month lookups
-        prior_months: List[str] = []
-        for prior_year in range(2021, year):
-            prior_months.extend(YearRange.from_year(prior_year).month_values)
-        prior_placeholders = "(" + ",".join(["?"] * len(prior_months)) + ")"
-
-        previous_years_query = f"""
-            SELECT DISTINCT audit.normalized_name AS customer
-            FROM spots s
-            {customer_join}
-            WHERE s.broadcast_month IN {prior_placeholders}
-            AND audit.normalized_name IS NOT NULL
-            AND {base}
-        """
-
         conn = self.db.connect()
         try:
             cur = conn.cursor()
+
+            # Current year customers (always fresh — data is still coming in)
             cur.execute(current_year_query, yr.month_values)
             current_customers = {r[0] for r in cur.fetchall()}
 
-            cur.execute(previous_years_query, prior_months)
-            previous_customers = {r[0] for r in cur.fetchall()}
+            # Prior year customers (cached — closed months don't change)
+            if year not in self._prior_year_customers_cache:
+                prior_months: List[str] = []
+                for prior_year in range(2021, year):
+                    prior_months.extend(YearRange.from_year(prior_year).month_values)
 
-            return current_customers - previous_customers
+                if prior_months:
+                    prior_placeholders = "(" + ",".join(["?"] * len(prior_months)) + ")"
+                    previous_years_query = f"""
+                        SELECT DISTINCT audit.normalized_name AS customer
+                        FROM spots s
+                        {customer_join}
+                        WHERE s.broadcast_month IN {prior_placeholders}
+                        AND audit.normalized_name IS NOT NULL
+                        AND {base}
+                    """
+                    cur.execute(previous_years_query, prior_months)
+                    self._prior_year_customers_cache[year] = {
+                        r[0] for r in cur.fetchall()
+                    }
+                else:
+                    self._prior_year_customers_cache[year] = set()
+
+                logger.info(
+                    "Cached %d prior-year customer names for year %d",
+                    len(self._prior_year_customers_cache[year]),
+                    year,
+                )
+
+            return current_customers - self._prior_year_customers_cache[year]
         finally:
             conn.close()
 
