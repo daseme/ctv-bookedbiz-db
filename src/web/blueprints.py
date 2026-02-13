@@ -20,8 +20,11 @@ EAGER_SERVICE_VALIDATION: "1"/"true" -> instantiate/check services on startup (d
 from __future__ import annotations
 
 import os
+import time
+import sqlite3
 import logging
-from typing import Dict, Any, Optional
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, Tuple
 
 from flask import Flask, request, render_template, jsonify
 
@@ -382,6 +385,51 @@ def create_blueprint_context_processors(app: Flask) -> None:
                     "error": str(e),
                 },
             }
+
+    # -- Data freshness: cached lookup of last successful import --
+    _freshness_cache: Dict[str, Tuple[float, Optional[str], bool]] = {}
+
+    @app.context_processor
+    def inject_last_data_update():
+        cache_key = "last_data_update"
+        now = time.monotonic()
+
+        # 5-minute cache
+        if cache_key in _freshness_cache:
+            ts, cached_dt, cached_stale = _freshness_cache[cache_key]
+            if now - ts < 300:
+                return {
+                    "last_data_update": cached_dt,
+                    "last_data_update_stale": cached_stale,
+                }
+
+        last_dt = None
+        stale = False
+        try:
+            db_path = app.config.get("DB_PATH", "")
+            if db_path:
+                uri = f"file:{db_path}?mode=ro"
+                conn = sqlite3.connect(uri, uri=True, timeout=3.0)
+                try:
+                    row = conn.execute(
+                        "SELECT import_date FROM import_batches "
+                        "WHERE status='COMPLETED' "
+                        "ORDER BY import_date DESC LIMIT 1"
+                    ).fetchone()
+                    if row and row[0]:
+                        last_dt = row[0]
+                        parsed = datetime.strptime(last_dt, "%Y-%m-%d %H:%M:%S")
+                        stale = (datetime.now() - parsed) > timedelta(hours=24)
+                finally:
+                    conn.close()
+        except Exception as e:
+            logger.debug("Data freshness lookup failed: %s", e)
+
+        _freshness_cache[cache_key] = (now, last_dt, stale)
+        return {
+            "last_data_update": last_dt,
+            "last_data_update_stale": stale,
+        }
 
 
 def setup_request_logging(app: Flask) -> None:

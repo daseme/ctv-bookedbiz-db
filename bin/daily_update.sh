@@ -6,7 +6,6 @@ PROJECT_ROOT="/opt/apps/ctv-bookedbiz-db"
 LOCK_FILE="/tmp/ctv-daily-update.lock"
 LOG_DIR="/var/log/ctv-daily-update"
 LOG_FILE="${LOG_DIR}/update.log"
-PYTHON_VENV="${PROJECT_ROOT}/.venv/bin/python"
 DAILY_UPDATE_SCRIPT="${PROJECT_ROOT}/cli/daily_update.py"
 
 # Source environment variables if available
@@ -15,6 +14,9 @@ if [[ -f "/etc/ctv-daily-update.env" ]]; then
     source /etc/ctv-daily-update.env
     set +a
 fi
+
+# Allow PYTHON_VENV override from env file; default to project .venv
+PYTHON_VENV="${PYTHON_VENV:-${PROJECT_ROOT}/.venv/bin/python}"
 
 # Default data file path
 DATA_FILE="${DAILY_UPDATE_DATA_FILE:-${PROJECT_ROOT}/data/raw/daily/Commercial Log $(date +%y%m%d).xlsx}"
@@ -27,13 +29,25 @@ send_notification() {
     local level="$1"
     local message="$2"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     echo "${timestamp} - ${level} - ${message}" >> "${LOG_FILE}"
-    
+
     if [[ -n "${NTFY_TOPIC:-}" ]]; then
-        curl -s -d "${level}: CTV Daily Update - ${message}" "ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1 || true
+        local priority="3"   # default
+        local tags="package"
+        case "${level}" in
+            SUCCESS) priority="3"; tags="white_check_mark" ;;
+            ERROR)   priority="5"; tags="rotating_light"   ;;
+            INFO)    priority="2"; tags="information_source" ;;
+        esac
+        curl -fsS \
+            -H "Title: CTV Daily Update ${level}" \
+            -H "Priority: ${priority}" \
+            -H "Tags: ${tags}" \
+            -d "${message}" \
+            "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1 || true
     fi
-    
+
     if [[ -n "${SLACK_WEBHOOK_URL:-}" ]]; then
         curl -s -X POST -H 'Content-type: application/json' \
             --data "{\"text\":\"${level}: CTV Daily Update - ${message}\"}" \
@@ -58,7 +72,7 @@ check_prerequisites() {
         return 1
     fi
     
-    local db_path="${PROJECT_ROOT}/data/database/production.db"
+    local db_path="${DATABASE_PATH:-${PROJECT_ROOT}/data/database/production.db}"
     if [[ ! -f "${db_path}" ]]; then
         send_notification "ERROR" "Database not found: ${db_path}"
         return 1
@@ -92,7 +106,13 @@ main() {
     if [[ ${exit_code} -eq 0 ]]; then
         send_notification "SUCCESS" "Daily update completed successfully (started: ${start_time}, ended: ${end_time})"
     else
-        send_notification "ERROR" "Daily update failed with exit code ${exit_code} (started: ${start_time}, ended: ${end_time})"
+        local error_context=""
+        if [[ -f "${LOG_FILE}" ]]; then
+            error_context=$(tail -5 "${LOG_FILE}" 2>/dev/null || true)
+        fi
+        send_notification "ERROR" "Daily update failed with exit code ${exit_code} (started: ${start_time}, ended: ${end_time})
+--- last 5 log lines ---
+${error_context}"
     fi
     
     return ${exit_code}
