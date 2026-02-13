@@ -14,7 +14,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from src.services.container import get_container
 from src.models.report_data import ReportFilters
-from src.services.report_data_service import YearRange
 from src.web.utils.request_helpers import (
     get_year_parameter,
     safe_get_service,
@@ -81,101 +80,6 @@ def revenue_dashboard_customer():
             f"Generating customer revenue dashboard for year {year} with filters: {filters.to_dict()}"
         )
         report_data = report_service.get_monthly_revenue_report_data(year, filters)
-
-        # DEBUG SECTION - Using WARNING level so it shows in logs
-        logger.warning("=" * 60)
-        logger.warning("BVK DATA PIPELINE DEBUG START")
-        logger.warning("=" * 60)
-        logger.warning(f"Total customers in report: {len(report_data.revenue_data)}")
-
-        # Create year range for debug queries
-        year_range = YearRange.from_year(year)
-
-        # Debug SQL query generation
-        if hasattr(report_service.repository, "build_debug_query"):
-            try:
-                query, params = report_service.repository.build_debug_query(
-                    year_range, filters
-                )
-                logger.warning("PYTHON-GENERATED SQL:")
-                logger.warning(query)
-                logger.warning(f"PARAMETERS: {params}")
-            except Exception as e:
-                logger.error(f"Error building debug query: {e}")
-        else:
-            logger.warning("No build_debug_query method found")
-
-        logger.warning("=" * 60)
-        logger.warning("BVK DEBUG END")
-        logger.warning("=" * 60)
-
-        # Create year range for debug queries
-        year_range = YearRange.from_year(year)
-
-        # Debug SQL query if method exists
-        if hasattr(report_service.repository, "build_debug_query"):
-            try:
-                query, params = report_service.repository.build_debug_query(
-                    year_range, filters
-                )
-                logger.info(f"PYTHON-GENERATED SQL: {query}")
-                logger.info(f"PARAMETERS: {params}")
-            except Exception as e:
-                logger.error(f"Error building debug query: {e}")
-        else:
-            logger.info("No build_debug_query method found")
-
-        # Get raw data for debugging
-        try:
-            raw_data = report_service.repository.get_customer_monthly_data(
-                year_range, filters
-            )
-
-            # Filter for BVK September data
-            bvk_september = [
-                row
-                for row in raw_data
-                if row.get("month") == "09" and "bvk" in row.get("customer", "").lower()
-            ]
-
-            logger.info("RAW DATABASE QUERY RESULTS")
-            logger.info(f"September BVK rows: {len(bvk_september)}")
-
-            total_raw = 0
-            for i, row in enumerate(bvk_september, 1):
-                gross = row.get("gross_revenue", 0)
-                total_raw += gross
-                logger.info(
-                    f"Row {i}: {row.get('customer')} | {row.get('revenue_type')} | ${gross}"
-                )
-
-            logger.info(f"Raw total: ${total_raw}")
-            logger.info("Expected: $4,107.35")
-            logger.info(f"Difference: ${4107.35 - total_raw}")
-
-        except Exception as e:
-            logger.error(f"Error in raw data debug: {e}")
-
-        # Check processed data for BVK customers
-        bvk_count = 0
-        for customer in report_data.revenue_data:
-            if "BVK" in customer.customer.upper():
-                bvk_count += 1
-                logger.info(f"BVK Customer #{bvk_count}:")
-                logger.info(f"   Name: '{customer.customer}'")
-                logger.info(f"   AE: '{customer.ae}'")
-                logger.info(f"   Customer ID: '{customer.customer_id}'")
-
-                if hasattr(customer, "to_dict"):
-                    data = customer.to_dict()
-                    sep_keys = [k for k in data.keys() if "sep" in k.lower()]
-                    logger.info(f"   September keys: {sep_keys}")
-                    for key in sep_keys:
-                        logger.info(f"   {key}: {data[key]}")
-
-        logger.info(f"Total BVK customers found: {bvk_count}")
-        logger.info("BVK DEBUG END")
-        logger.info("=" * 50)
 
         # Prepare template context
         template_data = {

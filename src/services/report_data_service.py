@@ -34,6 +34,20 @@ class YearRange:
     def like_pattern(self) -> str:
         return f"%-{self.suffix}"
 
+    @property
+    def month_values(self) -> List[str]:
+        """All 12 broadcast_month values for this year (e.g. ['Jan-26', ..., 'Dec-26']).
+        Using IN(...) with these values allows SQLite to use the broadcast_month index,
+        unlike LIKE '%-26' which requires a full table scan."""
+        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        return [f"{m}-{self.suffix}" for m in months]
+
+    @property
+    def in_clause(self) -> str:
+        """SQL IN clause placeholder string: (?,?,?,?,?,?,?,?,?,?,?,?)"""
+        return "(" + ",".join(["?"] * 12) + ")"
+
 
 class OrderingStrategy(Enum):
     """Enumeration of available ordering strategies for reports"""
@@ -229,23 +243,28 @@ class SQLiteRevenueRepository:
     def get_new_customers_for_year(self, year: int) -> Set[str]:
         yr = YearRange.from_year(year)
         base = self.query_builder.build_base_filters()
+        customer_join = CustomerNormalizationQueryBuilder.build_customer_join()
 
         current_year_query = f"""
             SELECT DISTINCT audit.normalized_name AS customer
             FROM spots s
-            {CustomerNormalizationQueryBuilder.build_customer_join()}
-            WHERE s.broadcast_month LIKE ?
+            {customer_join}
+            WHERE s.broadcast_month IN {yr.in_clause}
             AND audit.normalized_name IS NOT NULL
             AND {base}
         """
 
+        # Build IN-clause for all prior years using indexed broadcast_month lookups
+        prior_months: List[str] = []
+        for prior_year in range(2021, year):
+            prior_months.extend(YearRange.from_year(prior_year).month_values)
+        prior_placeholders = "(" + ",".join(["?"] * len(prior_months)) + ")"
+
         previous_years_query = f"""
             SELECT DISTINCT audit.normalized_name AS customer
             FROM spots s
-            {CustomerNormalizationQueryBuilder.build_customer_join()}
-            WHERE s.broadcast_month NOT LIKE ?
-            AND s.broadcast_month IS NOT NULL
-            AND s.broadcast_month <> ''
+            {customer_join}
+            WHERE s.broadcast_month IN {prior_placeholders}
             AND audit.normalized_name IS NOT NULL
             AND {base}
         """
@@ -253,10 +272,10 @@ class SQLiteRevenueRepository:
         conn = self.db.connect()
         try:
             cur = conn.cursor()
-            cur.execute(current_year_query, (yr.like_pattern,))
+            cur.execute(current_year_query, yr.month_values)
             current_customers = {r[0] for r in cur.fetchall()}
 
-            cur.execute(previous_years_query, (yr.like_pattern,))
+            cur.execute(previous_years_query, prior_months)
             previous_customers = {r[0] for r in cur.fetchall()}
 
             return current_customers - previous_customers
@@ -600,28 +619,33 @@ class SQLiteRevenueRepository:
             metadata=metadata,
         )
 
-    def get_available_years(self) -> List[int]:
-        """Get list of available years from data"""
-        year_expr = self.query_builder.build_year_case("broadcast_month")
-        query = f"""
-            SELECT DISTINCT {year_expr} AS year
-            FROM spots
-            WHERE broadcast_month IS NOT NULL
-              AND broadcast_month <> ''
-              AND broadcast_month LIKE '%-__'
-            ORDER BY year DESC
-        """
+    def get_available_years(self, conn=None) -> List[int]:
+        """Get list of available years from data using index-friendly EXISTS checks"""
+        # Instead of scanning all spots with DISTINCT, check each candidate year
+        # via EXISTS + IN on indexed broadcast_month column (milliseconds per year)
+        candidate_years = list(range(2021, 2031))
 
-        conn = self.db.connect()
+        own_conn = conn is None
+        if own_conn:
+            conn = self.db.connect()
         try:
             cursor = conn.cursor()
-            cursor.execute(query)
-            years = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
-            return sorted(list(set(years)), reverse=True)
+            result = []
+            for yr in candidate_years:
+                yr_range = YearRange.from_year(yr)
+                cursor.execute(
+                    f"SELECT 1 FROM spots WHERE broadcast_month IN {yr_range.in_clause} LIMIT 1",
+                    yr_range.month_values,
+                )
+                if cursor.fetchone():
+                    result.append(yr)
+            result.sort(reverse=True)
+            return result
         finally:
-            conn.close()
+            if own_conn:
+                conn.close()
 
-    def get_ae_list(self, year: Optional[int] = None) -> List[str]:
+    def get_ae_list(self, year: Optional[int] = None, conn=None) -> List[str]:
         """Get list of available AEs, optionally filtered by year"""
         query = """
             SELECT MIN(TRIM(sales_person)) AS ae_display
@@ -632,18 +656,21 @@ class SQLiteRevenueRepository:
         params: List[Any] = []
         if year:
             year_range = YearRange.from_year(year)
-            query += " AND broadcast_month LIKE ?"
-            params.append(year_range.like_pattern)
+            query += f" AND broadcast_month IN {year_range.in_clause}"
+            params.extend(year_range.month_values)
 
         query += " GROUP BY UPPER(TRIM(sales_person)) ORDER BY ae_display"
 
-        conn = self.db.connect()
+        own_conn = conn is None
+        if own_conn:
+            conn = self.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
             return [r[0] for r in cursor.fetchall()]
         finally:
-            conn.close()
+            if own_conn:
+                conn.close()
 
     def _apply_filters(
         self, query: str, params: List[Any], filters: "ReportFilters"
@@ -839,11 +866,15 @@ class ReportDataService:
         raw_data = self.repository.get_customer_monthly_data(year_range, filters)
         revenue_data = self.processor.process_monthly_data(raw_data)
 
-        # Get supporting data
-        available_years = self.repository.get_available_years()
-        ae_list = self.repository.get_ae_list(year)
-        revenue_types = self._get_revenue_types()
-        month_status = self._get_month_status(year)
+        # Get supporting data using a single shared connection
+        support_conn = self.repository.db.connect()
+        try:
+            available_years = self.repository.get_available_years(conn=support_conn)
+            ae_list = self.repository.get_ae_list(year, conn=support_conn)
+            revenue_types = self._get_revenue_types(year=year, conn=support_conn)
+            month_status = self._get_month_status(year, conn=support_conn)
+        finally:
+            support_conn.close()
 
         # Calculate statistics with new customer info
         stats = self._calculate_revenue_statistics(
@@ -1499,32 +1530,43 @@ class ReportDataService:
             data_last_updated=self._get_data_last_updated(),
         )
 
-    def _get_revenue_types(self) -> List[str]:
-        """Get available revenue types"""
+    def _get_revenue_types(self, year: int = None, conn=None) -> List[str]:
+        """Get available revenue types, optionally filtered by year"""
         query = """
             SELECT DISTINCT COALESCE(revenue_type, 'Regular') AS revenue_type
             FROM spots
             WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
-            ORDER BY revenue_type
         """
-        conn = self.repository.db.connect()
+        params: List[Any] = []
+        if year:
+            year_range = YearRange.from_year(year)
+            query += f" AND broadcast_month IN {year_range.in_clause}"
+            params.extend(year_range.month_values)
+        query += " ORDER BY revenue_type"
+
+        own_conn = conn is None
+        if own_conn:
+            conn = self.repository.db.connect()
         try:
             cursor = conn.cursor()
-            cursor.execute(query)
+            cursor.execute(query, params)
             return [row[0] for row in cursor.fetchall()]
         finally:
-            conn.close()
+            if own_conn:
+                conn.close()
 
-    def _get_month_status(self, year: int) -> List["MonthStatus"]:
+    def _get_month_status(self, year: int, conn=None) -> List["MonthStatus"]:
         """Get month closure status with FIXED filtering"""
         year_range = YearRange.from_year(year)
         query = """
-            SELECT broadcast_month, closed_date, closed_by 
-            FROM month_closures 
+            SELECT broadcast_month, closed_date, closed_by
+            FROM month_closures
             WHERE broadcast_month LIKE ?
         """
 
-        conn = self.repository.db.connect()
+        own_conn = conn is None
+        if own_conn:
+            conn = self.repository.db.connect()
         try:
             cursor = conn.cursor()
             cursor.execute(query, (year_range.like_pattern,))
@@ -1535,7 +1577,8 @@ class ReportDataService:
             ]
             return create_month_status_from_closure_data(closures, year)
         finally:
-            conn.close()
+            if own_conn:
+                conn.close()
 
     def _get_data_last_updated(self) -> datetime:
         """Get last data update timestamp"""
