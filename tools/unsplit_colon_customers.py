@@ -3,16 +3,23 @@
 Unsplit Colon-Name Customers Tool
 
 Discovers customers whose normalized_name contains "Agency:Customer" and
-processes Scenario 1: both the agency and standalone customer already exist.
+processes two scenarios:
 
-Reassigns spots, aliases, sectors, and AE assignments from the colon-name
-source to the standalone target, then soft-deletes the source.
+Scenario 1: Both the agency and standalone customer already exist.
+  Reassigns spots, aliases, sectors, and AE assignments from the colon-name
+  source to the standalone target, then soft-deletes the source.
+
+Scenario 2: Agency exists but NO active standalone customer does.
+  Renames the colon-name customer to just the customer part, assigns the
+  agency, sets agency_id on spots, and creates a preserving alias.
+  Handles inactive collision records that would block the UNIQUE constraint.
 
 Usage:
-    python tools/unsplit_colon_customers.py --db .data/dev.db                    # dry-run all
-    python tools/unsplit_colon_customers.py --db .data/dev.db --customer-id 284  # dry-run one
-    python tools/unsplit_colon_customers.py --db .data/dev.db --limit 5          # dry-run first 5
-    python tools/unsplit_colon_customers.py --db .data/dev.db --execute          # apply all
+    python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 1                    # dry-run S1
+    python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 2                    # dry-run S2
+    python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 2 --customer-id 268  # one case
+    python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 2 --limit 5          # first 5
+    python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 2 --execute          # apply S2
 """
 
 import argparse
@@ -43,6 +50,50 @@ class AliasInfo:
     alias_name: str
     target_entity_id: int
     is_active: int
+
+
+@dataclass
+class Scenario2Case:
+    """Discovery data for a Scenario 2 colon-name customer (rename + assign agency)."""
+    source_id: int          # The colon-name customer (will be renamed)
+    source_name: str        # e.g., "Misfit:CA Community Colleges"
+    agency_part: str        # e.g., "Misfit"
+    customer_part: str      # e.g., "CA Community Colleges"
+    agency_id: int
+    agency_name: str
+    collision_id: Optional[int] = None   # Inactive customer with same name (if any)
+    collision_name: Optional[str] = None
+
+
+@dataclass
+class Scenario2Analysis:
+    """Full impact analysis for a Scenario 2 unsplit (rename + assign agency)."""
+    case: Scenario2Case
+
+    # Source details
+    source_active: bool = True
+    source_created: str = ""
+    source_sector: str = ""
+    source_ae: str = ""
+
+    # Spots impact
+    spots_total: int = 0
+    spots_revenue: float = 0.0
+    spots_date_min: str = ""
+    spots_date_max: str = ""
+    spots_agency_null: int = 0      # Spots where agency_id IS NULL -> will be set
+    spots_agency_match: int = 0     # Already has correct agency_id
+    spots_agency_other: int = 0     # Has different agency_id (leave alone)
+
+    # Alias
+    existing_alias: Optional[AliasInfo] = None  # If colon-name alias already exists
+
+    # Collision details
+    collision_spots: int = 0        # Should be 0
+    collision_aliases: int = 0      # Should be 0
+
+    # Warnings
+    warnings: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -181,6 +232,83 @@ def discover_cases(
             target_name=r["target_name"],
             agency_id=r["agency_id"],
             agency_name=r["agency_name"],
+        ))
+    return results
+
+
+def discover_scenario2_cases(
+    conn: sqlite3.Connection,
+    customer_id: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> List[Scenario2Case]:
+    """Find colon-name customers where agency exists but NO active standalone customer does.
+
+    These need renaming to just the customer part + agency assignment.
+    Also detects inactive collision records that would block the UNIQUE constraint.
+    """
+    base_query = """
+        SELECT
+            src.customer_id AS source_id,
+            src.normalized_name AS source_name,
+            TRIM(SUBSTR(src.normalized_name, 1, INSTR(src.normalized_name, ':') - 1)) AS agency_part,
+            TRIM(SUBSTR(src.normalized_name, INSTR(src.normalized_name, ':') + 1)) AS customer_part,
+            ag.agency_id,
+            ag.agency_name,
+            inactive.customer_id AS collision_id,
+            inactive.normalized_name AS collision_name
+        FROM customers src
+        JOIN agencies ag
+            ON ag.agency_name = TRIM(SUBSTR(src.normalized_name, 1, INSTR(src.normalized_name, ':') - 1)) COLLATE NOCASE
+        LEFT JOIN customers tgt
+            ON tgt.normalized_name = TRIM(SUBSTR(src.normalized_name, INSTR(src.normalized_name, ':') + 1)) COLLATE NOCASE
+            AND tgt.customer_id != src.customer_id
+            AND tgt.is_active = 1
+        LEFT JOIN customers inactive
+            ON inactive.normalized_name = TRIM(SUBSTR(src.normalized_name, INSTR(src.normalized_name, ':') + 1)) COLLATE NOCASE
+            AND inactive.customer_id != src.customer_id
+            AND inactive.is_active = 0
+        WHERE src.normalized_name LIKE '%:%'
+          AND src.normalized_name NOT LIKE '%:%:%'
+          AND src.is_active = 1
+          AND tgt.customer_id IS NULL
+    """
+    params = []
+
+    if customer_id is not None:
+        base_query += " AND src.customer_id = ?"
+        params.append(customer_id)
+
+    base_query += " ORDER BY src.customer_id"
+
+    if limit is not None:
+        base_query += " LIMIT ?"
+        params.append(limit)
+
+    rows = conn.execute(base_query, params).fetchall()
+
+    # Deduplicate by source_id (case-insensitive joins can produce multiple rows)
+    # AND by customer_part (two colon-names can share the same advertiser part;
+    # only process one per run — the second becomes Scenario 1 on re-run)
+    seen_source_ids = set()
+    seen_customer_parts = set()
+    results = []
+    for r in rows:
+        if r["source_id"] in seen_source_ids:
+            continue
+        cpart_lower = r["customer_part"].lower()
+        if cpart_lower in seen_customer_parts:
+            continue
+        seen_source_ids.add(r["source_id"])
+        seen_customer_parts.add(cpart_lower)
+        results.append(Scenario2Case(
+            source_id=r["source_id"],
+            source_name=r["source_name"],
+            agency_part=r["agency_part"],
+            customer_part=r["customer_part"],
+            agency_id=r["agency_id"],
+            agency_name=r["agency_name"],
+            collision_id=r["collision_id"],
+            collision_name=r["collision_name"],
         ))
     return results
 
@@ -355,6 +483,95 @@ def analyze_case(conn: sqlite3.Connection, case: ColonCase) -> CaseAnalysis:
 
     if a.spots_total == 0:
         a.warnings.append("[ZERO SPOTS] Source has no spots — will still move aliases/sectors")
+
+    return a
+
+
+def analyze_scenario2(conn: sqlite3.Connection, case: Scenario2Case) -> Scenario2Analysis:
+    """Build full impact analysis for a Scenario 2 unsplit (rename + assign agency)."""
+    a = Scenario2Analysis(case=case)
+
+    # ── Source details ────────────────────────────────────────────────────
+    src = conn.execute("""
+        SELECT is_active, created_date, sector_id, assigned_ae
+        FROM customers WHERE customer_id = ?
+    """, [case.source_id]).fetchone()
+    if src:
+        a.source_active = bool(src["is_active"])
+        a.source_created = src["created_date"] or ""
+        a.source_ae = src["assigned_ae"] or ""
+        if src["sector_id"]:
+            sec = conn.execute("SELECT sector_name FROM sectors WHERE sector_id = ?",
+                               [src["sector_id"]]).fetchone()
+            a.source_sector = sec["sector_name"] if sec else ""
+
+    # ── Spots impact ─────────────────────────────────────────────────────
+    spot_stats = conn.execute("""
+        SELECT COUNT(*) AS cnt,
+               COALESCE(SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL
+                            THEN gross_rate ELSE 0 END), 0) AS rev,
+               MIN(air_date) AS d_min,
+               MAX(air_date) AS d_max
+        FROM spots WHERE customer_id = ?
+    """, [case.source_id]).fetchone()
+    a.spots_total = spot_stats["cnt"]
+    a.spots_revenue = spot_stats["rev"]
+    a.spots_date_min = spot_stats["d_min"] or ""
+    a.spots_date_max = spot_stats["d_max"] or ""
+
+    # Agency ID breakdown on source spots
+    agency_breakdown = conn.execute("""
+        SELECT
+            SUM(CASE WHEN agency_id IS NULL THEN 1 ELSE 0 END) AS null_count,
+            SUM(CASE WHEN agency_id = ? THEN 1 ELSE 0 END) AS match_count,
+            SUM(CASE WHEN agency_id IS NOT NULL AND agency_id != ? THEN 1 ELSE 0 END) AS other_count
+        FROM spots WHERE customer_id = ?
+    """, [case.agency_id, case.agency_id, case.source_id]).fetchone()
+    a.spots_agency_null = agency_breakdown["null_count"] or 0
+    a.spots_agency_match = agency_breakdown["match_count"] or 0
+    a.spots_agency_other = agency_breakdown["other_count"] or 0
+
+    # ── Existing alias check ─────────────────────────────────────────────
+    existing = conn.execute("""
+        SELECT alias_id, alias_name, target_entity_id, is_active
+        FROM entity_aliases
+        WHERE alias_name = ? AND entity_type = 'customer'
+    """, [case.source_name]).fetchone()
+    if existing:
+        a.existing_alias = AliasInfo(
+            existing["alias_id"], existing["alias_name"],
+            existing["target_entity_id"], existing["is_active"]
+        )
+
+    # ── Collision details ────────────────────────────────────────────────
+    if case.collision_id:
+        col_spots = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM spots WHERE customer_id = ?",
+            [case.collision_id]
+        ).fetchone()
+        a.collision_spots = col_spots["cnt"]
+
+        col_aliases = conn.execute("""
+            SELECT COUNT(*) AS cnt FROM entity_aliases
+            WHERE target_entity_id = ? AND entity_type = 'customer' AND is_active = 1
+        """, [case.collision_id]).fetchone()
+        a.collision_aliases = col_aliases["cnt"]
+
+        if a.collision_spots > 0:
+            a.warnings.append(
+                f"[COLLISION HAS SPOTS] Inactive customer #{case.collision_id} has {a.collision_spots} spots"
+            )
+        if a.collision_aliases > 0:
+            a.warnings.append(
+                f"[COLLISION HAS ALIASES] Inactive customer #{case.collision_id} has {a.collision_aliases} active aliases"
+            )
+
+    # ── General warnings ─────────────────────────────────────────────────
+    if not a.source_active:
+        a.warnings.append("[INACTIVE SOURCE] Source already deactivated")
+
+    if a.spots_total == 0:
+        a.warnings.append("[ZERO SPOTS] Source has no spots — will still rename and assign agency")
 
     return a
 
@@ -678,6 +895,112 @@ def execute_case(conn: sqlite3.Connection, a: CaseAnalysis) -> dict:
     return stats
 
 
+def execute_scenario2_case(conn: sqlite3.Connection, a: Scenario2Analysis) -> dict:
+    """Apply a single Scenario 2 unsplit (rename + assign agency). Returns stats."""
+    c = a.case
+    stats = {"source_id": c.source_id, "steps": []}
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        # Step 1: Handle collision (rename inactive customer out of the way)
+        if c.collision_id:
+            retired_name = f"{c.collision_name} #retired-{c.collision_id}"
+            conn.execute("""
+                UPDATE customers
+                SET normalized_name = ?,
+                    updated_date = CURRENT_TIMESTAMP,
+                    notes = COALESCE(notes, '') || ' | Retired by unsplit_tool Scenario 2 at ' || datetime('now')
+                WHERE customer_id = ?
+            """, [retired_name, c.collision_id])
+            stats["steps"].append(f"Renamed collision #{c.collision_id} to '{retired_name}'")
+
+        # Step 2: Rename source customer + set agency_id
+        conn.execute("""
+            UPDATE customers
+            SET normalized_name = ?,
+                agency_id = ?,
+                updated_date = CURRENT_TIMESTAMP
+            WHERE customer_id = ?
+        """, [c.customer_part, c.agency_id, c.source_id])
+        stats["steps"].append(f"Renamed #{c.source_id} to '{c.customer_part}', agency_id={c.agency_id}")
+
+        # Step 3: Set agency_id on spots where NULL
+        if a.spots_agency_null > 0:
+            rc = conn.execute("""
+                UPDATE spots SET agency_id = ?
+                WHERE customer_id = ? AND agency_id IS NULL
+            """, [c.agency_id, c.source_id]).rowcount
+            stats["steps"].append(f"Set agency_id on {rc} spots")
+
+        # Step 4: Create preserving alias (old colon name -> same customer_id)
+        if a.existing_alias:
+            ea = a.existing_alias
+            if ea.target_entity_id == c.source_id and ea.is_active:
+                stats["steps"].append(f"Preserving alias already exists (alias #{ea.alias_id})")
+            elif ea.target_entity_id == c.source_id and not ea.is_active:
+                # Reactivate it
+                conn.execute("""
+                    UPDATE entity_aliases
+                    SET is_active = 1, updated_date = CURRENT_TIMESTAMP,
+                        notes = COALESCE(notes, '') || ' | Reactivated by unsplit_tool S2 at ' || datetime('now')
+                    WHERE alias_id = ?
+                """, [ea.alias_id])
+                stats["steps"].append(f"Reactivated preserving alias #{ea.alias_id}")
+            else:
+                stats["steps"].append(
+                    f"Preserving alias exists but points to #{ea.target_entity_id} (skipped)"
+                )
+        else:
+            # Re-check at execution time (another case may have created it)
+            live_check = conn.execute("""
+                SELECT alias_id, target_entity_id FROM entity_aliases
+                WHERE alias_name = ? AND entity_type = 'customer'
+            """, [c.source_name]).fetchone()
+            if live_check:
+                stats["steps"].append(
+                    f"Preserving alias already exists at execution time (alias #{live_check['alias_id']})"
+                )
+            else:
+                conn.execute("""
+                    INSERT INTO entity_aliases
+                    (alias_name, entity_type, target_entity_id, confidence_score,
+                     created_by, notes, is_active)
+                    VALUES (?, 'customer', ?, 100, 'unsplit_tool',
+                            'Preserving alias from S2 unsplit of customer ' || ?, 1)
+                """, [c.source_name, c.source_id, c.source_id])
+                stats["steps"].append(f"Created preserving alias '{c.source_name}' -> #{c.source_id}")
+
+        # Step 5: Audit record
+        extra_parts = [
+            f"source_name={c.source_name}",
+            f"new_name={c.customer_part}",
+            f"agency_id={c.agency_id}",
+            f"spots={a.spots_total}",
+            f"revenue={a.spots_revenue:.2f}",
+        ]
+        if c.collision_id:
+            extra_parts.append(f"collision_id={c.collision_id}")
+        conn.execute("""
+            INSERT INTO canon_audit (actor, action, key, value, extra)
+            VALUES ('unsplit_tool', 'UNSPLIT_S2', ?, ?, ?)
+        """, [
+            f"customer:{c.source_id}",
+            f"renamed_to:{c.customer_part}",
+            "|".join(extra_parts),
+        ])
+        stats["steps"].append("Audit record inserted")
+
+        conn.execute("COMMIT")
+        stats["success"] = True
+
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        stats["success"] = False
+        stats["error"] = str(e)
+
+    return stats
+
+
 def rebuild_metrics(conn: sqlite3.Connection, customer_ids: set, agency_ids: set):
     """Targeted rebuild of entity_metrics for affected entities."""
     print(f"\nRebuilding entity_metrics for {len(customer_ids)} customers and {len(agency_ids)} agencies...")
@@ -847,24 +1170,326 @@ def execute_all(conn: sqlite3.Connection, results: List[CaseAnalysis]):
         verify_execution(conn, [a for a in valid[:succeeded]])
 
 
+# ── Scenario 2 Display ────────────────────────────────────────────────────────
+
+def print_scenario2_case(index: int, total: int, a: Scenario2Analysis):
+    c = a.case
+    w = 70
+
+    print(f"\n{'=' * w}")
+    label = f"CASE {index} of {total}: {c.source_name}"
+    if a.warnings:
+        tags = " ".join(w_str.split("]")[0] + "]" for w_str in a.warnings if w_str.startswith("["))
+        label += f"  {tags}"
+    print(label)
+    print(f"{'=' * w}")
+
+    # Source (will be renamed)
+    print(f"\n  SOURCE (colon-name customer to rename):")
+    print(f"    customer_id:   {c.source_id}")
+    print(f"    Current name:  {c.source_name}")
+    print(f"    New name:      {c.customer_part}")
+    print(f"    Active:        {'Yes' if a.source_active else 'No'}")
+    print(f"    Sector:        {a.source_sector or '(none)'}")
+    print(f"    Assigned AE:   {a.source_ae or '(none)'}")
+
+    # Agency
+    print(f"\n  AGENCY (will be assigned):")
+    print(f"    agency_id:     {c.agency_id}")
+    print(f"    Name:          {c.agency_name}")
+
+    # Collision
+    if c.collision_id:
+        print(f"\n  COLLISION (inactive customer blocking rename):")
+        print(f"    customer_id:   {c.collision_id}")
+        print(f"    Name:          {c.collision_name}")
+        print(f"    Spots:         {a.collision_spots}")
+        print(f"    Active aliases: {a.collision_aliases}")
+        print(f"    Action:        Rename to '{c.collision_name} #retired-{c.collision_id}'")
+    else:
+        print(f"\n  COLLISION: none (clean rename)")
+
+    # Spots
+    print(f"\n  SPOTS IMPACT:")
+    print(f"    Total spots:   {a.spots_total:,} ({fmt_money(a.spots_revenue)} revenue)")
+    if a.spots_total > 0:
+        print(f"    Date range:    {a.spots_date_min} to {a.spots_date_max}")
+        print(f"    agency_id breakdown:")
+        print(f"      NULL -> will set to {c.agency_id}: {a.spots_agency_null:,}")
+        print(f"      Already {c.agency_id}: {a.spots_agency_match:,}")
+        print(f"      Different (keep): {a.spots_agency_other:,}")
+
+    # Alias
+    print(f"\n  PRESERVING ALIAS:")
+    if a.existing_alias:
+        ea = a.existing_alias
+        if ea.target_entity_id == c.source_id and ea.is_active:
+            print(f"    Already exists: alias #{ea.alias_id} -> #{ea.target_entity_id} (active)")
+        elif ea.target_entity_id == c.source_id and not ea.is_active:
+            print(f"    Exists but inactive: alias #{ea.alias_id} -> will reactivate")
+        else:
+            print(f"    Exists but points to #{ea.target_entity_id} (will skip)")
+    else:
+        print(f"    Will create: '{c.source_name}' -> #{c.source_id}")
+
+    # Warnings
+    if a.warnings:
+        print(f"\n  WARNINGS:")
+        for warn in a.warnings:
+            print(f"    {warn}")
+
+    print(f"\n{'-' * w}")
+
+
+def print_scenario2_summary(results: List[Scenario2Analysis]):
+    w = 70
+    print(f"\n{'=' * w}")
+    print(f"SCENARIO 2 SUMMARY: {len(results)} cases analyzed")
+    print(f"{'=' * w}")
+
+    total_spots = sum(a.spots_total for a in results)
+    total_revenue = sum(a.spots_revenue for a in results)
+    total_agency_null = sum(a.spots_agency_null for a in results)
+    collisions = sum(1 for a in results if a.case.collision_id)
+    clean_renames = sum(1 for a in results if not a.case.collision_id)
+    aliases_existing = sum(1 for a in results if a.existing_alias)
+    aliases_to_create = sum(1 for a in results if not a.existing_alias)
+    zero_spots = sum(1 for a in results if a.spots_total == 0)
+    warning_cases = [a for a in results if a.warnings]
+
+    print(f"\n  Totals:")
+    print(f"    Cases:              {len(results):,}")
+    print(f"    Total spots:        {total_spots:,}")
+    print(f"    Total revenue:      {fmt_money(total_revenue)}")
+    print(f"    Spots needing agency_id: {total_agency_null:,}")
+
+    print(f"\n  Collisions:")
+    print(f"    Clean renames:      {clean_renames:,}")
+    print(f"    With collision:     {collisions:,}")
+
+    print(f"\n  Aliases:")
+    print(f"    Already exist:      {aliases_existing:,}")
+    print(f"    To create:          {aliases_to_create:,}")
+
+    if zero_spots or warning_cases:
+        print(f"\n  Flags:")
+        if zero_spots:
+            print(f"    [ZERO SPOTS] cases:          {zero_spots}")
+        collision_with_spots = [a for a in results if a.collision_spots > 0]
+        if collision_with_spots:
+            print(f"    [COLLISION HAS SPOTS] cases:  {len(collision_with_spots)}")
+            for a in collision_with_spots:
+                print(f"      - #{a.case.collision_id}: {a.collision_spots} spots")
+
+    print(f"\n{'-' * w}")
+
+
+def verify_scenario2(conn: sqlite3.Connection, results: List[Scenario2Analysis]):
+    """Post-execution verification for Scenario 2."""
+    w = 70
+    print(f"\n{'=' * w}")
+    print("SCENARIO 2 POST-EXECUTION VERIFICATION")
+    print(f"{'=' * w}")
+
+    # 1. All sources renamed (no more colon in normalized_name)
+    source_ids = [a.case.source_id for a in results]
+    placeholders = ",".join("?" * len(source_ids))
+    still_colon = conn.execute(f"""
+        SELECT customer_id, normalized_name FROM customers
+        WHERE customer_id IN ({placeholders}) AND normalized_name LIKE '%:%'
+    """, source_ids).fetchall()
+    if still_colon:
+        print(f"\n  [FAIL] Still have colon in name ({len(still_colon)}):")
+        for r in still_colon:
+            print(f"    #{r['customer_id']}: {r['normalized_name']}")
+    else:
+        print(f"\n  [OK] All {len(results)} sources renamed (no colons)")
+
+    # 2. All sources have agency_id set
+    no_agency = conn.execute(f"""
+        SELECT customer_id, normalized_name FROM customers
+        WHERE customer_id IN ({placeholders}) AND agency_id IS NULL
+    """, source_ids).fetchall()
+    if no_agency:
+        print(f"\n  [FAIL] Missing agency_id ({len(no_agency)}):")
+        for r in no_agency:
+            print(f"    #{r['customer_id']}: {r['normalized_name']}")
+    else:
+        print(f"  [OK] All {len(results)} sources have agency_id set")
+
+    # 3. Preserving aliases exist for all old colon names
+    missing_aliases = []
+    for a in results:
+        exists = conn.execute("""
+            SELECT 1 FROM entity_aliases
+            WHERE alias_name = ? AND entity_type = 'customer' AND is_active = 1
+        """, [a.case.source_name]).fetchone()
+        if not exists:
+            missing_aliases.append(a.case.source_name)
+    if missing_aliases:
+        print(f"\n  [WARN] Missing preserving aliases ({len(missing_aliases)}):")
+        for name in missing_aliases[:10]:
+            print(f"    - {name}")
+        if len(missing_aliases) > 10:
+            print(f"    ... and {len(missing_aliases) - 10} more")
+    else:
+        print(f"  [OK] All {len(results)} preserving aliases exist")
+
+    # 4. No NULL agency_id on spots for processed customers
+    null_agency_spots = conn.execute(f"""
+        SELECT s.customer_id, COUNT(*) AS cnt
+        FROM spots s
+        WHERE s.customer_id IN ({placeholders}) AND s.agency_id IS NULL
+        GROUP BY s.customer_id
+    """, source_ids).fetchall()
+    if null_agency_spots:
+        # Only warn — some spots may legitimately have other agency assignment patterns
+        total_null = sum(r["cnt"] for r in null_agency_spots)
+        print(f"\n  [INFO] {total_null} spots still have NULL agency_id across {len(null_agency_spots)} customers")
+    else:
+        print(f"  [OK] No NULL agency_id spots on processed customers")
+
+    # 5. Collision records renamed
+    collision_ids = [a.case.collision_id for a in results if a.case.collision_id]
+    if collision_ids:
+        c_placeholders = ",".join("?" * len(collision_ids))
+        not_retired = conn.execute(f"""
+            SELECT customer_id, normalized_name FROM customers
+            WHERE customer_id IN ({c_placeholders})
+              AND normalized_name NOT LIKE '%#retired-%'
+        """, collision_ids).fetchall()
+        if not_retired:
+            print(f"\n  [FAIL] Collision records not renamed ({len(not_retired)}):")
+            for r in not_retired:
+                print(f"    #{r['customer_id']}: {r['normalized_name']}")
+        else:
+            print(f"  [OK] All {len(collision_ids)} collision records renamed")
+
+    print(f"\n{'-' * w}")
+
+
+def execute_all_scenario2(conn: sqlite3.Connection, results: List[Scenario2Analysis]):
+    """Execute all Scenario 2 cases with user confirmation."""
+    # Filter out cases with dangerous collisions (spots on collision record)
+    valid = [a for a in results if a.collision_spots == 0]
+    skipped = [a for a in results if a.collision_spots > 0]
+
+    if skipped:
+        print(f"\nSkipping {len(skipped)} case(s) with spots on collision record:")
+        for a in skipped:
+            print(f"  - #{a.case.source_id}: collision #{a.case.collision_id} has {a.collision_spots} spots")
+
+    if not valid:
+        print("\nNo valid cases to execute.")
+        return
+
+    answer = input(f"\nApply Scenario 2 changes to {len(valid)} cases? [yes/NO]: ").strip().lower()
+    if answer != "yes":
+        print("Aborted.")
+        return
+
+    affected_customers = set()
+    affected_agencies = set()
+    succeeded = 0
+    failed = 0
+
+    for i, a in enumerate(valid, 1):
+        stats = execute_scenario2_case(conn, a)
+        if stats["success"]:
+            succeeded += 1
+            affected_customers.add(a.case.source_id)
+            if a.case.collision_id:
+                affected_customers.add(a.case.collision_id)
+            affected_agencies.add(a.case.agency_id)
+            print(f"  [{i}/{len(valid)}] OK: #{a.case.source_id} '{a.case.source_name}' -> '{a.case.customer_part}' ({len(stats['steps'])} steps)")
+        else:
+            failed += 1
+            print(f"  [{i}/{len(valid)}] FAILED: #{a.case.source_id} -> {stats['error']}")
+            print(f"\nStopping execution after failure. {succeeded} succeeded, {failed} failed, {len(valid) - i} remaining.")
+            break
+
+    print(f"\nExecution complete: {succeeded} succeeded, {failed} failed")
+
+    if succeeded > 0:
+        rebuild_metrics(conn, affected_customers, affected_agencies)
+        verify_scenario2(conn, [a for a in valid[:succeeded]])
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Unsplit colon-name customers (Scenario 1: agency and customer both exist)",
+        description="Unsplit colon-name customers",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Examples:
-  python tools/unsplit_colon_customers.py --db .data/dev.db                    # dry-run all
-  python tools/unsplit_colon_customers.py --db .data/dev.db --customer-id 284  # dry-run one
-  python tools/unsplit_colon_customers.py --db .data/dev.db --limit 5          # dry-run first 5
-  python tools/unsplit_colon_customers.py --db .data/dev.db --execute          # apply all
+        epilog="""Scenarios:
+  1  Both agency and standalone customer exist — merge colon-name into standalone
+  2  Agency exists but no standalone customer — rename + assign agency
+
+Examples:
+  python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 1                    # dry-run S1
+  python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 2                    # dry-run S2
+  python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 2 --customer-id 268  # one case
+  python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 2 --limit 5          # first 5
+  python tools/unsplit_colon_customers.py --db .data/dev.db --scenario 2 --execute          # apply S2
 """,
     )
     parser.add_argument("--db", required=True, help="Path to SQLite database")
+    parser.add_argument("--scenario", choices=["1", "2", "all"], default="all",
+                        help="Which scenario to run (default: all)")
     parser.add_argument("--customer-id", type=int, help="Process a single source customer ID")
     parser.add_argument("--limit", type=int, help="Limit number of cases to process")
     parser.add_argument("--execute", action="store_true", help="Apply changes (default: dry-run)")
     return parser.parse_args()
+
+
+def run_scenario1(conn: sqlite3.Connection, args):
+    """Run Scenario 1: merge colon-name into existing standalone customer."""
+    print(f"Discovering colon-name customers in {args.db}...")
+    cases = discover_cases(conn, customer_id=args.customer_id, limit=args.limit)
+    print(f"Found {len(cases)} qualifying case(s) (Scenario 1)")
+
+    if not cases:
+        print("Nothing to do for Scenario 1.")
+        return
+
+    results = []
+    for case in cases:
+        results.append(analyze_case(conn, case))
+
+    for i, a in enumerate(results, 1):
+        print_case(i, len(results), a)
+
+    print_summary(results)
+
+    if args.execute:
+        execute_all(conn, results)
+    else:
+        print(f"\nScenario 1 dry-run complete. Use --execute to apply changes.")
+
+
+def run_scenario2(conn: sqlite3.Connection, args):
+    """Run Scenario 2: rename colon-name customer + assign agency."""
+    print(f"\nDiscovering Scenario 2 cases in {args.db}...")
+    cases = discover_scenario2_cases(conn, customer_id=args.customer_id, limit=args.limit)
+    print(f"Found {len(cases)} qualifying case(s) (Scenario 2: rename + assign agency)")
+
+    if not cases:
+        print("Nothing to do for Scenario 2.")
+        return
+
+    results = []
+    for case in cases:
+        results.append(analyze_scenario2(conn, case))
+
+    for i, a in enumerate(results, 1):
+        print_scenario2_case(i, len(results), a)
+
+    print_scenario2_summary(results)
+
+    if args.execute:
+        execute_all_scenario2(conn, results)
+    else:
+        print(f"\nScenario 2 dry-run complete. Use --execute to apply changes.")
 
 
 def main():
@@ -874,32 +1499,10 @@ def main():
     conn = open_db(args.db, readonly=readonly)
 
     try:
-        # Discovery
-        print(f"Discovering colon-name customers in {args.db}...")
-        cases = discover_cases(conn, customer_id=args.customer_id, limit=args.limit)
-        print(f"Found {len(cases)} qualifying case(s) (Scenario 1)")
-
-        if not cases:
-            print("Nothing to do.")
-            return
-
-        # Analyze all cases
-        results = []
-        for case in cases:
-            results.append(analyze_case(conn, case))
-
-        # Display
-        for i, a in enumerate(results, 1):
-            print_case(i, len(results), a)
-
-        print_summary(results)
-
-        # Execute if requested
-        if args.execute:
-            execute_all(conn, results)
-        else:
-            print(f"\nDry-run complete. Use --execute to apply changes.")
-
+        if args.scenario in ("1", "all"):
+            run_scenario1(conn, args)
+        if args.scenario in ("2", "all"):
+            run_scenario2(conn, args)
     finally:
         conn.close()
 
