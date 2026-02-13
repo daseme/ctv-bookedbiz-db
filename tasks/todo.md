@@ -1,3 +1,43 @@
+# ntfy.sh Failure Alerts + Data Freshness Footer - COMPLETED ✅
+
+Implemented 2026-02-13. Single commit on dev branch.
+
+## Problem
+Daily import pipeline silently broke for 10 days: (1) errors caught internally but process still reported SUCCESS, (2) no notification system active, (3) no visual indicator of data staleness.
+
+## Fix 1: False-Success Bug (`cli/daily_update.py`)
+- ✅ Line 1637: Replaced unconditional `result.success = True` with conditional checks
+- ✅ Checks `import_result.success` before marking overall success
+- ✅ Checks `language_assignment.success` if present
+- ✅ Appends error messages from failed sub-steps
+
+## Fix 2: Enhanced ntfy Notifications (`bin/daily_update.sh`)
+- ✅ Upgraded `send_notification()` to use ntfy headers (Title, Priority, Tags)
+- ✅ Matches pattern from `db_sync.sh` — proper priority levels (5=urgent for errors)
+- ✅ On failure: includes last 5 lines of log as error context
+- ✅ Uses `https://ntfy.sh/` (was missing https)
+
+## Feature: Data Freshness Footer (`blueprints.py` + `base.html`)
+- ✅ `inject_last_data_update()` context processor queries `import_batches`
+- ✅ 5-minute in-memory cache (avoids per-request DB hit)
+- ✅ Readonly connection for safety
+- ✅ Nord-themed footer on every page: "Data last updated: 2026-02-03 12:39:25"
+- ✅ Yellow warning + "(stale)" label if data >24h old
+- ✅ Responsive: smaller font on mobile
+
+### Files Changed
+- `cli/daily_update.py` (false-success fix)
+- `bin/daily_update.sh` (enhanced ntfy notifications)
+- `src/web/blueprints.py` (data freshness context processor)
+- `src/web/templates/base.html` (freshness footer HTML + CSS)
+
+### Production Setup Required
+1. Set `NTFY_TOPIC=ctv-import-<suffix>` in `/etc/ctv-daily-update.env`
+2. Subscribe to topic in ntfy phone app
+3. Deploy: `git pull`, restart service
+
+---
+
 # CRM Account Health Signals - COMPLETED ✅
 
 Implemented 2026-02-11. Single commit on dev branch.

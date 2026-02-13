@@ -205,4 +205,54 @@ DATA_PATH=/var/lib/ctv-bookedbiz-db/processed
 
 ---
 
+## 11. Daily import pipeline
+
+### Timer
+
+* **`ctv-daily-update.timer`** fires at 4:30 AM daily
+* Runs `bin/daily_update.sh` as the import wrapper
+
+### Wrapper script (`bin/daily_update.sh`)
+
+* Sources `/etc/ctv-daily-update.env` for config overrides
+* Checks prerequisites (data file, python venv, DB file)
+* Runs `cli/daily_update.py` with `--auto-setup --unattended`
+* Sends notifications on success or failure via ntfy.sh and/or Slack
+
+### Failure alerting (ntfy.sh)
+
+* Configured via `NTFY_TOPIC` in `/etc/ctv-daily-update.env`
+* Uses ntfy headers: `Title`, `Priority` (5=urgent for errors), `Tags` (emoji)
+* On failure: notification includes last 5 lines of log as error context
+* Same pattern as `db_sync.sh` backup alerting
+* Subscribe to the topic in the ntfy phone/desktop app
+
+### Environment file (`/etc/ctv-daily-update.env`)
+
+```env
+NTFY_TOPIC=ctv-import-<random-suffix>
+DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db
+# Optional overrides:
+# PYTHON_VENV=/opt/venvs/ctv-bookedbiz-db/bin/python
+# DAILY_UPDATE_DATA_FILE=/path/to/file.xlsx
+# SLACK_WEBHOOK_URL=https://hooks.slack.com/...
+```
+
+### False-success protection
+
+* `cli/daily_update.py` checks `import_result.success` and `language_assignment.success`
+  before marking the overall result as successful
+* Failed sub-steps → `sys.exit(1)` → shell script sends ERROR notification
+
+---
+
+## 12. Data freshness footer
+
+* Every page served by `base.html` shows a footer with the last successful import timestamp
+* Query: `SELECT import_date FROM import_batches WHERE status='COMPLETED' ORDER BY import_date DESC LIMIT 1`
+* 5-minute in-memory cache (avoids per-request DB hits)
+* If data is >24 hours old: yellow warning triangle + "(stale)" label
+* Implemented as a Flask context processor in `src/web/blueprints.py`
+
+---
 

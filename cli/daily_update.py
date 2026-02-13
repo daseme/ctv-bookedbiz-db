@@ -1634,7 +1634,15 @@ class DailyUpdateOrchestrator:
                     self.language_service.process_languages_directly(batch_id)
                 )
 
-            result.success = True
+            # Only mark success if import actually succeeded
+            if result.import_result and not result.import_result.success:
+                result.error_messages.append("Data import failed")
+                self.progress_reporter.write("ERROR: Import step reported failure")
+            elif result.language_assignment and not result.language_assignment.success:
+                result.error_messages.append("Language assignment failed")
+                self.progress_reporter.write("ERROR: Language assignment step reported failure")
+            else:
+                result.success = True
 
         except Exception as e:
             error_msg = f"Enhanced multi-sheet daily update failed: {str(e)}"
