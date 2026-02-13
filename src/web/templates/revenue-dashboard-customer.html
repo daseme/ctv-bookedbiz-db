@@ -647,50 +647,6 @@
   </div>
 </div>
 
-<!-- Performance and debugging information -->
-<div style="margin-top: 40px; padding: 16px; background: #f8f9fa; border-radius: 8px; font-size: 11px; color: #6b7280;">
-  <details>
-    <summary style="cursor: pointer; font-weight: 600; margin-bottom: 8px;">
-      📊 Dashboard Information & Debug Tools
-    </summary>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-      <div>
-        <strong>Data Summary:</strong><br>
-        Records: {{ data.revenue_data|length }}<br>
-        Available Years: {{ data.available_years|length }}<br>
-        AEs: {{ data.ae_list|length }}<br>
-        Revenue Types: {{ data.revenue_types|length }}
-      </div>
-      <div>
-        <strong>Current Filters:</strong><br>
-        Year: {{ data.selected_year }}<br>
-        {% if data.filters.ae_filter and data.filters.ae_filter != 'all' %}AE: {{ data.filters.ae_filter }}<br>{% endif %}
-        {% if data.filters.revenue_type and data.filters.revenue_type != 'all' %}Type: {{ data.filters.revenue_type }}<br>{% endif %}
-        {% if data.filters.customer_search %}Search: "{{ data.filters.customer_search }}"<br>{% endif %}
-      </div>
-      <div>
-        <strong>Performance:</strong><br>
-        Load Time: {{ data.metadata.processing_time_ms | round(1) }}ms<br>
-        Last Updated: {{ data.metadata.data_last_updated | date_display('time') }}<br>
-        Report Type: {{ data.metadata.report_type }}
-      </div>
-      <div>
-        <strong>Keyboard Shortcuts:</strong><br>
-        Ctrl+E: Export CSV<br>
-        Ctrl+F: Focus Search<br>
-        F1+Ctrl: Show Help
-      </div>
-    </div>
-    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
-      <strong>Debug Console Commands:</strong>
-      <code style="background: #f3f4f6; padding: 2px 4px; border-radius: 3px; margin-left: 8px;">
-        debugRevenue() - Show performance stats | 
-        revenueManager.logPerformanceStats() - Detailed analysis
-      </code>
-    </div>
-  </details>
-</div>
-
 <!-- Hidden data for JavaScript -->
 <script id="revenue-data" type="application/json">
 {{ data.revenue_data | tojson | safe }}
