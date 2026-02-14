@@ -429,8 +429,9 @@ def api_entity_detail(entity_type, entity_id):
                        address, city, state, zip, notes, assigned_ae,
                        po_number, edi_billing,
                        commission_rate, order_rate_basis,
+                       is_active,
                        NULL as sector_id, NULL as sector_name
-                FROM agencies WHERE agency_id = ? AND is_active = 1
+                FROM agencies WHERE agency_id = ?
             """, [entity_id]).fetchone()
         else:
             entity = conn.execute("""
@@ -438,6 +439,7 @@ def api_entity_detail(entity_type, entity_id):
                        c.address, c.city, c.state, c.zip, c.notes, c.assigned_ae,
                        c.po_number, c.edi_billing, c.affidavit_required,
                        c.commission_rate, c.order_rate_basis,
+                       c.is_active,
                        c.sector_id, s.sector_name,
                        c.agency_id, a.agency_name,
                        a.commission_rate AS agency_commission_rate,
@@ -445,7 +447,7 @@ def api_entity_detail(entity_type, entity_id):
                 FROM customers c
                 LEFT JOIN sectors s ON c.sector_id = s.sector_id
                 LEFT JOIN agencies a ON c.agency_id = a.agency_id
-                WHERE c.customer_id = ? AND c.is_active = 1
+                WHERE c.customer_id = ?
             """, [entity_id]).fetchone()
 
         if not entity:
@@ -1314,6 +1316,51 @@ def api_deactivate_entity(entity_type, entity_id):
 
             conn.commit()
             return jsonify({"success": True, "message": f"{row['name']} has been deactivated"})
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+
+
+@address_book_bp.route("/api/address-book/<entity_type>/<int:entity_id>/reactivate", methods=["POST"])
+def api_reactivate_entity(entity_type, entity_id):
+    """Reactivate a deactivated entity (set is_active=1)."""
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "Invalid entity type"}), 400
+
+    table = "agencies" if entity_type == "agency" else "customers"
+    id_col = "agency_id" if entity_type == "agency" else "customer_id"
+    name_col = "agency_name" if entity_type == "agency" else "normalized_name"
+
+    with _db_rw() as conn:
+        try:
+            row = conn.execute(
+                f"SELECT {name_col} AS name, is_active FROM {table} WHERE {id_col} = ?",
+                [entity_id]
+            ).fetchone()
+
+            if not row:
+                return jsonify({"error": "Entity not found"}), 404
+            if row["is_active"]:
+                return jsonify({"error": "Entity is already active"}), 400
+
+            conn.execute(
+                f"UPDATE {table} SET is_active = 1 WHERE {id_col} = ?",
+                [entity_id]
+            )
+
+            conn.execute("""
+                INSERT INTO canon_audit (actor, action, key, value, extra)
+                VALUES (?, 'REACTIVATE_ENTITY', ?, ?, ?)
+            """, [
+                "web_user",
+                f"{entity_type}:{entity_id}",
+                row["name"],
+                f"type={entity_type}"
+            ])
+
+            conn.commit()
+            return jsonify({"success": True, "message": f"{row['name']} has been reactivated"})
 
         except Exception as e:
             conn.rollback()
