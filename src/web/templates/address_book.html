@@ -171,6 +171,8 @@
   .save-bar .btn-save:disabled{background:#94a3b8;border-color:#94a3b8;cursor:not-allowed}
   .save-bar .btn-deactivate{background:#fff;border:1px solid #ef4444;color:#ef4444}
   .save-bar .btn-deactivate:hover{background:#fef2f2}
+  .save-bar .btn-reactivate{background:#fff;border:1px solid #22c55e;color:#22c55e}
+  .save-bar .btn-reactivate:hover{background:#f0fdf4}
   .save-bar .btn-merge-into{background:#fff;border:1px solid #d97706;color:#d97706}
   .save-bar .btn-merge-into:hover{background:#fffbeb}
   .save-status{font-size:13px;color:#64748b;display:flex;align-items:center;margin-right:auto}
@@ -1643,6 +1645,18 @@
     badge.textContent = type === 'agency' ? 'Agency' : 'Advertiser';
     badge.className = 'type-badge ' + type;
 
+    // Toggle Deactivate / Reactivate button based on is_active
+    const deactBtn = document.getElementById('deactivate-entity');
+    if (currentEntity.is_active) {
+      deactBtn.textContent = 'Deactivate';
+      deactBtn.title = 'Deactivate this entity';
+      deactBtn.className = 'btn btn-deactivate';
+    } else {
+      deactBtn.textContent = 'Reactivate';
+      deactBtn.title = 'Reactivate this entity';
+      deactBtn.className = 'btn btn-reactivate';
+    }
+
     // Detail page link (customers only)
     const pageLink = document.getElementById('detail-page-link');
     if (type === 'customer') {
@@ -2674,21 +2688,26 @@
     }
   });
 
-  // Deactivate entity
+  // Deactivate / Reactivate entity
   document.getElementById('deactivate-entity').addEventListener('click', async () => {
     if (!currentEntity) return;
     const name = currentEntity.entity_name || 'this entity';
-    if (!confirm(`Deactivate "${name}"? This will hide it from the default view.`)) return;
-    const { ok, data, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/deactivate`, {
+    const isActive = currentEntity.is_active;
+    const action = isActive ? 'deactivate' : 'reactivate';
+    const confirmMsg = isActive
+      ? `Deactivate "${name}"? This will hide it from the default view.`
+      : `Reactivate "${name}"? This will restore it to the active list.`;
+    if (!confirm(confirmMsg)) return;
+    const { ok, data, error } = await apiFetch(`${API}/${currentEntity.entity_type}/${currentEntity.entity_id}/${action}`, {
       method: 'POST'
     });
     if (ok) {
-      alert(data?.message || 'Entity deactivated.');
+      alert(data?.message || `Entity ${action}d.`);
       hasUnsavedChanges = false;
       closeModal();
       loadData();
     } else {
-      alert(error || 'Failed to deactivate entity');
+      alert(error || `Failed to ${action} entity`);
     }
   });
 
