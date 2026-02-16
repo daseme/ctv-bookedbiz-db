@@ -35,13 +35,13 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 
 #### Commercial Log Import Services
 - **Import Service**: `ctv-commercial-import.service`
-- **Import Timer**: `ctv-commercial-import.timer` (daily at 1:00 AM)
+- **Import Timer**: `ctv-commercial-import.timer` (4x daily: 3 AM, 9 AM, 3 PM, 9 PM Pacific)
 - **Rotation Service**: `ctv-commercial-rotation.service` ⚠️ Currently failing due to space handling
 - **Rotation Timer**: `ctv-commercial-rotation.timer` (weekly on Sundays at 2:30 AM)
 
 #### Daily Update Processing Services
 - **Update Service**: `ctv-daily-update.service`
-- **Update Timer**: `ctv-daily-update.timer` (daily at 1:30 AM)
+- **Update Timer**: `ctv-daily-update.timer` (daily at 4:30 AM Pacific)
 
 ## Business Logic
 
@@ -270,8 +270,8 @@ The import system integrates with the customer normalization system:
 
 ## Processing Pipeline
 
-### Stage 1: Commercial Log Import (1:00 AM)
-1. Timer triggers daily at 1:00 AM (+5 min random delay)
+### Stage 1: Commercial Log Import (4x daily)
+1. Timer triggers at 3 AM, 9 AM, 3 PM, 9 PM Pacific (+5 min random delay)
 2. Test connectivity to K: drive server (100.102.206.113) via Tailscale
 3. Mount CIFS share with stored credentials (if not already mounted via automount)
 4. Read both "Commercials" and "Worldlink Lines" sheets from `/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx`
@@ -279,8 +279,8 @@ The import system integrates with the customer normalization system:
 6. Create single combined file in Pi project structure
 7. Log operations with sheet-specific statistics
 
-### Stage 2: Daily Update Processing (1:30 AM)
-1. Timer triggers daily at 1:30 AM (+10 min random delay)
+### Stage 2: Daily Update Processing (4:30 AM)
+1. Timer triggers daily at 4:30 AM Pacific (+10 min random delay)
 2. Read combined commercial log file with sheet source awareness
 3. **Analyze months in Excel and compare against database**
 4. **Preserve open months that have no Excel data** (safeguard)
@@ -855,9 +855,12 @@ conn.close()
 ## Integration with Workflow
 
 ### Complete Daily Schedule
-- **1:00 AM**: Multi-sheet commercial log import from network share
-- **1:30 AM**: Database processing with multi-sheet awareness, automatic market setup, month preservation, and language assignment
-- **2:05 AM**: Database backup to Dropbox (existing system)
+- **3:00 AM**: Commercial log import from network share (1st of 4 daily runs)
+- **4:30 AM**: Database processing with multi-sheet awareness, automatic market setup, month preservation, and language assignment
+- **5:05 AM**: Database backup to Dropbox (existing system)
+- **9:00 AM**: Commercial log import (2nd run)
+- **3:00 PM**: Commercial log import (3rd run)
+- **9:00 PM**: Commercial log import (4th run)
 - **2:30 AM (Sundays)**: File archival and cleanup ⚠️ Currently failing
 
 ### Storage Efficiency

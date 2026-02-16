@@ -23,7 +23,8 @@ import os
 import time
 import sqlite3
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, Optional, Tuple
 
 from flask import Flask, request, render_template, jsonify
@@ -417,9 +418,14 @@ def create_blueprint_context_processors(app: Flask) -> None:
                         "ORDER BY import_date DESC LIMIT 1"
                     ).fetchone()
                     if row and row[0]:
-                        last_dt = row[0]
-                        parsed = datetime.strptime(last_dt, "%Y-%m-%d %H:%M:%S")
-                        stale = (datetime.now() - parsed) > timedelta(hours=24)
+                        parsed_utc = datetime.strptime(
+                            row[0], "%Y-%m-%d %H:%M:%S"
+                        ).replace(tzinfo=timezone.utc)
+                        pacific = parsed_utc.astimezone(ZoneInfo("America/Los_Angeles"))
+                        last_dt = pacific.strftime("%Y-%m-%d %I:%M %p %Z")
+                        stale = (
+                            datetime.now(timezone.utc) - parsed_utc
+                        ) > timedelta(hours=24)
                 finally:
                     conn.close()
         except Exception as e:
