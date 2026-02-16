@@ -249,10 +249,19 @@ DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db
 ## 12. Data freshness footer
 
 * Every page served by `base.html` shows a footer with the last successful import timestamp
+* Timestamps stored in UTC in `import_batches`, converted to Pacific time for display (e.g., "2026-02-16 11:59 AM PST")
 * Query: `SELECT import_date FROM import_batches WHERE status='COMPLETED' ORDER BY import_date DESC LIMIT 1`
 * 5-minute in-memory cache (avoids per-request DB hits)
 * If data is >24 hours old: yellow warning triangle + "(stale)" label
 * Implemented as a Flask context processor in `src/web/blueprints.py`
+
+## 13. Commercial log import schedule
+
+* **`ctv-commercial-import.timer`** fires 4x daily: 3:00 AM, 9:00 AM, 3:00 PM, 9:00 PM Pacific
+* Each run has up to 5 minutes of randomized delay
+* Runs `bin/commercial_import.sh` to pull from K: drive network share
+* **`ctv-daily-update.timer`** fires at 4:30 AM Pacific (after the 3 AM commercial import)
+* Shell scripts in `bin/` must have execute permission tracked in git (`100755`, not `100644`) — see `tasks/lessons.md` Rule 22
 
 ---
 
