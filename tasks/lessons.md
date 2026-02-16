@@ -292,5 +292,31 @@ sqlite3 data/database/production.db "SELECT COUNT(*) FROM spots WHERE broadcast_
 
 ---
 
-**Last Updated**: 2026-02-10
-**Session Context**: Planning page revenue discrepancy — CLI import and backup timer were using wrong DB path, causing stale data on production.
+---
+
+### Rule 22: Shell Scripts Must Have Execute Permission in Git
+**Context**: `bin/daily_update.sh` lost its execute bit on Feb 13 (file was edited/rewritten). Daily import silently failed for 3 days with exit code 126 ("permission denied"). Two other scripts (`commercial_import.sh`, `rotate_commercial_logs.sh`) had the same problem.
+**Pattern**: Git tracks file permissions as either `100644` (non-executable) or `100755` (executable). When a `.sh` file is rewritten (not edited in-place), the execute bit can be lost. Git won't restore it on `git pull` unless the index has `100755`.
+**How to check**:
+```bash
+# Show git-tracked permissions for all scripts
+git ls-files -s bin/*.sh
+# Should show 100755 for all .sh files, NOT 100644
+
+# Find .sh files missing execute permission
+find bin/ -name "*.sh" ! -perm -u+x
+```
+**How to fix**:
+```bash
+chmod +x bin/script.sh
+git update-index --chmod=+x bin/script.sh
+git commit -m "Fix execute permission on bin/script.sh"
+```
+**Prevention**: After editing ANY shell script, verify the execute bit is still set before committing. If creating a new `.sh` file, always `chmod +x` and `git update-index --chmod=+x` before the first commit.
+
+**Action**: When adding or modifying shell scripts, always check `git ls-files -s` to confirm `100755` mode before pushing.
+
+---
+
+**Last Updated**: 2026-02-16
+**Session Context**: Daily import broke for 3 days due to lost execute permission on daily_update.sh. Fixed all bin/ scripts and added git-tracked permissions.
