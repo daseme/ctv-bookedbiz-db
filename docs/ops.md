@@ -209,7 +209,7 @@ DATA_PATH=/var/lib/ctv-bookedbiz-db/processed
 
 ### Timer
 
-* **`ctv-daily-update.timer`** fires at 4:30 AM daily
+* **`ctv-daily-update.timer`** fires 4x daily at 03:30, 09:30, 15:30, 21:30 Pacific (30 min after each commercial import)
 * Runs `bin/daily_update.sh` as the import wrapper
 
 ### Wrapper script (`bin/daily_update.sh`)
@@ -260,7 +260,7 @@ DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db
 * **`ctv-commercial-import.timer`** fires 4x daily: 3:00 AM, 9:00 AM, 3:00 PM, 9:00 PM Pacific
 * Each run has up to 5 minutes of randomized delay
 * Runs `bin/commercial_import.sh` to pull from K: drive network share
-* **`ctv-daily-update.timer`** fires at 4:30 AM Pacific (after the 3 AM commercial import)
+* **`ctv-daily-update.timer`** fires 4x daily at 03:30, 09:30, 15:30, 21:30 Pacific (30 min after each commercial import)
 * Shell scripts in `bin/` must have execute permission tracked in git (`100755`, not `100644`) — see `tasks/lessons.md` Rule 22
 
 ---

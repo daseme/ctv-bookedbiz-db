@@ -41,7 +41,7 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 
 #### Daily Update Processing Services
 - **Update Service**: `ctv-daily-update.service`
-- **Update Timer**: `ctv-daily-update.timer` (daily at 4:30 AM Pacific)
+- **Update Timer**: `ctv-daily-update.timer` (4x daily: 03:30, 09:30, 15:30, 21:30 Pacific — 30 min after each commercial import)
 
 ## Business Logic
 
@@ -279,8 +279,8 @@ The import system integrates with the customer normalization system:
 6. Create single combined file in Pi project structure
 7. Log operations with sheet-specific statistics
 
-### Stage 2: Daily Update Processing (4:30 AM)
-1. Timer triggers daily at 4:30 AM Pacific (+10 min random delay)
+### Stage 2: Daily Update Processing (4x daily)
+1. Timer triggers at 03:30, 09:30, 15:30, 21:30 Pacific (+10 min random delay) — 30 min after each commercial import
 2. Read combined commercial log file with sheet source awareness
 3. **Analyze months in Excel and compare against database**
 4. **Preserve open months that have no Excel data** (safeguard)
@@ -306,12 +306,12 @@ DAILY_UPDATE_EXTRA_ARGS="--verbose"
 ```
 
 ### Data Flow - CORRECTED
-1. **Stage 1 (01:00 AM)**: K drive multi-sheet source → Local combined storage 
+1. **Stage 1 (4x daily: 03:00, 09:00, 15:00, 21:00)**: K drive multi-sheet source → Local combined storage
    - Creates: `Commercial Log YYMMDD.xlsx` (28+ months historical data)
-2. **Stage 2 (01:30 AM)**: Local combined storage → Database with source tracking
+2. **Stage 2 (4x daily: 03:30, 09:30, 15:30, 21:30)**: Local combined storage → Database with source tracking
    - Processes: Full historical dataset including all Worldlink data
    - **Preserves**: Open months with no Excel data
-3. **Database Backup (02:05 AM)**: Database → Dropbox backup
+3. **Database Backup (05:05 AM)**: Database → Dropbox backup
 
 **CRITICAL**: Stage 2 must use local files from Stage 1, NOT direct K drive access
 
@@ -856,11 +856,14 @@ conn.close()
 
 ### Complete Daily Schedule
 - **3:00 AM**: Commercial log import from network share (1st of 4 daily runs)
-- **4:30 AM**: Database processing with multi-sheet awareness, automatic market setup, month preservation, and language assignment
+- **3:30 AM**: Daily update — database processing (1st of 4 daily runs)
 - **5:05 AM**: Database backup to Dropbox (existing system)
 - **9:00 AM**: Commercial log import (2nd run)
+- **9:30 AM**: Daily update — database processing (2nd run)
 - **3:00 PM**: Commercial log import (3rd run)
+- **3:30 PM**: Daily update — database processing (3rd run)
 - **9:00 PM**: Commercial log import (4th run)
+- **9:30 PM**: Daily update — database processing (4th run)
 - **2:30 AM (Sundays)**: File archival and cleanup ⚠️ Currently failing
 
 ### Storage Efficiency
