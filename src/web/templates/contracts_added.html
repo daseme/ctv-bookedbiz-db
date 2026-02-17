@@ -104,7 +104,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% if is_admin_or_management and not ae_name %}
+                {% if is_admin_or_management and not ae_name and not selected_ae %}
                     <tr>
                         <td colspan="4" class="contracts-empty-state">Select an AE to view contracts.</td>
                     </tr>
