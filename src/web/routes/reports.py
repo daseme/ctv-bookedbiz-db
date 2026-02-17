@@ -25,6 +25,7 @@ from src.web.placement_confirmation_parser import (
     contracts_highlight_7_days,
     contracts_by_client_30_days,
 )
+from src.models.planning import PlanningPeriod
 
 logger = logging.getLogger(__name__)
 
@@ -247,8 +248,13 @@ def ae_dashboard_personal():
             try:
                 entities = planning_service.get_revenue_entities()
                 ae_list = [entity.entity_name for entity in entities]
+                # Add "All" option at the beginning
+                ae_list.insert(0, "All")
             except Exception as e:
                 logger.warning(f"Could not get revenue entities list: {e}")
+        
+        # Check if showing "All" revenue
+        show_all_revenue = (is_admin_or_management and selected_ae == "All")
 
         # Helper function to calculate percentage
         def calc_pct(numerator, denominator):
@@ -263,53 +269,170 @@ def ae_dashboard_personal():
 
         for month_num in range(1, 13):
             # Get booked revenue
-            try:
-                booked_revenue = repo.get_booked_revenue(
-                    ae_name, current_year, month_num
-                ) or Decimal("0")
-            except Exception as e:
-                logger.warning(
-                    f"Could not get booked revenue for {ae_name} {current_year}-{month_num:02d}: {e}"
-                )
-                booked_revenue = Decimal("0")
+            if show_all_revenue:
+                # Sum all booked revenue across all AEs
+                try:
+                    period = PlanningPeriod(year=current_year, month=month_num)
+                    db_connection = container.get("database_connection")
+                    conn = db_connection.connect()
+                    try:
+                        cursor = conn.execute(
+                            """
+                            SELECT COALESCE(SUM(gross_rate), 0) AS booked
+                            FROM spots
+                            WHERE broadcast_month = ?
+                              AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                        """,
+                            (period.broadcast_month,),
+                        )
+                        row = cursor.fetchone()
+                        booked_revenue = Decimal(str(row["booked"])) if row else Decimal("0")
+                    finally:
+                        conn.close()
+                except Exception as e:
+                    logger.warning(
+                        f"Could not get all booked revenue for {current_year}-{month_num:02d}: {e}"
+                    )
+                    booked_revenue = Decimal("0")
+            else:
+                try:
+                    booked_revenue = repo.get_booked_revenue(
+                        ae_name, current_year, month_num
+                    ) or Decimal("0")
+                except Exception as e:
+                    logger.warning(
+                        f"Could not get booked revenue for {ae_name} {current_year}-{month_num:02d}: {e}"
+                    )
+                    booked_revenue = Decimal("0")
 
             # Get budget
-            try:
-                budget = repo.get_budget(ae_name, current_year, month_num) or Decimal(
-                    "0"
-                )
-            except Exception:
+            if show_all_revenue:
+                # Sum all budgets across all AEs
                 try:
-                    budget = Decimal(
-                        str(
-                            budget_service.get_monthly_budget(
-                                ae_name, f"{current_year}-{month_num:02d}"
+                    db_connection = container.get("database_connection")
+                    conn = db_connection.connect()
+                    try:
+                        cursor = conn.execute(
+                            """
+                            SELECT COALESCE(SUM(budget_amount), 0) AS total_budget
+                            FROM budget
+                            WHERE year = ? AND month = ?
+                        """,
+                            (current_year, month_num),
+                        )
+                        row = cursor.fetchone()
+                        budget = Decimal(str(row["total_budget"])) if row else Decimal("0")
+                    finally:
+                        conn.close()
+                except Exception as e:
+                    logger.warning(
+                        f"Could not get all budget for {current_year}-{month_num:02d}: {e}"
+                    )
+                    budget = Decimal("0")
+            else:
+                try:
+                    budget = repo.get_budget(ae_name, current_year, month_num) or Decimal(
+                        "0"
+                    )
+                except Exception:
+                    try:
+                        budget = Decimal(
+                            str(
+                                budget_service.get_monthly_budget(
+                                    ae_name, f"{current_year}-{month_num:02d}"
+                                )
                             )
                         )
-                    )
-                except:
-                    budget = Decimal("0")
+                    except:
+                        budget = Decimal("0")
 
             # Get forecast_entered (defaults to budget if not set)
-            try:
-                forecast_data = repo.get_forecast_with_metadata(
-                    ae_name, current_year, month_num
-                )
-                forecast_entered = (
-                    forecast_data["amount"]
-                    if forecast_data
-                    else (budget if budget > 0 else Decimal("0"))
-                )
-            except Exception:
+            if show_all_revenue:
+                # Calculate effective forecast per AE, then sum
+                # For each AE: forecast = max(forecast_entered (or budget), booked_revenue)
                 try:
-                    forecast_entered = repo.get_forecast(
+                    period = PlanningPeriod(year=current_year, month=month_num)
+                    total_effective_forecast = Decimal("0")
+                    
+                    # Get all revenue entities
+                    entities = planning_service.get_revenue_entities()
+                    
+                    for entity in entities:
+                        entity_name = entity.entity_name
+                        
+                        # Get booked revenue for this entity
+                        try:
+                            entity_booked = repo.get_booked_revenue(
+                                entity_name, current_year, month_num
+                            ) or Decimal("0")
+                        except Exception:
+                            entity_booked = Decimal("0")
+                        
+                        # Get forecast_entered (defaults to budget if not set)
+                        try:
+                            entity_forecast_data = repo.get_forecast_with_metadata(
+                                entity_name, current_year, month_num
+                            )
+                            entity_forecast_entered = (
+                                entity_forecast_data["amount"]
+                                if entity_forecast_data
+                                else None
+                            )
+                        except Exception:
+                            try:
+                                entity_forecast_entered = repo.get_forecast(
+                                    entity_name, current_year, month_num
+                                )
+                            except:
+                                entity_forecast_entered = None
+                        
+                        # Get budget for this entity (for defaulting forecast)
+                        try:
+                            entity_budget = repo.get_budget(
+                                entity_name, current_year, month_num
+                            ) or Decimal("0")
+                        except Exception:
+                            entity_budget = Decimal("0")
+                        
+                        # Forecast entered defaults to budget if not set
+                        if entity_forecast_entered is None:
+                            entity_forecast_entered = entity_budget
+                        
+                        # Effective forecast = max(forecast_entered, booked)
+                        entity_effective_forecast = max(entity_forecast_entered, entity_booked)
+                        total_effective_forecast += entity_effective_forecast
+                    
+                    forecast_entered = total_effective_forecast
+                except Exception as e:
+                    logger.warning(
+                        f"Could not get all forecast for {current_year}-{month_num:02d}: {e}"
+                    )
+                    # Fallback: use budget as forecast_entered
+                    forecast_entered = budget
+            else:
+                try:
+                    forecast_data = repo.get_forecast_with_metadata(
                         ae_name, current_year, month_num
-                    ) or (budget if budget > 0 else Decimal("0"))
-                except:
-                    forecast_entered = budget if budget > 0 else Decimal("0")
+                    )
+                    forecast_entered = (
+                        forecast_data["amount"]
+                        if forecast_data
+                        else (budget if budget > 0 else Decimal("0"))
+                    )
+                except Exception:
+                    try:
+                        forecast_entered = repo.get_forecast(
+                            ae_name, current_year, month_num
+                        ) or (budget if budget > 0 else Decimal("0"))
+                    except:
+                        forecast_entered = budget if budget > 0 else Decimal("0")
 
             # Calculate effective forecast = max(forecast_entered, booked) to match planning tool
-            forecast = max(forecast_entered, booked_revenue)
+            # For "All", forecast_entered already includes the per-AE max calculation, so use it directly
+            if show_all_revenue:
+                forecast = forecast_entered
+            else:
+                forecast = max(forecast_entered, booked_revenue)
 
             monthly_data.append(
                 {
@@ -356,9 +479,12 @@ def ae_dashboard_personal():
                     date_filter = "AND SUBSTR(s.broadcast_month, -2) = ?"
                     query_params.append(str(current_year)[-2:])
 
-                # Build entity filter - special handling for WorldLink and House
+                # Build entity filter - special handling for WorldLink, House, and All
                 entity_filter = ""
-                if ae_name == "WorldLink":
+                if show_all_revenue:
+                    # Show all revenue - no entity filter
+                    entity_filter = "WHERE 1=1"
+                elif ae_name == "WorldLink":
                     # WorldLink revenue is identified by bill_code prefix, not sales_person
                     entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
                 elif ae_name == "House":
@@ -434,7 +560,10 @@ def ae_dashboard_personal():
             try:
                 entity_filter = ""
                 params = []
-                if ae_name == "WorldLink":
+                if show_all_revenue:
+                    # Show all contracts - no entity filter
+                    entity_filter = "WHERE 1=1"
+                elif ae_name == "WorldLink":
                     entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
                 elif ae_name == "House":
                     entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink:%'"
@@ -488,7 +617,9 @@ def ae_dashboard_personal():
         # Highlight reel: contracts added in the last 7 days from placement confirmation files
         contracts_highlight = []
         try:
-            contracts_highlight = contracts_highlight_7_days(ae_name=ae_name)
+            # Pass None for ae_name when showing all revenue
+            highlight_ae_name = None if show_all_revenue else ae_name
+            contracts_highlight = contracts_highlight_7_days(ae_name=highlight_ae_name)
             contracts_highlight.sort(key=lambda x: x.get("added_date") or "", reverse=True)
         except Exception as e:
             logger.warning(f"Could not get contracts highlight from placement files: {e}")
@@ -515,7 +646,7 @@ def ae_dashboard_personal():
                 "title": "My Dashboard"
                 if not is_admin_or_management
                 else "AE Dashboard",
-                "ae_name": ae_name,
+                "ae_name": "All AEs" if show_all_revenue else ae_name,
                 "year": current_year,
                 "monthly_data": monthly_data,
                 "is_admin_or_management": is_admin_or_management,
@@ -596,13 +727,25 @@ def contracts_added_page():
                 if "WorldLink" not in ae_list:
                     ae_list.append("WorldLink")
                 ae_list = sorted(ae_list, key=lambda x: (1 if x == "WorldLink" else 0, x))
+                # Add "All" option at the beginning
+                ae_list.insert(0, "All")
             except Exception as e:
                 logger.warning(f"Could not get AE list for contracts-added: {e}")
                 if "WorldLink" not in ae_list:
                     ae_list = ["WorldLink"]
+                ae_list.insert(0, "All")
+        
+        # Check if showing "All" revenue
+        show_all_revenue = (is_admin_or_management and selected_ae == "All")
 
         contracts_by_client = []
-        if ae_name and ae_name.strip():
+        if show_all_revenue:
+            # Show all contracts across all AEs
+            try:
+                contracts_by_client = contracts_by_client_30_days(ae_name=None)
+            except Exception as e:
+                logger.warning(f"Could not get all contracts from placement confirmation files: {e}")
+        elif ae_name and ae_name.strip():
             try:
                 contracts_by_client = contracts_by_client_30_days(ae_name=ae_name)
             except Exception as e:
@@ -647,7 +790,7 @@ def contracts_added_page():
         
         return render_template(
             "contracts_added.html",
-            ae_name=ae_name or "",
+            ae_name="All AEs" if show_all_revenue else (ae_name or ""),
             contracts_by_client=contracts_by_client,
             total_contracts_30d=total_contracts_30d,
             is_admin_or_management=is_admin_or_management,
