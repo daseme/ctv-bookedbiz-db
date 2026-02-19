@@ -23,7 +23,7 @@ from src.web.utils.request_helpers import (
 from src.utils.template_formatters import prepare_template_context
 from src.web.placement_confirmation_parser import (
     contracts_highlight_7_days,
-    contracts_by_client_30_days,
+    contracts_by_client_15_days,
 )
 from src.models.planning import PlanningPeriod
 
@@ -697,7 +697,7 @@ def ae_dashboard_personal():
 @handle_request_errors
 @log_requests
 def contracts_added_page():
-    """Full list of contracts added in the last 30 days, by client with expandable contract rows.
+    """Full list of contracts added in the last 15 days, by client with expandable contract rows.
     For AEs: only their contracts. For admin/management: dropdown to pick AE; WorldLink shown separately.
     """
     if not current_user.is_authenticated:
@@ -742,12 +742,12 @@ def contracts_added_page():
         if show_all_revenue:
             # Show all contracts across all AEs
             try:
-                contracts_by_client = contracts_by_client_30_days(ae_name=None)
+                contracts_by_client = contracts_by_client_15_days(ae_name=None)
             except Exception as e:
                 logger.warning(f"Could not get all contracts from placement confirmation files: {e}")
         elif ae_name and ae_name.strip():
             try:
-                contracts_by_client = contracts_by_client_30_days(ae_name=ae_name)
+                contracts_by_client = contracts_by_client_15_days(ae_name=ae_name)
             except Exception as e:
                 logger.warning(f"Could not get contracts from placement confirmation files: {e}")
 
@@ -772,7 +772,7 @@ def contracts_added_page():
                     reverse=contract_reverse,
                 )
 
-        total_contracts_30d = sum(c["total"] for c in contracts_by_client) if contracts_by_client else 0
+        total_contracts_15d = sum(c["total"] for c in contracts_by_client) if contracts_by_client else 0
         
         # Check if this is an AJAX request for contracts data only
         if (
@@ -782,7 +782,7 @@ def contracts_added_page():
             return jsonify(
                 {
                     "contracts_by_client": contracts_by_client,
-                    "total_contracts_30d": total_contracts_30d,
+                    "total_contracts_15d": total_contracts_15d,
                     "sort": sort,
                     "contract_sort": contract_sort,
                 }
@@ -792,7 +792,7 @@ def contracts_added_page():
             "contracts_added.html",
             ae_name="All AEs" if show_all_revenue else (ae_name or ""),
             contracts_by_client=contracts_by_client,
-            total_contracts_30d=total_contracts_30d,
+            total_contracts_15d=total_contracts_15d,
             is_admin_or_management=is_admin_or_management,
             selected_ae=selected_ae,
             ae_list=ae_list,
