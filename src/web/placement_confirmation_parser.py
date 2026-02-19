@@ -207,17 +207,17 @@ def contracts_highlight_7_days(
     return list(by_key.values())
 
 
-def contracts_by_client_30_days(
+def contracts_by_client_15_days(
     placement_dir: str = DEFAULT_PLACEMENT_DIR,
     ae_name: Optional[str] = None,
 ) -> List[Dict]:
     """
-    Contracts from placement files in the last 30 days, grouped by client.
+    Contracts from placement files in the last 15 days, grouped by client.
     Returns list of { client, total, contracts: [ { contract, total, added_date }, ... ] }.
     """
     raw = load_contracts_from_placement_files(
         placement_dir=placement_dir,
-        days_back=30,
+        days_back=15,
         ae_name_filter=ae_name,
     )
     # Group by client

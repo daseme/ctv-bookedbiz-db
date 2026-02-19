@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Contracts added (last 30 days) - CTV Reports{% endblock %}
+{% block title %}Contracts added (last 15 days) - CTV Reports{% endblock %}
 
-{% block header_title %}Contracts added (last 30 days){% endblock %}
+{% block header_title %}Contracts added (last 15 days){% endblock %}
 
 {% block breadcrumb %}
 <span class="breadcrumb-separator">›</span>
@@ -70,7 +70,7 @@
 
     <div class="monthly-table-container">
         <div class="monthly-table-header">
-            <h2>Contracts added (last 30 days){% if ae_name %} – {{ ae_name }}{% endif %}</h2>
+            <h2>Contracts added (last 15 days){% if ae_name %} – {{ ae_name }}{% endif %}</h2>
             <div style="font-size: 12px; color: rgba(255,255,255,0.85); margin-top: 4px;">{% if ae_name %}By client; click to expand and see contracts and totals{% else %}Select an AE above to view their contracts.{% endif %}</div>
         </div>
         {% if ae_name %}
@@ -135,12 +135,12 @@
                     {% endfor %}
                     <tr class="year-totals-row">
                         <td colspan="2"><strong>Total</strong></td>
-                        <td class="numeric"><strong>${{ "{:,.0f}".format(total_contracts_30d) }}</strong></td>
+                        <td class="numeric"><strong>${{ "{:,.0f}".format(total_contracts_15d) }}</strong></td>
                         <td></td>
                     </tr>
                 {% else %}
                     <tr>
-                        <td colspan="4" style="text-align: center; padding: 24px; color: #718096;">No contracts added in the last 30 days</td>
+                        <td colspan="4" style="text-align: center; padding: 24px; color: #718096;">No contracts added in the last 15 days</td>
                     </tr>
                 {% endif %}
             </tbody>
@@ -321,10 +321,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 html += '<tr class="year-totals-row"><td colspan="2"><strong>Total</strong></td>';
                 html += '<td class="numeric"><strong>$' + 
-                    parseFloat(data.total_contracts_30d).toLocaleString('en-US', {maximumFractionDigits: 0}) + '</strong></td>';
+                    parseFloat(data.total_contracts_15d).toLocaleString('en-US', {maximumFractionDigits: 0}) + '</strong></td>';
                 html += '<td></td></tr>';
             } else {
-                html += '<tr><td colspan="4" style="text-align: center; padding: 24px; color: #718096;">No contracts added in the last 30 days</td></tr>';
+                html += '<tr><td colspan="4" style="text-align: center; padding: 24px; color: #718096;">No contracts added in the last 15 days</td></tr>';
             }
             
             // Update content
