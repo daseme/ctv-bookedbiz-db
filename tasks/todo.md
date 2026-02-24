@@ -1,3 +1,37 @@
+# Remove Burn-Down Strip + Frozen Header on Planning Hub - COMPLETED ✅
+
+Implemented 2026-02-24. Single commit on dev branch, merged to main via PR #164.
+
+## Problem
+The planning hub table had a "Booking Pace" burn-down strip as its first header row, showing pace bars and status labels for each month. This feature was no longer wanted. Additionally, the month header row didn't stay pinned when scrolling vertically.
+
+## Part 1: Remove Burn-Down Feature (748 lines deleted)
+- ✅ Template: Removed ~175 lines of burn-down CSS, the `<tr class="burn-down-row">` from `<thead>`, burn-down skip in `exportCSV()`, burn-rate data note
+- ✅ Route: Removed `burn_down_metrics` service call and `"burn_down"` template data
+- ✅ Service: Removed `get_burn_down_metrics()` method and `SellableDaysCalendar`/`BurnDownMetrics` imports
+- ✅ Model: Removed `PaceStatus` enum and `BurnDownMetrics` dataclass
+- ✅ Repository: Removed 4 burn-down methods (`get_sellable_days_adjustment`, `get_all_sellable_days_adjustments`, `save_sellable_days_adjustment`, `get_booked_mtd_by_effective_date`)
+- ✅ Utility: Deleted `src/utils/calendar.py` entirely
+- ✅ Cleaned up unused `date` import in repository
+
+## Part 2: Frozen Month Header Row
+- ✅ Changed `.planning-table-container` from `overflow-x: auto` to `overflow: auto` with `max-height: calc(100vh - 260px)`
+- ✅ Added `box-shadow: 0 2px 4px rgba(0,0,0,0.1)` to `.planning-table th` for visual separation when scrolling
+
+### Files Changed
+- `src/web/templates/planning_session.html` (CSS/HTML/JS cleanup + frozen header)
+- `src/web/routes/planning.py` (removed burn_down call)
+- `src/services/planning_service.py` (removed method + imports)
+- `src/models/planning.py` (removed PaceStatus + BurnDownMetrics)
+- `src/repositories/planning_repository.py` (removed 4 methods + unused import)
+- `src/utils/calendar.py` (deleted)
+
+### Verification
+- ✅ Smoke tests pass (50 passed, 13 xfailed)
+- ✅ Live service verified: 200 OK, 0 burn-down references, frozen header CSS active
+
+---
+
 # ntfy.sh Failure Alerts + Data Freshness Footer - COMPLETED ✅
 
 Implemented 2026-02-13. Single commit on dev branch.
