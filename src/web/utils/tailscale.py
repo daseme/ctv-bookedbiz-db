@@ -1,5 +1,6 @@
 import logging
 from typing import Optional, Tuple
+from urllib.parse import quote
 
 import requests_unixsocket
 
@@ -23,21 +24,22 @@ def get_tailscale_identity(remote_addr: Optional[str]) -> Optional[Tuple[str, Op
             "http+unix://%2Fvar%2Frun%2Ftailscale%2Ftailscaled.sock"
             f"/localapi/v0/whois?addr={remote_addr}"
         )
-        resp = session.get(url, timeout=2)
+        resp = session.get(url, timeout=2, headers={"Host": "local-tailscaled.sock"})
         resp.raise_for_status()
         info = resp.json()
 
         user_profile = info.get("UserProfile") or {}
         node_info = info.get("Node") or {}
         login = (user_profile.get("LoginName") or "").strip().lower()
-        node_name = (node_info.get("Name") or "").strip() or None
+        display_name = (user_profile.get("DisplayName") or "").strip() or None
+        if not display_name:
+            display_name = (node_info.get("Name") or "").strip() or None
 
         if not login:
             logger.warning("Tailscale whois returned no LoginName for addr %s", remote_addr)
             return None
 
-        return login, node_name
+        return login, display_name
     except Exception as e:
         logger.error("Tailscale whois failed for addr %s: %s", remote_addr, e)
         return None
-

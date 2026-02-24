@@ -24,8 +24,10 @@ Once a request hits the app from a Tailscale IP, the Local API `whois` call retu
 ## Setup checklist
 
 1. **Pi is on your tailnet** (Tailscale up).
-2. **App is bound to a safe interface/port** (e.g. `0.0.0.0:8000` but only reachable over your private network).
-3. **Users table** has a row per allowed user with `email` matching their Tailscale login. Create users via Admin → User Management, or `scripts/create_admin_user.py`.
-4. (Optional) Use MagicDNS or your own DNS to make `http://pi-ctv:8000/` easier to reach from client machines on the tailnet.
+2. **App user can call the Local API.** The app runs as a non-root user (e.g. `ctvbooked` or `daseme`). Tailscale allows only root or the configured *operator* user to call the whois endpoint. On the Pi run: `sudo tailscale set --operator=ctvbooked` (or `--operator=daseme` if the app runs as daseme).
+3. **Socket access (if needed).** If the socket is not group-writable by the app user, use a systemd override for tailscaled with `--socket-group=` and `--socket-perms=0660`. With `--operator=` set, whois will then be allowed for that user (no 403).
+4. **App is bound to a safe interface/port** (e.g. `0.0.0.0:8000` but only reachable over your private network).
+5. **Users table** has a row per allowed user with `email` matching their Tailscale login. Create users via Admin → User Management, or `scripts/create_admin_user.py`.
+6. (Optional) Use MagicDNS or your own DNS to make `http://pi-ctv:8000/` easier to reach from client machines on the tailnet.
 
 Once that’s in place, sign-in via Tailscale works: users connect over the tailnet and are logged in automatically if their email exists in the app.
