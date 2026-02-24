@@ -9,9 +9,8 @@ This script will prompt you for:
 - First name
 - Last name
 - Email
-- Password
 
-The user will be created with the 'admin' role.
+The user will be created with the 'admin' role. Sign-in is via Tailscale (no password).
 """
 
 import sys
@@ -22,7 +21,6 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from werkzeug.security import generate_password_hash
 from src.database.connection import DatabaseConnection
 from src.config.settings import get_settings
 
@@ -64,16 +62,6 @@ def create_admin_user():
         print("❌ Error: Valid email is required")
         return False
 
-    password = input("Password (min 8 characters): ").strip()
-    if not password or len(password) < 8:
-        print("❌ Error: Password must be at least 8 characters")
-        return False
-
-    confirm_password = input("Confirm Password: ").strip()
-    if password != confirm_password:
-        print("❌ Error: Passwords do not match")
-        return False
-
     # Create database connection
     try:
         db_connection = DatabaseConnection(db_path)
@@ -97,16 +85,14 @@ def create_admin_user():
                 print(f"❌ Error: Email {email} is already registered")
                 return False
 
-        # Create user
-        password_hash = generate_password_hash(password)
-
+        # Create user (Tailscale auth; no password)
         with db_connection.transaction() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO users (first_name, last_name, email, password_hash, role)
-                VALUES (?, ?, ?, ?, 'admin')
+                INSERT INTO users (first_name, last_name, email, role)
+                VALUES (?, ?, ?, 'admin')
                 """,
-                (first_name, last_name, email, password_hash),
+                (first_name, last_name, email),
             )
             user_id = cursor.lastrowid
 
@@ -119,7 +105,7 @@ def create_admin_user():
         print(f"   Email: {email}")
         print("   Role: admin")
         print()
-        print("You can now log in at: http://localhost:5000/users/login")
+        print("Sign in via your Tailscale Serve URL (no password).")
         print()
 
         return True

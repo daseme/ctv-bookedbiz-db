@@ -2,7 +2,7 @@
 User Repository - Data access layer for user management.
 
 Handles all database operations for:
-- User authentication (login, password verification)
+- User lookup for Tailscale auth
 - User CRUD operations
 - User queries and filtering
 """
@@ -34,8 +34,8 @@ class UserRepository(BaseService):
         with self.safe_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT user_id, first_name, last_name, email, password_hash, 
-                       role, created_date, last_login, updated_date
+                SELECT user_id, first_name, last_name, email, role,
+                       created_date, last_login, updated_date
                 FROM users
                 WHERE user_id = ?
                 """,
@@ -49,8 +49,8 @@ class UserRepository(BaseService):
         with self.safe_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT user_id, first_name, last_name, email, password_hash, 
-                       role, created_date, last_login, updated_date
+                SELECT user_id, first_name, last_name, email, role,
+                       created_date, last_login, updated_date
                 FROM users
                 WHERE email = ?
                 """,
@@ -63,8 +63,8 @@ class UserRepository(BaseService):
         """Get all users."""
         with self.safe_connection() as conn:
             query = """
-                SELECT user_id, first_name, last_name, email, password_hash, 
-                       role, created_date, last_login, updated_date
+                SELECT user_id, first_name, last_name, email, role,
+                       created_date, last_login, updated_date
                 FROM users
                 ORDER BY last_name, first_name
             """
@@ -77,8 +77,8 @@ class UserRepository(BaseService):
         """Get all users with a specific role."""
         with self.safe_connection() as conn:
             query = """
-                SELECT user_id, first_name, last_name, email, password_hash, 
-                       role, created_date, last_login, updated_date
+                SELECT user_id, first_name, last_name, email, role,
+                       created_date, last_login, updated_date
                 FROM users
                 WHERE role = ?
                 ORDER BY last_name, first_name
@@ -97,18 +97,17 @@ class UserRepository(BaseService):
         first_name: str,
         last_name: str,
         email: str,
-        password_hash: str,
         role: UserRole,
     ) -> User:
-        """Create a new user."""
+        """Create a new user (Tailscale identity; no password)."""
         with self.safe_transaction() as conn:
             try:
                 cursor = conn.execute(
                     """
-                    INSERT INTO users (first_name, last_name, email, password_hash, role)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO users (first_name, last_name, email, role)
+                    VALUES (?, ?, ?, ?)
                     """,
-                    (first_name, last_name, email.lower(), password_hash, role.value),
+                    (first_name, last_name, email.lower(), role.value),
                 )
                 user_id = cursor.lastrowid
                 conn.commit()
@@ -130,7 +129,6 @@ class UserRepository(BaseService):
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
         email: Optional[str] = None,
-        password_hash: Optional[str] = None,
         role: Optional[UserRole] = None,
     ) -> Optional[User]:
         """Update user information."""
@@ -149,10 +147,6 @@ class UserRepository(BaseService):
             if email is not None:
                 updates.append("email = ?")
                 params.append(email.lower())
-
-            if password_hash is not None:
-                updates.append("password_hash = ?")
-                params.append(password_hash)
 
             if role is not None:
                 updates.append("role = ?")
@@ -251,7 +245,6 @@ class UserRepository(BaseService):
             first_name=row["first_name"],
             last_name=row["last_name"],
             email=row["email"],
-            password_hash=row["password_hash"],
             role=UserRole(row["role"]),
             created_date=created_date,
             last_login=last_login,

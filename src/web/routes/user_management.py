@@ -1,10 +1,9 @@
 """
 User Management Blueprint
 
-Handles user authentication and user management operations:
-- Login/logout
-- User CRUD operations (admin only)
-- Password management
+Handles user authentication (Tailscale identity) and user management:
+- Login via Tailscale headers / logout
+- User CRUD (admin only)
 """
 
 import logging
@@ -15,6 +14,10 @@ from src.services.container import get_container
 from src.models.users import UserRole, CreateUserRequest, UpdateUserRequest
 from src.web.utils.auth import admin_required
 
+# Tailscale identity headers (set by Tailscale Serve; only trust when app is on localhost behind Serve)
+TAILSCALE_USER_LOGIN = "Tailscale-User-Login"
+TAILSCALE_USER_NAME = "Tailscale-User-Name"
+
 logger = logging.getLogger(__name__)
 
 # Create blueprint
@@ -22,44 +25,35 @@ user_management_bp = Blueprint("user_management", __name__, url_prefix="/users")
 
 
 # ============================================================================
-# Authentication Routes
+# Authentication Routes (Tailscale identity)
 # ============================================================================
 
 
 @user_management_bp.route("/login", methods=["GET", "POST"])
 def login():
-    """User login page."""
+    """Login via Tailscale identity headers (no password)."""
     if current_user.is_authenticated:
         return redirect("/reports/")
 
-    if request.method == "POST":
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
+    login_header = request.headers.get(TAILSCALE_USER_LOGIN, "").strip()
+    name_header = request.headers.get(TAILSCALE_USER_NAME, "").strip() or None
 
-        if not email or not password:
-            flash("Email and password are required.", "error")
-            return render_template("login.html")
-
+    if login_header and "@" in login_header:
         try:
             container = get_container()
             user_service = container.get("user_service")
-            user = user_service.authenticate_user(email, password)
-
+            user = user_service.authenticate_by_tailscale(login_header, name_header)
             if user:
                 login_user(user, remember=False)
                 flash(f"Welcome back, {user.first_name}!", "success")
-
-                # Redirect to next page or reports index
-                next_page = request.args.get("next")
-                if next_page:
-                    return redirect(next_page)
-                # Always redirect to reports home page
-                return redirect("/reports/")
-            else:
-                flash("Invalid email or password.", "error")
+                next_page = request.args.get("next") or "/reports/"
+                return redirect(next_page)
+            flash("Your Tailscale account is not authorized. Ask an admin to add you.", "error")
         except Exception as e:
             logger.error(f"Login error: {e}")
             flash("An error occurred during login. Please try again.", "error")
+    elif request.method == "POST":
+        flash("Login requires Tailscale. Access the app via your Tailscale Serve URL.", "error")
 
     return render_template("login.html")
 
@@ -104,30 +98,24 @@ def create_user():
             first_name = request.form.get("first_name", "").strip()
             last_name = request.form.get("last_name", "").strip()
             email = request.form.get("email", "").strip()
-            password = request.form.get("password", "")
             role_str = request.form.get("role", "AE").strip()
 
-            # Validate required fields
-            if not all([first_name, last_name, email, password]):
-                flash("All fields are required.", "error")
+            if not all([first_name, last_name, email]):
+                flash("First name, last name, and email are required.", "error")
                 return render_template("users/create.html", roles=UserRole)
 
-            # Validate role
             try:
                 role = UserRole(role_str)
             except ValueError:
                 flash("Invalid role selected.", "error")
                 return render_template("users/create.html", roles=UserRole)
 
-            # Create user
             container = get_container()
             user_service = container.get("user_service")
-
             create_request = CreateUserRequest(
                 first_name=first_name,
                 last_name=last_name,
                 email=email,
-                password=password,
                 role=role,
             )
 
@@ -184,15 +172,12 @@ def edit_user(user_id: int):
                 first_name = request.form.get("first_name", "").strip()
                 last_name = request.form.get("last_name", "").strip()
                 email = request.form.get("email", "").strip()
-                password = request.form.get("password", "").strip()
                 role_str = request.form.get("role", "").strip()
 
-                # Validate required fields
                 if not all([first_name, last_name, email]):
                     flash("First name, last name, and email are required.", "error")
                     return render_template("users/edit.html", user=user, roles=UserRole)
 
-                # Validate role if provided
                 role = None
                 if role_str:
                     try:
@@ -203,12 +188,10 @@ def edit_user(user_id: int):
                             "users/edit.html", user=user, roles=UserRole
                         )
 
-                # Build update request
                 update_request = UpdateUserRequest(
                     first_name=first_name,
                     last_name=last_name,
                     email=email,
-                    password=password if password else None,
                     role=role,
                 )
 
@@ -300,39 +283,9 @@ def profile():
     return render_template("users/profile.html", user=current_user)
 
 
-@user_management_bp.route("/profile/change-password", methods=["GET", "POST"])
+@user_management_bp.route("/profile/change-password", methods=["GET"])
 @login_required
 def change_password():
-    """Change current user's password."""
-    if request.method == "POST":
-        try:
-            old_password = request.form.get("old_password", "")
-            new_password = request.form.get("new_password", "")
-            confirm_password = request.form.get("confirm_password", "")
-
-            if not all([old_password, new_password, confirm_password]):
-                flash("All password fields are required.", "error")
-                return render_template("users/change_password.html")
-
-            if new_password != confirm_password:
-                flash("New passwords do not match.", "error")
-                return render_template("users/change_password.html")
-
-            container = get_container()
-            user_service = container.get("user_service")
-            user_service.change_password(
-                current_user.user_id, old_password, new_password
-            )
-
-            flash("Password changed successfully!", "success")
-            return redirect(url_for("user_management.profile"))
-
-        except ValueError as e:
-            flash(str(e), "error")
-            return render_template("users/change_password.html")
-        except Exception as e:
-            logger.error(f"Error changing password: {e}")
-            flash("An error occurred while changing the password.", "error")
-            return render_template("users/change_password.html")
-
-    return render_template("users/change_password.html")
+    """No passwords; auth is via Tailscale. Redirect to profile."""
+    flash("Sign-in is via Tailscale; there is no password to change.", "info")
+    return redirect(url_for("user_management.profile"))

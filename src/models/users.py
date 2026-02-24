@@ -54,7 +54,6 @@ class User:
     first_name: str
     last_name: str
     email: str
-    password_hash: str
     role: UserRole
     created_date: Optional[datetime] = None
     last_login: Optional[datetime] = None
@@ -105,7 +104,6 @@ class CreateUserRequest:
     first_name: str
     last_name: str
     email: str
-    password: str
     role: UserRole
 
 
@@ -116,5 +114,4 @@ class UpdateUserRequest:
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None
-    password: Optional[str] = None
     role: Optional[UserRole] = None
