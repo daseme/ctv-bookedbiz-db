@@ -307,10 +307,11 @@
     
     /* Planning table */
     .planning-table-container {
+        overflow: auto;
+        max-height: calc(100vh - 260px);
         background: white;
         border-radius: 8px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        overflow-x: auto;
     }
     
     .planning-table {
@@ -332,6 +333,7 @@
         position: sticky;
         top: 0;
         z-index: 10;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     .planning-table th.number {
@@ -658,181 +660,6 @@
         background: #cbd5e1;
     }
     
-    /* =========================================================================
-       BURN-DOWN STRIP STYLES
-       ========================================================================= */
-    
-    .burn-down-row {
-        background: linear-gradient(180deg, var(--nord1) 0%, var(--nord0) 100%) !important;
-    }
-    
-    .burn-down-row th {
-        background: transparent !important;
-        padding: 10px 8px !important;
-        vertical-align: middle;
-        border-bottom: 2px solid var(--nord3);
-    }
-    
-    .burn-down-cell {
-        text-align: center !important;
-        color: var(--nord6);
-        font-size: 11px;
-    }
-    
-    .burn-down-cell.inactive {
-        opacity: 0.3;
-    }
-    
-    .burn-down-label {
-        font-weight: 600 !important;
-        color: var(--nord4) !important;
-        font-size: 10px !important;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        text-align: left !important;
-    }
-    
-    /* Days left */
-    .burn-down-days {
-        font-size: 10px;
-        color: var(--nord4);
-        margin-bottom: 2px;
-    }
-    
-    /* Required pace */
-    .burn-down-pace {
-        font-size: 12px;
-        font-weight: 700;
-        color: var(--nord6);
-        margin-bottom: 4px;
-    }
-    
-    /* Pace bar container */
-    .pace-bar-container {
-        height: 5px;
-        background: var(--nord3);
-        border-radius: 3px;
-        overflow: hidden;
-        margin-bottom: 3px;
-    }
-    
-    .pace-bar {
-        height: 100%;
-        border-radius: 3px;
-        transition: width 0.3s ease;
-        min-width: 2px;
-    }
-    /* Gauge: show required pace as a fixed marker, actual pace as the bar */
-.pace-bar-container {
-    height: 6px;                 /* slightly taller so the marker is readable */
-    background: var(--nord3);
-    border-radius: 3px;
-    overflow: visible;            /* allow marker to poke out */
-    margin-bottom: 4px;
-    position: relative;
-}
-
-/* Required marker (always at 100% of required pace) */
-.pace-required-marker {
-    position: absolute;
-    right: 0;
-    top: -3px;
-    width: 2px;
-    height: 12px;
-    background: var(--nord6);
-    opacity: 0.85;
-    border-radius: 1px;
-}
-
-/* Actual bar stays inside */
-.pace-bar {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.3s ease;
-    min-width: 2px;
-}
-
-/* Status label becomes "BEHIND · +$X/day needed" */
-.pace-status-label {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    display: inline-flex;
-    gap: 6px;
-    align-items: baseline;
-}
-
-.pace-delta {
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.2px;
-    opacity: 0.95;
-}
-
-/* Delta colors match status */
-.pace-ahead .pace-delta { color: var(--nord14); }
-.pace-on-track .pace-delta { color: var(--nord13); }
-.pace-behind .pace-delta { color: var(--nord11); }
-.pace-complete .pace-delta { color: var(--nord8); }
-
-    /* Pace status colors */
-    .pace-ahead .pace-bar {
-        background: linear-gradient(90deg, var(--nord14) 0%, #8fbf8b 100%);
-    }
-    
-    .pace-on-track .pace-bar {
-        background: linear-gradient(90deg, var(--nord13) 0%, #e9c46a 100%);
-    }
-    
-    .pace-behind .pace-bar {
-        background: linear-gradient(90deg, var(--nord11) 0%, #e07a5f 100%);
-    }
-    
-    .pace-complete .pace-bar {
-        background: var(--nord8);
-        width: 100% !important;
-    }
-    
-    /* Status label */
-    .pace-status-label {
-        font-size: 9px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    .pace-ahead .pace-status-label { color: var(--nord14); }
-    .pace-on-track .pace-status-label { color: var(--nord13); }
-    .pace-behind .pace-status-label { color: var(--nord11); }
-    .pace-complete .pace-status-label { color: var(--nord8); }
-    
-    /* Tooltip on hover */
-    .burn-down-cell[data-tooltip] {
-        position: relative;
-        cursor: help;
-    }
-    
-    .burn-down-cell[data-tooltip]:hover::after {
-        content: attr(data-tooltip);
-        position: absolute;
-        top: 100%;
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--nord0);
-        color: var(--nord6);
-        padding: 10px 14px;
-        border-radius: 6px;
-        font-size: 11px;
-        white-space: pre-line;
-        z-index: 1000;
-        min-width: 200px;
-        text-align: left;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-        margin-top: 6px;
-        line-height: 1.5;
-    }
-    
     /* Responsive */
     @media (max-width: 1200px) {
         .summary-cards {
@@ -961,73 +788,6 @@
 <div class="planning-table-container">
     <table class="planning-table" id="planningTable">
         <thead>
-            <!-- Burn-Down Strip Row -->
-            <tr class="burn-down-row">
-                <th class="burn-down-label entity-header-col">Booking Pace</th>
-                {% for period in all_periods %}
-                {% set bd = burn_down.get(period) if burn_down else None %}
-                {% set is_active = period in active_periods %}
-                <th class="burn-down-cell {% if not is_active %}inactive{% endif %} {% if bd %}{{ bd.pace_status.css_class }}{% endif %} {% if period.month in [3, 6, 9, 12] %}q-end{% endif %}"
-                    {% if bd and is_active %}
-data-tooltip="Forecast: {{ bd.forecast_total.formatted }}&#10;
-Booked: {{ bd.booked_total.formatted }}&#10;
-Remaining: {{ bd.remaining_to_forecast.formatted }}&#10;
-&#10;
-Days elapsed: {{ bd.sellable_days_elapsed }}&#10;
-Days left: {{ bd.sellable_days_remaining }}{% if bd.adjustment != 0 %}&#10;
-Adjustment: {{ bd.adjustment }} ({{ bd.adjustment_reason or 'manual' }}){% endif %}&#10;
-Required: {{ bd.required_pace_formatted }}&#10;
-Actual: {{ bd.actual_pace_formatted }}{% if bd.pace_delta_per_day is defined %}&#10;
-Delta: +${{ "{:,.1f}".format(bd.pace_delta_per_day/1000) }}k/day needed{% endif %}&#10;
-To hit forecast by end of period."
-
-                    {% endif %}>
-                    {% if is_active and bd %}
-                        <div class="burn-down-days">{{ bd.days_left_text }}</div>
-                        <div class="burn-down-pace">{{ bd.required_pace_formatted }}</div>
-
-                        <div class="pace-bar-container">
-                            {# Actual pace bar (width is actual/required capped at 100) #}
-                            <div class="pace-bar" style="width: {{ bd.pace_bar_percent }}%;"></div>
-                            {# Required marker at the far right (100% of required) #}
-                            <div class="pace-required-marker" title="Required pace"></div>
-                        </div>
-
-                        <div class="pace-status-label">
-                            <span>{{ bd.pace_status.label }}</span>
-
-                            {# Operational delta: how much more per day is needed #}
-                            {% if bd.pace_status.css_class == 'pace-behind' %}
-                                {# Preferred: backend provides bd.pace_delta_per_day (numeric) #}
-                                {% if bd.pace_delta_per_day is defined %}
-                                    <span class="pace-delta">+${{ "{:,.1f}".format(bd.pace_delta_per_day/1000) }}k/day needed</span>
-                                {% elif bd.required_pace is defined and bd.actual_pace is defined %}
-                                    {# Fallback: if backend provides numeric required_pace & actual_pace #}
-                                    {% set delta = (bd.required_pace - bd.actual_pace) %}
-                                    {% if delta > 0 %}
-                                        <span class="pace-delta">+${{ "{:,.1f}".format(delta/1000) }}k/day needed</span>
-                                    {% endif %}
-                                {% endif %}
-                            {% elif bd.pace_status.css_class == 'pace-ahead' %}
-                                {# Optional: show surplus per day (same numeric requirements as above) #}
-                                {% if bd.required_pace is defined and bd.actual_pace is defined %}
-                                    {% set surplus = (bd.actual_pace - bd.required_pace) %}
-                                    {% if surplus > 0 %}
-                                        <span class="pace-delta">+${{ "{:,.1f}".format(surplus/1000) }}k/day ahead</span>
-                                    {% endif %}
-                                {% endif %}
-                            {% endif %}
-                        </div>
-                    {% else %}
-                        <div class="burn-down-days" style="opacity: 0.4;">—</div>
-                    {% endif %}
-
-                </th>
-                {% endfor %}
-                <th class="burn-down-cell total-header" style="opacity: 0.4;">—</th>
-            </tr>
-            
-            <!-- Month Headers Row -->
             <tr>
                 <th class="entity-header-col">AE / Metric</th>
                 {% for period in all_periods %}
@@ -1213,7 +973,6 @@ To hit forecast by end of period."
     Green highlight indicates Booked exceeds entered forecast.
     Blue highlighted columns are the active planning window.
     Grey inputs are closed months (read-only, showing actual booked revenue).
-    Burn Rate shows required daily pace to hit forecast for active months.
 </div>
 <!-- Booked Detail Modal -->
 <div class="modal-overlay" id="bookedDetailModal" onclick="closeModalOnOverlay(event)">
@@ -1526,9 +1285,6 @@ function exportCSV() {
     let csv = [];
     
     rows.forEach(row => {
-        // Skip burn-down row in export
-        if (row.classList.contains('burn-down-row')) return;
-        
         const cells = row.querySelectorAll('th, td');
         const rowData = [];
         cells.forEach(cell => {

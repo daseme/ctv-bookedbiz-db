@@ -14,9 +14,6 @@ from decimal import Decimal
 from datetime import date
 
 
-from src.utils.calendar import SellableDaysCalendar
-from src.models.planning import BurnDownMetrics
-
 from src.database.connection import DatabaseConnection
 from src.services.base_service import BaseService
 from src.repositories.sector_expectation_repository import SectorExpectationRepository
@@ -705,102 +702,6 @@ class PlanningService(BaseService):
     def get_all_sectors(self) -> List[Dict[str, Any]]:
         """Get all active sectors."""
         return self.sector_repo.get_all_sectors()
-
-    # ============================================================================
-    # Add this method to PlanningService class
-    # ============================================================================
-
-    def get_burn_down_metrics(
-        self, periods: List[PlanningPeriod], as_of: Optional[date] = None
-    ) -> Dict[PlanningPeriod, BurnDownMetrics]:
-        """
-        Calculate burn-down metrics for each period.
-
-        These are company-wide totals showing the "physics" of hitting forecast.
-
-        Key insight: For future months, "days left" should be CUMULATIVE from today.
-        - January (current): remaining days in Jan
-        - February: remaining in Jan + all of Feb
-        - March: remaining in Jan + all of Feb + all of Mar
-
-        Args:
-            periods: List of planning periods (typically active window)
-            as_of: Calculate as of this date (default: today)
-
-        Returns:
-            Dict mapping period -> BurnDownMetrics
-        """
-        if as_of is None:
-            as_of = date.today()
-
-        # Create calendar with adjustment lookup from DB
-        def adjustment_lookup(year: int, month: int) -> Optional[tuple]:
-            return self.repository.get_sellable_days_adjustment(year, month)
-
-        cal = SellableDaysCalendar(adjustment_lookup)
-
-        # Sort periods chronologically to compute cumulative runway
-        sorted_periods = sorted(periods, key=lambda p: (p.year, p.month))
-
-        # First pass: get sellable days info for each period
-        days_by_period = {}
-        for period in sorted_periods:
-            days_by_period[period] = cal.get_sellable_days(
-                period.year, period.month, as_of
-            )
-
-        # Second pass: compute cumulative runway for each period
-        cumulative_runway = {}
-        running_total = 0
-
-        for period in sorted_periods:
-            days_info = days_by_period[period]
-
-            # Determine if this is a current/past month or future month
-            period_start = date(period.year, period.month, 1)
-
-            if as_of.year == period.year and as_of.month == period.month:
-                # Current month: use remaining days, start accumulating
-                running_total = days_info.sellable_remaining
-            elif period_start > as_of:
-                # Future month: add ALL sellable days to running total
-                running_total += days_info.sellable_total
-            else:
-                # Past month: no runway (already closed)
-                running_total = 0
-
-            cumulative_runway[period] = running_total
-
-        # Third pass: build metrics with cumulative runway
-        result = {}
-
-        for period in periods:
-            days_info = days_by_period[period]
-
-            # Get company totals
-            totals = self.repository.get_company_totals_for_period(period)
-
-            # Get booked MTD by effective_date (for pace calculation)
-            booked_mtd = self.repository.get_booked_mtd_by_effective_date(
-                period.broadcast_month, as_of
-            )
-
-            # Build metrics object with CUMULATIVE runway
-            metrics = BurnDownMetrics(
-                period=period,
-                sellable_days_total=days_info.sellable_total,
-                sellable_days_elapsed=days_info.sellable_elapsed,
-                sellable_days_remaining=cumulative_runway[period],  # <-- CUMULATIVE
-                adjustment=days_info.adjustment,
-                adjustment_reason=days_info.adjustment_reason,
-                forecast_total=Money(totals["forecast"]),
-                booked_total=Money(totals["booked"]),
-                booked_mtd=Money(booked_mtd),
-            )
-
-            result[period] = metrics
-
-        return result
 
     def get_booked_detail(
         self, entity_name: str, year: int, month: int, limit: int = 50

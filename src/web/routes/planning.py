@@ -151,10 +151,6 @@ def planning_session():
             months_ahead=months_ahead, planning_year=planning_year
         )
         
-        burn_down_metrics = planning_service.get_burn_down_metrics(
-            periods=summary.active_periods
-        )
-        
         template_data = {
             "planning_year": planning_year,
             "current_date": date.today().strftime("%B %d, %Y"),
@@ -163,7 +159,6 @@ def planning_session():
             "past_periods": summary.past_periods,
             "entity_data": summary.entity_data,
             "company": CompanySummaryWrapper(company_summary),
-            "burn_down": burn_down_metrics,
         }
 
         return render_template("planning_session.html", **template_data)
