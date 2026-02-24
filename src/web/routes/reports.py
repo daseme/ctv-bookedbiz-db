@@ -911,9 +911,9 @@ def api_booked_detail():
         return jsonify(
             {"success": False, "error": "Missing required parameter: year"}
         ), 400
-    if not month or month < 1 or month > 12:
+    if month is None or month < 0 or month > 12:
         return jsonify(
-            {"success": False, "error": "Invalid month parameter (1-12)"}
+            {"success": False, "error": "Invalid month parameter (0-12)"}
         ), 400
 
     try:
@@ -921,7 +921,10 @@ def api_booked_detail():
         container = get_container()
         service = container.get("planning_service")
 
-        result = service.get_booked_detail(entity, year, month, limit)
+        if month == 0:
+            result = service.get_booked_detail_annual(entity, year, limit)
+        else:
+            result = service.get_booked_detail(entity, year, month, limit)
 
         if result is None:
             return jsonify(
