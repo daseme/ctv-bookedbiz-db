@@ -1,6 +1,6 @@
 # User Management Setup Instructions
 
-This document provides instructions for setting up user management in the CTV Booked Biz application.
+This document provides instructions for setting up user management in the CTV Booked Biz application. **Sign-in is via Tailscale** (no passwords). See [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md) for how the domain/URL works and how to run behind Tailscale Serve.
 
 ## Prerequisites
 
@@ -8,158 +8,92 @@ This document provides instructions for setting up user management in the CTV Bo
    ```bash
    pip install -r requirements.txt
    ```
-   This will install `flask-login==0.6.3` and other required packages.
 
 2. **Run Database Migration**
    ```bash
    sqlite3 data/database/production.db < sql/user_management_tables.sql
    ```
-   
-   Or if using a different database path:
+   Or if you already have a `users` table with `password_hash` (legacy):
    ```bash
-   sqlite3 /path/to/your/database.db < sql/user_management_tables.sql
+   sqlite3 /path/to/your/database.db < sql/migrations/020_tailscale_auth_remove_passwords.sql
    ```
 
 ## Creating the Initial Admin User
 
 ### Method 1: Using the Script (Recommended)
 
-Run the provided script:
-
 ```bash
 python scripts/create_admin_user.py
 ```
 
-The script will prompt you for:
-- First Name
-- Last Name
-- Email (must be unique)
-- Password (minimum 8 characters)
-- Password confirmation
-
-The user will be created with the `admin` role.
+The script will prompt for First name, Last name, and Email. The user is created with the `admin` role. Sign-in is via Tailscale (no password).
 
 ### Method 2: Using SQLite Directly
-
-If you prefer to create the user manually:
 
 ```bash
 sqlite3 data/database/production.db
 ```
 
-Then run:
-
 ```sql
--- Replace these values with your actual user details
-INSERT INTO users (first_name, last_name, email, password_hash, role)
-VALUES (
-    'YourFirstName',
-    'YourLastName',
-    'your.email@example.com',
-    '--GENERATED_HASH--',  -- See below for generating hash
-    'admin'
-);
+INSERT INTO users (first_name, last_name, email, role)
+VALUES ('YourFirstName', 'YourLastName', 'your.email@example.com', 'admin');
 ```
 
-**To generate a password hash**, use Python:
-
-```python
-from werkzeug.security import generate_password_hash
-print(generate_password_hash('your_password_here'))
-```
-
-Copy the output and use it as the `password_hash` value in the SQL INSERT statement.
-
-### Method 3: Using Python Interactively
-
-```python
-from werkzeug.security import generate_password_hash
-from src.database.connection import DatabaseConnection
-from src.config.settings import get_settings
-
-settings = get_settings()
-db = DatabaseConnection(settings.database.db_path)
-
-password_hash = generate_password_hash('your_password_here')
-
-with db.transaction() as conn:
-    conn.execute(
-        """
-        INSERT INTO users (first_name, last_name, email, password_hash, role)
-        VALUES (?, ?, ?, ?, 'admin')
-        """,
-        ('YourFirstName', 'YourLastName', 'your.email@example.com', password_hash)
-    )
-```
+(Use the **same email** as their Tailscale account so they can sign in.)
 
 ## User Roles
 
-The system supports three roles:
-
-- **admin**: Full access to all features, including user management
-- **management**: Access to management-level reports and features
-- **AE**: Access to AE-level reports and features
+- **admin**: Full access, including user management
+- **management**: Management-level reports, all AEs
+- **AE**: AE-level reports only (own dashboard)
 
 ## Accessing the Application
 
-1. Start the Flask application:
+1. Start the Flask application (listen on localhost), e.g.:
    ```bash
    python -m src.web.app
    ```
-   Or using your deployment method.
 
-2. Navigate to the login page:
+2. Expose it with Tailscale Serve (see [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md)):
+   ```bash
+   tailscale serve 5000
    ```
-   http://localhost:5000/users/login
-   ```
 
-3. Log in with the admin credentials you created.
+3. Open the **Tailscale Serve URL** (e.g. `https://your-machine.your-tailnet.ts.net`) in a browser. You will be signed in automatically if your Tailscale email exists in the `users` table.
 
-## User Management Features
-
-Once logged in as an admin, you can:
+## User Management Features (Admin)
 
 - **View all users**: `/users/`
 - **Create new users**: `/users/create`
 - **Edit users**: `/users/<user_id>/edit`
-- **Deactivate users**: `/users/<user_id>/deactivate`
 - **Delete users**: `/users/<user_id>/delete`
 - **View your profile**: `/users/profile`
-- **Change your password**: `/users/profile/change-password`
 
 ## Session Configuration
 
-- **Session timeout**: 1 day (24 hours)
-- **Remember me**: Not implemented (sessions expire on browser close)
+- Session timeout: 1 day (24 hours)
 
 ## Security Notes
 
-- Passwords are hashed using Werkzeug's password hashing (PBKDF2)
-- Email addresses must be unique
-- Passwords must be at least 8 characters long
-- Admins cannot delete or deactivate their own accounts
-- All user management routes require admin authentication
+- Authentication is via Tailscale identity headers only. The app must be reached through Tailscale Serve (localhost-only) so headers cannot be spoofed.
+- Email in `users` must match the Tailscale login (email) for that person to sign in.
+- Admins cannot delete their own accounts.
 
 ## Troubleshooting
 
+### "Your Tailscale account is not authorized"
+- No user row exists for your Tailscale email. An admin must add you via User Management with that exact email.
+
+### "Login requires Tailscale"
+- You are not using the Tailscale Serve URL. Open the app via `https://<machine>.<tailnet>.ts.net` (see [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md)).
+
 ### "Users table not found"
-- Make sure you've run the migration script: `sqlite3 data/database/production.db < sql/user_management_tables.sql`
+- Run: `sqlite3 data/database/production.db < sql/user_management_tables.sql`
 
 ### "Email already registered"
-- The email address you're trying to use is already in the database
-- Use a different email or check existing users: `SELECT * FROM users;`
+- That email already has a user. Use a different email or check: `SELECT * FROM users;`
 
-### "Authentication failed"
-- Verify the email and password are correct
-- Check that the user account is active: `SELECT is_active FROM users WHERE email = 'your@email.com';`
-
-### "Admin access required"
-- You need to be logged in as an admin to access user management features
-- Only users with the `admin` role can create, edit, or delete users
-
-## Database Schema
-
-The users table structure:
+## Database Schema (after migration 020)
 
 ```sql
 CREATE TABLE users (
@@ -167,9 +101,7 @@ CREATE TABLE users (
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'AE' CHECK (role IN ('admin', 'management', 'AE')),
-    is_active BOOLEAN DEFAULT 1,
     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP

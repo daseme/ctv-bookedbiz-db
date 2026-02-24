@@ -846,6 +846,45 @@ class PlanningService(BaseService):
             "customers": customers,
         }
 
+    def get_booked_detail_annual(
+        self, entity_name: str, year: int, limit: int = 50
+    ) -> Optional[Dict[str, Any]]:
+        """Get detailed breakdown of booked revenue for a full year.
+
+        Args:
+            entity_name: Name of the revenue entity
+            year: Planning year
+            limit: Max customers to return
+
+        Returns:
+            Dict with entity info, period info, total, and customer breakdown
+        """
+        entity = self.repository.get_revenue_entity_by_name(entity_name)
+        if not entity:
+            logger.warning(f"Revenue entity not found: {entity_name}")
+            return None
+
+        customers = self.repository.get_booked_detail_annual(
+            entity, year, limit
+        )
+
+        total_revenue = sum(c["revenue"] for c in customers)
+        total_spots = sum(c["spot_count"] for c in customers)
+
+        return {
+            "entity_name": entity.entity_name,
+            "entity_type": entity.entity_type.value,
+            "period": {
+                "year": year,
+                "month": 0,
+                "display": f"{year} Total",
+            },
+            "total_revenue": total_revenue,
+            "total_spots": total_spots,
+            "customer_count": len(customers),
+            "customers": customers,
+        }
+
     # =========================================================================
     # Validation
     # =========================================================================

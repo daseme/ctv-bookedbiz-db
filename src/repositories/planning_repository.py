@@ -561,6 +561,62 @@ class PlanningRepository(BaseService):
                 })
             return results
 
+    def get_booked_detail_annual(
+        self, entity: RevenueEntity, year: int, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Get detailed breakdown of booked revenue by customer for a full year."""
+        periods = PlanningPeriod.full_year(year)
+        broadcast_months = [p.broadcast_month for p in periods]
+        month_placeholders = ",".join(["?" for _ in broadcast_months])
+
+        if entity.entity_type == EntityType.AGENCY and entity.entity_name == "WorldLink":
+            entity_filter = """
+                (s.bill_code LIKE 'WL:%' OR s.bill_code LIKE 'WORLDLINK:%')
+            """
+            params = broadcast_months + [limit]
+        elif entity.entity_type == EntityType.HOUSE:
+            entity_filter = "UPPER(TRIM(s.sales_person)) = 'HOUSE'"
+            params = broadcast_months + [limit]
+        else:
+            entity_filter = "UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
+            params = [entity.entity_name] + broadcast_months + [limit]
+
+        query = f"""
+            SELECT
+                s.customer_id,
+                COALESCE(c.normalized_name, s.bill_code) as customer_name,
+                a.agency_name,
+                sec.sector_code,
+                sec.sector_name,
+                SUM(s.gross_rate) as revenue,
+                COUNT(*) as spot_count
+            FROM spots s
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
+            LEFT JOIN agencies a ON s.agency_id = a.agency_id
+            LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
+            WHERE {entity_filter}
+            AND s.broadcast_month IN ({month_placeholders})
+            AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+            GROUP BY s.customer_id, COALESCE(c.normalized_name, s.bill_code), a.agency_name, sec.sector_code, sec.sector_name
+            ORDER BY customer_name ASC
+            LIMIT ?
+        """
+
+        with self.safe_connection() as conn:
+            cursor = conn.execute(query, params)
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    "customer_id": row[0],
+                    "customer_name": row[1] or "Unknown",
+                    "agency_name": row[2],
+                    "sector_code": row[3],
+                    "sector_name": row[4],
+                    "revenue": float(row[5] or 0),
+                    "spot_count": int(row[6] or 0)
+                })
+            return results
+
     # =========================================================================
     # Combined Planning Data
     # =========================================================================

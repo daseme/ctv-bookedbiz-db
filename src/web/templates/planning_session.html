@@ -1084,7 +1084,14 @@ To hit forecast by end of period."
                     ${{ "{:,.0f}".format(booked_amount) }}
                 </td>
                 {% endfor %}
-                <td class="number total-col">${{ "{:,.0f}".format(ed.total_booked.amount) }}</td>
+                <td class="number total-col booked-cell"
+                    {% if ed.total_booked.amount > 0 %}
+                    onclick="showBookedDetail('{{ ed.entity.entity_name }}', {{ planning_year }}, 0)"
+                    title="Click to see full-year customer breakdown"
+                    {% endif %}
+                    style="{% if ed.total_booked.amount == 0 %}cursor: default;{% endif %}">
+                    ${{ "{:,.0f}".format(ed.total_booked.amount) }}
+                </td>
             </tr>
 
             

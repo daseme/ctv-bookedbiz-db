@@ -215,6 +215,33 @@
     color: #2d3748;
 }
 
+/* Chart Container */
+.chart-container {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 32px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.chart-header {
+    margin-bottom: 20px;
+}
+
+.chart-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.chart-wrapper {
+    position: relative;
+    height: 400px;
+    width: 100%;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .summary-cards {
@@ -228,6 +255,10 @@
     .monthly-table {
         min-width: 800px;
     }
+    
+    .chart-wrapper {
+        height: 300px;
+    }
 }
 
 @media (max-width: 768px) {
@@ -237,6 +268,10 @@
     
     .summary-card .amount {
         font-size: 24px;
+    }
+    
+    .chart-wrapper {
+        height: 250px;
     }
 }
 </style>
@@ -324,6 +359,16 @@
                     {{ "{:.1f}".format(totals.booked_vs_forecast_pct) }}% Booked vs Forecast
                 </span>
             </div>
+        </div>
+    </div>
+    
+    <!-- Monthly Revenue Chart -->
+    <div class="chart-container">
+        <div class="chart-header">
+            <h2>{{ year }} Monthly Revenue Trend - {{ ae_name }}</h2>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="monthlyRevenueChart"></canvas>
         </div>
     </div>
     
@@ -515,8 +560,146 @@
 
 
     <script>
-        // Year filter functionality
+        // Initialize monthly revenue chart
         document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('monthlyRevenueChart');
+            if (ctx) {
+                const monthlyData = {{ monthly_data | tojson }};
+                
+                const labels = monthlyData.map(m => m.month_name);
+                const bookedData = monthlyData.map(m => m.booked_revenue);
+                const forecastData = monthlyData.map(m => m.forecast);
+                const budgetData = monthlyData.map(m => m.budget);
+                
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Booked Revenue',
+                                data: bookedData,
+                                borderColor: '#5e81ac', // Nord10 - blue
+                                backgroundColor: 'rgba(94, 129, 172, 0.1)',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.1,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#5e81ac',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2
+                            },
+                            {
+                                label: 'Forecast',
+                                data: forecastData,
+                                borderColor: '#a3be8c', // Nord14 - green
+                                backgroundColor: 'rgba(163, 190, 140, 0.1)',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.1,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#a3be8c',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2
+                            },
+                            {
+                                label: 'Budget',
+                                data: budgetData,
+                                borderColor: '#4c566a', // Nord3 - gray
+                                backgroundColor: 'rgba(76, 86, 106, 0.1)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                fill: false,
+                                tension: 0.1,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#4c566a',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 15,
+                                    font: {
+                                        size: 13,
+                                        weight: '500'
+                                    },
+                                    color: '#2d3748'
+                                }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                backgroundColor: 'rgba(46, 52, 64, 0.95)',
+                                padding: 12,
+                                titleFont: {
+                                    size: 14,
+                                    weight: '600'
+                                },
+                                bodyFont: {
+                                    size: 13
+                                },
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        label += '$' + context.parsed.y.toLocaleString('en-US', {maximumFractionDigits: 0});
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return '$' + value.toLocaleString('en-US', {maximumFractionDigits: 0});
+                                    },
+                                    font: {
+                                        size: 11
+                                    },
+                                    color: '#718096'
+                                },
+                                grid: {
+                                    color: '#e2e8f0'
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    },
+                                    color: '#718096'
+                                },
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+            }
+            
+            // Year filter functionality
             const yearFilter = document.getElementById('year-filter');
             if (yearFilter) {
                 yearFilter.addEventListener('change', function() {
