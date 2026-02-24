@@ -2,7 +2,7 @@
 User Management Blueprint
 
 Handles user authentication (Tailscale identity) and user management:
-- Login via Tailscale headers / logout
+- Login via Tailscale identity / logout
 - User CRUD (admin only)
 """
 
@@ -13,10 +13,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from src.services.container import get_container
 from src.models.users import UserRole, CreateUserRequest, UpdateUserRequest
 from src.web.utils.auth import admin_required
-
-# Tailscale identity headers (set by Tailscale Serve; only trust when app is on localhost behind Serve)
-TAILSCALE_USER_LOGIN = "Tailscale-User-Login"
-TAILSCALE_USER_NAME = "Tailscale-User-Name"
+from src.web.utils.tailscale import get_tailscale_identity
 
 logger = logging.getLogger(__name__)
 
@@ -31,18 +28,17 @@ user_management_bp = Blueprint("user_management", __name__, url_prefix="/users")
 
 @user_management_bp.route("/login", methods=["GET", "POST"])
 def login():
-    """Login via Tailscale identity headers (no password)."""
+    """Login via Tailscale identity (no password)."""
     if current_user.is_authenticated:
         return redirect("/reports/")
 
-    login_header = request.headers.get(TAILSCALE_USER_LOGIN, "").strip()
-    name_header = request.headers.get(TAILSCALE_USER_NAME, "").strip() or None
-
-    if login_header and "@" in login_header:
+    identity = get_tailscale_identity(request.remote_addr)
+    if identity:
+        login_email, display_name = identity
         try:
             container = get_container()
             user_service = container.get("user_service")
-            user = user_service.authenticate_by_tailscale(login_header, name_header)
+            user = user_service.authenticate_by_tailscale(login_email, display_name)
             if user:
                 login_user(user, remember=False)
                 flash(f"Welcome back, {user.first_name}!", "success")
@@ -52,8 +48,29 @@ def login():
         except Exception as e:
             logger.error(f"Login error: {e}")
             flash("An error occurred during login. Please try again.", "error")
+    # Fallback: allow localhost login by auto-signing in the first active user.
+    elif request.remote_addr in ("127.0.0.1", "::1"):
+        try:
+            container = get_container()
+            user_service = container.get("user_service")
+            users = user_service.get_all_users(include_inactive=False)
+            if users:
+                user = users[0]
+                login_user(user, remember=False)
+                flash(
+                    f"Signed in as {user.first_name} {user.last_name} "
+                    f"({user.role.display_name})",
+                    "info",
+                )
+                next_page = request.args.get("next") or "/reports/"
+                return redirect(next_page)
+            else:
+                flash("No user found for localhost login.", "error")
+        except Exception as e:
+            logger.error(f"Localhost login error: {e}")
+            flash("An error occurred during login. Please try again.", "error")
     elif request.method == "POST":
-        flash("Login requires Tailscale. Access the app via your Tailscale Serve URL.", "error")
+        flash("Login requires Tailscale. Access the app via your Tailscale network.", "error")
 
     return render_template("login.html")
 

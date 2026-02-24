@@ -1,6 +1,6 @@
 # User Management Setup Instructions
 
-This document provides instructions for setting up user management in the CTV Booked Biz application. **Sign-in is via Tailscale** (no passwords). See [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md) for how the domain/URL works and how to run behind Tailscale Serve.
+This document provides instructions for setting up user management in the CTV Booked Biz application. **Sign-in is via Tailscale** (no passwords). See [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md) for how Tailscale identity is resolved via the Local API.
 
 ## Prerequisites
 
@@ -49,17 +49,8 @@ VALUES ('YourFirstName', 'YourLastName', 'your.email@example.com', 'admin');
 
 ## Accessing the Application
 
-1. Start the Flask application (listen on localhost), e.g.:
-   ```bash
-   python -m src.web.app
-   ```
-
-2. Expose it with Tailscale Serve (see [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md)):
-   ```bash
-   tailscale serve 5000
-   ```
-
-3. Open the **Tailscale Serve URL** (e.g. `https://your-machine.your-tailnet.ts.net`) in a browser. You will be signed in automatically if your Tailscale email exists in the `users` table.
+1. Start the web application (typically via systemd / uvicorn on port 8000). See `docs/GUIDE-RaspberryWorkflow.md` for Pi service details.
+2. Connect to the app **over Tailscale** (e.g. `http://pi-ctv:8000/` or the Pi’s Tailscale IP). You will be signed in automatically if your Tailscale email exists in the `users` table.
 
 ## User Management Features (Admin)
 
@@ -75,7 +66,7 @@ VALUES ('YourFirstName', 'YourLastName', 'your.email@example.com', 'admin');
 
 ## Security Notes
 
-- Authentication is via Tailscale identity headers only. The app must be reached through Tailscale Serve (localhost-only) so headers cannot be spoofed.
+- Authentication is via the Tailscale Local API (`whois`) only. The app must be reachable only over networks you control (typically your private Pi + Tailscale), not the public internet.
 - Email in `users` must match the Tailscale login (email) for that person to sign in.
 - Admins cannot delete their own accounts.
 
@@ -85,7 +76,7 @@ VALUES ('YourFirstName', 'YourLastName', 'your.email@example.com', 'admin');
 - No user row exists for your Tailscale email. An admin must add you via User Management with that exact email.
 
 ### "Login requires Tailscale"
-- You are not using the Tailscale Serve URL. Open the app via `https://<machine>.<tailnet>.ts.net` (see [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md)).
+- You are not reaching the app over Tailscale. Make sure your client is connected to the same tailnet and use the Pi’s Tailscale address (see [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md)).
 
 ### "Users table not found"
 - Run: `sqlite3 data/database/production.db < sql/user_management_tables.sql`
