@@ -318,5 +318,17 @@ git commit -m "Fix execute permission on bin/script.sh"
 
 ---
 
-**Last Updated**: 2026-02-16
-**Session Context**: Daily import broke for 3 days due to lost execute permission on daily_update.sh. Fixed all bin/ scripts and added git-tracked permissions.
+### Rule 23: Service Names for Dev vs Production
+**Context**: After deploying code changes, the planning page was updated on port 5100 (dev) but not on port 8000 (production) because the production service wasn't restarted.
+**Pattern**: Two separate services run the app:
+- **Dev** (port 5100): `sudo systemctl restart spotops-dev.service`
+- **Production** (port 8000): `sudo systemctl restart ctv-bookedbiz-db`
+
+Deploy directory for both: `/opt/apps/ctv-bookedbiz-db/`
+
+**Action**: After pulling new code into the deploy directory, restart both services if you want changes reflected on both ports.
+
+---
+
+**Last Updated**: 2026-02-24
+**Session Context**: Removed burn-down strip from planning hub. Production service on port 8000 wasn't restarted initially because only the dev service name was known.
