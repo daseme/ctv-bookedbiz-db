@@ -145,7 +145,7 @@
     <div class="login-container">
         <div class="login-header">
             <h1>CTV Booked Biz</h1>
-            <p>Sign in to access reports</p>
+            <p>Sign in via Tailscale</p>
         </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -158,18 +158,12 @@
             {% endif %}
         {% endwith %}
 
+        <p style="color: var(--nord3); font-size: 14px; margin-bottom: 20px;">
+            Open this app using your <strong>Tailscale Serve</strong> URL (e.g. <code>https://your-machine.your-tailnet.ts.net</code>).
+            You will be signed in automatically with your Tailscale account. If you see this page, you are not using the Tailscale URL.
+        </p>
         <form method="POST" action="{{ url_for('user_management.login') }}">
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required autofocus>
-            </div>
-
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-
-            <button type="submit" class="btn btn-primary">Sign In</button>
+            <button type="submit" class="btn btn-primary">Try again</button>
         </form>
     </div>
 </body>

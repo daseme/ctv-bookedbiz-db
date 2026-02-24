@@ -2,14 +2,12 @@
 User Service - Business logic for user management.
 
 Orchestrates user operations:
-- User authentication and authorization
+- User authentication via Tailscale identity
 - User CRUD operations with validation
-- Password hashing and verification
 """
 
 import logging
 from typing import List, Optional
-from werkzeug.security import generate_password_hash, check_password_hash
 
 from src.database.connection import DatabaseConnection
 from src.services.base_service import BaseService
@@ -27,34 +25,34 @@ class UserService(BaseService):
         self.repository = UserRepository(db_connection)
 
     # =========================================================================
-    # Authentication
+    # Authentication (Tailscale identity)
     # =========================================================================
 
-    def authenticate_user(self, email: str, password: str) -> Optional[User]:
+    def authenticate_by_tailscale(
+        self, login: str, display_name: Optional[str] = None
+    ) -> Optional[User]:
         """
-        Authenticate a user by email and password.
-
-        Args:
-            email: User's email address
-            password: Plain text password
-
-        Returns:
-            User object if authentication succeeds, None otherwise
+        Authenticate by Tailscale identity (Tailscale-User-Login = email, Tailscale-User-Name = display name).
+        Look up user by email; optionally update first/last name from display_name.
         """
+        email = (login or "").strip().lower()
+        if not email or "@" not in email:
+            return None
         user = self.repository.get_user_by_email(email)
-
         if not user:
-            logger.warning(f"Authentication failed: user not found for email {email}")
+            logger.warning(f"Tailscale auth: no user for email {email}")
             return None
-
-        if not check_password_hash(user.password_hash, password):
-            logger.warning(f"Authentication failed: incorrect password for {email}")
-            return None
-
-        # Update last login timestamp
         self.repository.update_last_login(user.user_id)
-
-        logger.info(f"User {email} authenticated successfully")
+        if display_name and (display_name != user.full_name):
+            first, _, last = (display_name.strip() + " ").partition(" ")
+            if first or last:
+                self.repository.update_user(
+                    user.user_id,
+                    first_name=first or user.first_name,
+                    last_name=last.strip() if last else user.last_name,
+                )
+                user = self.repository.get_user_by_id(user.user_id)
+        logger.info(f"User {email} authenticated via Tailscale")
         return user
 
     # =========================================================================
@@ -63,46 +61,23 @@ class UserService(BaseService):
 
     def create_user(self, request: CreateUserRequest) -> User:
         """
-        Create a new user with validation.
-
-        Args:
-            request: CreateUserRequest with user details
-
-        Returns:
-            Created User object
-
-        Raises:
-            ValueError: If validation fails or email already exists
+        Create a new user (Tailscale identity; no password).
         """
-        # Validate email format (basic check)
         if not request.email or "@" not in request.email:
             raise ValueError("Invalid email address")
-
-        # Validate password strength (basic check)
-        if not request.password or len(request.password) < 8:
-            raise ValueError("Password must be at least 8 characters long")
-
-        # Check if email already exists
         existing_user = self.repository.get_user_by_email(request.email)
         if existing_user:
             raise ValueError(f"Email {request.email} is already registered")
-
-        # Hash password
-        password_hash = generate_password_hash(request.password)
-
-        # Create user
         try:
             user = self.repository.create_user(
                 first_name=request.first_name,
                 last_name=request.last_name,
                 email=request.email,
-                password_hash=password_hash,
                 role=request.role,
             )
             logger.info(f"User created: {user.email} (ID: {user.user_id})")
             return user
         except ValueError:
-            # Re-raise validation errors
             raise
         except Exception as e:
             logger.error(f"Failed to create user: {e}")
@@ -159,27 +134,16 @@ class UserService(BaseService):
         if request.email and request.email != existing_user.email:
             if not request.email or "@" not in request.email:
                 raise ValueError("Invalid email address")
-
-            # Check if new email already exists
             email_user = self.repository.get_user_by_email(request.email)
             if email_user and email_user.user_id != user_id:
                 raise ValueError(f"Email {request.email} is already registered")
 
-        # Hash password if being updated
-        password_hash = None
-        if request.password:
-            if len(request.password) < 8:
-                raise ValueError("Password must be at least 8 characters long")
-            password_hash = generate_password_hash(request.password)
-
-        # Update user
         try:
             updated_user = self.repository.update_user(
                 user_id=user_id,
                 first_name=request.first_name,
                 last_name=request.last_name,
                 email=request.email,
-                password_hash=password_hash,
                 role=request.role,
             )
             logger.info(f"User updated: {updated_user.email} (ID: {user_id})")
@@ -189,42 +153,6 @@ class UserService(BaseService):
         except Exception as e:
             logger.error(f"Failed to update user {user_id}: {e}")
             raise ValueError(f"Failed to update user: {str(e)}")
-
-    def change_password(
-        self, user_id: int, old_password: str, new_password: str
-    ) -> bool:
-        """
-        Change a user's password.
-
-        Args:
-            user_id: ID of user
-            old_password: Current password
-            new_password: New password
-
-        Returns:
-            True if password changed successfully
-
-        Raises:
-            ValueError: If old password is incorrect or new password is invalid
-        """
-        user = self.repository.get_user_by_id(user_id)
-        if not user:
-            raise ValueError(f"User with ID {user_id} not found")
-
-        # Verify old password
-        if not check_password_hash(user.password_hash, old_password):
-            raise ValueError("Current password is incorrect")
-
-        # Validate new password
-        if not new_password or len(new_password) < 8:
-            raise ValueError("New password must be at least 8 characters long")
-
-        # Update password
-        password_hash = generate_password_hash(new_password)
-        self.repository.update_user(user_id, password_hash=password_hash)
-
-        logger.info(f"Password changed for user {user_id}")
-        return True
 
     # =========================================================================
     # User Deletion

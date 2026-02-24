@@ -302,6 +302,60 @@ def create_app(environment: Optional[str] = None) -> Flask:
                 }
             ), 500
 
+    # When served at /dev (Tailscale --set-path=/dev): strip path, set SCRIPT_NAME, rewrite Location + HTML.
+    # Trigger when (a) request path starts with /dev, (b) ENVIRONMENT is dev/development, or (c) APPLICATION_ROOT=/dev.
+    import os as _os
+    _prefix = "/dev"
+    _original_wsgi = app.wsgi_app
+    _always_dev = (
+        settings.environment in ("dev", "development")
+        or (_os.environ.get("APPLICATION_ROOT") or "").rstrip("/") == _prefix
+    )
+
+    def _wsgi_prefix_middleware(environ, start_response):
+        path = environ.get("PATH_INFO", "") or "/"
+        under_dev = _always_dev or path.startswith(_prefix)
+        if path.startswith(_prefix):
+            environ["PATH_INFO"] = path[len(_prefix) :] or "/"
+        if under_dev:
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + _prefix
+
+        content_type = [None]
+
+        def _start_response(status, headers, exc_info=None):
+            new_headers = []
+            for k, v in headers:
+                if k.lower() == "content-type":
+                    content_type[0] = v
+                if under_dev and k.lower() == "location" and v and v.startswith("/") and not v.startswith(_prefix):
+                    v = _prefix + v
+                # Drop Content-Length when we may rewrite body so client doesn't get wrong length
+                if under_dev and k.lower() == "content-length":
+                    continue
+                new_headers.append((k, v))
+            return start_response(status, new_headers, exc_info)
+
+        result = _original_wsgi(environ, _start_response)
+        if under_dev and content_type[0] and "text/html" in content_type[0] and result:
+            body = b"".join(result)
+            try:
+                import re
+                text = body.decode("utf-8")
+                # Insert /dev after quote in href="/ or action="/ (preserves quote, allows space around =)
+                text = re.sub(r'(href\s*=\s*["\'])(/)', r"\1" + _prefix + r"\2", text)
+                text = re.sub(r'(action\s*=\s*["\'])(/)', r"\1" + _prefix + r"\2", text)
+                text = text.replace(f"{_prefix}/dev/", f"{_prefix}/")  # undo double prefix from url_for
+                result = [text.encode("utf-8")]
+            except Exception:
+                result = [body]
+        return result
+
+    app.wsgi_app = _wsgi_prefix_middleware
+    if _always_dev:
+        logger.info("Development: app under /dev (SCRIPT_NAME + Location + HTML rewrite)")
+    else:
+        logger.info("App: /dev prefix applied when request path starts with /dev")
+
     logger.info(f"Flask app created for environment: {settings.environment}")
     return app
 
@@ -337,11 +391,16 @@ def create_testing_app() -> Flask:
 
 
 if __name__ == "__main__":
-    # Development server
-    app = create_development_app()
-    settings = get_settings("development")
+    import os as _os
+    env = (_os.environ.get("ENVIRONMENT") or _os.environ.get("FLASK_ENV") or "production").strip().lower()
+    if env in ("development", "debug"):
+        env = "development"
+    else:
+        env = "production"
+    app = create_app(env)
+    settings = get_settings(env)
 
     logger.info(
-        f"Starting development server on {settings.web.host}:{settings.web.port}"
+        f"Starting server on {settings.web.host}:{settings.web.port} (env={env})"
     )
     app.run(debug=settings.web.debug, host=settings.web.host, port=settings.web.port)
