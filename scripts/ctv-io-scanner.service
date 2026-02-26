@@ -1,0 +1,23 @@
+[Unit]
+Description=CTV Insertion Order Scanner
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=daseme
+Group=ctvapps
+WorkingDirectory=/opt/apps/ctv-bookedbiz-db
+Environment="PATH=/opt/apps/ctv-bookedbiz-db/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/apps/ctv-bookedbiz-db/.venv/bin/python3 /opt/apps/ctv-bookedbiz-db/scripts/scan_insertion_orders.py
+TimeoutStartSec=300
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/opt/apps/ctv-bookedbiz-db /tmp /mnt/k-drive
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+CapabilityBoundingSet=

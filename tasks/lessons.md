@@ -330,5 +330,55 @@ Deploy directory for both: `/opt/apps/ctv-bookedbiz-db/`
 
 ---
 
+### Rule 24: Deploy Directory Must Match Dev Branch — No Out-of-Band Commits
+**Context**: After deploying the date range picker, `/dev/reports/customer/431` returned 404. The deployed repo at `/opt/apps/ctv-bookedbiz-db/` had 2 extra commits (tailscale refactoring) that weren't on the local dev branch. Those commits removed the `/dev` prefix middleware from `app.py` and broke the `user_management` blueprint import.
+**Pattern**: The deploy directory can drift from the dev branch when commits are made directly in `/opt/apps/` or pushed from another machine. This creates invisible breakage — `git pull origin dev` brings in your changes but keeps the extra commits on top.
+**How to detect**:
+```bash
+# Compare local dev HEAD vs deployed HEAD
+git log --oneline -3
+git -C /opt/apps/ctv-bookedbiz-db log --oneline -3
+# If deployed has commits not in local dev, the repos have diverged
+```
+**How to fix**:
+```bash
+cd /opt/apps/ctv-bookedbiz-db && git reset --hard <dev-branch-HEAD>
+sudo systemctl restart spotops-dev.service
+```
+**Prevention**: Never commit directly in the deploy directory. All changes flow through the dev working directory → push to origin → pull in deploy directory.
+
+**Action**: After deploying, always compare `git log` between dev and deploy to confirm they match.
+
+---
+
+### Rule 25: Missing Dependencies in Production Venv Break Blueprints Silently
+**Context**: Every page on port 8000 returned 500. The coworker's Tailscale login code added `src/web/utils/tailscale.py` (imports `requests_unixsocket`) and modified `user_management.py` to import it. The production venv (`/opt/venvs/ctv-bookedbiz-db/`) didn't have `requests_unixsocket` installed.
+**Pattern**: Blueprint registration in `app.py` is wrapped in try/except that catches `ImportError` and only logs it. The app continues without the blueprint. But `base.html` calls `url_for('user_management.login')` on every page — so the missing blueprint causes a `BuildError` on every render, returning 500.
+**The cascade**:
+1. Missing pip package → `ImportError` during blueprint import
+2. try/except swallows the error, logs "Failed to register user management blueprint"
+3. App starts without the blueprint
+4. Every template render hits `url_for('user_management.login')` → `BuildError` → 500
+**How to diagnose**: Check service startup logs for "Failed to register" messages:
+```bash
+journalctl -u ctv-bookedbiz-db --no-pager | grep -i 'failed.*blueprint'
+```
+**Action**: When adding new Python dependencies to the codebase, install them in ALL venvs — both dev (`.venv/`) and production (`/opt/venvs/ctv-bookedbiz-db/`). The dev service (port 5100) and production service (port 8000) use different venvs.
+
+---
+
+### Rule 26: Tailscale Socket Permissions for App Access
+**Context**: Even after fixing the import error, the Tailscale whois lookups returned 403 Forbidden because the `ctvbooked` user couldn't access `/run/tailscale/tailscaled.sock`.
+**Pattern**: The Tailscale daemon socket is owned by `root:root` with `0755` directory and `0666` or stricter socket permissions by default. The app process runs as `ctvbooked` and needs read/write access to query the local API.
+**Fix**: systemd override on `tailscaled.service`:
+```ini
+[Service]
+ExecStartPost=/bin/sh -c 'sleep 1 && chgrp ctvbooked /run/tailscale/tailscaled.sock && chmod 0660 /run/tailscale/tailscaled.sock'
+```
+**Note**: `tailscaled` does NOT support `--socket-group` or `--socket-perms` flags (those don't exist). The `ExecStartPost` approach is the correct way to grant group access.
+**Action**: After any `tailscaled` restart or upgrade, verify socket permissions: `ls -la /run/tailscale/tailscaled.sock` should show `root:ctvbooked`.
+
+---
+
 **Last Updated**: 2026-02-24
-**Session Context**: Removed burn-down strip from planning hub. Production service on port 8000 wasn't restarted initially because only the dev service name was known.
+**Session Context**: Production 500 errors caused by missing `requests_unixsocket` in prod venv + Tailscale socket permissions for coworker's login system.

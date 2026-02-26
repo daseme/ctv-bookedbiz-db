@@ -32,7 +32,7 @@ class UserService(BaseService):
         self, login: str, display_name: Optional[str] = None
     ) -> Optional[User]:
         """
-        Authenticate by Tailscale identity (Tailscale-User-Login = email, Tailscale-User-Name = display name).
+        Authenticate by Tailscale identity (email + optional display name).
         Look up user by email; optionally update first/last name from display_name.
         """
         email = (login or "").strip().lower()

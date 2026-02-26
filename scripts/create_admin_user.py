@@ -105,7 +105,7 @@ def create_admin_user():
         print(f"   Email: {email}")
         print("   Role: admin")
         print()
-        print("Sign in via your Tailscale Serve URL (no password).")
+        print("Sign in via your Tailscale-connected URL (no password).")
         print()
 
         return True
