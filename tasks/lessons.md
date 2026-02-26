@@ -380,5 +380,50 @@ ExecStartPost=/bin/sh -c 'sleep 1 && chgrp ctvbooked /run/tailscale/tailscaled.s
 
 ---
 
-**Last Updated**: 2026-02-24
-**Session Context**: Production 500 errors caused by missing `requests_unixsocket` in prod venv + Tailscale socket permissions for coworker's login system.
+### Rule 27: Full Deploy Workflow — Dev Directory to Production
+
+**Context**: Pending insertion orders feature was built in `/home/daseme/dev/ctv-bookedbiz-db/` (dev branch), but the running services serve from `/opt/apps/ctv-bookedbiz-db/` (main branch). Manually copying files during development caused permission issues and stale state.
+
+**The complete deploy workflow**:
+1. **Develop and test** in `~/dev/ctv-bookedbiz-db/` on the `dev` branch
+2. **Commit and push** `dev` to origin: `git push origin dev`
+3. **Create PR** from `dev` → `main` (main branch has push protection): `gh pr create --base main --head dev`
+4. **Merge PR**: `gh pr merge <number> --merge`
+5. **Pull into deploy dir**: `git -C /opt/apps/ctv-bookedbiz-db pull origin main`
+6. **Restart services**:
+   - Dev: `sudo systemctl restart spotops-dev.service`
+   - Production: `sudo systemctl restart ctv-bookedbiz-db.service`
+
+**Common pitfalls**:
+- **Manual file copies** (`cp` from dev to `/opt/apps/`) cause permission mismatches (files owned by `daseme` instead of deploy user) and drift from git state. Use `git pull` instead.
+- **File permissions on generated data**: Files created by `daseme` (e.g., scanner JSON output) default to `600`. The `ctvbooked` service user can't read them. Always `chmod 644` generated data files in the deploy dir.
+- **Stash before pull**: If you did manual copies during dev testing, the deploy dir has uncommitted changes. `git stash --include-untracked` before pulling, then drop the stash.
+- **Main branch requires PRs**: Can't push directly to main. Must go through `gh pr create` + merge.
+
+**For new systemd timers/services**:
+```bash
+sudo cp /opt/apps/ctv-bookedbiz-db/scripts/<name>.service /etc/systemd/system/
+sudo cp /opt/apps/ctv-bookedbiz-db/scripts/<name>.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now <name>.timer
+```
+
+**Action**: Never manually copy files to the deploy dir as a deployment strategy. Always flow through git: commit → push dev → PR → merge → git pull in deploy dir.
+
+---
+
+### Rule 28: Generated Data Files — Gitignore and Permissions
+
+**Context**: The insertion order scanner writes `data/pending_orders.json` at runtime. This file should not be committed (it's environment-specific), and must be readable by the service user.
+
+**Pattern**:
+- Add generated data files to `.gitignore` immediately
+- When the scanner runs as `daseme` but the web service runs as `ctvbooked`, the file defaults to `600` (owner-only)
+- The service silently returns empty results instead of erroring — easy to miss
+
+**Action**: After any script generates files that the web service reads, verify permissions: `chmod 644` and confirm the service user can read them. Add to `.gitignore` so they don't pollute the repo.
+
+---
+
+**Last Updated**: 2026-02-26
+**Session Context**: Pending insertion orders feature — K drive scanner, AE dashboard integration, full deploy workflow from dev to production.
