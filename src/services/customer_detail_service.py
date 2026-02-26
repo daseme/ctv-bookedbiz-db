@@ -120,36 +120,90 @@ class CustomerDetailReport:
     market_breakdown: list[MarketBreakdown] = field(default_factory=list)
     recent_spots: list[RecentSpot] = field(default_factory=list)
     bill_code_aliases: list[BillCodeAlias] = field(default_factory=list)
+    date_range_label: str = ""
+    has_date_filter: bool = False
 
 
 class CustomerDetailService:
     """Service for retrieving customer detail report data."""
-    
+
     def __init__(self, db_connection):
         self.conn = db_connection
-    
-    def get_customer_detail(self, customer_id: int) -> Optional[CustomerDetailReport]:
+        self.start_date = ""
+        self.end_date = ""
+
+    def _date_filter_sql(self, alias="s"):
+        """Build date filter clause and params for air_date."""
+        if not self.start_date and not self.end_date:
+            return "", []
+        clauses = []
+        params = []
+        if self.start_date:
+            clauses.append(f"{alias}.air_date >= ?")
+            params.append(self.start_date)
+        if self.end_date:
+            clauses.append(f"{alias}.air_date <= ?")
+            params.append(self.end_date)
+        return " AND " + " AND ".join(clauses), params
+
+    @staticmethod
+    def _format_date_label(start_date, end_date):
+        """Format date range as human-readable label."""
+        from datetime import datetime
+        fmt = "%b %d, %Y"
+        parts = []
+        if start_date:
+            parts.append(
+                datetime.strptime(start_date, "%Y-%m-%d").strftime(fmt)
+            )
+        if end_date:
+            parts.append(
+                datetime.strptime(end_date, "%Y-%m-%d").strftime(fmt)
+            )
+        return " – ".join(parts)
+
+    def get_customer_detail(
+        self,
+        customer_id: int,
+        start_date: str = "",
+        end_date: str = "",
+    ) -> Optional[CustomerDetailReport]:
         """Build complete customer detail report."""
+        self.start_date = start_date
+        self.end_date = end_date
+        has_filter = bool(start_date or end_date)
+
         summary = self._get_summary(customer_id)
         if not summary:
             return None
-        
+
+        period_comparison = (
+            PeriodComparison(current_year=2025)
+            if has_filter
+            else self._get_period_comparison(customer_id)
+        )
+
         return CustomerDetailReport(
             summary=summary,
-            period_comparison=self._get_period_comparison(customer_id),
+            period_comparison=period_comparison,
             monthly_trend=self._get_monthly_trend(customer_id),
             language_breakdown=self._get_language_breakdown(customer_id),
             ae_breakdown=self._get_ae_breakdown(customer_id),
             market_breakdown=self._get_market_breakdown(customer_id),
             recent_spots=self._get_recent_spots(customer_id),
-            bill_code_aliases=self._get_aliases(customer_id)
+            bill_code_aliases=self._get_aliases(customer_id),
+            date_range_label=self._format_date_label(
+                start_date, end_date
+            ) if has_filter else "",
+            has_date_filter=has_filter,
         )
     
     def _get_summary(self, customer_id: int) -> Optional[CustomerSummary]:
         """Get customer identity and lifetime metrics."""
+        date_sql, date_params = self._date_filter_sql("s")
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT 
+        cursor.execute(f"""
+            SELECT
                 c.customer_id,
                 c.normalized_name,
                 c.customer_type,
@@ -169,25 +223,28 @@ class CustomerDetailService:
             LEFT JOIN agencies a ON c.agency_id = a.agency_id
             LEFT JOIN spots s ON c.customer_id = s.customer_id
                 AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                {date_sql}
             WHERE c.customer_id = ?
             GROUP BY c.customer_id
-        """, [customer_id])
-        
+        """, date_params + [customer_id])
+
         row = cursor.fetchone()
         if not row:
             return None
-        
-        # Get primary AE (highest revenue)
-        cursor.execute("""
+
+        ae_date_sql, ae_date_params = self._date_filter_sql("")
+        ae_date_sql_clean = ae_date_sql.replace(".air_date", "air_date")
+        cursor.execute(f"""
             SELECT sales_person
             FROM spots
             WHERE customer_id = ?
                 AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                 AND sales_person IS NOT NULL
+                {ae_date_sql_clean}
             GROUP BY sales_person
             ORDER BY SUM(gross_rate) DESC
             LIMIT 1
-        """, [customer_id])
+        """, [customer_id] + ae_date_params)
         ae_row = cursor.fetchone()
         primary_ae = ae_row[0] if ae_row else None
         
@@ -261,9 +318,11 @@ class CustomerDetailService:
     
     def _get_monthly_trend(self, customer_id: int, months: int = 24) -> list[MonthlyRevenue]:
         """Get monthly revenue trend for charting."""
+        date_sql, date_params = self._date_filter_sql("")
+        date_sql_clean = date_sql.replace(".air_date", "air_date")
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT 
+        cursor.execute(f"""
+            SELECT
                 broadcast_month,
                 SUM(gross_rate) AS gross,
                 SUM(station_net) AS net,
@@ -271,8 +330,9 @@ class CustomerDetailService:
             FROM spots
             WHERE customer_id = ?
                 AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                {date_sql_clean}
             GROUP BY broadcast_month
-            ORDER BY 
+            ORDER BY
                 CAST('20' || SUBSTR(broadcast_month, 5, 2) AS INTEGER),
                 CASE SUBSTR(broadcast_month, 1, 3)
                     WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
@@ -280,7 +340,7 @@ class CustomerDetailService:
                     WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
                     WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
                 END
-        """, [customer_id])
+        """, [customer_id] + date_params)
         
         results = []
         for row in cursor.fetchall():
@@ -296,9 +356,10 @@ class CustomerDetailService:
     
     def _get_language_breakdown(self, customer_id: int) -> list[LanguageBreakdown]:
         """Get revenue breakdown by language."""
+        date_sql, date_params = self._date_filter_sql("s")
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT 
+        cursor.execute(f"""
+            SELECT
                 COALESCE(s.language_code, 'Unknown') AS lang_code,
                 l.language_name,
                 SUM(s.gross_rate) AS gross,
@@ -308,9 +369,10 @@ class CustomerDetailService:
             LEFT JOIN languages l ON s.language_code = l.language_code
             WHERE s.customer_id = ?
                 AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                {date_sql}
             GROUP BY COALESCE(s.language_code, 'Unknown'), l.language_name
             ORDER BY gross DESC
-        """, [customer_id])
+        """, [customer_id] + date_params)
         
         results = []
         total_gross = Decimal("0")
@@ -335,9 +397,11 @@ class CustomerDetailService:
     
     def _get_ae_breakdown(self, customer_id: int) -> list[AEBreakdown]:
         """Get revenue breakdown by account executive."""
+        date_sql, date_params = self._date_filter_sql("")
+        date_sql_clean = date_sql.replace(".air_date", "air_date")
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT 
+        cursor.execute(f"""
+            SELECT
                 COALESCE(sales_person, 'Unassigned') AS ae,
                 SUM(gross_rate) AS gross,
                 SUM(station_net) AS net,
@@ -345,9 +409,10 @@ class CustomerDetailService:
             FROM spots
             WHERE customer_id = ?
                 AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+                {date_sql_clean}
             GROUP BY COALESCE(sales_person, 'Unassigned')
             ORDER BY gross DESC
-        """, [customer_id])
+        """, [customer_id] + date_params)
         
         results = []
         total_gross = Decimal("0")
@@ -370,9 +435,10 @@ class CustomerDetailService:
     
     def _get_market_breakdown(self, customer_id: int) -> list[MarketBreakdown]:
         """Get revenue breakdown by market."""
+        date_sql, date_params = self._date_filter_sql("s")
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT 
+        cursor.execute(f"""
+            SELECT
                 COALESCE(m.market_code, 'Unknown') AS mkt_code,
                 COALESCE(m.market_name, 'Unknown') AS mkt_name,
                 SUM(s.gross_rate) AS gross,
@@ -382,9 +448,10 @@ class CustomerDetailService:
             LEFT JOIN markets m ON s.market_id = m.market_id
             WHERE s.customer_id = ?
                 AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                {date_sql}
             GROUP BY COALESCE(m.market_code, 'Unknown'), COALESCE(m.market_name, 'Unknown')
             ORDER BY gross DESC
-        """, [customer_id])
+        """, [customer_id] + date_params)
         
         results = []
         total_gross = Decimal("0")
@@ -408,9 +475,10 @@ class CustomerDetailService:
     
     def _get_recent_spots(self, customer_id: int, limit: int = 15) -> list[RecentSpot]:
         """Get most recent spot activity."""
+        date_sql, date_params = self._date_filter_sql("s")
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT 
+        cursor.execute(f"""
+            SELECT
                 s.spot_id,
                 s.air_date,
                 s.broadcast_month,
@@ -426,9 +494,10 @@ class CustomerDetailService:
             LEFT JOIN markets m ON s.market_id = m.market_id
             WHERE s.customer_id = ?
                 AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                {date_sql}
             ORDER BY s.air_date DESC, s.time_in DESC
             LIMIT ?
-        """, [customer_id, limit])
+        """, [customer_id] + date_params + [limit])
         
         results = []
         for row in cursor.fetchall():

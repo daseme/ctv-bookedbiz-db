@@ -624,6 +624,21 @@ def ae_dashboard_personal():
         except Exception as e:
             logger.warning(f"Could not get contracts highlight from placement files: {e}")
 
+        # Pending insertion orders
+        pending_orders = []
+        pending_orders_count = 0
+        pending_orders_scanned_at = None
+        try:
+            pending_svc = safe_get_service(container, "pending_order_service")
+            if pending_svc:
+                po_ae = None if show_all_revenue else ae_name
+                po_data = pending_svc.get_pending_orders(ae_name=po_ae)
+                pending_orders = po_data.get("orders", [])
+                pending_orders_count = po_data.get("order_count", 0)
+                pending_orders_scanned_at = po_data.get("scanned_at")
+        except Exception as e:
+            logger.warning(f"Could not load pending insertion orders: {e}")
+
         # Check if this is an AJAX request for account revenue data only
         if (
             request.headers.get("X-Requested-With") == "XMLHttpRequest"
@@ -670,6 +685,9 @@ def ae_dashboard_personal():
                 "account_end_date": account_end_date,
                 "contracts_highlight": contracts_highlight,
                 "today": date.today().isoformat(),
+                "pending_orders": pending_orders,
+                "pending_orders_count": pending_orders_count,
+                "pending_orders_scanned_at": pending_orders_scanned_at,
             },
         )
 

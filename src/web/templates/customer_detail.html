@@ -271,11 +271,91 @@
         color: var(--nord9);
         text-decoration: underline;
     }
+
+    .date-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+        padding: 12px 20px;
+        background: var(--nord0);
+        border-radius: 8px;
+    }
+
+    .date-filter-bar label {
+        font-size: 14px;
+        color: white;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .date-filter-bar input[type="date"] {
+        padding: 6px 12px;
+        border: 1px solid rgba(255,255,255,0.5);
+        border-radius: 4px;
+        background: white;
+        color: #2d3748;
+        font-size: 14px;
+    }
+
+    .date-filter-bar button {
+        padding: 6px 16px;
+        border: none;
+        border-radius: 4px;
+        background: var(--nord10);
+        color: white;
+        font-size: 14px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+
+    .date-filter-bar button:hover {
+        background: var(--nord9);
+    }
+
+    .date-filter-bar .reset-link {
+        padding: 6px 16px;
+        border: 1px solid rgba(255,255,255,0.5);
+        border-radius: 4px;
+        background: transparent;
+        color: white;
+        font-size: 14px;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .date-filter-bar .reset-link:hover {
+        background: rgba(255,255,255,0.1);
+    }
+
+    .date-range-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        background: var(--nord10);
+        color: white;
+        margin-left: auto;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <a href="javascript:history.back()" class="back-link">← Back</a>
+
+<form method="GET" class="date-filter-bar">
+    <label for="start_date">Start Date:</label>
+    <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+    <label for="end_date">End Date:</label>
+    <input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+    <button type="submit">Apply</button>
+    <a href="{{ request.path }}" class="reset-link">Reset</a>
+    {% if report.date_range_label %}
+    <span class="date-range-badge">{{ report.date_range_label }}</span>
+    {% endif %}
+</form>
 
 <div class="customer-meta-bar">
     {% if report.summary.sector_name %}
@@ -318,10 +398,11 @@
 <div class="kpi-grid">
     <div class="kpi-card">
         <div class="kpi-value">${{ "{:,.0f}".format(report.summary.lifetime_gross) }}</div>
-        <div class="kpi-label">Lifetime Gross Revenue</div>
+        <div class="kpi-label">{{ "Gross Revenue" if report.has_date_filter else "Lifetime Gross Revenue" }}</div>
         <div class="kpi-sub">{{ "{:,}".format(report.summary.lifetime_spots) }} spots</div>
     </div>
-    
+
+    {% if not report.has_date_filter %}
     <div class="kpi-card">
         <div class="kpi-value">${{ "{:,.0f}".format(report.period_comparison.current_year_gross) }}</div>
         <div class="kpi-label">{{ report.period_comparison.current_year }} YTD</div>
@@ -332,17 +413,24 @@
         </div>
         {% endif %}
     </div>
-    
+
     <div class="kpi-card">
         <div class="kpi-value">${{ "{:,.0f}".format(report.period_comparison.prior_year_gross) }}</div>
         <div class="kpi-label">{{ report.period_comparison.current_year - 1 }} Full Year</div>
         <div class="kpi-sub">{{ "{:,}".format(report.period_comparison.prior_year_spots) }} spots</div>
     </div>
-    
+    {% endif %}
+
+    <div class="kpi-card">
+        <div class="kpi-value">${{ "{:,.0f}".format(report.summary.lifetime_net) }}</div>
+        <div class="kpi-label">{{ "Net Revenue" if report.has_date_filter else "Lifetime Net Revenue" }}</div>
+        <div class="kpi-sub">{{ "{:,}".format(report.summary.lifetime_spots) }} spots</div>
+    </div>
+
     <div class="kpi-card">
         <div class="kpi-value">${{ "{:,.2f}".format(report.summary.avg_spot_rate) }}</div>
         <div class="kpi-label">Avg Spot Rate</div>
-        <div class="kpi-sub">lifetime average</div>
+        <div class="kpi-sub">{{ "filtered range" if report.has_date_filter else "lifetime average" }}</div>
     </div>
 </div>
 

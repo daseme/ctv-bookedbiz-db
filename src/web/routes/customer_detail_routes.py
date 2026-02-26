@@ -1,6 +1,6 @@
 """Customer detail report routes."""
 
-from flask import Blueprint, render_template, abort
+from flask import Blueprint, render_template, abort, request
 from src.services.customer_detail_service import CustomerDetailService
 from src.services.container import get_container
 
@@ -20,17 +20,24 @@ def customer_detail(customer_id: int):
     except Exception as e:
         abort(500, f"Database connection not available: {e}")
     
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+
     with db.connection() as conn:
         service = CustomerDetailService(conn)
-        report = service.get_customer_detail(customer_id)
-    
+        report = service.get_customer_detail(
+            customer_id, start_date, end_date
+        )
+
     if not report:
         abort(404, f"Customer {customer_id} not found")
-    
+
     return render_template(
         'customer_detail.html',
         report=report,
-        page_title=f"Customer: {report.summary.normalized_name}"
+        start_date=start_date,
+        end_date=end_date,
+        page_title=f"Customer: {report.summary.normalized_name}",
     )
 
 

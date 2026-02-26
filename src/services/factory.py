@@ -291,6 +291,10 @@ def initialize_services():
         container.register_singleton("pricing_trends_service", create_pricing_trends_service)
         print("✅ pricing_trends_service registered")
 
+        print("🔧 Registering pending_order_service...")
+        container.register_singleton("pending_order_service", create_pending_order_service)
+        print("✅ pending_order_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -410,6 +414,20 @@ def create_pricing_trends_service():
     container = get_container()
     db_connection = container.get("database_connection")
     return PricingTrendsService(db_connection)
+
+
+def create_pending_order_service():
+    """Factory function for PendingOrderService."""
+    from src.services.pending_order_service import PendingOrderService
+
+    container = get_container()
+    project_root = container.get_config(
+        "PROJECT_ROOT",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")),
+    )
+    json_path = os.path.join(project_root, "data", "pending_orders.json")
+    return PendingOrderService(json_path=json_path)
+
 
 def create_emergency_container():
     """Create minimal working container for Railway"""
