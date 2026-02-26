@@ -1,0 +1,11 @@
+[Unit]
+Description=Run CTV Insertion Order Scanner twice daily
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+OnCalendar=*-*-* 14:00:00
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -296,7 +296,79 @@
         </form>
     </div>
     {% endif %}
-    
+
+    <!-- Pending Insertion Orders -->
+    {% if pending_orders %}
+    <div style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600; color: #2d3748;">
+            Pending Insertion Orders
+            <span style="font-size: 0.85em; font-weight: normal; color: #718096;">
+                ({{ pending_orders_count }})
+            </span>
+            {% if pending_orders_scanned_at %}
+            <span style="float: right; font-size: 0.75em; font-weight: normal; color: #a0aec0;">Last scanned: {{ pending_orders_scanned_at }}</span>
+            {% endif %}
+        </h3>
+        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
+            <table class="monthly-table" style="margin: 0;">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        {% if is_admin_or_management %}
+                        <th>Sales Person</th>
+                        {% endif %}
+                        <th>Contract</th>
+                        <th>Market</th>
+                        <th class="numeric">Spots</th>
+                        <th class="numeric">Total Gross</th>
+                        <th class="numeric">Total Net</th>
+                        <th>Date Range</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set ns = namespace(total_gross=0, total_net=0, total_spots=0) %}
+                    {% for order in pending_orders %}
+                    <tr>
+                        <td>{{ order.customer }}</td>
+                        {% if is_admin_or_management %}
+                        <td>{{ order.sales_person }}</td>
+                        {% endif %}
+                        <td>{{ order.contract }}</td>
+                        <td>{{ order.market }}</td>
+                        <td class="numeric">{{ order.spot_count if order.spot_count else '' }}</td>
+                        <td class="numeric">{{ "${:,.0f}".format(order.total_gross) if order.total_gross else '' }}</td>
+                        <td class="numeric">{{ "${:,.0f}".format(order.total_net) if order.total_net else '' }}</td>
+                        <td>{{ order.date_range_start or '' }}{% if order.date_range_start and order.date_range_end %} &ndash; {% endif %}{{ order.date_range_end or '' }}</td>
+                    </tr>
+                    {% set ns.total_gross = ns.total_gross + order.total_gross %}
+                    {% set ns.total_net = ns.total_net + order.total_net %}
+                    {% set ns.total_spots = ns.total_spots + order.spot_count %}
+                    {% endfor %}
+                    {% if pending_orders | length > 1 %}
+                    <tr style="font-weight: bold; border-top: 2px solid #4c566a;">
+                        <td>Total</td>
+                        {% if is_admin_or_management %}
+                        <td></td>
+                        {% endif %}
+                        <td></td>
+                        <td></td>
+                        <td class="numeric">{{ ns.total_spots if ns.total_spots else '' }}</td>
+                        <td class="numeric">{{ "${:,.0f}".format(ns.total_gross) if ns.total_gross else '' }}</td>
+                        <td class="numeric">{{ "${:,.0f}".format(ns.total_net) if ns.total_net else '' }}</td>
+                        <td></td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #2d3748;">Pending Insertion Orders</h3>
+        <div style="padding: 12px 0 0 0; color: #718096; font-size: 14px;">No pending orders at this time</div>
+    </div>
+    {% endif %}
+
     <!-- Contracts highlight reel (last 7 days) -->
     <div style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -557,7 +629,6 @@
             </tbody>
         </table>
     </div>
-
 
     <script>
         // Initialize monthly revenue chart
