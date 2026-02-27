@@ -116,7 +116,7 @@
                             <span class="contracts-expand-icon" style="display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #4a5568; border-radius: 3px; background: white; color: #4a5568; font-size: 12px;">+</span>
                         </td>
                         <td style="padding: 12px 16px;">
-                            {{ client_data.client }}
+                            {% if client_data.customer_id %}<a href="{{ url_for('customer_detail.customer_detail', customer_id=client_data.customer_id) }}">{{ client_data.client }}</a>{% else %}{{ client_data.client }}{% endif %}
                             <span style="font-weight: normal; color: #718096; margin-left: 8px;">
                                 ({{ client_data.contracts | length }} contract{{ 's' if client_data.contracts | length != 1 else '' }})
                             </span>

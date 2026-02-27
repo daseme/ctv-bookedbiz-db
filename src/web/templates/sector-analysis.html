@@ -325,7 +325,7 @@
                 </div>
                 {% for customer in group.top_customers[:3] %}
                 <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; padding: 4px 0;">
-                    <span>{{ customer.customer_name }}</span>
+                    <span>{% if customer.customer_id %}<a href="{{ url_for('customer_detail.customer_detail', customer_id=customer.customer_id) }}">{{ customer.customer_name }}</a>{% else %}{{ customer.customer_name }}{% endif %}</span>
                     <span style="font-weight: 600; color: var(--accent-primary);">${{ "{:,.0f}".format(customer.total_revenue) }}</span>
                 </div>
                 {% endfor %}
@@ -445,7 +445,7 @@
         <tbody>
             {% for customer in data.top_customers_by_sector[:15] %}
             <tr>
-                <td style="font-weight: 500;">{{ customer.customer_name }}</td>
+                <td style="font-weight: 500;">{% if customer.customer_id %}<a href="{{ url_for('customer_detail.customer_detail', customer_id=customer.customer_id) }}">{{ customer.customer_name }}</a>{% else %}{{ customer.customer_name }}{% endif %}</td>
                 <td>
                     <span style="padding: 2px 6px; background: var(--bg-secondary); border-radius: 4px; font-size: 11px;">
                         {{ customer.sector_name or 'Unassigned' }}

@@ -498,10 +498,11 @@ def ae_dashboard_personal():
 
                 cursor = conn.execute(
                     f"""
-                    SELECT 
+                    SELECT
                         COALESCE(c.normalized_name, s.bill_code, 'Unknown') AS customer_name,
                         COALESCE(sec.sector_name, 'Unknown') AS sector,
-                        ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue
+                        ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
+                        c.customer_id
                     FROM spots s
                     LEFT JOIN customers c ON s.customer_id = c.customer_id
                     LEFT JOIN sectors sec ON c.sector_id = sec.sector_id
@@ -509,9 +510,10 @@ def ae_dashboard_personal():
                         {date_filter}
                         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
                         AND COALESCE(s.gross_rate, 0) > 0
-                    GROUP BY 
+                    GROUP BY
                         COALESCE(c.normalized_name, s.bill_code, 'Unknown'),
-                        COALESCE(sec.sector_name, 'Unknown')
+                        COALESCE(sec.sector_name, 'Unknown'),
+                        c.customer_id
                     ORDER BY sector, total_revenue DESC
                 """,
                     query_params,
@@ -529,7 +531,11 @@ def ae_dashboard_personal():
                         }
 
                     account_revenue_by_sector[sector]["accounts"].append(
-                        {"customer_name": row[0], "total_revenue": revenue}
+                        {
+                            "customer_name": row[0],
+                            "total_revenue": revenue,
+                            "customer_id": row[3],
+                        }
                     )
                     account_revenue_by_sector[sector]["total_revenue"] += revenue
                     total_account_revenue += Decimal(str(revenue))
@@ -577,14 +583,15 @@ def ae_dashboard_personal():
                         COALESCE(c.normalized_name, s.bill_code, 'Unknown') AS customer_name,
                         COALESCE(NULLIF(TRIM(s.contract), ''), '—') AS contract,
                         ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total,
-                        MIN(s.load_date) AS added_date
+                        MIN(s.load_date) AS added_date,
+                        c.customer_id
                     FROM spots s
                     LEFT JOIN customers c ON s.customer_id = c.customer_id
                     {entity_filter}
                         AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
                         AND s.load_date IS NOT NULL
                         AND datetime(s.load_date) >= datetime('now', '-30 days')
-                    GROUP BY customer_name, contract
+                    GROUP BY customer_name, contract, c.customer_id
                     ORDER BY customer_name, total DESC
                     """,
                     params,
@@ -594,9 +601,14 @@ def ae_dashboard_personal():
                     customer_name = row[0]
                     contract = row[1] or "—"
                     total = float(row[2])
-                    added_date = row[3]  # timestamp or date string
+                    added_date = row[3]
+                    customer_id = row[4]
                     if customer_name not in client_map:
-                        client_map[customer_name] = {"total": 0.0, "contracts": []}
+                        client_map[customer_name] = {
+                            "total": 0.0,
+                            "contracts": [],
+                            "customer_id": customer_id,
+                        }
                     client_map[customer_name]["total"] += total
                     client_map[customer_name]["contracts"].append({
                         "contract": contract,
@@ -604,9 +616,16 @@ def ae_dashboard_personal():
                         "added_date": added_date,
                     })
                 contracts_by_client = [
-                    {"client": client, "total": data["total"], "contracts": data["contracts"]}
+                    {
+                        "client": client,
+                        "total": data["total"],
+                        "contracts": data["contracts"],
+                        "customer_id": data["customer_id"],
+                    }
                     for client, data in sorted(
-                        client_map.items(), key=lambda x: x[1]["total"], reverse=True
+                        client_map.items(),
+                        key=lambda x: x[1]["total"],
+                        reverse=True,
                     )
                 ]
             finally:

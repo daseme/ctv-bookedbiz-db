@@ -595,7 +595,7 @@
                     {% for account in sector_data.accounts %}
                     <tr class="account-row" data-sector="{{ sector_data.sector }}" data-revenue="{{ account.total_revenue }}" data-name="{{ account.customer_name.lower() }}" style="display: none;">
                         <td></td>
-                        <td class="month-name" style="padding-left: 32px;">{{ account.customer_name }}</td>
+                        <td class="month-name" style="padding-left: 32px;">{% if account.customer_id %}<a href="{{ url_for('customer_detail.customer_detail', customer_id=account.customer_id) }}">{{ account.customer_name }}</a>{% else %}{{ account.customer_name }}{% endif %}</td>
                         <td class="numeric amount-cell">${{ "{:,.0f}".format(account.total_revenue) }}</td>
                         <td class="numeric">
                             {% if totals.budget > 0 %}
