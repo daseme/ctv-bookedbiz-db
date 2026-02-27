@@ -459,5 +459,18 @@ sudo systemctl enable --now <name>.timer
 
 ---
 
-**Last Updated**: 2026-02-26
-**Session Context**: Viewer role auto-provisioning — CHECK constraint blocked new role value.
+---
+
+### Rule 31: NULL customer_id Doesn't Mean No Alias — Check Both States
+**Context**: Customer merge tool showed "alias already exists" when trying to link unresolved bill codes. The query only checked `spots.customer_id IS NULL` but many of those bill codes already had aliases — the spots were just never backfilled.
+**Pattern**: Spots can have `customer_id IS NULL` for two distinct reasons:
+1. **No alias exists** — bill_code was never resolved (needs Link action)
+2. **Alias exists but backfill missed** — alias was created but `spots.customer_id` wasn't updated (needs Backfill action)
+
+The existing `entity_resolution` unresolved query correctly filters both (`c.customer_id IS NULL AND ea.alias_id IS NULL`). New queries against unresolved spots must check both conditions.
+**Action**: When querying for "unresolved" spots, always join to `entity_aliases` and split results by alias state. Don't assume NULL customer_id means no alias.
+
+---
+
+**Last Updated**: 2026-02-27
+**Session Context**: Customer merge tool — alias-already-exists error on backfill-needed items.
