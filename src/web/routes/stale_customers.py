@@ -12,6 +12,14 @@ from datetime import datetime, date, timedelta
 stale_customers_bp = Blueprint("stale_customers", __name__)
 
 
+@stale_customers_bp.before_request
+def _require_admin_for_writes():
+    if request.method in ('POST', 'PUT', 'DELETE'):
+        from flask_login import current_user
+        if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+
+
 def _get_db_path():
     return current_app.config.get("DB_PATH") or "./.data/dev.db"
 

@@ -17,6 +17,8 @@ from src.repositories.sector_expectation_repository import SectorExpectationRepo
 from src.services.sector_planning_service import SectorPlanningService
 from src.repositories.sector_planning_repository import SectorPlanningRepository
 from src.services.container import get_container
+from flask_login import current_user
+from src.web.utils.auth import login_required, admin_required
 from src.web.utils.request_helpers import (
     handle_request_errors,
     log_requests,
@@ -134,6 +136,7 @@ class PeriodDataWrapper:
 # ============================================================================
 
 @planning_bp.route("/")
+@login_required
 def planning_session():
     """Main planning session view."""
     try:
@@ -169,6 +172,7 @@ def planning_session():
 
 
 @planning_bp.route("/history/<ae_name>/<int:year>/<int:month>")
+@login_required
 @log_requests
 @handle_request_errors
 def forecast_history(ae_name: str, year: int, month: int):
@@ -195,6 +199,7 @@ def forecast_history(ae_name: str, year: int, month: int):
 
 
 @planning_bp.route("/budget")
+@login_required
 @log_requests
 @handle_request_errors
 def budget_entry():
@@ -229,6 +234,7 @@ def budget_entry():
 # ============================================================================
 
 @planning_bp.route("/api/sector-detail/<ae_name>/<int:year>")
+@login_required
 @handle_request_errors
 def get_sector_detail(ae_name: str, year: int):
     """API endpoint for sector planning detail."""
@@ -251,6 +257,7 @@ def get_sector_detail(ae_name: str, year: int):
 
 
 @planning_bp.route("/api/sector-summary/<int:year>")
+@login_required
 @handle_request_errors
 def get_sector_summaries(year: int):
     """API endpoint to get sector gap summaries for all entities."""
@@ -283,6 +290,7 @@ def get_sector_summaries(year: int):
 
 
 @planning_bp.route("/api/sectors")
+@login_required
 @log_requests
 @handle_request_errors
 def api_get_sectors():
@@ -298,6 +306,7 @@ def api_get_sectors():
 
 
 @planning_bp.route("/api/sectors/available/<ae_name>/<int:year>")
+@login_required
 @log_requests
 @handle_request_errors
 def api_get_available_sectors(ae_name: str, year: int):
@@ -313,6 +322,7 @@ def api_get_available_sectors(ae_name: str, year: int):
 
 
 @planning_bp.route("/api/sector-expectations/<ae_name>/<int:year>")
+@login_required
 @log_requests
 @handle_request_errors
 def api_get_sector_expectations(ae_name: str, year: int):
@@ -359,6 +369,7 @@ def api_get_sector_expectations(ae_name: str, year: int):
 
 
 @planning_bp.route("/api/sector-expectations/save", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_save_sector_expectations():
@@ -381,7 +392,7 @@ def api_save_sector_expectations():
             ae_name=data["ae_name"],
             year=data["year"],
             expectations=data["expectations"],
-            updated_by=data.get("updated_by", "Web Interface"),
+            updated_by=current_user.full_name,
         )
 
         logger.info(
@@ -397,6 +408,7 @@ def api_save_sector_expectations():
 
 
 @planning_bp.route("/api/sector-expectations/add-sector", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_add_sector_to_entity():
@@ -419,7 +431,7 @@ def api_add_sector_to_entity():
             ae_name=data["ae_name"],
             sector_id=data["sector_id"],
             year=data["year"],
-            updated_by=data.get("updated_by", "Web Interface"),
+            updated_by=current_user.full_name,
         )
 
         logger.info(
@@ -436,6 +448,7 @@ def api_add_sector_to_entity():
 
 
 @planning_bp.route("/api/sector-expectations/remove-sector", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_remove_sector_from_entity():
@@ -472,6 +485,7 @@ def api_remove_sector_from_entity():
 
 
 @planning_bp.route("/api/sector-expectations/validate/<ae_name>/<int:year>")
+@login_required
 @log_requests
 @handle_request_errors
 def api_validate_sector_expectations(ae_name: str, year: int):
@@ -506,6 +520,7 @@ def api_validate_sector_expectations(ae_name: str, year: int):
 
 
 @planning_bp.route("/api/summary")
+@login_required
 @log_requests
 @handle_request_errors
 def api_get_summary():
@@ -634,6 +649,7 @@ def api_get_summary():
 
 
 @planning_bp.route("/api/forecast", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_update_forecast():
@@ -657,7 +673,7 @@ def api_update_forecast():
             year=data["year"],
             month=data["month"],
             new_amount=Decimal(str(data["amount"])),
-            updated_by=data.get("updated_by", "Web Interface"),
+            updated_by=current_user.full_name,
             notes=data.get("notes"),
         )
 
@@ -688,6 +704,7 @@ def api_update_forecast():
 
 
 @planning_bp.route("/api/forecast/bulk", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_bulk_update_forecasts():
@@ -703,7 +720,7 @@ def api_bulk_update_forecasts():
 
         changes = planning_service.bulk_update_forecasts(
             updates=data["updates"],
-            updated_by=data.get("updated_by", "Web Interface"),
+            updated_by=current_user.full_name,
             session_notes=data.get("session_notes"),
         )
 
@@ -723,6 +740,7 @@ def api_bulk_update_forecasts():
 
 
 @planning_bp.route("/api/forecast/reset", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_reset_forecast():
@@ -763,6 +781,7 @@ def api_reset_forecast():
 
 
 @planning_bp.route("/api/entities")
+@login_required
 @log_requests
 @handle_request_errors
 def api_get_entities():
@@ -793,6 +812,7 @@ def api_get_entities():
 
 
 @planning_bp.route("/api/sync-entities", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_sync_entities():
@@ -814,6 +834,7 @@ def api_sync_entities():
 
 
 @planning_bp.route("/api/validate")
+@login_required
 @log_requests
 @handle_request_errors
 def api_validate():
@@ -834,6 +855,7 @@ def api_validate():
 
 
 @planning_bp.route("/api/history/<ae_name>/<int:year>/<int:month>")
+@login_required
 @log_requests
 @handle_request_errors
 def api_get_history(ae_name: str, year: int, month: int):
@@ -871,6 +893,7 @@ def api_get_history(ae_name: str, year: int, month: int):
 # ============================================================================
 
 @planning_bp.route("/api/budget/bulk", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_bulk_save_budgets():
@@ -919,6 +942,7 @@ def api_bulk_save_budgets():
 
 
 @planning_bp.route("/api/entities/add", methods=["POST"])
+@admin_required
 @log_requests
 @handle_request_errors
 def api_add_entity():

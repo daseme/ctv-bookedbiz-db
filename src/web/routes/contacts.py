@@ -6,6 +6,14 @@ from flask import Blueprint, current_app, jsonify, request
 contacts_bp = Blueprint("contacts", __name__)
 
 
+@contacts_bp.before_request
+def _require_admin_for_writes():
+    if request.method in ('POST', 'PUT', 'DELETE'):
+        from flask_login import current_user
+        if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+
+
 def _get_service():
     from src.services.contact_service import ContactService
     db_path = current_app.config.get("DB_PATH") or "./.data/dev.db"

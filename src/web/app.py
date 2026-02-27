@@ -58,6 +58,30 @@ def create_app(environment: Optional[str] = None) -> Flask:
     login_manager.login_message_category = "info"
     logger.info("Flask-Login initialized with 1 day session timeout")
 
+    @app.before_request
+    def _require_login():
+        from flask import request, redirect, url_for
+        from flask_login import current_user
+
+        path = request.path
+        # Allow: login page, static files, health GETs, system endpoints
+        if (path.startswith('/static/')
+                or path == '/users/login'
+                or (path.startswith('/health') and request.method == 'GET')
+                or path == '/info'
+                or path == '/api/system-stats'):
+            return None
+
+        if not current_user.is_authenticated:
+            # Write ops and API calls get JSON 401; pages redirect
+            if (request.method in ('POST', 'PUT', 'DELETE')
+                    or request.is_json
+                    or path.startswith('/api/')):
+                return jsonify(
+                    {"error": "Authentication required"}
+                ), 401
+            return redirect(url_for('user_management.login'))
+
     @app.template_filter('number_format')
     def number_format_filter(value, decimals=0):
         """Format number with commas"""
