@@ -349,24 +349,40 @@
         try {
             const r = await fetch('/api/customer-merge/unresolved');
             if (!r.ok) throw new Error('Failed to load');
-            const items = await r.json();
-            countEl.textContent = items.length + ' unresolved';
+            const data = await r.json();
+            const allItems = [];
 
-            if (!items.length) {
+            data.needs_backfill.forEach(item => {
+                item._type = 'backfill';
+                allItems.push(item);
+            });
+            data.unlinked.forEach(item => {
+                item._type = 'unlinked';
+                allItems.push(item);
+            });
+
+            const total = allItems.length;
+            countEl.textContent = total + ' unresolved';
+
+            if (!total) {
                 tbody.innerHTML = '<tr><td colspan="4" class="empty-state">' +
                     'All bill codes are resolved!</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = items.map((item, i) => `
+            tbody.innerHTML = allItems.map((item, i) => {
+                const actionHtml = item._type === 'backfill'
+                    ? `<button class="btn btn-confirm"
+                        onclick="doBackfill(${i}, ${item.customer_id})">
+                        Backfill to ${esc(item.customer_name)}</button>`
+                    : `<button class="btn btn-link-action"
+                        onclick="openLinkSearch(${i})">Link</button>`;
+                return `
                 <tr id="row-${i}" data-bill="${esc(item.bill_code)}">
                     <td><strong>${esc(item.bill_code)}</strong></td>
                     <td class="number">${item.spot_count.toLocaleString()}</td>
                     <td class="number">${fmt(item.revenue)}</td>
-                    <td>
-                        <button class="btn btn-link-action"
-                                onclick="openLinkSearch(${i})">Link</button>
-                    </td>
+                    <td>${actionHtml}</td>
                 </tr>
                 <tr id="search-${i}" class="search-row">
                     <td colspan="4">
@@ -378,8 +394,8 @@
                         </div>
                         <div class="search-results" id="results-${i}"></div>
                     </td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
         } catch (e) {
             tbody.innerHTML = '<tr><td colspan="4" class="empty-state">' +
                 'Error loading data: ' + esc(e.message) + '</td></tr>';
@@ -467,6 +483,37 @@
             toast(
                 'Linked "' + billCode + '" to "' + customerName +
                 '" (' + result.spots_updated + ' spots updated)',
+                'success'
+            );
+            refreshMetrics(customerId);
+            setTimeout(loadUnresolved, 1500);
+        } catch (e) {
+            row.style.opacity = '1';
+            toast('Error: ' + e.message, 'error');
+        }
+    };
+
+    window.doBackfill = async function(idx, customerId) {
+        const row = document.getElementById('row-' + idx);
+        const billCode = row.dataset.bill;
+        row.style.opacity = '0.5';
+        try {
+            const r = await fetch('/api/customer-merge/backfill', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    bill_code: billCode,
+                    customer_id: customerId,
+                }),
+            });
+            const result = await r.json();
+            if (!r.ok || !result.success) {
+                throw new Error(result.error || 'Backfill failed');
+            }
+            row.classList.add('resolved');
+            toast(
+                'Backfilled ' + result.spots_updated + ' spots for "' +
+                billCode + '"',
                 'success'
             );
             refreshMetrics(customerId);
