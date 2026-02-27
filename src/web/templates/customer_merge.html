@@ -1,0 +1,663 @@
+{% extends "base.html" %}
+
+{% block title %}Customer Merge Tool{% endblock %}
+{% block header_title %}Customer Merge Tool{% endblock %}
+{% block header_subtitle %}Link unresolved bill codes and merge duplicate customers{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Customer Merge</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .merge-section {
+        margin-bottom: 48px;
+    }
+    .merge-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--nord4);
+    }
+    .merge-section-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--nord1);
+        margin: 0;
+    }
+    .merge-section-header .count {
+        font-size: 13px;
+        color: var(--nord3);
+        background: var(--nord6);
+        padding: 4px 10px;
+        border-radius: 12px;
+    }
+
+    .bill-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .bill-table th {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 2px solid var(--nord1);
+        font-weight: 600;
+        font-size: 12px;
+        color: var(--nord2);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .bill-table th.number { text-align: right; }
+    .bill-table td {
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--nord5);
+    }
+    .bill-table td.number {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    .bill-table tr:hover { background: var(--nord6); }
+    .bill-table tr.resolved {
+        opacity: 0.3;
+        pointer-events: none;
+        transition: opacity 0.4s;
+    }
+
+    .btn {
+        padding: 6px 14px;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .btn-link-action {
+        background: var(--nord10);
+        color: white;
+    }
+    .btn-link-action:hover { background: var(--nord9); }
+    .btn-merge {
+        background: var(--nord15);
+        color: white;
+    }
+    .btn-merge:hover { opacity: 0.85; }
+    .btn-cancel {
+        background: var(--nord4);
+        color: var(--nord1);
+    }
+    .btn-cancel:hover { background: var(--nord5); }
+    .btn-confirm {
+        background: var(--nord14);
+        color: var(--nord0);
+    }
+    .btn-confirm:hover { opacity: 0.85; }
+    .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .search-row {
+        display: none;
+        padding: 8px;
+        background: var(--nord6);
+        border-bottom: 1px solid var(--nord5);
+    }
+    .search-row.active { display: table-row; }
+    .search-row td { padding: 12px 8px; }
+    .search-input-wrap {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+    .search-input-wrap input {
+        flex: 1;
+        padding: 8px 12px;
+        border: 1px solid var(--nord4);
+        border-radius: 6px;
+        font-size: 13px;
+    }
+    .search-input-wrap input:focus {
+        outline: none;
+        border-color: var(--nord10);
+        box-shadow: 0 0 0 2px rgba(94, 129, 172, 0.2);
+    }
+    .search-results {
+        margin-top: 8px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .search-result-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border: 1px solid var(--nord5);
+        border-radius: 6px;
+        margin-bottom: 4px;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    .search-result-item:hover {
+        background: white;
+        border-color: var(--nord10);
+    }
+    .search-result-item.selected {
+        background: rgba(94, 129, 172, 0.1);
+        border-color: var(--nord10);
+    }
+    .result-name { font-weight: 500; }
+    .result-meta {
+        font-size: 11px;
+        color: var(--nord3);
+    }
+
+    .merge-panel {
+        background: var(--nord6);
+        border-radius: 8px;
+        padding: 24px;
+    }
+    .merge-step {
+        margin-bottom: 20px;
+    }
+    .merge-step-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--nord3);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-bottom: 8px;
+    }
+    .merge-search {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid var(--nord4);
+        border-radius: 6px;
+        font-size: 14px;
+        background: white;
+    }
+    .merge-search:focus {
+        outline: none;
+        border-color: var(--nord10);
+        box-shadow: 0 0 0 2px rgba(94, 129, 172, 0.2);
+    }
+    .merge-results {
+        max-height: 200px;
+        overflow-y: auto;
+        margin-top: 8px;
+    }
+
+    .merge-entity {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        background: white;
+        border: 1px solid var(--nord4);
+        border-radius: 6px;
+    }
+    .merge-entity .name { font-weight: 600; font-size: 14px; }
+    .merge-entity .meta { font-size: 12px; color: var(--nord3); }
+
+    .merge-preview {
+        display: none;
+        margin-top: 16px;
+        padding: 16px;
+        background: white;
+        border: 2px solid var(--nord10);
+        border-radius: 8px;
+    }
+    .merge-preview.active { display: block; }
+    .merge-arrow {
+        text-align: center;
+        font-size: 24px;
+        color: var(--nord10);
+        padding: 8px 0;
+    }
+    .merge-preview-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        padding: 4px 0;
+        border-bottom: 1px solid var(--nord6);
+    }
+    .merge-preview-row:last-child { border-bottom: none; }
+    .merge-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+        justify-content: flex-end;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 32px;
+        color: var(--nord3);
+        font-size: 14px;
+    }
+    .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: white;
+        z-index: 9999;
+        transform: translateY(80px);
+        opacity: 0;
+        transition: all 0.3s;
+    }
+    .toast.active {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    .toast.success { background: var(--nord14); color: var(--nord0); }
+    .toast.error { background: var(--nord11); }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Unresolved Bill Codes Section -->
+<div class="merge-section" id="unresolved-section">
+    <div class="merge-section-header">
+        <h2>Unresolved Bill Codes</h2>
+        <span class="count" id="unresolved-count">Loading...</span>
+    </div>
+    <table class="bill-table">
+        <thead>
+            <tr>
+                <th>Bill Code</th>
+                <th class="number">Spots</th>
+                <th class="number">Revenue</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="unresolved-body">
+            <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Merge Customers Section -->
+<div class="merge-section">
+    <div class="merge-section-header">
+        <h2>Merge Customers</h2>
+    </div>
+    <div class="merge-panel">
+        <div class="merge-step">
+            <div class="merge-step-label">Step 1: Find source customer (will be deactivated)</div>
+            <input type="text" class="merge-search" id="source-search"
+                   placeholder="Search customer name...">
+            <div class="merge-results" id="source-results"></div>
+            <div id="source-selected" style="display:none; margin-top:8px;"></div>
+        </div>
+
+        <div class="merge-step" id="target-step" style="display:none;">
+            <div class="merge-step-label">Step 2: Find target customer (will receive spots &amp; aliases)</div>
+            <input type="text" class="merge-search" id="target-search"
+                   placeholder="Search target customer...">
+            <div class="merge-results" id="target-results"></div>
+            <div id="target-selected" style="display:none; margin-top:8px;"></div>
+        </div>
+
+        <div class="merge-preview" id="merge-preview">
+            <div style="font-weight:600; margin-bottom:8px;">Merge Preview</div>
+            <div id="preview-source" class="merge-entity" style="margin-bottom:4px;"></div>
+            <div class="merge-arrow">&#8595;</div>
+            <div id="preview-target" class="merge-entity"></div>
+            <div class="merge-actions">
+                <button class="btn btn-cancel" id="merge-cancel-btn">Cancel</button>
+                <button class="btn btn-merge" id="merge-confirm-btn">Confirm Merge</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const esc = s => (s || '').replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    const fmt = n => '$' + Number(n).toLocaleString('en-US', {
+        minimumFractionDigits: 0, maximumFractionDigits: 0
+    });
+
+    function toast(msg, type) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.className = 'toast ' + type + ' active';
+        setTimeout(() => el.classList.remove('active'), 3000);
+    }
+
+    // ── Unresolved Bill Codes ─────────────────────────────────
+
+    async function loadUnresolved() {
+        const tbody = document.getElementById('unresolved-body');
+        const countEl = document.getElementById('unresolved-count');
+        try {
+            const r = await fetch('/api/customer-merge/unresolved');
+            if (!r.ok) throw new Error('Failed to load');
+            const items = await r.json();
+            countEl.textContent = items.length + ' unresolved';
+
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">' +
+                    'All bill codes are resolved!</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = items.map((item, i) => `
+                <tr id="row-${i}" data-bill="${esc(item.bill_code)}">
+                    <td><strong>${esc(item.bill_code)}</strong></td>
+                    <td class="number">${item.spot_count.toLocaleString()}</td>
+                    <td class="number">${fmt(item.revenue)}</td>
+                    <td>
+                        <button class="btn btn-link-action"
+                                onclick="openLinkSearch(${i})">Link</button>
+                    </td>
+                </tr>
+                <tr id="search-${i}" class="search-row">
+                    <td colspan="4">
+                        <div class="search-input-wrap">
+                            <input type="text" placeholder="Search target customer..."
+                                   oninput="searchTarget(this, ${i})">
+                            <button class="btn btn-cancel"
+                                    onclick="closeLinkSearch(${i})">Cancel</button>
+                        </div>
+                        <div class="search-results" id="results-${i}"></div>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state">' +
+                'Error loading data: ' + esc(e.message) + '</td></tr>';
+        }
+    }
+
+    window.openLinkSearch = function(idx) {
+        document.querySelectorAll('.search-row.active').forEach(
+            el => el.classList.remove('active')
+        );
+        const searchRow = document.getElementById('search-' + idx);
+        searchRow.classList.add('active');
+        searchRow.querySelector('input').focus();
+    };
+
+    window.closeLinkSearch = function(idx) {
+        document.getElementById('search-' + idx).classList.remove('active');
+    };
+
+    let searchTimeout;
+    window.searchTarget = function(input, idx) {
+        clearTimeout(searchTimeout);
+        const q = input.value.trim();
+        const container = document.getElementById('results-' + idx);
+        if (q.length < 2) {
+            container.innerHTML = '';
+            return;
+        }
+        searchTimeout = setTimeout(async () => {
+            try {
+                const r = await fetch(
+                    '/api/customer-resolution/search?q=' +
+                    encodeURIComponent(q)
+                );
+                const results = await r.json();
+                if (!results.length) {
+                    container.innerHTML =
+                        '<div class="empty-state">No customers found</div>';
+                    return;
+                }
+                container.innerHTML = results.map(c => `
+                    <div class="search-result-item"
+                         onclick="confirmLink(${idx}, ${c.customer_id}, '${esc(c.normalized_name)}')">
+                        <div>
+                            <div class="result-name">${esc(c.normalized_name)}</div>
+                            <div class="result-meta">
+                                ${c.sector_name ? esc(c.sector_name) : 'No sector'}
+                                &middot; ${(c.spot_count || 0).toLocaleString()} spots
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML =
+                    '<div class="empty-state">Search error</div>';
+            }
+        }, 200);
+    };
+
+    window.confirmLink = async function(idx, customerId, customerName) {
+        const row = document.getElementById('row-' + idx);
+        const billCode = row.dataset.bill;
+        if (!confirm(
+            'Link "' + billCode + '" to "' + customerName + '"?\n\n' +
+            'This will create an alias and backfill all spots.'
+        )) return;
+
+        row.style.opacity = '0.5';
+        closeLinkSearch(idx);
+        try {
+            const r = await fetch('/api/customer-resolution/link', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    bill_code: billCode,
+                    customer_id: customerId,
+                }),
+            });
+            const result = await r.json();
+            if (!r.ok || !result.success) {
+                throw new Error(result.error || 'Link failed');
+            }
+            row.classList.add('resolved');
+            document.getElementById('search-' + idx).classList.remove('active');
+            toast(
+                'Linked "' + billCode + '" to "' + customerName +
+                '" (' + result.spots_updated + ' spots updated)',
+                'success'
+            );
+            refreshMetrics(customerId);
+            setTimeout(loadUnresolved, 1500);
+        } catch (e) {
+            row.style.opacity = '1';
+            toast('Error: ' + e.message, 'error');
+        }
+    };
+
+    function refreshMetrics(customerId) {
+        fetch('/api/address-book/refresh-metrics', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({customer_ids: [customerId]}),
+        }).catch(() => {});
+    }
+
+    // ── Merge Customers ───────────────────────────────────────
+
+    let sourceCustomer = null;
+    let targetCustomer = null;
+
+    const sourceSearch = document.getElementById('source-search');
+    const targetSearch = document.getElementById('target-search');
+    let mergeTimeout;
+
+    function bindMergeSearch(input, resultsDivId, onSelect) {
+        input.addEventListener('input', function() {
+            clearTimeout(mergeTimeout);
+            const q = this.value.trim();
+            const container = document.getElementById(resultsDivId);
+            if (q.length < 2) {
+                container.innerHTML = '';
+                return;
+            }
+            mergeTimeout = setTimeout(async () => {
+                try {
+                    const r = await fetch(
+                        '/api/customer-resolution/search?q=' +
+                        encodeURIComponent(q)
+                    );
+                    const results = await r.json();
+                    if (!results.length) {
+                        container.innerHTML =
+                            '<div class="empty-state">No customers found</div>';
+                        return;
+                    }
+                    container.innerHTML = results.map(c => `
+                        <div class="search-result-item"
+                             data-id="${c.customer_id}"
+                             data-name="${esc(c.normalized_name)}"
+                             data-sector="${esc(c.sector_name || '')}"
+                             data-spots="${c.spot_count || 0}">
+                            <div>
+                                <div class="result-name">${esc(c.normalized_name)}</div>
+                                <div class="result-meta">
+                                    ${c.sector_name ? esc(c.sector_name) : 'No sector'}
+                                    &middot; ${(c.spot_count || 0).toLocaleString()} spots
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                    container.querySelectorAll('.search-result-item').forEach(
+                        el => el.addEventListener('click', function() {
+                            onSelect({
+                                customer_id: parseInt(this.dataset.id),
+                                normalized_name: this.dataset.name,
+                                sector_name: this.dataset.sector,
+                                spot_count: parseInt(this.dataset.spots),
+                            });
+                        })
+                    );
+                } catch (e) {
+                    document.getElementById(resultsDivId).innerHTML =
+                        '<div class="empty-state">Search error</div>';
+                }
+            }, 200);
+        });
+    }
+
+    function renderEntity(el, customer) {
+        el.innerHTML = `
+            <div>
+                <div class="name">${esc(customer.normalized_name)}</div>
+                <div class="meta">ID: ${customer.customer_id}
+                    &middot; ${customer.sector_name || 'No sector'}
+                    &middot; ${customer.spot_count.toLocaleString()} spots</div>
+            </div>
+        `;
+        el.style.display = 'flex';
+    }
+
+    function selectSource(customer) {
+        sourceCustomer = customer;
+        renderEntity(document.getElementById('source-selected'), customer);
+        document.getElementById('source-results').innerHTML = '';
+        sourceSearch.value = '';
+        sourceSearch.style.display = 'none';
+        document.getElementById('target-step').style.display = 'block';
+        targetSearch.focus();
+        updatePreview();
+    }
+
+    function selectTarget(customer) {
+        if (sourceCustomer && customer.customer_id === sourceCustomer.customer_id) {
+            toast('Cannot merge customer into itself', 'error');
+            return;
+        }
+        targetCustomer = customer;
+        renderEntity(document.getElementById('target-selected'), customer);
+        document.getElementById('target-results').innerHTML = '';
+        targetSearch.value = '';
+        targetSearch.style.display = 'none';
+        updatePreview();
+    }
+
+    function updatePreview() {
+        const preview = document.getElementById('merge-preview');
+        if (!sourceCustomer || !targetCustomer) {
+            preview.classList.remove('active');
+            return;
+        }
+        renderEntity(document.getElementById('preview-source'), sourceCustomer);
+        renderEntity(document.getElementById('preview-target'), targetCustomer);
+        preview.classList.add('active');
+    }
+
+    function resetMerge() {
+        sourceCustomer = null;
+        targetCustomer = null;
+        sourceSearch.value = '';
+        sourceSearch.style.display = '';
+        targetSearch.value = '';
+        targetSearch.style.display = '';
+        document.getElementById('source-selected').style.display = 'none';
+        document.getElementById('target-selected').style.display = 'none';
+        document.getElementById('source-results').innerHTML = '';
+        document.getElementById('target-results').innerHTML = '';
+        document.getElementById('target-step').style.display = 'none';
+        document.getElementById('merge-preview').classList.remove('active');
+    }
+
+    bindMergeSearch(sourceSearch, 'source-results', selectSource);
+    bindMergeSearch(targetSearch, 'target-results', selectTarget);
+
+    document.getElementById('merge-cancel-btn').addEventListener(
+        'click', resetMerge
+    );
+
+    document.getElementById('merge-confirm-btn').addEventListener(
+        'click', async function() {
+            if (!sourceCustomer || !targetCustomer) return;
+            if (!confirm(
+                'Merge "' + sourceCustomer.normalized_name +
+                '" into "' + targetCustomer.normalized_name + '"?\n\n' +
+                'This will move all aliases and spots, then deactivate the source.'
+            )) return;
+
+            this.disabled = true;
+            try {
+                const r = await fetch('/api/customer-aliases/merge', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        source_id: sourceCustomer.customer_id,
+                        target_id: targetCustomer.customer_id,
+                    }),
+                });
+                const result = await r.json();
+                if (!r.ok || !result.success) {
+                    throw new Error(result.error || 'Merge failed');
+                }
+                toast(
+                    'Merged "' + result.source_name + '" into "' +
+                    result.target_name + '" (' + result.spots_moved +
+                    ' spots, ' + result.aliases_moved + ' aliases moved)',
+                    'success'
+                );
+                refreshMetrics(targetCustomer.customer_id);
+                resetMerge();
+            } catch (e) {
+                toast('Error: ' + e.message, 'error');
+            } finally {
+                this.disabled = false;
+            }
+        }
+    );
+
+    // ── Init ──────────────────────────────────────────────────
+    loadUnresolved();
+})();
+</script>
+{% endblock %}

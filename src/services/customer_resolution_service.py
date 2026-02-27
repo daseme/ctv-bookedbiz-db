@@ -411,16 +411,37 @@ class CustomerResolutionService:
             }
     
     def search_customers(self, query: str, limit: int = 15) -> List[Dict]:
-        """Search existing customers for manual linking."""
+        """Search existing customers with sector and spot count."""
         with self._db_ro() as db:
             rows = db.execute("""
-                SELECT customer_id, normalized_name
-                FROM customers
-                WHERE normalized_name LIKE ? AND is_active = 1
-                ORDER BY normalized_name
+                SELECT
+                    c.customer_id,
+                    c.normalized_name,
+                    s2.sector_name,
+                    COALESCE(sp.spot_count, 0) AS spot_count
+                FROM customers c
+                LEFT JOIN customer_sectors cs
+                    ON cs.customer_id = c.customer_id AND cs.is_primary = 1
+                LEFT JOIN sectors s2 ON s2.sector_id = cs.sector_id
+                LEFT JOIN (
+                    SELECT customer_id, COUNT(*) AS spot_count
+                    FROM spots
+                    WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)
+                    GROUP BY customer_id
+                ) sp ON sp.customer_id = c.customer_id
+                WHERE c.normalized_name LIKE ? AND c.is_active = 1
+                ORDER BY c.normalized_name
                 LIMIT ?
             """, [f"%{query}%", limit]).fetchall()
-        return [{"customer_id": r["customer_id"], "normalized_name": r["normalized_name"]} for r in rows]
+        return [
+            {
+                "customer_id": r["customer_id"],
+                "normalized_name": r["normalized_name"],
+                "sector_name": r["sector_name"],
+                "spot_count": r["spot_count"],
+            }
+            for r in rows
+        ]
 
     def delete_alias(self, alias_id: int, deleted_by: str = "web_user") -> Dict[str, Any]:
         """Soft-delete an alias (set is_active = 0)."""

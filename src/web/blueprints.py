@@ -44,6 +44,7 @@ from src.web.routes.entity_resolution import entity_resolution_bp
 from src.web.routes.contacts import contacts_bp
 from src.web.routes.address_book import address_book_bp
 from src.web.routes.stale_customers import stale_customers_bp
+from src.web.routes.customer_merge import customer_merge_bp
 
 # Optional feature: customer sector API (do not break import if missing)
 try:
@@ -128,6 +129,9 @@ def register_blueprints(app: Flask) -> None:
 
         app.register_blueprint(stale_customers_bp)
         logger.info("Registered stale customers blueprint")
+
+        app.register_blueprint(customer_merge_bp)
+        logger.info("Registered customer merge blueprint")
 
         register_template_filters(app)
         logger.info("Registered template filters")
