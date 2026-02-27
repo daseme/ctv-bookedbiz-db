@@ -1345,11 +1345,11 @@ def performance_story_report():
         return render_template("error_500.html", message="Error generating report"), 500
 
 
-@reports_bp.route("/report4")
+@reports_bp.route("/sector-analysis")
 @log_requests
 @handle_request_errors
-def quarterly_sectors_report():
-    """Enhanced Quarterly Performance with Sector Analysis (sector-analysis.html)."""
+def sector_analysis_report():
+    """Sector analysis with market segmentation (sector-analysis.html)."""
     try:
         container = get_container()
         report_service = safe_get_service(container, "report_data_service")
@@ -1364,14 +1364,14 @@ def quarterly_sectors_report():
 
         return render_template(
             "sector-analysis.html",
-            title="Quarterly Performance with Sector Analysis",
+            title="Sector Analysis",
             data=sector_data,
             selected_year=year,
             available_years=available_years,
         )
 
     except Exception as e:
-        logger.error(f"Error generating report4: {e}", exc_info=True)
+        logger.error(f"Error generating sector-analysis: {e}", exc_info=True)
         return render_template(
             "error_500.html", message=f"Error generating report: {str(e)}"
         ), 500

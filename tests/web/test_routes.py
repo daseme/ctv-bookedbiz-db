@@ -212,7 +212,7 @@ class TestRoutes:
     @patch("web.app.get_quarterly_performance_data")
     @patch("web.app.get_sector_performance_data")
     @patch("web.app.get_ae_performance_data")
-    def test_report4_route_success(
+    def test_sector_analysis_route_success(
         self,
         mock_get_ae,
         mock_get_sector,
@@ -227,9 +227,9 @@ class TestRoutes:
         mock_get_sector.return_value = mock_sector_data
         mock_get_ae.return_value = mock_ae_data
 
-        response = client.get("/report4")
+        response = client.get("/sector-analysis")
         assert response.status_code == 200
-        assert b"Quarterly Performance with Sector Analysis" in response.data
+        assert b"Sector Analysis" in response.data
         assert b"Sector Performance Analysis" in response.data
         assert b"Concentration Risk Assessment" in response.data
 
