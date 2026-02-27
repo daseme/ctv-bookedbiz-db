@@ -249,6 +249,7 @@ class CustomerSectorData:
     customer_name: str
     spot_count: int
     total_revenue: Decimal
+    customer_id: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -257,6 +258,7 @@ class CustomerSectorData:
             "customer_name": self.customer_name,
             "spot_count": self.spot_count,
             "total_revenue": float(self.total_revenue),
+            "customer_id": self.customer_id,
         }
 
 
