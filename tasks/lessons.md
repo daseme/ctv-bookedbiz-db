@@ -425,5 +425,24 @@ sudo systemctl enable --now <name>.timer
 
 ---
 
+---
+
+### Rule 29: All Route Files Need Auth — Never Assume Tailscale Is Enough
+
+**Context**: Planning, reporting, data management, and all other route files had zero auth decorators. Any Tailscale user could view all data and perform write operations (create/edit/delete entities, modify forecasts, bulk deactivate customers).
+**Pattern**: Being behind Tailscale provides network-level auth, but it doesn't provide role-based access control. Every route file needs:
+- **Login required** on all endpoints (not just "important" ones)
+- **Admin required** on all write endpoints (POST/PUT/DELETE)
+- **Never trust client-supplied identity** in write operations (e.g., `data.get("updated_by")` — use `current_user.full_name` server-side)
+
+**Implementation pattern used**:
+- Global `before_request` in `app.py` for login enforcement (with exemptions for /health GET, /users/login, /static/)
+- Blueprint-level `before_request` for admin checks on write methods
+- Explicit `@login_required` / `@admin_required` decorators on planning.py (the first file fixed)
+
+**Action**: When adding new route files or endpoints, auth decorators must be present from the start. Use `before_request` on the blueprint for blanket coverage.
+
+---
+
 **Last Updated**: 2026-02-26
-**Session Context**: Pending insertion orders feature — K drive scanner, AE dashboard integration, full deploy workflow from dev to production.
+**Session Context**: Auth hardening — locked down all route files with login_required + admin_required for writes.

@@ -5,6 +5,14 @@ from flask import Blueprint, current_app, jsonify, request, render_template, red
 
 entity_resolution_bp = Blueprint("entity_resolution", __name__)
 
+
+@entity_resolution_bp.before_request
+def _require_admin_for_writes():
+    if request.method in ('POST', 'PUT', 'DELETE'):
+        from flask_login import current_user
+        if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+
 # ── Config per entity type ──────────────────────────────────────────────
 
 ENTITY_CONFIGS = {
