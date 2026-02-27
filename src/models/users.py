@@ -16,11 +16,12 @@ from typing import Optional
 
 
 class UserRole(Enum):
-    """User permission roles"""
+    """User permission roles (admin > management > AE > viewer)"""
 
     ADMIN = "admin"
     MANAGEMENT = "management"
     AE = "AE"
+    VIEWER = "viewer"
 
     @property
     def display_name(self) -> str:
@@ -29,15 +30,16 @@ class UserRole(Enum):
 
     def has_permission(self, required_role: "UserRole") -> bool:
         """Check if this role has permission for required role level."""
-        # Admin has all permissions
         if self == UserRole.ADMIN:
             return True
-        # Management can access management and AE level
         if self == UserRole.MANAGEMENT:
-            return required_role in (UserRole.MANAGEMENT, UserRole.AE)
-        # AE can only access AE level
+            return required_role in (
+                UserRole.MANAGEMENT, UserRole.AE, UserRole.VIEWER
+            )
         if self == UserRole.AE:
-            return required_role == UserRole.AE
+            return required_role in (UserRole.AE, UserRole.VIEWER)
+        if self == UserRole.VIEWER:
+            return required_role == UserRole.VIEWER
         return False
 
 
