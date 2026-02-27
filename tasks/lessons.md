@@ -444,5 +444,20 @@ sudo systemctl enable --now <name>.timer
 
 ---
 
+---
+
+### Rule 30: CHECK Constraints Survive Python Enum Changes — Always Check the Schema
+**Context**: Added `VIEWER = "viewer"` to the Python `UserRole` enum but the `users` table had `CHECK (role IN ('admin', 'management', 'AE'))`. Every auto-provision attempt failed with `CHECK constraint failed`.
+**Pattern**: SQLite CHECK constraints are enforced at the DB level regardless of Python code. Adding a value to a Python enum does NOT update the database constraint. SQLite doesn't support `ALTER TABLE ... DROP CONSTRAINT` — you must recreate the table.
+**The cascade**:
+1. Python enum accepts 'viewer' — passes all code-level validation
+2. `INSERT INTO users ... role='viewer'` hits the DB CHECK constraint → rollback
+3. `create_user()` raises `ValueError("Failed to create user: CHECK constraint failed")`
+4. `authenticate_by_tailscale()` exception propagates → login fails
+**Also caught**: The dev service DB (`production_dev.db`) had never run migration 020 (still had `password_hash NOT NULL`). Migrations must run on ALL three databases: `.data/dev.db`, `production_dev.db`, and production.
+**Action**: When adding new enum values that map to DB columns, always check `PRAGMA table_info(table)` or `.schema table` for CHECK constraints. Write a migration that recreates the table if needed.
+
+---
+
 **Last Updated**: 2026-02-26
-**Session Context**: Auth hardening — locked down all route files with login_required + admin_required for writes.
+**Session Context**: Viewer role auto-provisioning — CHECK constraint blocked new role value.
