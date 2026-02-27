@@ -215,7 +215,7 @@
   <ul class="alert-list">
     {% for customer in data.lost_customers[:5] %}
     <li style="color:#742a2a;">
-      • <strong>{{ customer.customer }}</strong> ({{ customer.sector }}) - ${{ "{:,.0f}".format(customer.ytd2023) }} in {{ data.selected_year - 1 }}
+      • <strong>{% if customer.customer_id %}<a href="{{ url_for('customer_detail.customer_detail', customer_id=customer.customer_id) }}" style="color:#742a2a;">{{ customer.customer }}</a>{% else %}{{ customer.customer }}{% endif %}</strong> ({{ customer.sector }}) - ${{ "{:,.0f}".format(customer.ytd2023) }} in {{ data.selected_year - 1 }}
     </li>
     {% endfor %}
     {% if data.lost_customers|length > 5 %}
@@ -296,7 +296,7 @@
         {% for customer in data.customers %}
         <tr data-status="{{ customer.status }}" data-sector="{{ customer.sector }}">
           <td>
-            <strong>{{ customer.customer }}</strong>
+            <strong>{% if customer.customer_id %}<a href="{{ url_for('customer_detail.customer_detail', customer_id=customer.customer_id) }}">{{ customer.customer }}</a>{% else %}{{ customer.customer }}{% endif %}</strong>
             {% if customer.q4Behind %}<span style="color:#d69e2e; font-size:10px;">⚠️ Q4</span>{% endif %}
           </td>
           {% if not data.selected_ae %}
