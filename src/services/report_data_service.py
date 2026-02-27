@@ -1194,19 +1194,18 @@ class ReportDataService:
             top_customers_query = f"""
                 SELECT
                     COALESCE(sect.sector_group, 'Unassigned') AS sector_group,
-                    COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS customer_name,
+                    COALESCE(c.normalized_name, s.bill_code, 'Unknown') AS customer_name,
                     COALESCE(sect.sector_name, 'Unassigned') AS sector_name,
                     ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
                     COUNT(*) AS spot_count,
                     ROUND(AVG(COALESCE(s.gross_rate, 0)), 2) AS avg_rate,
                     c.customer_id
                 FROM spots s
-                {CustomerNormalizationQueryBuilder.build_customer_join()}
-                LEFT JOIN customers c ON audit.customer_id = c.customer_id
+                LEFT JOIN customers c ON s.customer_id = c.customer_id
                 LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
                 WHERE s.broadcast_month LIKE ?
                 AND {base_filters}
-                GROUP BY sect.sector_group, audit.normalized_name, sect.sector_name, c.customer_id
+                GROUP BY sect.sector_group, c.normalized_name, sect.sector_name, c.customer_id
                 ORDER BY sect.sector_group, total_revenue DESC
             """
             cursor.execute(top_customers_query, [year_range.like_pattern])
