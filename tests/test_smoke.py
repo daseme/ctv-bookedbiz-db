@@ -23,7 +23,7 @@ FAST_ROUTES = [
     "/reports/",
     "/reports/customer-sector-manager",
     "/reports/contracts-added",
-    "/reports/report4",
+    "/reports/sector-analysis",
     "/reports/language-blocks",
 
     # -- Customer detail routes (under /reports) --
