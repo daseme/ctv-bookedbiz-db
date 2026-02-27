@@ -82,6 +82,29 @@ def create_app(environment: Optional[str] = None) -> Flask:
                 ), 401
             return redirect(url_for('user_management.login'))
 
+        # Viewer role: restrict to reporting & analytics pages only
+        if hasattr(current_user, 'role'):
+            from src.models.users import UserRole
+            if current_user.role == UserRole.VIEWER:
+                viewer_allowed = (
+                    path == '/'
+                    or path.startswith('/reports/')
+                    or path.startswith('/pricing/')
+                    or path.startswith('/length-analysis/')
+                    or path in ('/users/logout', '/users/profile')
+                )
+                if not viewer_allowed:
+                    if request.is_json or path.startswith('/api/'):
+                        return jsonify(
+                            {"error": "Insufficient permissions"}
+                        ), 403
+                    from flask import flash
+                    flash(
+                        "You don't have access to that page.",
+                        "error",
+                    )
+                    return redirect('/reports/')
+
     @app.template_filter('number_format')
     def number_format_filter(value, decimals=0):
         """Format number with commas"""
