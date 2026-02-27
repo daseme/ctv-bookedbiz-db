@@ -1205,7 +1205,7 @@ class ReportDataService:
                 LEFT JOIN sectors sect ON c.sector_id = sect.sector_id
                 WHERE s.broadcast_month LIKE ?
                 AND {base_filters}
-                GROUP BY sect.sector_group, c.normalized_name, sect.sector_name, c.customer_id
+                GROUP BY sector_group, customer_name, sector_name, c.customer_id
                 ORDER BY sect.sector_group, total_revenue DESC
             """
             cursor.execute(top_customers_query, [year_range.like_pattern])
