@@ -40,8 +40,17 @@ class UserService(BaseService):
             return None
         user = self.repository.get_user_by_email(email)
         if not user:
-            logger.warning(f"Tailscale auth: no user for email {email}")
-            return None
+            first, last = self._parse_name(display_name, email)
+            request = CreateUserRequest(
+                first_name=first,
+                last_name=last,
+                email=email,
+                role=UserRole.VIEWER,
+            )
+            user = self.create_user(request)
+            logger.info(
+                f"Auto-provisioned user {email} as viewer"
+            )
         self.repository.update_last_login(user.user_id)
         if display_name and (display_name != user.full_name):
             first, _, last = (display_name.strip() + " ").partition(" ")
@@ -54,6 +63,22 @@ class UserService(BaseService):
                 user = self.repository.get_user_by_id(user.user_id)
         logger.info(f"User {email} authenticated via Tailscale")
         return user
+
+    # =========================================================================
+    # Helpers
+    # =========================================================================
+
+    @staticmethod
+    def _parse_name(display_name, email):
+        """Extract first/last name from display name or email."""
+        if display_name and display_name.strip():
+            parts = display_name.strip().split(None, 1)
+            return parts[0], parts[1] if len(parts) > 1 else ""
+        username = email.split("@")[0]
+        parts = username.replace(".", " ").split(None, 1)
+        first = parts[0].title()
+        last = parts[1].title() if len(parts) > 1 else ""
+        return first, last
 
     # =========================================================================
     # User Creation

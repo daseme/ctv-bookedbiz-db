@@ -40,11 +40,21 @@ def login():
             user_service = container.get("user_service")
             user = user_service.authenticate_by_tailscale(login_email, display_name)
             if user:
+                is_new = user.last_login is None
                 login_user(user, remember=False)
-                flash(f"Welcome back, {user.first_name}!", "success")
+                if is_new:
+                    flash(
+                        f"Welcome, {user.first_name}! "
+                        "Your account has been created.",
+                        "success",
+                    )
+                else:
+                    flash(
+                        f"Welcome back, {user.first_name}!",
+                        "success",
+                    )
                 next_page = request.args.get("next") or "/reports/"
                 return redirect(next_page)
-            flash("Your Tailscale account is not authorized. Ask an admin to add you.", "error")
         except Exception as e:
             logger.error(f"Login error: {e}")
             flash("An error occurred during login. Please try again.", "error")
