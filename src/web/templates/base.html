@@ -528,14 +528,10 @@
                     📊 {% if current_user.role.value == 'AE' %}My Dashboard{% else %}AE Dashboard{% endif %}
                 </a>
                 {% endif %}
-                <a href="{{ url_for('user_management.profile') }}" 
-                   style="color: var(--nord6); text-decoration: none; margin-right: 16px; font-size: 14px; font-weight: 500;">
-                    👤 {{ current_user.first_name }}
-                </a>
-                <a href="{{ url_for('user_management.logout') }}" 
-                   style="color: var(--nord6); text-decoration: none; margin-right: 12px; font-size: 14px;">
-                    Logout
-                </a>
+                <span style="color: var(--nord4); margin-right: 12px; font-size: 13px;">
+                    {{ current_user.first_name }} {{ current_user.last_name }}
+                    <span style="color: var(--nord9); font-size: 11px; margin-left: 4px; text-transform: uppercase;">{{ current_user.role.value }}</span>
+                </span>
                 {% else %}
                 <a href="{{ url_for('user_management.login') }}" 
                    style="color: var(--nord6); text-decoration: none; margin-right: 12px; font-size: 14px;">
