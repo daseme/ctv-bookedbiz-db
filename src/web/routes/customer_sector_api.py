@@ -51,28 +51,20 @@ def get_customers():
         cursor.execute(customer_query)
         customer_rows = cursor.fetchall()
 
-        # Get revenue data for all customers in one efficient query
+        # Get revenue data directly from spots by customer_id
         revenue_query = """
-        SELECT 
-            audit.customer_id,
-            ROUND(SUM(COALESCE(s.gross_rate, 0)), 2) AS total_revenue,
-            COUNT(s.spot_id) AS spot_count
-        FROM v_customer_normalization_audit audit
-        LEFT JOIN spots s ON audit.raw_text = s.bill_code
-        LEFT JOIN agencies a ON s.agency_id = a.agency_id
-        WHERE s.revenue_type = 'Internal Ad Sales'
-          AND (a.agency_name != 'WorldLink' OR a.agency_name IS NULL)
-          AND s.gross_rate > 0
-          AND audit.customer_id IN ({})
-        GROUP BY audit.customer_id
-        """.format(",".join(["?"] * len(customer_rows)))
+        SELECT
+            customer_id,
+            ROUND(SUM(COALESCE(gross_rate, 0)), 2) AS total_revenue,
+            COUNT(spot_id) AS spot_count
+        FROM spots
+        WHERE customer_id IS NOT NULL
+          AND (revenue_type != 'Trade' OR revenue_type IS NULL)
+        GROUP BY customer_id
+        """
 
-        customer_ids = [row[0] for row in customer_rows]
-        if customer_ids:  # Only run revenue query if we have customers
-            # cursor.execute(revenue_query, customer_ids)  # TEMP: Disabled for performance
-            revenue_rows = []  # TEMP: Return empty revenue data
-        else:
-            revenue_rows = []
+        cursor.execute(revenue_query)
+        revenue_rows = cursor.fetchall()
 
         # Create revenue lookup dict
         revenue_lookup = {}
