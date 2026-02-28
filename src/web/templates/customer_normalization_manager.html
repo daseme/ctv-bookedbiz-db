@@ -28,6 +28,21 @@
   .sticky-first tbody td:first-child{position:sticky;left:0;background:#fff;z-index:1}
   .dim{color:#64748b}
 
+  /* Info button & modal */
+  .info-btn{width:28px;height:28px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .info-btn:hover{background:#f0f9ff;border-color:#0ea5e9;color:#0ea5e9}
+  .info-modal{background:#fff;border-radius:12px;width:100%;max-width:560px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .info-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff}
+  .info-modal .modal-header h3{margin:0;font-size:18px;color:#0369a1}
+  .info-modal .modal-body{padding:24px;max-height:70vh;overflow-y:auto}
+  .info-modal .info-section{margin-bottom:20px}
+  .info-modal .info-section:last-child{margin-bottom:0}
+  .info-modal .info-section h4{margin:0 0 6px;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .info-modal .info-section p{margin:0;font-size:13px;color:#475569;line-height:1.5}
+  .info-modal .info-section ul{margin:4px 0 0;padding-left:18px;font-size:13px;color:#475569;line-height:1.6}
+  #info-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:999}
+  #info-modal.active{display:flex}
+
   /* Modal */
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
   .modal{width:min(560px,92vw);background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.15);overflow:hidden}
@@ -79,6 +94,7 @@
     </select>
     <button id="btn-refresh">Refresh</button>
     <button id="btn-export">Export CSV</button>
+    <button class="info-btn" onclick="document.getElementById('info-modal').classList.add('active')" title="About this tool">?</button>
 
     <!-- Actions -->
     <button id="canon-open" class="action-btn primary">➕ Canonize agency</button>
@@ -113,6 +129,45 @@
     <div>
       <button id="prev">← Prev</button>
       <button id="next">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Info Modal -->
+<div id="info-modal">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>About This Tool</h3>
+      <button class="modal-close" onclick="document.getElementById('info-modal').classList.remove('active')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What is this tool?</h4>
+        <p>An audit view of the normalization pipeline. Shows how raw bill code strings from spots imports are transformed into canonical customer names, and whether those names exist in the customers table.</p>
+      </div>
+      <div class="info-section">
+        <h4>Columns</h4>
+        <ul>
+          <li><strong>Raw</strong> &mdash; The exact string from the spots import file</li>
+          <li><strong>Normalized</strong> &mdash; The cleaned canonical name after stripping prefixes (PROD/, PRODUCTION/) and applying canonization rules</li>
+          <li><strong>Customer</strong> &mdash; The matching customer record, if one exists</li>
+          <li><strong>Agency 1 / 2</strong> &mdash; Agency prefixes extracted from the raw string</li>
+          <li><strong>Status</strong> &mdash; Whether the normalized name exists in the customers table or has conflicts</li>
+        </ul>
+      </div>
+      <div class="info-section">
+        <h4>Actions</h4>
+        <ul>
+          <li><strong>Canonize agency</strong> &mdash; Add a mapping rule for an agency name variation (e.g., "iGRAPHIX" &rarr; "iGraphix")</li>
+          <li><strong>Canonize customer</strong> &mdash; Add a mapping rule for a customer name tail (e.g., "Mc'Donald's" &rarr; "McDonald's")</li>
+          <li><strong>Map raw &rarr; normalized</strong> &mdash; Manually set the normalized name for a specific raw string</li>
+          <li><strong>Create customer</strong> &mdash; Create a new customer record for a normalized name that doesn't exist yet</li>
+        </ul>
+      </div>
+      <div class="info-section">
+        <h4>When to use this</h4>
+        <p>After a spots import, filter to "Missing in customers" or "Alias conflicts" to find names that need attention. Most normalization happens automatically &mdash; this tool handles the edge cases.</p>
+      </div>
     </div>
   </div>
 </div>
@@ -394,6 +449,9 @@
   // ========== Close on overlay click ==========
   ["#canon-modal","#canon-customer-modal","#map-raw-modal","#create-customer-modal"].forEach(id=>{
     $(id)?.addEventListener("click",(ev)=>{ if(ev.target===ev.currentTarget) ev.currentTarget.style.display="none"; });
+  });
+  document.getElementById('info-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
   });
 })();
 </script>
