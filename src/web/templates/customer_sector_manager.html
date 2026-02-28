@@ -11,6 +11,21 @@
 
 {% block extra_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/customer-sector-manager.css') }}">
+<style>
+  .info-btn{width:28px;height:28px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .info-btn:hover{background:#f0f9ff;border-color:#0ea5e9;color:#0ea5e9}
+  .info-modal{background:#fff;border-radius:12px;width:100%;max-width:560px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .info-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff}
+  .info-modal .modal-header h3{margin:0;font-size:18px;color:#0369a1}
+  .info-modal .modal-body{padding:24px;max-height:70vh;overflow-y:auto}
+  .info-modal .info-section{margin-bottom:20px}
+  .info-modal .info-section:last-child{margin-bottom:0}
+  .info-modal .info-section h4{margin:0 0 6px;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .info-modal .info-section p{margin:0;font-size:13px;color:#475569;line-height:1.5}
+  .info-modal .info-section ul{margin:4px 0 0;padding-left:18px;font-size:13px;color:#475569;line-height:1.6}
+  #info-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:999}
+  #info-modal.active{display:flex}
+</style>
 {% endblock %}
 
 {% block header_title %}Customer & Sector Management{% endblock %}
@@ -60,6 +75,7 @@
                     <button class="action-btn secondary" onclick="clearFilters()">Clear</button>
                     <button class="action-btn secondary" onclick="exportData()">Export</button>
                     <button id="add-sector-btn" class="action-btn primary">Add Sector</button>
+                    <button class="info-btn" onclick="document.getElementById('info-modal').classList.add('active')" title="About this tool">?</button>
                 </div>
 
                 <!-- Bottom Row: Filters -->
@@ -144,6 +160,38 @@
         </div>
     </div>
 
+    <!-- Info Modal -->
+    <div id="info-modal">
+      <div class="info-modal">
+        <div class="modal-header">
+          <h3>About This Tool</h3>
+          <button class="modal-close" onclick="document.getElementById('info-modal').classList.remove('active')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="info-section">
+            <h4>What is this tool?</h4>
+            <p>Assigns sectors to customers so revenue can be grouped and analyzed by industry. Every customer should have a primary sector.</p>
+          </div>
+          <div class="info-section">
+            <h4>Sectors</h4>
+            <p>Six standard groups: Commercial, Financial, Healthcare, Outreach, Political, and Other. Use "Add Sector" to create a new one if none of the existing options fit.</p>
+          </div>
+          <div class="info-section">
+            <h4>Assigning a sector</h4>
+            <p>Click the sector dropdown on any customer row and select a sector. The assignment saves immediately. Use the "Unassigned Only" filter to find customers that still need a sector.</p>
+          </div>
+          <div class="info-section">
+            <h4>Bulk assignment</h4>
+            <p>Check multiple customers using the checkboxes, choose a sector from the "Assign to..." dropdown, and click Apply. All selected customers are updated at once.</p>
+          </div>
+          <div class="info-section">
+            <h4>Revenue filter</h4>
+            <p>Prioritize high-value customers by filtering to $100K+ first. Zero-revenue customers are often orphan records that may not need sector assignment.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Notification Area -->
     <div id="notification" class="notification"></div>
 </div>
@@ -154,4 +202,9 @@
 <script src="{{ url_for('static', filename='js/modules/customer-sector-state.js') }}"></script>
 <script src="{{ url_for('static', filename='js/modules/customer-sector-ui.js') }}"></script>
 <script src="{{ url_for('static', filename='js/customer-sector-manager.js') }}"></script>
+<script>
+document.getElementById('info-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+});
+</script>
 {% endblock %}
