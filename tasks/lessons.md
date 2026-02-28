@@ -472,5 +472,15 @@ The existing `entity_resolution` unresolved query correctly filters both (`c.cus
 
 ---
 
+---
+
+### Rule 32: Never Leave "TEMP: Disabled" Code in Production — Fix the Root Cause
+**Context**: Customer Sector Manager revenue column showed all zeros. The revenue query in `customer_sector_api.py` was commented out with `# TEMP: Disabled for performance` and replaced with `revenue_rows = []`. It had been shipping zeros for an unknown period.
+**Pattern**: The original query joined through `v_customer_normalization_audit` and matched spots by `bill_code` — an expensive path when `spots.customer_id` is already available. The "temp" disable became permanent because the workaround (showing $0) didn't cause errors.
+**The fix**: Replace the slow query with a direct `GROUP BY customer_id` on the spots table (under 1s for 308 customers vs the original that was too slow to keep enabled).
+**Action**: When disabling code for performance, immediately file a task to fix it properly. "TEMP" comments become permanent unless tracked. If a query is too slow, rewrite it — don't comment it out and return fake data.
+
+---
+
 **Last Updated**: 2026-02-27
-**Session Context**: Customer merge tool — alias-already-exists error on backfill-needed items.
+**Session Context**: Customer Sector Manager — all-zero revenue from disabled query.
