@@ -21,6 +21,11 @@ def customer_merge_page():
     return render_template("customer_merge.html")
 
 
+@customer_merge_bp.route("/customer-merge/guide")
+def customer_merge_guide():
+    return render_template("customer_merge_guide.html")
+
+
 @customer_merge_bp.route("/api/customer-merge/unresolved")
 def unresolved_bill_codes():
     """Bill codes on spots with NULL customer_id, split by resolution state.

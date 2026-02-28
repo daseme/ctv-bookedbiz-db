@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+
+{% block title %}Customer Merge Guide - SpotOps{% endblock %}
+
+{% block header_title %}Customer Merge Guide{% endblock %}
+{% block header_subtitle %}Reference guide for bill code resolution and customer merging{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">›</span>
+<a href="/customer-merge">Data Management</a>
+<span class="breadcrumb-separator">›</span>
+<a href="/customer-merge">Customer Merge</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">Guide</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .header { display: none; }
+    .content-wrapper { padding: 0; }
+
+    .guide-layout {
+        display: flex;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    /* ── Sidebar TOC ── */
+    .guide-toc {
+        width: 220px;
+        flex-shrink: 0;
+        position: sticky;
+        top: 120px;
+        align-self: flex-start;
+        padding: 24px 0 24px 24px;
+        max-height: calc(100vh - 140px);
+        overflow-y: auto;
+    }
+    .guide-toc h3 {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--nord3);
+        margin: 0 0 12px 0;
+    }
+    .guide-toc a {
+        display: block;
+        padding: 5px 12px;
+        font-size: 13px;
+        color: var(--nord3);
+        text-decoration: none;
+        border-left: 2px solid transparent;
+        transition: all 0.15s;
+        line-height: 1.4;
+    }
+    .guide-toc a:hover {
+        color: var(--nord10);
+        border-left-color: var(--nord8);
+    }
+    .guide-toc a.active {
+        color: var(--nord10);
+        border-left-color: var(--nord10);
+        font-weight: 600;
+    }
+
+    /* ── Main content ── */
+    .guide-main {
+        flex: 1;
+        min-width: 0;
+        padding: 32px 40px 64px 40px;
+    }
+
+    /* Hero */
+    .guide-hero {
+        text-align: center;
+        margin-bottom: 40px;
+        padding-bottom: 32px;
+        border-bottom: 1px solid var(--nord4);
+    }
+    .guide-hero h1 {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--nord0);
+        margin: 0 0 8px 0;
+    }
+    .guide-hero p {
+        font-size: 15px;
+        color: var(--nord3);
+        margin: 0 0 16px 0;
+    }
+    .guide-hero .back-link {
+        display: inline-block;
+        padding: 8px 20px;
+        background: linear-gradient(135deg, var(--nord8), var(--nord7));
+        color: #fff;
+        text-decoration: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        transition: transform 0.15s;
+    }
+    .guide-hero .back-link:hover { transform: translateY(-1px); }
+
+    /* Section cards */
+    .guide-section {
+        background: #fff;
+        border: 1px solid var(--nord4);
+        border-radius: 10px;
+        padding: 28px 32px;
+        margin-bottom: 28px;
+        scroll-margin-top: 130px;
+    }
+    .guide-section h2 {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--nord0);
+        margin: 0 0 16px 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .guide-section h2 .section-icon {
+        font-size: 22px;
+    }
+    .guide-section h3 {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--nord1);
+        margin: 20px 0 8px 0;
+    }
+    .guide-section p, .guide-section li {
+        font-size: 14px;
+        color: var(--nord2);
+        line-height: 1.7;
+    }
+    .guide-section ul, .guide-section ol {
+        padding-left: 20px;
+        margin: 8px 0;
+    }
+    .guide-section li { margin-bottom: 4px; }
+
+    .g-badge {
+        display: inline-block;
+        padding: 1px 7px;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 4px;
+        background: var(--nord5);
+        color: var(--nord1);
+        font-family: SFMono-Regular, Menlo, monospace;
+    }
+
+    .guide-tip {
+        background: #e0f2fe;
+        border-left: 4px solid var(--nord8);
+        padding: 12px 16px;
+        border-radius: 0 6px 6px 0;
+        margin: 16px 0;
+        font-size: 13px;
+        color: var(--nord1);
+        line-height: 1.6;
+    }
+    .guide-tip strong { color: var(--nord0); }
+
+    .guide-warning {
+        background: #fef2f2;
+        border-left: 4px solid var(--nord11);
+        padding: 12px 16px;
+        border-radius: 0 6px 6px 0;
+        margin: 16px 0;
+        font-size: 13px;
+        color: var(--nord1);
+        line-height: 1.6;
+    }
+    .guide-warning strong { color: var(--nord11); }
+
+    /* Comparison table */
+    .compare-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        margin: 16px 0;
+    }
+    .compare-table th {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 2px solid var(--nord1);
+        font-weight: 600;
+        font-size: 12px;
+        color: var(--nord2);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .compare-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--nord5);
+        color: var(--nord2);
+        line-height: 1.5;
+    }
+    .compare-table tr:last-child td { border-bottom: none; }
+    .compare-table tbody tr:hover { background: var(--nord6); }
+
+    /* Step cards */
+    .step-flow {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 16px 0;
+    }
+    .step-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 14px 16px;
+        background: var(--nord6);
+        border-radius: 8px;
+    }
+    .step-num {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--nord10);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+    .step-body { flex: 1; min-width: 0; }
+    .step-body strong {
+        display: block;
+        font-size: 14px;
+        color: var(--nord0);
+        margin-bottom: 2px;
+    }
+    .step-body span {
+        font-size: 13px;
+        color: var(--nord2);
+        line-height: 1.5;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+        .guide-toc { display: none; }
+        .guide-main { padding: 24px 24px 48px 24px; }
+
+        .guide-toc-mobile {
+            display: flex;
+            gap: 0;
+            overflow-x: auto;
+            padding: 12px 24px;
+            border-bottom: 1px solid var(--nord4);
+            background: #fff;
+            position: sticky;
+            top: 64px;
+            z-index: 50;
+            -webkit-overflow-scrolling: touch;
+        }
+        .guide-toc-mobile a {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--nord3);
+            text-decoration: none;
+            border-radius: 16px;
+            white-space: nowrap;
+            transition: all 0.15s;
+        }
+        .guide-toc-mobile a:hover,
+        .guide-toc-mobile a.active {
+            background: var(--nord5);
+            color: var(--nord10);
+        }
+    }
+    @media (min-width: 1025px) {
+        .guide-toc-mobile { display: none; }
+    }
+    @media (max-width: 640px) {
+        .guide-section { padding: 20px 18px; }
+        .compare-table { font-size: 12px; }
+        .compare-table th, .compare-table td { padding: 8px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Mobile TOC -->
+<nav class="guide-toc-mobile" id="toc-mobile">
+    <a href="#overview">Overview</a>
+    <a href="#unresolved">Unresolved</a>
+    <a href="#merge">Merge</a>
+    <a href="#comparison">Comparison</a>
+    <a href="#tips">Tips</a>
+</nav>
+
+<div class="guide-layout">
+    <!-- Desktop TOC sidebar -->
+    <nav class="guide-toc" id="toc-desktop">
+        <h3>On This Page</h3>
+        <a href="#overview">Overview</a>
+        <a href="#unresolved">Unresolved Bill Codes</a>
+        <a href="#merge">Merge Customers</a>
+        <a href="#comparison">When to Use What</a>
+        <a href="#tips">Tips</a>
+    </nav>
+
+    <main class="guide-main">
+        <!-- Hero -->
+        <div class="guide-hero">
+            <h1>Customer Merge Guide</h1>
+            <p>Resolve orphaned bill codes and merge duplicate customer records.</p>
+            <a href="/customer-merge" class="back-link">Open Customer Merge</a>
+        </div>
+
+        <!-- 1. Overview -->
+        <section id="overview" class="guide-section">
+            <h2><span class="section-icon">📖</span> Overview</h2>
+            <p>
+                The Customer Merge tool combines two workflows on a single page:
+            </p>
+            <ul>
+                <li><strong>Resolve unlinked bill codes</strong> — spots that have no
+                    <span class="g-badge">customer_id</span> because their bill code
+                    hasn't been linked to a customer yet.</li>
+                <li><strong>Merge duplicate customers</strong> — combine two customer
+                    records into one, moving all spots and aliases to the target and
+                    deactivating the source.</li>
+            </ul>
+            <p>
+                Both workflows change production data. Unresolved bill codes can be
+                re-resolved if needed, but customer merges are permanent.
+            </p>
+        </section>
+
+        <!-- 2. Unresolved Bill Codes -->
+        <section id="unresolved" class="guide-section">
+            <h2><span class="section-icon">🔗</span> Unresolved Bill Codes</h2>
+            <p>
+                When spots are imported, each row has a <span class="g-badge">bill_code</span>.
+                The system looks up an alias to find which customer the bill code belongs to,
+                then stamps the <span class="g-badge">customer_id</span> on the spot.
+                Sometimes this fails, leaving spots with a NULL customer_id. These orphaned
+                spots won't appear in customer revenue reports.
+            </p>
+            <p>
+                The Unresolved Bill Codes table shows every bill code that has at least one
+                spot with no customer_id, sorted by revenue (highest first). Each row falls
+                into one of two categories:
+            </p>
+
+            <h3>Backfill</h3>
+            <p>
+                An alias already exists for this bill code, pointing to a known customer.
+                The spots just need their <span class="g-badge">customer_id</span> stamped.
+                This happens when aliases were created after spots were imported, or when
+                a previous backfill was interrupted.
+            </p>
+            <div class="step-flow">
+                <div class="step-card">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <strong>Click "Backfill to [Customer Name]"</strong>
+                        <span>The button shows which customer the alias points to.
+                            One click updates all spots for that bill code.</span>
+                    </div>
+                </div>
+            </div>
+            <div class="guide-tip">
+                <strong>Tip:</strong> Backfills are safe and fast. They just fill in a
+                missing customer_id using an alias that already exists.
+            </div>
+
+            <h3>Link</h3>
+            <p>
+                No alias exists for this bill code. You need to search for the correct
+                customer and create a new alias, which also backfills all the spots.
+            </p>
+            <div class="step-flow">
+                <div class="step-card">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <strong>Click "Link"</strong>
+                        <span>Opens an inline search row below the bill code.</span>
+                    </div>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <strong>Search for the target customer</strong>
+                        <span>Type at least 2 characters. Results show customer name,
+                            sector, and spot count.</span>
+                    </div>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <strong>Click the correct customer</strong>
+                        <span>A confirmation dialog shows the bill code and target
+                            customer. Confirming creates the alias and backfills all
+                            spots.</span>
+                    </div>
+                </div>
+            </div>
+            <div class="guide-tip">
+                <strong>Tip:</strong> After linking, the bill code row fades out and the
+                table refreshes after a short delay. The customer's revenue metrics are
+                also recalculated.
+            </div>
+        </section>
+
+        <!-- 3. Merge Customers -->
+        <section id="merge" class="guide-section">
+            <h2><span class="section-icon">🔀</span> Merge Customers</h2>
+            <p>
+                The Merge Customers section lets you combine two customer records into one.
+                The <strong>source</strong> customer gets deactivated, and all its spots and
+                aliases are moved to the <strong>target</strong> customer.
+            </p>
+
+            <div class="step-flow">
+                <div class="step-card">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <strong>Search for the source customer</strong>
+                        <span>This is the duplicate you want to remove. Type at least
+                            2 characters to search by name.</span>
+                    </div>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <strong>Select the source</strong>
+                        <span>Click the correct result. The search box is replaced with
+                            the selected customer's details, and Step 2 appears.</span>
+                    </div>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <strong>Search for the target customer</strong>
+                        <span>This is the customer you want to keep. You cannot select
+                            the same customer as both source and target.</span>
+                    </div>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">4</div>
+                    <div class="step-body">
+                        <strong>Review the merge preview</strong>
+                        <span>A preview panel shows both customers with an arrow
+                            indicating the merge direction (source → target).</span>
+                    </div>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">5</div>
+                    <div class="step-body">
+                        <strong>Confirm the merge</strong>
+                        <span>Click "Confirm Merge" and approve the confirmation dialog.
+                            All spots and aliases move to the target; the source is
+                            deactivated.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="guide-warning">
+                <strong>Warning:</strong> Customer merges cannot be undone. The source
+                customer is deactivated and all its data is reassigned. Double-check
+                both customers before confirming.
+            </div>
+
+            <h3>What happens during a merge</h3>
+            <ul>
+                <li>All spots from the source are reassigned to the target</li>
+                <li>All aliases from the source are moved to the target</li>
+                <li>The source customer's name becomes an alias for the target</li>
+                <li>The source customer is marked as inactive</li>
+                <li>The target customer's revenue metrics are recalculated</li>
+            </ul>
+        </section>
+
+        <!-- 4. When to Use What -->
+        <section id="comparison" class="guide-section">
+            <h2><span class="section-icon">🧭</span> When to Use What</h2>
+            <p>
+                SpotOps has several tools for managing customer identity. Here's when
+                to use each one:
+            </p>
+            <table class="compare-table">
+                <thead>
+                    <tr>
+                        <th>Tool</th>
+                        <th>Use When</th>
+                        <th>What It Does</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Entity Resolution</strong></td>
+                        <td>New names appear after a spots import and need to be
+                            matched to existing customers or created as new ones</td>
+                        <td>Create new customer, link to existing, or skip</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Customer Merge</strong></td>
+                        <td>You know two customer records are duplicates, or bill
+                            codes need linking to existing customers</td>
+                        <td>Merge source into target; resolve orphaned bill codes</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Address Book merge</strong></td>
+                        <td>You spot a duplicate while browsing an entity's detail
+                            panel (via "Merge Into..." or inline merge button)</td>
+                        <td>Same merge operation, accessed from within entity detail</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Entity Aliases</strong></td>
+                        <td>You need to review or manage the alias mappings between
+                            bill codes and customer/agency records</td>
+                        <td>View, create, deactivate, or edit alias records</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="guide-tip">
+                <strong>Tip:</strong> Entity Resolution handles new names at import time.
+                Customer Merge handles duplicates and orphans discovered later. The Address
+                Book merge is the same operation accessed from a different starting point.
+            </div>
+        </section>
+
+        <!-- 5. Tips -->
+        <section id="tips" class="guide-section">
+            <h2><span class="section-icon">💡</span> Tips</h2>
+
+            <h3>Before merging</h3>
+            <ul>
+                <li>Check both customers in the Address Book first to compare
+                    their revenue, spots, and contact info</li>
+                <li>Merge the lower-revenue customer into the higher-revenue one
+                    to keep the more complete record</li>
+                <li>If both names should resolve to the target going forward,
+                    the merge automatically creates the alias</li>
+            </ul>
+
+            <h3>After merging</h3>
+            <ul>
+                <li>Revenue metrics refresh automatically for the target customer</li>
+                <li>Check the Entity Aliases page to verify the new alias was created</li>
+                <li>The source customer still exists as an inactive record — it
+                    won't appear in reports or the Address Book unless you toggle
+                    "Show Deactivated"</li>
+            </ul>
+
+            <h3>Common scenarios</h3>
+            <ul>
+                <li><strong>Same customer, different bill codes:</strong> Use the
+                    Link action in Unresolved Bill Codes to connect the bill code
+                    to the correct customer</li>
+                <li><strong>Two records for the same business:</strong> Use Merge
+                    Customers to combine them into one</li>
+                <li><strong>Agency-prefixed duplicates</strong> (e.g., "Misfit:Acme"
+                    and "Acme Corp"): Use the Address Book's Find Duplicates feature
+                    on the agency detail panel, or merge here</li>
+            </ul>
+        </section>
+
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var sections = document.querySelectorAll('.guide-section');
+    var tocLinks = document.querySelectorAll(
+        '.guide-toc a, .guide-toc-mobile a'
+    );
+
+    function updateActiveLink() {
+        var current = '';
+        var scrollY = window.scrollY + 160;
+
+        sections.forEach(function(section) {
+            if (section.offsetTop <= scrollY) {
+                current = section.id;
+            }
+        });
+
+        tocLinks.forEach(function(link) {
+            link.classList.toggle(
+                'active',
+                link.getAttribute('href') === '#' + current
+            );
+        });
+    }
+
+    window.addEventListener('scroll', updateActiveLink, { passive: true });
+    updateActiveLink();
+
+    tocLinks.forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({
+                    behavior: 'smooth', block: 'start'
+                });
+                history.replaceState(
+                    null, '', this.getAttribute('href')
+                );
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}
