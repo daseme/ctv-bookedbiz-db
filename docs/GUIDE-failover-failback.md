@@ -1,431 +1,269 @@
-# Pi2 Mirror Backup System for Pi-CTV
+# Backup and Failover Guide
 
-**Project Lepidoptera - Control Station Alpha Infrastructure**
-
----
-
-## 🎯 System Overview
-
-This document describes the **Pi2 Mirror Backup System** - a comprehensive failover solution that provides high-availability backup for the critical pi-ctv Flask application and SQLite database. The system integrates seamlessly with **Control Station Alpha** monitoring infrastructure to provide enterprise-grade business continuity.
-
-### Architecture Summary
-```
-Pi-CTV (Primary) - 100.81.73.46:8000
-├── Flask Application (Active)
-├── SQLite Database (1.4GB+)
-├── Nightly Backup: 2:05 AM → Dropbox
-└── Monitored by: Control Station Alpha
-
-Pi2 (Mirror/Standby) - 100.96.96.109:8000  
-├── Flask Application (Standby)
-├── Daily Database Sync: 2:30 AM ← Dropbox
-├── Kuma Professional Monitoring: Port 3001
-├── Control Station Interface: Port 5001
-└── Emergency Failover: 30-second activation
-```
+Production database: `/var/lib/ctv-bookedbiz-db/production.db` (~1.4 GB SQLite, owned by `ctvbooked`)
 
 ---
 
-## 🏗️ System Components
+## Backup Stack
 
-### 1. **Automated Daily Synchronization**
-- **Timer**: `ctv-pi2-download.timer` runs daily at 2:30 AM
-- **Service**: `ctv-pi2-download.service` downloads fresh database 
-- **Log Location**: `/var/log/ctv-pi2-download/download.log`
-- **Safety Window**: 25-minute gap after pi-ctv upload (2:05 AM) prevents conflicts
+Three independent layers, each covering different failure modes:
 
-### 2. **Emergency Failover System**
-- **Script**: `/opt/apps/ctv-bookedbiz-db/scripts/failover-to-pi2.sh`
-- **Activation Time**: ~30 seconds (database already synced)
-- **Health Checks**: Code update, database validation, service startup, HTTP endpoint test
-- **Monitoring Integration**: Control Station Alpha alerts when pi-ctv fails
+| Layer | Tool | Target | RPO | Runs as |
+|-------|------|--------|-----|---------|
+| Continuous WAL replication | Litestream 0.5.9 | Backblaze B2 (`ctv-bookedbiz-wal`) | ~1 second | `litestream.service` (root) |
+| Nightly full-DB snapshot | Dropbox upload | Dropbox `/database.db` + `/backups/` | 24 hours | `ctv-db-sync.service` (daseme) |
+| Cold standby mirror | Pi2 download | Pi2 local DB | 24 hours | `ctv-pi2-download.service` (Pi2) |
 
-### 3. **Failback System**
-- **Script**: `/opt/apps/ctv-bookedbiz-db/scripts/failback-to-pi2.sh`  
-- **Data Safety**: Read-only mirror with optional manual backup of failover changes
-- **Double Confirmation**: Required for database uploads to prevent conflicts
-- **Timestamped Backups**: `failover_backup_YYYYMMDD_HHMMSS.db` format
-
-### 4. **Flask Service Management**
-- **Service**: `flaskapp.service` (disabled by default on pi2)
-- **Port**: 8000 (same as pi-ctv for seamless transition)
-- **Dependencies**: Python virtual environment, uv package manager
-- **Startup**: On-demand activation during failover events
+**Recovery priority**: Litestream first (freshest), Dropbox second (full snapshots), Pi2 third (cold standby).
 
 ---
 
-## ⚡ Daily Operations
+## Layer 1: Litestream (Continuous Replication)
 
-### Automated Processes
+Litestream continuously replicates SQLite WAL frames to Backblaze B2 with a 1-second sync interval. This is the primary disaster recovery mechanism.
 
-**2:05 AM - Pi-CTV Upload**
-```bash
-# Pi-ctv uploads database to Dropbox
-systemctl status ctv-db-sync.timer
-```
+### Configuration
 
-**2:30 AM - Pi2 Download**  
-```bash
-# Pi2 downloads fresh database from Dropbox
-systemctl status ctv-pi2-download.timer
-systemctl list-timers | grep ctv-pi2-download
-```
+- **Service**: `litestream.service` (enabled, runs as root)
+- **Config**: `/etc/litestream.yml`
+- **Env**: `/etc/ctv-litestream.env` (B2 credentials)
+- **Source DB**: `/var/lib/ctv-bookedbiz-db/production.db`
+- **Destination**: `s3://ctv-bookedbiz-wal/production` via `s3.us-west-004.backblazeb2.com`
+- **Log**: `/var/log/litestream/replicate.log`
 
-**Monitoring**
-- **Control Station Alpha**: Monitors both pi-ctv health and backup system status
-- **Kuma Dashboard**: Professional monitoring with Teams integration
-- **Automatic Alerts**: Immediate notification if pi-ctv becomes unavailable
-
-### Health Monitoring Commands
+### Daily operations
 
 ```bash
-# Check pi2 backup system status
-sudo systemctl status ctv-pi2-download.timer
+# Check replication status
+systemctl status litestream
 
-# View recent backup logs  
-tail -20 /var/log/ctv-pi2-download/download.log
+# View recent replication activity
+tail -20 /var/log/litestream/replicate.log
 
-# Check database freshness
-ls -lh /opt/apps/ctv-bookedbiz-db/data/database/production.db*
-date -r /opt/apps/ctv-bookedbiz-db/data/database/production.db
-
-# Test Flask service (without starting)
-cd /opt/apps/ctv-bookedbiz-db
-source .venv/bin/activate
-sudo systemctl status flaskapp
+# Verify WAL frames are flowing (look for compaction messages)
+grep "compaction complete" /var/log/litestream/replicate.log | tail -5
 ```
+
+### Recovery from Litestream
+
+Restore the database to a local path from B2:
+
+```bash
+# Install litestream if not present
+# (already installed at /usr/bin/litestream)
+
+# Restore to a temp path first
+sudo litestream restore -config /etc/litestream.yml \
+  -o /tmp/restored-production.db \
+  /var/lib/ctv-bookedbiz-db/production.db
+
+# Verify integrity
+sqlite3 /tmp/restored-production.db "PRAGMA integrity_check;"
+
+# Stop the app, replace the DB, restart
+sudo systemctl stop ctv-bookedbiz-db.service
+sudo systemctl stop litestream.service
+sudo cp /tmp/restored-production.db /var/lib/ctv-bookedbiz-db/production.db
+sudo chown ctvbooked:ctvbooked /var/lib/ctv-bookedbiz-db/production.db
+sudo systemctl start litestream.service
+sudo systemctl start ctv-bookedbiz-db.service
+```
+
+### Troubleshooting
+
+- **"initialized db" but no compaction**: Check B2 credentials in `/etc/ctv-litestream.env`
+- **Service keeps restarting**: Check `journalctl -u litestream -n 50` for auth errors
+- **Stale replication**: Verify the production DB is receiving writes (check file mtime)
 
 ---
 
-## 🚨 Emergency Procedures
+## Layer 2: Dropbox Nightly Backup
 
-### Failover Activation (Pi-CTV Down)
+A nightly systemd timer uploads the full production database to Dropbox and creates timestamped backup copies. Keeps the last 7 backups and runs an integrity check after each upload.
 
-**When Control Station Alpha alerts of pi-ctv failure:**
+### Configuration
 
-```bash
-# SSH to pi2
-ssh daseme@100.96.96.109
+- **Timer**: `ctv-db-sync.timer` — daily at 02:05 with up to 5 min jitter
+- **Service**: `ctv-db-sync.service` (oneshot, runs as `daseme:ctvapps`)
+- **Script**: `/opt/apps/ctv-bookedbiz-db/bin/db_sync.sh`
+- **Env**: `/etc/ctv-db-sync.env` (`DATABASE_PATH`, Dropbox OAuth tokens)
+- **Log**: `/var/log/ctv-db-sync/sync.log`
+- **Dropbox paths**: `/database.db` (latest) + `/backups/database_backup_YYYYMMDD_HHMMSS.db`
+- **Retention**: 7 most recent backups; older ones pruned automatically
 
-# Navigate to project
-cd /opt/apps/ctv-bookedbiz-db
+### Sandboxing
 
-# Execute failover (30 seconds)
-./scripts/failover-to-pi2.sh
+The service runs with `ProtectSystem=strict`, which blocks access to most of the filesystem. To read the production DB at `/var/lib/`, the service unit needs:
+
+```ini
+ReadOnlyPaths=/var/lib/ctv-bookedbiz-db
 ```
 
-**Failover Process:**
-1. ✅ **Code Update**: Latest from GitHub (5 seconds)
-2. ✅ **Database Check**: Validates local database freshness (instant)
-3. ✅ **Service Start**: Flask application startup (10 seconds)  
-4. ✅ **Health Validation**: HTTP endpoint and systemd status (10 seconds)
-5. ✅ **Confirmation**: Ready to serve traffic
+Without this line, the service cannot see the production database and uploads will fail silently (the backup script reports "Local database not found").
 
-**Post-Failover URLs:**
-- **Flask Application**: http://100.96.96.109:8000
-- **Control Station Alpha**: http://100.96.96.109:5001  
-- **Kuma Monitoring**: http://100.96.96.109:3001
-
-### Failback Activation (Pi-CTV Restored)
-
-**When pi-ctv is confirmed healthy:**
+### Daily operations
 
 ```bash
-# Execute failback from pi2
-./scripts/failback-to-pi-ctv.sh
+# Check timer status and next trigger
+systemctl list-timers | grep ctv-db-sync
+
+# View recent backup results
+tail -30 /var/log/ctv-db-sync/sync.log
+
+# Manual backup run
+sudo systemctl start ctv-db-sync.service
+journalctl -u ctv-db-sync.service -n 20 --no-pager
+
+# Verify backup integrity line in logs
+grep "Integrity" /var/log/ctv-db-sync/sync.log | tail -3
 ```
 
-**Failback Process:**
-1. ✅ **Pi-CTV Health Check**: Confirms primary system is responding
-2. ⚠️ **Data Safety Prompt**: Option to backup any changes made during failover
-3. ✅ **Service Stop**: Cleanly stops Flask on pi2
-4. ✅ **Final Verification**: Confirms pi-ctv is serving traffic
-
-**Data Handling During Failback:**
-- **Default**: No upload (failover data lost) - **safe operation**
-- **Optional**: Manual backup with double confirmation
-- **Backup Format**: `failover_backup_20250824_163045.db` (timestamped)
-- **Manual Merge**: Admin decides how to handle failover period data
-
----
-
-## 🛠️ System Management
-
-### Database Synchronization
+### Recovery from Dropbox
 
 ```bash
-# Manual database operations (when needed)
 cd /opt/apps/ctv-bookedbiz-db
 source .venv/bin/activate
 
-# Download latest database
+# Download latest database from Dropbox
 python cli_db_sync.py download
 
-# Check database info
+# Or list available backups
 python cli_db_sync.py info
 
-# Create manual backup
-python cli_db_sync.py backup custom_backup_name.db
-
 # Test Dropbox connection
 python cli_db_sync.py test
 ```
 
-### Service Management
-
-```bash
-# Daily download service
-sudo systemctl status ctv-pi2-download.service
-sudo systemctl start ctv-pi2-download.service  # Manual run
-tail -f /var/log/ctv-pi2-download/download.log  # Follow logs
-
-# Flask application service
-sudo systemctl status flaskapp
-sudo systemctl stop flaskapp     # Safe shutdown during normal operations
-sudo journalctl -u flaskapp -f   # Follow Flask logs
-
-# Timer management
-systemctl list-timers | grep ctv-pi2-download
-sudo systemctl restart ctv-pi2-download.timer
-```
-
-### Code Updates
-
-```bash
-# Update mirror system code
-cd /opt/apps/ctv-bookedbiz-db
-git pull origin main
-
-# Update Python dependencies if needed
-source .venv/bin/activate
-uv pip install -r requirements.txt
-
-# Test scripts after updates
-./scripts/failover-to-pi2.sh --dry-run  # Test mode (if implemented)
-```
-
 ---
 
-## 🔧 Troubleshooting
+## Layer 3: Pi2 Cold Standby
 
-### Common Issues
+Pi2 downloads the latest database from Dropbox daily at 02:30 (25 minutes after the Pi-CTV upload). It can serve as a warm standby with ~30-second failover activation.
 
-**Daily Download Failing**
-```bash
-# Check timer status
-sudo systemctl status ctv-pi2-download.timer
+### Network
 
-# View logs for errors
-tail -50 /var/log/ctv-pi2-download/download.log
+| Host | Tailscale IP | Role |
+|------|-------------|------|
+| Pi-CTV (primary) | 100.81.73.46 | Production app on port 8000 |
+| Pi2 (standby) | 100.96.96.109 | Mirror, failover on port 8000 |
 
-# Test Dropbox connection
-python cli_db_sync.py test
+### Pi2 services (on Pi2 only)
 
-# Manual download to diagnose
-cd /opt/apps/ctv-bookedbiz-db
-source .venv/bin/activate
-python cli_db_sync.py download
-```
+- **Timer**: `ctv-pi2-download.timer` — daily at 02:30
+- **Service**: `ctv-pi2-download.service`
+- **Log**: `/var/log/ctv-pi2-download/download.log`
+- **Flask**: `flaskapp.service` (disabled by default, started on failover)
 
-**Failover Script Errors**
-```bash
-# Check database age if failover seems slow
-stat /opt/apps/ctv-bookedbiz-db/data/database/production.db
-
-# Database older than 36 hours - download fresh copy
-python cli_db_sync.py download
-
-# Flask service won't start
-sudo systemctl status flaskapp
-sudo journalctl -u flaskapp -n 50
-
-# Test HTTP endpoint manually
-curl http://localhost:8000/api/system-stats
-```
-
-**Network/SSH Issues**
-```bash
-# Test pi2 connectivity
-ssh daseme@100.96.96.109
-
-# Test pi-ctv health from pi2
-curl -sf http://100.81.73.46:8000/api/system-stats
-
-# Test GitHub access
-ssh -T git@github.com
-```
-
-### System Recovery
-
-**Complete Pi2 System Recovery**
-```bash
-# If pi2 needs rebuilding
-ssh daseme@100.96.96.109
-cd /opt/apps
-sudo rm -rf ctv-bookedbiz-db  # Nuclear option
-
-# Follow setup procedure from main documentation
-git clone git@github.com:daseme/ctv-bookedbiz-db.git
-cd ctv-bookedbiz-db
-python3 -m venv .venv
-source .venv/bin/activate
-uv pip install -r requirements.txt
-
-# Restore secrets and services
-sudo cp /etc/ctv-db-sync.env /etc/ctv-db-sync.env.backup
-# Re-copy from pi-ctv or restore from backup
-```
-
----
-
-## 📊 Monitoring Integration
-
-### Control Station Alpha Dashboard
-
-**Monitor These Metrics:**
-- **Pi-CTV Health**: Primary Flask application status
-- **Pi2 Database Age**: Freshness of backup database  
-- **Daily Sync Status**: Success/failure of 2:30 AM downloads
-- **Failover Readiness**: Pi2 system health and connectivity
-
-### Kuma Professional Monitoring
-
-**Configured Monitors:**
-- **Pi-CTV API Endpoint**: Business Intelligence tier (immediate alerts)
-- **Pi-CTV System Health**: Infrastructure tier (immediate alerts)  
-- **Pi2 Control Station**: Self-monitoring capability
-- **Pi2 Database Sync**: Daily backup system health
-
-### Teams Alerting
-
-**Alert Scenarios:**
-1. **Pi-CTV Down**: Immediate Teams notification → Manual failover decision
-2. **Daily Sync Failed**: Standard alert → Check logs and retry
-3. **Pi2 System Issues**: Warning alert → Affects backup capability
-4. **Database Staleness**: Daily warning if >36 hours old
-
----
-
-## 🔮 Operational Procedures
-
-### Weekly Maintenance
+### Failover (Pi-CTV down)
 
 ```bash
-# Check system health (Mondays)
-systemctl list-timers | grep ctv
-sudo systemctl status ctv-pi2-download.timer flaskapp
-
-# Review logs for issues
-tail -100 /var/log/ctv-pi2-download/download.log
-sudo journalctl -u ctv-pi2-download.service --since "1 week ago"
-
-# Test failover capability (monthly)
-./scripts/failover-to-pi2.sh    # Activate  
-./scripts/failback-to-pi2.sh    # Deactivate
-```
-
-### Disaster Recovery Planning
-
-**Recovery Time Objectives (RTO):**
-- **Failover Activation**: 30 seconds
-- **System Rebuild**: 2-4 hours (complete pi2 recreation)
-- **Manual Data Recovery**: 30 minutes (from Dropbox backups)
-
-**Recovery Point Objectives (RPO):**
-- **Normal Operations**: 24 hours max (daily sync)
-- **Emergency Failover**: Current time (live database)
-- **Disaster Scenarios**: 24-48 hours (depends on backup frequency)
-
----
-
-## 📋 Quick Reference
-
-### Essential Commands
-
-```bash
-# Daily monitoring (run from pi2)
-systemctl list-timers | grep ctv-pi2-download
-tail -10 /var/log/ctv-pi2-download/download.log
-ls -lah /opt/apps/ctv-bookedbiz-db/data/database/production.db*
-
-# Emergency failover (pi-ctv down)
 ssh daseme@100.96.96.109
 cd /opt/apps/ctv-bookedbiz-db
 ./scripts/failover-to-pi2.sh
-
-# Emergency failback (pi-ctv restored)  
-./scripts/failback-to-pi-ctv.sh
-
-# System health check
-sudo systemctl status flaskapp ctv-pi2-download.timer
-curl http://100.81.73.46:8000/api/system-stats    # Pi-ctv health
-curl http://100.96.96.109:8000/api/system-stats   # Pi2 health (if active)
 ```
 
-### Important File Locations
+The script pulls the latest code, validates the local database, starts Flask, and runs a health check. Total time ~30 seconds.
+
+**Post-failover URL**: `http://100.96.96.109:8000`
+
+### Failback (Pi-CTV restored)
 
 ```bash
-# Scripts
-/opt/apps/ctv-bookedbiz-db/scripts/failover-to-pi2.sh
-/opt/apps/ctv-bookedbiz-db/scripts/failback-to-pi2.sh  
-/opt/apps/ctv-bookedbiz-db/bin/daily-download.sh
+./scripts/failback-to-pi-ctv.sh
+```
 
-# Configuration  
-/etc/systemd/system/ctv-pi2-download.service
-/etc/systemd/system/ctv-pi2-download.timer
-/etc/systemd/system/flaskapp.service
+Prompts for optional data backup of any changes made during failover, then stops Flask on Pi2.
+
+---
+
+## Monitoring
+
+```bash
+# Full backup health check (run from Pi-CTV)
+systemctl status litestream                          # Continuous replication
+systemctl list-timers | grep ctv-db-sync             # Nightly Dropbox backup
+tail -5 /var/log/litestream/replicate.log            # Recent WAL activity
+tail -5 /var/log/ctv-db-sync/sync.log                # Last Dropbox result
+
+# Pi-CTV app health
+curl -sf http://100.81.73.46:8000/api/system-stats
+
+# Pi2 readiness (from Pi2)
+systemctl list-timers | grep ctv-pi2-download
+ls -lh /opt/apps/ctv-bookedbiz-db/data/database/production.db
+```
+
+### Alert channels
+
+- ntfy.sh push notifications (on Dropbox backup failure)
+- Slack webhook (on Dropbox backup failure)
+- Kuma monitoring dashboard on Pi2 port 3001
+
+---
+
+## Recovery Time/Point Objectives
+
+| Scenario | RTO | RPO | Recovery source |
+|----------|-----|-----|-----------------|
+| DB corruption (Pi-CTV intact) | 5 min | ~1 sec | Litestream restore from B2 |
+| Pi-CTV hardware failure | 30 sec | 24 hours | Pi2 failover (Dropbox copy) |
+| Pi-CTV hardware failure (with Litestream restore) | 15 min | ~1 sec | Litestream restore to Pi2 |
+| Both Pis destroyed | 30 min | ~1 sec | Litestream restore to new host |
+| All cloud storage lost | N/A | 24 hours | Pi2 local copy |
+
+---
+
+## Important File Locations
+
+### Pi-CTV
+
+```
+# Production database
+/var/lib/ctv-bookedbiz-db/production.db       (owned by ctvbooked)
+
+# Litestream
+/usr/bin/litestream
+/etc/litestream.yml
+/etc/ctv-litestream.env
+/var/log/litestream/replicate.log
+
+# Dropbox backup
+/opt/apps/ctv-bookedbiz-db/bin/db_sync.sh
 /etc/ctv-db-sync.env
-
-# Data & Logs
-/opt/apps/ctv-bookedbiz-db/data/database/production.db
-/var/log/ctv-pi2-download/download.log
+/etc/systemd/system/ctv-db-sync.service
+/etc/systemd/system/ctv-db-sync.timer
+/var/log/ctv-db-sync/sync.log
 
 # Application
-/opt/apps/ctv-bookedbiz-db/.venv/    # Python environment  
-/opt/apps/ctv-bookedbiz-db/.env      # Project secrets
+/opt/apps/ctv-bookedbiz-db/                   (app code)
+/etc/ctv-bookedbiz-db/ctv-bookedbiz-db.env    (app env)
 ```
 
-### Network & Access
+### Pi2
 
-```bash
-# System Access
-ssh daseme@100.96.96.109              # Pi2 SSH (Tailscale)
-ssh daseme@100.81.73.46               # Pi-ctv SSH (Tailscale)
-
-# Web Interfaces  
-http://100.96.96.109:5001             # Control Station Alpha
-http://100.96.96.109:3001             # Kuma Professional Monitoring
-http://100.81.73.46:8000              # Pi-ctv Flask (primary)
-http://100.96.96.109:8000             # Pi2 Flask (failover only)
-
-# GitHub Repository
-https://github.com/daseme/ctv-bookedbiz-db
-git@github.com:daseme/ctv-bookedbiz-db.git
+```
+/opt/apps/ctv-bookedbiz-db/scripts/failover-to-pi2.sh
+/opt/apps/ctv-bookedbiz-db/scripts/failback-to-pi-ctv.sh
+/opt/apps/ctv-bookedbiz-db/bin/daily-download.sh
+/etc/systemd/system/ctv-pi2-download.service
+/etc/systemd/system/ctv-pi2-download.timer
+/var/log/ctv-pi2-download/download.log
 ```
 
 ---
 
-## 🦋 Architecture Philosophy
+## Incident Log
 
-This mirror backup system exemplifies **Project Lepidoptera** principles:
+### Feb 11 – Mar 2, 2026: Dropbox backups failing for 20 days
 
-**🔄 Transformation**: Evolved from basic backups to comprehensive business continuity  
-**✨ Beauty**: Integrates seamlessly with Control Station Alpha's aesthetic  
-**💪 Resilience**: Professional-grade failover with enterprise monitoring  
-**📈 Growth**: Designed to scale with business infrastructure needs
+**Cause**: The `ctv-db-sync.service` runs with `ProtectSystem=strict`, which blocks read access to `/var/lib/`. The service was configured with `DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db` but couldn't actually read that path.
 
-**Clean Architecture Benefits:**
-- **Single Responsibility**: Each component has one clear purpose
-- **Dependency Injection**: Scripts use configurable paths and services
-- **Separation of Concerns**: Data sync, monitoring, and failover are independent
-- **Fail Fast**: Clear error handling with immediate feedback
-- **Testability**: Each component can be tested and validated independently
+**Symptoms**: 21 consecutive log entries of `"Local database not found at /var/lib/ctv-bookedbiz-db/production.db"` with no alerts (the upload script exited before reaching the notification code path).
 
----
+**Quick fix applied (Mar 2)**: Changed `DATABASE_PATH` to `/opt/apps/ctv-bookedbiz-db/data/database/production.db` — this file exists but is a 4KB empty skeleton, NOT the authoritative production database.
 
-**Status**: 🚀 **FULLY OPERATIONAL**  
-**Last Updated**: Auto-maintained via backup system  
-**Repository**: https://github.com/daseme/ctv-bookedbiz-db  
-**Maintained By**: Control Station Alpha Infrastructure Team
+**Correct fix**: Add `ReadOnlyPaths=/var/lib/ctv-bookedbiz-db` to the service unit and set `DATABASE_PATH` back to `/var/lib/ctv-bookedbiz-db/production.db`.
 
-*"Professional business continuity with the soul of mission control."*
+**Mitigating factor**: Litestream was running continuously throughout, so no data was at risk. The Dropbox/Pi2 backup layers were degraded but the primary replication layer was unaffected.
+
+**Lesson**: Nightly backup failures should trigger alerts. The backup script's error path needs to reach the ntfy/Slack notification code even for "file not found" errors.
