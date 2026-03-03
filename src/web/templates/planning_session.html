@@ -739,6 +739,16 @@
     </div>
     <div class="control-group">
         <div>
+            <label>Forecasts Updated</label>
+            <div class="value">
+                {% if last_forecast_update %}
+                    {{ last_forecast_update[:16] | replace('T', ' ') }}
+                {% else %}
+                    No forecasts yet
+                {% endif %}
+            </div>
+        </div>
+        <div>
             <label>Session Date</label>
             <div class="value">{{ current_date }}</div>
         </div>
