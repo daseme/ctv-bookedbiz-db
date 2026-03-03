@@ -9,7 +9,7 @@ Provides:
 
 import logging
 from flask import Blueprint, render_template, request, jsonify
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 
 
@@ -161,7 +161,16 @@ def planning_session():
                 " FROM forecast WHERE year = ?",
                 (planning_year,),
             ).fetchone()
-        last_forecast_update = row["last_updated"] if row else None
+        last_forecast_update = None
+        if row and row["last_updated"]:
+            utc_dt = datetime.fromisoformat(row["last_updated"]).replace(
+                tzinfo=timezone.utc
+            )
+            pacific = timezone(timedelta(hours=-8))
+            if _is_pacific_dst(utc_dt):
+                pacific = timezone(timedelta(hours=-7))
+            local_dt = utc_dt.astimezone(pacific)
+            last_forecast_update = local_dt.strftime("%b %d, %Y %I:%M %p")
 
         template_data = {
             "planning_year": planning_year,
@@ -1000,6 +1009,21 @@ def api_add_entity():
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
+def _is_pacific_dst(dt: datetime) -> bool:
+    """Check if a datetime falls within US Pacific DST (Mar second Sun – Nov first Sun)."""
+    year = dt.year
+    # Second Sunday in March
+    mar1 = datetime(year, 3, 1, tzinfo=timezone.utc)
+    dst_start = mar1 + timedelta(days=(6 - mar1.weekday()) % 7 + 7)
+    # First Sunday in November
+    nov1 = datetime(year, 11, 1, tzinfo=timezone.utc)
+    dst_end = nov1 + timedelta(days=(6 - nov1.weekday()) % 7)
+    # DST transitions at 2 AM local = 10 AM UTC
+    dst_start = dst_start.replace(hour=10)
+    dst_end = dst_end.replace(hour=9)
+    return dst_start <= dt < dst_end
+
 
 def _get_budget_data_for_year(year: int) -> dict:
     """Get all budget data for a year, organized by AE and month."""
