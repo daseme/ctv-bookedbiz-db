@@ -1,49 +1,33 @@
-# Data Management Guides & Sector Manager Revenue Fix - COMPLETED ✅
+# Fix Dropbox Backup Path + Update Failover Guide - COMPLETED
 
-Implemented 2026-02-27. PRs #181–#185.
+Implemented 2026-03-02. PR #187.
 
-## Customer Merge Guide (PRs #181, #182)
-- ✅ Created `customer_merge_guide.html` — full guide page with sidebar TOC, scroll-spy JS, responsive mobile TOC
-- ✅ 5 sections: Overview, Unresolved Bill Codes (Backfill + Link), Merge Customers, When to Use What, Tips
-- ✅ Added `?` guide button to `customer_merge.html` (opens in new tab)
-- ✅ Added `/customer-merge/guide` route to `customer_merge.py`
-- ✅ Softened merge warning — merges are reversible via raw spot data
+## Dropbox Backup Fix
+- Fixed `DATABASE_PATH` in `/etc/ctv-db-sync.env` back to `/var/lib/ctv-bookedbiz-db/production.db`
+- Added `ReadOnlyPaths=/var/lib/ctv-bookedbiz-db` to `ctv-db-sync.service` (systemd sandbox)
+- Changed directory group: `chgrp ctvapps /var/lib/ctv-bookedbiz-db` (was `ctvbooked:ctvbooked` 0750)
+- Changed file group: `chgrp ctvapps /var/lib/ctv-bookedbiz-db/production.db`
+- Verified: upload succeeded, integrity check passed from correct `/var/lib/` path
 
-## Info Modals for Remaining Pages (PR #183)
-- ✅ Added `?` info modal to Customer Sector Manager (sectors, assigning, bulk ops, revenue filter)
-- ✅ Added `?` info modal to Customer Normalization Audit (columns, actions, when to use)
-- ✅ Both follow existing info-modal pattern from Stale Customers / Entity Resolution
+### Root Cause
+The service ran with `ProtectSystem=strict` which blocks `/var/lib/` access. Three layers of access were missing: systemd sandbox path, directory Unix group, and file Unix group. This caused 20 days of silent backup failures (Feb 11 – Mar 2).
 
-## Guide Coverage (all data management pages reviewed)
-| Page | Help Type |
-|------|-----------|
-| Address Book | Dedicated guide page |
-| Customer Merge | Dedicated guide page |
-| Entity Resolution | Info modal |
-| Entity Aliases | Info modal |
-| Stale Customers | Info modal |
-| Customer Sector Manager | Info modal (new) |
-| Customer Normalization | Info modal (new) |
+## Failover Guide Rewrite
+- Replaced emoji-heavy Pi2-only doc with accurate 3-layer backup stack guide
+- Documented Litestream continuous WAL replication to Backblaze B2 (~1s RPO)
+- Documented Dropbox nightly backup (timer, sandboxing, log location)
+- Documented Pi2 cold standby failover/failback procedures
+- Added RPO/RTO table, file locations, monitoring commands
+- Added Feb 2026 incident log with full fix details
 
-## Sector Manager Revenue Fix (PR #184)
-- ✅ Revenue query was commented out (`# TEMP: Disabled for performance`), showing all $0
-- ✅ Old query joined through `v_customer_normalization_audit` by `bill_code` — too slow
-- ✅ Replaced with direct `GROUP BY customer_id` on spots table (under 1s for 308 customers)
-- ✅ 193/199 customers now show real revenue data
-
-## Lesson Captured (PR #185)
-- ✅ Rule 32: Never leave "TEMP: Disabled" code in production — fix the root cause
-
-### Files Created
-- `src/web/templates/customer_merge_guide.html`
+## Lesson Captured
+- Rule 33: Canonical production DB path is the single source of truth
 
 ### Files Modified
-- `src/web/templates/customer_merge.html` (guide button)
-- `src/web/routes/customer_merge.py` (guide route)
-- `src/web/templates/customer_sector_manager.html` (info modal)
-- `src/web/templates/customer_normalization_manager.html` (info modal)
-- `src/web/routes/customer_sector_api.py` (revenue query fix)
-- `tasks/lessons.md` (Rule 32)
+- `docs/GUIDE-failover-failback.md` (full rewrite)
+- `tasks/lessons.md` (Rule 33)
+- `/etc/ctv-db-sync.env` (system file, DATABASE_PATH fix)
+- `/etc/systemd/system/ctv-db-sync.service` (system file, ReadOnlyPaths)
 
 ---
 

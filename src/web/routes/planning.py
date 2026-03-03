@@ -154,9 +154,19 @@ def planning_session():
             months_ahead=months_ahead, planning_year=planning_year
         )
         
+        db_connection = container.get("database_connection")
+        with db_connection.connection() as conn:
+            row = conn.execute(
+                "SELECT MAX(updated_date) AS last_updated"
+                " FROM forecast WHERE year = ?",
+                (planning_year,),
+            ).fetchone()
+        last_forecast_update = row["last_updated"] if row else None
+
         template_data = {
             "planning_year": planning_year,
             "current_date": date.today().strftime("%B %d, %Y"),
+            "last_forecast_update": last_forecast_update,
             "all_periods": summary.all_periods,
             "active_periods": summary.active_periods,
             "past_periods": summary.past_periods,
