@@ -482,5 +482,35 @@ The existing `entity_resolution` unresolved query correctly filters both (`c.cus
 
 ---
 
-**Last Updated**: 2026-02-27
-**Session Context**: Customer Sector Manager — all-zero revenue from disabled query.
+### Rule 33: The Canonical Production DB Path Is the Single Source of Truth
+
+**Context**: Dropbox backups silently backed up a 4KB empty skeleton for 20 days (Feb 11 – Mar 2, 2026). The `ctv-db-sync.service` couldn't read `/var/lib/ctv-bookedbiz-db/production.db` through `ProtectSystem=strict` sandboxing. A quick fix pointed `DATABASE_PATH` at `/opt/apps/ctv-bookedbiz-db/data/database/production.db` — a stale copy that doesn't receive writes.
+
+**The authoritative production database**:
+```
+/var/lib/ctv-bookedbiz-db/production.db
+```
+- Owned by `ctvbooked:ctvbooked`
+- Written by `ctv-bookedbiz-db.service` (the production app on port 8000)
+- Replicated by Litestream to Backblaze B2 every ~1 second
+- ~1.4 GB of live data
+
+**NOT the production database**:
+- `/opt/apps/ctv-bookedbiz-db/data/database/production.db` — 4KB empty skeleton, not written by the app
+- `.data/dev.db` — development copy in the dev working directory
+- `/opt/apps/ctv-bookedbiz-db/data/database/production_dev.db` — dev service copy
+
+**Why this keeps biting us**: Every new CLI tool, backup service, or systemd unit defaults to a project-relative path (`data/database/production.db`) which resolves to the wrong file. See also Rule 21 (four components had this same bug).
+
+**Pattern for any component that reads the production DB**:
+1. Set `DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db` in the env file
+2. If the service uses `ProtectSystem=strict`, add `ReadOnlyPaths=/var/lib/ctv-bookedbiz-db`
+3. Verify with `ls -la` that the service user can actually read the file
+4. After first run, check logs for the actual path being read (not just "upload succeeded")
+
+**Action**: When adding any new service, script, or tool that touches the production database, explicitly verify it resolves to `/var/lib/ctv-bookedbiz-db/production.db` — never trust the default path.
+
+---
+
+**Last Updated**: 2026-03-02
+**Session Context**: Dropbox backup path fix — 20 days of missed backups from wrong DB path + systemd sandboxing.
