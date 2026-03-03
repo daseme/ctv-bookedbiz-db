@@ -260,10 +260,16 @@ ls -lh /opt/apps/ctv-bookedbiz-db/data/database/production.db
 
 **Symptoms**: 21 consecutive log entries of `"Local database not found at /var/lib/ctv-bookedbiz-db/production.db"` with no alerts (the upload script exited before reaching the notification code path).
 
-**Quick fix applied (Mar 2)**: Changed `DATABASE_PATH` to `/opt/apps/ctv-bookedbiz-db/data/database/production.db` — this file exists but is a 4KB empty skeleton, NOT the authoritative production database.
+**Correct fix (applied Mar 2)**:
+1. Set `DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db` in `/etc/ctv-db-sync.env`
+2. Add `ReadOnlyPaths=/var/lib/ctv-bookedbiz-db` to the service unit (lifts systemd sandbox)
+3. `sudo chgrp ctvapps /var/lib/ctv-bookedbiz-db` — directory was `0750 ctvbooked:ctvbooked`, service runs as `daseme:ctvapps`
+4. `sudo chgrp ctvapps /var/lib/ctv-bookedbiz-db/production.db` — file group also needed changing
 
-**Correct fix**: Add `ReadOnlyPaths=/var/lib/ctv-bookedbiz-db` to the service unit and set `DATABASE_PATH` back to `/var/lib/ctv-bookedbiz-db/production.db`.
+All three layers were required: systemd sandbox access, directory group, and file group.
 
 **Mitigating factor**: Litestream was running continuously throughout, so no data was at risk. The Dropbox/Pi2 backup layers were degraded but the primary replication layer was unaffected.
 
-**Lesson**: Nightly backup failures should trigger alerts. The backup script's error path needs to reach the ntfy/Slack notification code even for "file not found" errors.
+**Lessons**:
+- Nightly backup failures should trigger alerts. The backup script's error path needs to reach the ntfy/Slack notification code even for "file not found" errors.
+- If the production DB file is ever recreated (e.g., by Litestream restore or SQLite vacuum), the group will revert to `ctvbooked`. Verify group ownership after any DB restore operation.
