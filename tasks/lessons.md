@@ -512,5 +512,13 @@ The existing `entity_resolution` unresolved query correctly filters both (`c.cus
 
 ---
 
+### Rule 34: All User-Facing Timestamps Must Be Pacific Time
+
+**Context**: Forecast "last updated" timestamp displayed raw UTC from SQLite `CURRENT_TIMESTAMP`, which was 8 hours ahead of the user's actual time in California.
+**Pattern**: SQLite stores `CURRENT_TIMESTAMP` as UTC. All user-facing timestamps must be converted to US Pacific time (PST UTC-8 / PDT UTC-7) before display.
+**Action**: When displaying any timestamp to users, convert from UTC to Pacific with DST awareness. Never show raw UTC or ISO timestamps in the UI.
+
+---
+
 **Last Updated**: 2026-03-02
-**Session Context**: Dropbox backup path fix — 20 days of missed backups from wrong DB path + systemd sandboxing.
+**Session Context**: Planning page forecast timestamp — Pacific time formatting.
