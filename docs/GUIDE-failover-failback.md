@@ -176,6 +176,37 @@ Prompts for optional data backup of any changes made during failover, then stops
 
 ---
 
+## Operational Services
+
+### Insertion Order Scanner
+
+Scans `/mnt/k-drive/Insertion Orders` hourly for pending insertion order folders and spreadsheets. Writes a JSON summary that the web app reads to display pending orders on AE dashboards.
+
+- **Timer**: `ctv-io-scanner.timer` — hourly at :10 past the hour, 2 min jitter
+- **Service**: `ctv-io-scanner.service` (oneshot, runs as `daseme:ctvapps`)
+- **Script**: `/opt/apps/ctv-bookedbiz-db/scripts/scan_insertion_orders.py`
+- **Output**: `/opt/apps/ctv-bookedbiz-db/data/pending_orders.json` (mode 0640, group `apps-deploy`)
+- **Venv**: `/opt/apps/ctv-bookedbiz-db/.venv` (requires `openpyxl`)
+- **K drive mount**: `/mnt/k-drive/Insertion Orders`
+
+```bash
+# Check timer status and next run
+systemctl list-timers | grep ctv-io-scanner
+
+# View last scan result
+journalctl -u ctv-io-scanner.service -n 10 --no-pager
+
+# Manual scan
+sudo systemctl start ctv-io-scanner.service
+
+# View current pending orders
+cat /opt/apps/ctv-bookedbiz-db/data/pending_orders.json | python3 -m json.tool
+```
+
+**Permission note**: The script writes JSON via `tempfile.mkstemp` and explicitly sets mode `0640` so the web app (running as `ctvbooked` in group `apps-deploy`) can read it. If the file reverts to `0600`, the dashboard silently shows "No pending orders."
+
+---
+
 ## Monitoring
 
 ```bash
@@ -233,6 +264,12 @@ ls -lh /opt/apps/ctv-bookedbiz-db/data/database/production.db
 /etc/systemd/system/ctv-db-sync.service
 /etc/systemd/system/ctv-db-sync.timer
 /var/log/ctv-db-sync/sync.log
+
+# Insertion Order Scanner
+/opt/apps/ctv-bookedbiz-db/scripts/scan_insertion_orders.py
+/opt/apps/ctv-bookedbiz-db/data/pending_orders.json
+/etc/systemd/system/ctv-io-scanner.service
+/etc/systemd/system/ctv-io-scanner.timer
 
 # Application
 /opt/apps/ctv-bookedbiz-db/                   (app code)
