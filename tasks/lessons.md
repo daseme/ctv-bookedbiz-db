@@ -520,5 +520,23 @@ The existing `entity_resolution` unresolved query correctly filters both (`c.cus
 
 ---
 
-**Last Updated**: 2026-03-02
-**Session Context**: Planning page forecast timestamp — Pacific time formatting.
+### Rule 35: tempfile.mkstemp Creates 0600 Files — Always chmod Before Rename
+
+**Context**: The IO scanner (`scan_insertion_orders.py`) wrote `pending_orders.json` via `tempfile.mkstemp` + `os.replace`. The file came out `0600` (owner-only). The web app running as `ctvbooked` (different user, same group `apps-deploy`) got `Permission denied` on every read — silently falling back to "No pending orders." The dashboard showed nothing for weeks.
+**Pattern**: `tempfile.mkstemp` always creates files with mode `0600` regardless of umask or directory setgid bits. When one service writes a file that another service reads, the default permissions block cross-user access. The silent fallback (empty list instead of error) made this invisible.
+**Fix**:
+```python
+fd, tmp_path = tempfile.mkstemp(dir=output_dir, suffix=".tmp")
+try:
+    with os.fdopen(fd, "w") as f:
+        json.dump(result, f)
+    os.chmod(tmp_path, 0o640)  # group-readable BEFORE rename
+    os.replace(tmp_path, output_path)
+```
+**Key detail**: `chmod` must happen BEFORE `os.replace`, not after — otherwise there's a window where the destination file has wrong permissions.
+**Action**: Whenever a script writes files that another user/service reads, explicitly `os.chmod()` to at least `0o640` before the atomic rename. Don't rely on umask or setgid inheritance with tempfiles.
+
+---
+
+**Last Updated**: 2026-03-03
+**Session Context**: IO scanner pending orders permission fix.
