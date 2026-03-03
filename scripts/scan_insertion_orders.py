@@ -267,6 +267,7 @@ def write_json(output_path, orders, errors):
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(result, f, indent=2)
+        os.chmod(tmp_path, 0o640)
         os.replace(tmp_path, output_path)
     except Exception:
         if os.path.exists(tmp_path):
