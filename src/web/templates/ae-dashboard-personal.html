@@ -23,7 +23,7 @@
 /* Summary Cards */
 .summary-cards {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 20px;
     margin-bottom: 32px;
 }
@@ -144,6 +144,16 @@
     letter-spacing: 0.5px;
 }
 
+/* Monthly Performance table (Booked/Forecast/Budget) - dark header */
+.monthly-performance-table thead {
+    background: linear-gradient(135deg, #2e3440 0%, #3b4252 100%);
+    border-bottom: 2px solid #4c566a;
+}
+
+.monthly-performance-table th {
+    color: #edf2f7;
+}
+
 .monthly-table th.numeric {
     text-align: right;
 }
@@ -242,10 +252,19 @@
     width: 100%;
 }
 
+/* Monthly breakdown toggle */
+.monthly-breakdown {
+    display: none;
+}
+
+.monthly-breakdown.visible {
+    display: block;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .summary-cards {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     
     .monthly-table-container {
@@ -266,6 +285,10 @@
         padding: 16px;
     }
     
+    .summary-cards {
+        grid-template-columns: 1fr;
+    }
+    
     .summary-card .amount {
         font-size: 24px;
     }
@@ -282,17 +305,25 @@
     <!-- AE Selector (for admins/management) -->
     {% if is_admin_or_management %}
     <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
-        <form method="GET" action="/reports/ae-dashboard-personal" style="display: flex; align-items: center; gap: 16px;">
-            <label for="ae-select" style="font-weight: 600; color: #4a5568; font-size: 14px;">Select AE:</label>
-            <select id="ae-select" name="ae" onchange="this.form.submit()" style="flex: 1; max-width: 400px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 14px; background: white;">
-                <option value="">-- Select an AE --</option>
-                {% for ae in ae_list %}
-                <option value="{{ ae }}" {% if selected_ae == ae %}selected{% endif %}>{{ ae }}</option>
-                {% endfor %}
-            </select>
-            {% if selected_ae %}
-            <a href="/reports/ae-dashboard-personal" style="padding: 8px 16px; background: #e2e8f0; color: #4a5568; text-decoration: none; border-radius: 4px; font-size: 14px;">Clear</a>
-            {% endif %}
+        <form method="GET" action="/reports/ae-dashboard-personal" style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <label for="ae-select" style="font-weight: 600; color: #4a5568; font-size: 14px; white-space: nowrap;">Select AE:</label>
+                <select id="ae-select" name="ae" onchange="this.form.submit()" style="min-width: 200px; max-width: 260px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 14px; background: white;">
+                    <option value="">-- Select an AE --</option>
+                    {% for ae in ae_list %}
+                    <option value="{{ ae }}" {% if selected_ae == ae %}selected{% endif %}>{{ ae }}</option>
+                    {% endfor %}
+                </select>
+                {% if selected_ae %}
+                <a href="/reports/ae-dashboard-personal" style="padding: 8px 16px; background: #e2e8f0; color: #4a5568; text-decoration: none; border-radius: 4px; font-size: 14px; white-space: nowrap;">Clear</a>
+                {% endif %}
+                <label for="year-filter" style="font-weight: 600; color: #4a5568; font-size: 14px; white-space: nowrap;">Year:</label>
+                <select id="year-filter" name="year" onchange="this.form.submit()" style="min-width: 96px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 4px; background: white; color: #2d3748; font-size: 14px; cursor: pointer;">
+                    {% for y in available_years %}
+                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
         </form>
     </div>
     {% endif %}
@@ -436,88 +467,82 @@
     
     <!-- Monthly Revenue Chart -->
     <div class="chart-container">
-        <div class="chart-header">
+        <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
             <h2>{{ year }} Monthly Revenue Trend - {{ ae_name }}</h2>
+            <button id="monthly-breakdown-toggle" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #e2e8f0; background: #edf2f7; color: #4a5568; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;">
+                Show Details
+            </button>
         </div>
-        <div class="chart-wrapper">
+        <div class="chart-wrapper" id="monthly-chart-wrapper">
             <canvas id="monthlyRevenueChart"></canvas>
         </div>
     </div>
     
     <!-- Monthly Table -->
-    <div class="monthly-table-container">
-        <div class="monthly-table-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0;">{{ year }} Monthly Performance - {{ ae_name }}</h2>
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <label for="year-filter" style="font-size: 14px; color: white; font-weight: 500;">Year:</label>
-                <select id="year-filter" style="padding: 6px 12px; border: 1px solid rgba(255,255,255,0.5); border-radius: 4px; background: white; color: #2d3748; font-size: 14px; cursor: pointer;">
-                    {% for y in available_years %}
-                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+    <div class="monthly-table-container" style="margin-top: 8px;">
+        <div id="monthly-breakdown" class="monthly-breakdown">
+            <table class="monthly-table monthly-performance-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="numeric">Booked Revenue</th>
+                        <th class="numeric">Forecast</th>
+                        <th class="numeric">Budget</th>
+                        <th class="numeric">Booked vs Forecast</th>
+                        <th class="numeric">Forecast vs Budget</th>
+                        <th class="numeric">Booked vs Budget</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for month in monthly_data %}
+                    <tr>
+                        <td class="month-name">{{ month.month_name }}</td>
+                        <td class="numeric amount-cell">${{ "{:,.0f}".format(month.booked_revenue) }}</td>
+                        <td class="numeric amount-cell">${{ "{:,.0f}".format(month.forecast) }}</td>
+                        <td class="numeric amount-cell">${{ "{:,.0f}".format(month.budget) }}</td>
+                        <td class="numeric">
+                            <span class="percentage-cell {% if month.booked_vs_forecast_pct >= 100 %}positive{% elif month.booked_vs_forecast_pct >= 80 %}neutral{% else %}negative{% endif %}">
+                                {{ "{:.1f}".format(month.booked_vs_forecast_pct) }}%
+                            </span>
+                        </td>
+                        <td class="numeric">
+                            <span class="percentage-cell {% if month.forecast_vs_budget_pct >= 100 %}positive{% elif month.forecast_vs_budget_pct >= 90 %}neutral{% else %}negative{% endif %}">
+                                {{ "{:.1f}".format(month.forecast_vs_budget_pct) }}%
+                            </span>
+                        </td>
+                        <td class="numeric">
+                            <span class="percentage-cell {% if month.booked_vs_budget_pct >= 100 %}positive{% elif month.booked_vs_budget_pct >= 80 %}neutral{% else %}negative{% endif %}">
+                                {{ "{:.1f}".format(month.booked_vs_budget_pct) }}%
+                            </span>
+                        </td>
+                    </tr>
                     {% endfor %}
-                </select>
-            </div>
+                    
+                    <!-- Year Totals Row -->
+                    <tr class="year-totals-row">
+                        <td><strong>Year Total</strong></td>
+                        <td class="numeric"><strong>${{ "{:,.0f}".format(totals.booked) }}</strong></td>
+                        <td class="numeric"><strong>${{ "{:,.0f}".format(totals.forecast) }}</strong></td>
+                        <td class="numeric"><strong>${{ "{:,.0f}".format(totals.budget) }}</strong></td>
+                        <td class="numeric">
+                            <span class="percentage-cell {% if totals.booked_vs_forecast_pct >= 100 %}positive{% elif totals.booked_vs_forecast_pct >= 80 %}neutral{% else %}negative{% endif %}">
+                                {{ "{:.1f}".format(totals.booked_vs_forecast_pct) }}%
+                            </span>
+                        </td>
+                        <td class="numeric">
+                            <span class="percentage-cell {% if totals.forecast_vs_budget_pct >= 100 %}positive{% elif totals.forecast_vs_budget_pct >= 90 %}neutral{% else %}negative{% endif %}">
+                                {{ "{:.1f}".format(totals.forecast_vs_budget_pct) }}%
+                            </span>
+                        </td>
+                        <td class="numeric">
+                            <span class="percentage-cell {% if totals.booked_vs_budget_pct >= 100 %}positive{% elif totals.booked_vs_budget_pct >= 80 %}neutral{% else %}negative{% endif %}">
+                                {{ "{:.1f}".format(totals.booked_vs_budget_pct) }}%
+                            </span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
-        <table class="monthly-table">
-            <thead>
-                <tr>
-                    <th>Month</th>
-                    <th class="numeric">Booked Revenue</th>
-                    <th class="numeric">Forecast</th>
-                    <th class="numeric">Budget</th>
-                    <th class="numeric">Booked vs Forecast</th>
-                    <th class="numeric">Forecast vs Budget</th>
-                    <th class="numeric">Booked vs Budget</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for month in monthly_data %}
-                <tr>
-                    <td class="month-name">{{ month.month_name }}</td>
-                    <td class="numeric amount-cell">${{ "{:,.0f}".format(month.booked_revenue) }}</td>
-                    <td class="numeric amount-cell">${{ "{:,.0f}".format(month.forecast) }}</td>
-                    <td class="numeric amount-cell">${{ "{:,.0f}".format(month.budget) }}</td>
-                    <td class="numeric">
-                        <span class="percentage-cell {% if month.booked_vs_forecast_pct >= 100 %}positive{% elif month.booked_vs_forecast_pct >= 80 %}neutral{% else %}negative{% endif %}">
-                            {{ "{:.1f}".format(month.booked_vs_forecast_pct) }}%
-                        </span>
-                    </td>
-                    <td class="numeric">
-                        <span class="percentage-cell {% if month.forecast_vs_budget_pct >= 100 %}positive{% elif month.forecast_vs_budget_pct >= 90 %}neutral{% else %}negative{% endif %}">
-                            {{ "{:.1f}".format(month.forecast_vs_budget_pct) }}%
-                        </span>
-                    </td>
-                    <td class="numeric">
-                        <span class="percentage-cell {% if month.booked_vs_budget_pct >= 100 %}positive{% elif month.booked_vs_budget_pct >= 80 %}neutral{% else %}negative{% endif %}">
-                            {{ "{:.1f}".format(month.booked_vs_budget_pct) }}%
-                        </span>
-                    </td>
-                </tr>
-                {% endfor %}
-                
-                <!-- Year Totals Row -->
-                <tr class="year-totals-row">
-                    <td><strong>Year Total</strong></td>
-                    <td class="numeric"><strong>${{ "{:,.0f}".format(totals.booked) }}</strong></td>
-                    <td class="numeric"><strong>${{ "{:,.0f}".format(totals.forecast) }}</strong></td>
-                    <td class="numeric"><strong>${{ "{:,.0f}".format(totals.budget) }}</strong></td>
-                    <td class="numeric">
-                        <span class="percentage-cell {% if totals.booked_vs_forecast_pct >= 100 %}positive{% elif totals.booked_vs_forecast_pct >= 80 %}neutral{% else %}negative{% endif %}">
-                            {{ "{:.1f}".format(totals.booked_vs_forecast_pct) }}%
-                        </span>
-                    </td>
-                    <td class="numeric">
-                        <span class="percentage-cell {% if totals.forecast_vs_budget_pct >= 100 %}positive{% elif totals.forecast_vs_budget_pct >= 90 %}neutral{% else %}negative{% endif %}">
-                            {{ "{:.1f}".format(totals.forecast_vs_budget_pct) }}%
-                        </span>
-                    </td>
-                    <td class="numeric">
-                        <span class="percentage-cell {% if totals.booked_vs_budget_pct >= 100 %}positive{% elif totals.booked_vs_budget_pct >= 80 %}neutral{% else %}negative{% endif %}">
-                            {{ "{:.1f}".format(totals.booked_vs_budget_pct) }}%
-                        </span>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
     </div>
     
     <!-- Account Revenue Module -->
@@ -770,14 +795,15 @@
                 });
             }
             
-            // Year filter functionality
-            const yearFilter = document.getElementById('year-filter');
-            if (yearFilter) {
-                yearFilter.addEventListener('change', function() {
-                    const selectedYear = this.value;
-                    const url = new URL(window.location);
-                    url.searchParams.set('year', selectedYear);
-                    window.location.href = url.toString();
+            // Monthly breakdown toggle (hidden by default, shown on demand)
+            const monthlyBreakdown = document.getElementById('monthly-breakdown');
+            const monthlyBreakdownToggle = document.getElementById('monthly-breakdown-toggle');
+            if (monthlyBreakdown && monthlyBreakdownToggle) {
+                monthlyBreakdown.classList.remove('visible');
+                monthlyBreakdownToggle.textContent = 'Show Details';
+                monthlyBreakdownToggle.addEventListener('click', function() {
+                    const isVisible = monthlyBreakdown.classList.toggle('visible');
+                    monthlyBreakdownToggle.textContent = isVisible ? 'Hide Details' : 'Show Details';
                 });
             }
             
