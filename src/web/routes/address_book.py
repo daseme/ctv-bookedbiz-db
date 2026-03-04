@@ -31,8 +31,44 @@ def _get_db_path():
     return current_app.config.get("DB_PATH") or "./.data/dev.db"
 
 
+_CREATE_ENTITY_METRICS = """
+    CREATE TABLE IF NOT EXISTS entity_metrics (
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        markets TEXT,
+        last_active TEXT,
+        total_revenue REAL DEFAULT 0,
+        spot_count INTEGER DEFAULT 0,
+        agency_spot_count INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (entity_type, entity_id)
+    )
+"""
+
+_CREATE_ENTITY_SIGNALS = """
+    CREATE TABLE IF NOT EXISTS entity_signals (
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        signal_type TEXT NOT NULL,
+        signal_label TEXT NOT NULL,
+        signal_priority INTEGER NOT NULL,
+        trailing_revenue REAL,
+        prior_revenue REAL,
+        computed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (entity_type, entity_id, signal_type)
+    )
+"""
+
+
+def _ensure_cache_tables(conn):
+    """Create cache tables if they don't exist."""
+    conn.execute(_CREATE_ENTITY_METRICS)
+    conn.execute(_CREATE_ENTITY_SIGNALS)
+
+
 def refresh_entity_metrics(conn):
     """Rebuild entity_metrics from spots data. Callable from import service."""
+    _ensure_cache_tables(conn)
     conn.execute("DELETE FROM entity_metrics")
     conn.execute("""
         INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count)
@@ -74,6 +110,7 @@ def _fmt_revenue(val):
 
 def refresh_entity_signals(conn):
     """Rebuild entity_signals from spots data. Callable from import service."""
+    _ensure_cache_tables(conn)
     conn.execute("DELETE FROM entity_signals")
     today = date.today().isoformat()
 
@@ -285,24 +322,26 @@ def api_address_book():
             sector_counts[row["customer_id"]] = row["cnt"]
             customer_sector_ids[row["customer_id"]] = row["sids"] or ""
 
-        # Read pre-computed metrics from entity_metrics cache
-        metrics_count = conn.execute("SELECT COUNT(*) FROM entity_metrics").fetchone()[0]
-        if metrics_count == 0:
-            # Safety net: auto-refresh if table exists but is empty (first load after migration)
-            # Need a RW connection since the main conn is readonly
-            logger.info("entity_metrics empty — refreshing inline")
-            with _db_rw() as rw_conn:
+        # Ensure cache tables exist (RW needed for CREATE TABLE)
+        # and auto-populate if empty.
+        with _db_rw() as rw_conn:
+            _ensure_cache_tables(rw_conn)
+            metrics_count = rw_conn.execute(
+                "SELECT COUNT(*) FROM entity_metrics"
+            ).fetchone()[0]
+            if metrics_count == 0:
+                logger.info("entity_metrics empty — refreshing inline")
                 refresh_entity_metrics(rw_conn)
                 refresh_entity_signals(rw_conn)
                 rw_conn.commit()
-
-        # Safety net for signals table
-        signals_count = conn.execute("SELECT COUNT(*) FROM entity_signals").fetchone()[0]
-        if signals_count == 0 and metrics_count > 0:
-            logger.info("entity_signals empty — refreshing inline")
-            with _db_rw() as rw_conn:
-                refresh_entity_signals(rw_conn)
-                rw_conn.commit()
+            else:
+                signals_count = rw_conn.execute(
+                    "SELECT COUNT(*) FROM entity_signals"
+                ).fetchone()[0]
+                if signals_count == 0:
+                    logger.info("entity_signals empty — refreshing inline")
+                    refresh_entity_signals(rw_conn)
+                    rw_conn.commit()
 
         agency_markets = {}
         agency_metrics = {}
@@ -515,13 +554,16 @@ def api_entity_detail(entity_type, entity_id):
             result["sectors"] = [dict(s) for s in sectors]
 
         # Get signals for this entity
-        signals = conn.execute("""
-            SELECT signal_type, signal_label, signal_priority
-            FROM entity_signals
-            WHERE entity_type = ? AND entity_id = ?
-            ORDER BY signal_priority
-        """, [entity_type, entity_id]).fetchall()
-        result["signals"] = [dict(s) for s in signals]
+        try:
+            signals = conn.execute("""
+                SELECT signal_type, signal_label, signal_priority
+                FROM entity_signals
+                WHERE entity_type = ? AND entity_id = ?
+                ORDER BY signal_priority
+            """, [entity_type, entity_id]).fetchall()
+            result["signals"] = [dict(s) for s in signals]
+        except sqlite3.OperationalError:
+            result["signals"] = []
 
         return jsonify(result)
 
@@ -1387,6 +1429,7 @@ def api_refresh_metrics():
 
     with _db_rw() as conn:
         try:
+            _ensure_cache_tables(conn)
             # Delete existing metrics for these IDs
             for cid in customer_ids:
                 conn.execute(
@@ -1639,14 +1682,17 @@ def api_export_csv():
 
     results = []
 
-    with _db_ro() as conn:
-        # Read pre-computed metrics from entity_metrics cache
-        metrics_count = conn.execute("SELECT COUNT(*) FROM entity_metrics").fetchone()[0]
+    # Ensure cache tables exist and are populated
+    with _db_rw() as rw_conn:
+        _ensure_cache_tables(rw_conn)
+        metrics_count = rw_conn.execute(
+            "SELECT COUNT(*) FROM entity_metrics"
+        ).fetchone()[0]
         if metrics_count == 0:
-            with _db_rw() as rw_conn:
-                refresh_entity_metrics(rw_conn)
-                rw_conn.commit()
+            refresh_entity_metrics(rw_conn)
+        rw_conn.commit()
 
+    with _db_ro() as conn:
         agency_metrics = {}
         customer_metrics = {}
         agency_client_ids_from_spots = set()
