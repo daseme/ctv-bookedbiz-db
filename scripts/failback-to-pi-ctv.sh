@@ -10,7 +10,7 @@ echo "🔄 INITIATING FAILBACK TO PI-CTV"
 echo "=================================="
 
 echo "🔍 Step 1: Testing pi-ctv availability..."
-if curl -sf http://100.81.73.46:8000/api/system-stats >/dev/null; then
+if curl -sf http://100.99.11.55:8000/api/system-stats >/dev/null; then
     echo "✓ Pi-ctv is responding and healthy"
 else
     echo "❌ ERROR: Pi-ctv is not responding"
@@ -53,7 +53,7 @@ echo "✓ Flask service stopped on pi2"
 
 echo "⏱️  Step 4: Final health check of pi-ctv..."
 sleep 3
-if curl -sf http://100.81.73.46:8000/api/system-stats >/dev/null; then
+if curl -sf http://100.99.11.55:8000/api/system-stats >/dev/null; then
     echo "✓ Pi-ctv confirmed healthy and serving traffic"
 else
     echo "⚠️  WARNING: Pi-ctv may not be fully healthy"
@@ -63,7 +63,7 @@ fi
 echo ""
 echo "✅ FAILBACK COMPLETE!"
 echo "===================="
-echo "• Pi-ctv Flask service:  http://100.81.73.46:8000"  
+echo "• Pi-ctv Flask service:  http://100.99.11.55:8000"  
 echo "• Pi2 Flask service:     STOPPED"
 echo "• Pi2 remains ready for future failover"
 echo ""
