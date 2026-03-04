@@ -185,7 +185,13 @@ class PlanningRepository(BaseService):
         with self.safe_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT forecast_amount, updated_date, updated_by, notes
+                SELECT 
+                    forecast_amount, 
+                    updated_date, 
+                    updated_by, 
+                    notes,
+                    new_accounts_forecast,
+                    new_dollars_forecast
                 FROM forecast
                 WHERE ae_name = ? AND year = ? AND month = ?
             """,
@@ -203,7 +209,79 @@ class PlanningRepository(BaseService):
                 else None,
                 "updated_by": row["updated_by"],
                 "notes": row["notes"],
+                "new_accounts_forecast": row["new_accounts_forecast"],
+                "new_dollars_forecast": Decimal(str(row["new_dollars_forecast"])) if row["new_dollars_forecast"] is not None else None,
             }
+
+    def upsert_new_business(
+        self,
+        ae_name: str,
+        year: int,
+        month: int,
+        new_accounts: Optional[int],
+        new_dollars: Optional[Decimal],
+        updated_by: str,
+    ) -> None:
+        """
+        Upsert per-month new business fields on forecast without changing the forecast amount.
+
+        If a forecast row doesn't exist yet, it will be created with forecast_amount
+        defaulting to the current budget (or 0 if no budget).
+        """
+        from decimal import Decimal as _D
+
+        with self.safe_transaction() as conn:
+            # Determine existing forecast or fallback budget
+            cursor = conn.execute(
+                """
+                SELECT forecast_amount 
+                FROM forecast 
+                WHERE ae_name = ? AND year = ? AND month = ?
+                """,
+                (ae_name, year, month),
+            )
+            row = cursor.fetchone()
+
+            if row:
+                forecast_amount = Decimal(str(row["forecast_amount"]))
+            else:
+                # Fallback to budget (may be NULL)
+                cursor = conn.execute(
+                    """
+                    SELECT budget_amount 
+                    FROM budget 
+                    WHERE ae_name = ? AND year = ? AND month = ?
+                    """,
+                    (ae_name, year, month),
+                )
+                b_row = cursor.fetchone()
+                forecast_amount = (
+                    Decimal(str(b_row["budget_amount"])) if b_row else _D("0")
+                )
+
+            conn.execute(
+                """
+                INSERT INTO forecast (
+                    ae_name, year, month, forecast_amount, 
+                    new_accounts_forecast, new_dollars_forecast, updated_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(ae_name, year, month) DO UPDATE SET
+                    new_accounts_forecast = excluded.new_accounts_forecast,
+                    new_dollars_forecast = excluded.new_dollars_forecast,
+                    updated_date = CURRENT_TIMESTAMP,
+                    updated_by = excluded.updated_by
+                """,
+                (
+                    ae_name,
+                    year,
+                    month,
+                    float(forecast_amount),
+                    int(new_accounts or 0),
+                    float(new_dollars or _D("0")),
+                    updated_by,
+                ),
+            )
 
     def save_forecast(self, update: ForecastUpdate) -> ForecastChange:
         """Save a forecast update and record history."""
@@ -636,10 +714,14 @@ class PlanningRepository(BaseService):
             forecast_amount = forecast_data["amount"]
             forecast_updated = forecast_data["updated_date"]
             forecast_updated_by = forecast_data["updated_by"]
+            new_accounts = forecast_data.get("new_accounts_forecast")
+            new_dollars = forecast_data.get("new_dollars_forecast")
         else:
             forecast_amount = budget or Decimal("0")
             forecast_updated = None
             forecast_updated_by = None
+            new_accounts = None
+            new_dollars = None
 
         return PlanningRow(
             entity=entity,
@@ -649,6 +731,8 @@ class PlanningRepository(BaseService):
             booked=Money(booked),
             forecast_updated=forecast_updated,
             forecast_updated_by=forecast_updated_by,
+            new_accounts_forecast=int(new_accounts) if new_accounts is not None else None,
+            new_dollars_forecast=new_dollars,
         )
 
     def get_forecast_history(

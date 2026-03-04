@@ -451,7 +451,7 @@
     
     .forecast-input {
         width: 100%;
-        padding: 4px 6px;
+        padding: 3px 5px;
         border: 2px solid var(--nord8);
         border-radius: 4px;
         font-size: 12px;
@@ -459,6 +459,7 @@
         text-align: right;
         background: white;
         transition: all 0.15s;
+        box-sizing: border-box;
     }
     
     .forecast-input:focus {
@@ -479,6 +480,32 @@
     
     /* Past months - read only styling */
     .forecast-input.past-month {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #64748b;
+    }
+
+    /* New-business inputs (New Accts / New $) – visually match forecast inputs */
+    .new-biz-input {
+        width: 100%;
+        padding: 3px 5px;
+        border: 2px solid var(--nord8);
+        border-radius: 4px;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        background: white;
+        transition: all 0.15s;
+        box-sizing: border-box;
+    }
+
+    .new-biz-input:focus {
+        outline: none;
+        border-color: var(--nord10);
+        box-shadow: 0 0 0 3px rgba(136, 192, 208, 0.3);
+    }
+
+    .new-biz-input.past-month {
         background: #f1f5f9;
         border-color: #cbd5e1;
         color: #64748b;
@@ -905,6 +932,52 @@
                 </td>
             </tr>
             
+            <!-- New Accounts Row -->
+            <tr class="row-forecast">
+                <td class="row-label entity-name-cell">New Accts</td>
+                {% for period in all_periods %}
+                {% set row = ed.rows_by_period.get(period.key) %}
+                {% set is_past = period in past_periods %}
+                <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
+                    <input type="text"
+                           class="new-biz-input new-accounts-input {% if is_past %}past-month{% endif %}"
+                           data-ae="{{ ed.entity.entity_name }}"
+                           data-year="{{ period.year }}"
+                           data-month="{{ period.month }}"
+                           data-type="accounts"
+                           data-is-past="{{ 'true' if is_past else 'false' }}"
+                           value="{% if row and row.new_accounts_forecast is not none %}{{ '{:,.0f}'.format(row.new_accounts_forecast) }}{% else %}{% endif %}"
+                           {% if is_past %}readonly title="Past month"{% endif %}
+                           onchange="markNewBizModified(this)"
+                           onkeydown="handleNewBizKeydown(event, this)">
+                </td>
+                {% endfor %}
+                <td class="number total-col"></td>
+            </tr>
+            
+            <!-- New Dollars Row -->
+            <tr class="row-forecast">
+                <td class="row-label entity-name-cell">New $</td>
+                {% for period in all_periods %}
+                {% set row = ed.rows_by_period.get(period.key) %}
+                {% set is_past = period in past_periods %}
+                <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if period in active_periods %}active-period{% endif %}">
+                    <input type="text"
+                           class="new-biz-input new-dollars-input {% if is_past %}past-month{% endif %}"
+                           data-ae="{{ ed.entity.entity_name }}"
+                           data-year="{{ period.year }}"
+                           data-month="{{ period.month }}"
+                           data-type="dollars"
+                           data-is-past="{{ 'true' if is_past else 'false' }}"
+                           value="{% if row and row.new_dollars_forecast is not none %}{{ '{:,.0f}'.format(row.new_dollars_forecast) }}{% else %}{% endif %}"
+                           {% if is_past %}readonly title="Past month"{% endif %}
+                           onchange="markNewBizModified(this)"
+                           onkeydown="handleNewBizKeydown(event, this)">
+                </td>
+                {% endfor %}
+                <td class="number total-col"></td>
+            </tr>
+            
             <!-- Pipeline Row -->
             <tr class="row-pipeline">
                 <td class="row-label entity-name-cell">Pipeline</td>
@@ -1006,6 +1079,7 @@
 // Track changes
 const changes = new Map();
 const originalValues = new Map();
+const newBizChanges = new Map();
 
 // Initialize original values
 document.addEventListener('DOMContentLoaded', function() {
@@ -1075,6 +1149,59 @@ function markModified(input) {
     recalculateTotals();
 }
 
+function markNewBizModified(input) {
+    // Don't allow changes to past months
+    if (input.dataset.isPast === 'true') {
+        return;
+    }
+    const ae = input.dataset.ae;
+    const year = parseInt(input.dataset.year);
+    const month = parseInt(input.dataset.month);
+    const type = input.dataset.type; // 'accounts' or 'dollars'
+    const key = `${ae}-${year}-${month}`;
+    const existing = newBizChanges.get(key) || {
+        ae_name: ae,
+        year,
+        month,
+        new_accounts: null,
+        new_dollars: null,
+    };
+
+    if (type === 'accounts') {
+        const val = input.value.trim();
+        existing.new_accounts = val === '' ? null : parseInt(val.replace(/[$,]/g, ''), 10) || 0;
+        if (existing.new_accounts !== null) {
+            input.value = formatNumber(existing.new_accounts);
+        } else {
+            input.value = '';
+        }
+    } else if (type === 'dollars') {
+        const raw = parseNumber(input.value);
+        existing.new_dollars = isNaN(raw) ? null : raw;
+        input.value = existing.new_dollars !== null ? formatNumber(existing.new_dollars) : '';
+    }
+
+    // If both fields are null/empty, remove from map; otherwise store
+    if ((existing.new_accounts === null || existing.new_accounts === undefined) &&
+        (existing.new_dollars === null || existing.new_dollars === undefined)) {
+        newBizChanges.delete(key);
+    } else {
+        newBizChanges.set(key, existing);
+    }
+
+    updateChangeCount();
+}
+
+function handleNewBizKeydown(event, input) {
+    if (input.dataset.isPast === 'true') {
+        return;
+    }
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        markNewBizModified(input);
+    }
+}
+
 function handleKeydown(event, input) {
     // Don't allow changes to past months
     if (input.dataset.isPast === 'true') {
@@ -1106,7 +1233,7 @@ function handleKeydown(event, input) {
 }
 
 function updateChangeCount() {
-    const count = changes.size;
+    const count = changes.size + newBizChanges.size;
     const countEl = document.getElementById('changeCount');
     const saveBtn = document.getElementById('saveBtn');
     const resetBtn = document.getElementById('resetBtn');
@@ -1198,76 +1325,109 @@ function resetChanges() {
     });
     
     changes.clear();
+    newBizChanges.clear();
     updateChangeCount();
     recalculateTotals();
     showStatus('Changes reset', 'success');
 }
 
 async function saveChanges() {
-    if (changes.size === 0) return;
+    if (changes.size === 0 && newBizChanges.size === 0) return;
     
     const saveBtn = document.getElementById('saveBtn');
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
     
     const updates = Array.from(changes.values());
+    const newBizUpdates = Array.from(newBizChanges.values());
     
     try {
-        const response = await fetch('/planning/api/forecast/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                updates: updates,
-                updated_by: 'Planning Session',
-                session_notes: `Planning session ${new Date().toISOString().split('T')[0]}`
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // Mark all as saved and update original values
-            changes.forEach((value, key) => {
-                const [ae, year, month] = key.split('-');
-                const input = document.querySelector(
-                    `.forecast-input[data-ae="${ae}"][data-year="${year}"][data-month="${month}"]`
-                );
-                if (input) {
-                    input.classList.remove('modified');
-                    input.classList.add('saved');
-                    // Update original to the new entered value
-                    originalValues.set(key, value.amount);
-                    
-                    // Re-check booked exceeds with new value
-                    const bookedValue = parseNumber(input.dataset.booked || '0');
-                    if (bookedValue > value.amount) {
-                        input.classList.add('booked-exceeds');
-                        input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
-                    } else {
-                        input.classList.remove('booked-exceeds');
-                        input.title = '';
-                    }
-                }
+        // 1) Save forecast overrides
+        if (updates.length > 0) {
+            const response = await fetch('/planning/api/forecast/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    updates: updates,
+                    updated_by: 'Planning Session',
+                    session_notes: `Planning session ${new Date().toISOString().split('T')[0]}`
+                })
             });
             
-            changes.clear();
-            updateChangeCount();
-            showStatus(`${updates.length} forecast${updates.length > 1 ? 's' : ''} saved successfully`, 'success');
+            const result = await response.json();
             
-            // Remove saved class after animation
-            setTimeout(() => {
-                document.querySelectorAll('.forecast-input.saved').forEach(input => {
-                    input.classList.remove('saved');
+            if (result.success) {
+                // Mark all as saved and update original values
+                changes.forEach((value, key) => {
+                    const [ae, year, month] = key.split('-');
+                    const input = document.querySelector(
+                        `.forecast-input[data-ae="${ae}"][data-year="${year}"][data-month="${month}"]`
+                    );
+                    if (input) {
+                        input.classList.remove('modified');
+                        input.classList.add('saved');
+                        // Update original to the new entered value
+                        originalValues.set(key, value.amount);
+                        
+                        // Re-check booked exceeds with new value
+                        const bookedValue = parseNumber(input.dataset.booked || '0');
+                        if (bookedValue > value.amount) {
+                            input.classList.add('booked-exceeds');
+                            input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
+                        } else {
+                            input.classList.remove('booked-exceeds');
+                            input.title = '';
+                        }
+                    }
                 });
-            }, 2000);
-        } else {
-            showStatus(result.error || 'Failed to save changes', 'error');
+            } else {
+                showStatus(result.error || 'Failed to save forecast changes', 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save All Changes';
+                return;
+            }
         }
+
+        // 2) Save new-business fields
+        if (newBizUpdates.length > 0) {
+            const response2 = await fetch('/planning/api/new-business/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    updates: newBizUpdates,
+                    session_notes: `Planning session ${new Date().toISOString().split('T')[0]}`
+                })
+            });
+            const result2 = await response2.json();
+            if (!result2.success) {
+                showStatus(result2.error || 'Failed to save new business changes', 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save All Changes';
+                return;
+            }
+        }
+
+        // All good
+        changes.clear();
+        newBizChanges.clear();
+        updateChangeCount();
+        showStatus(
+            `${updates.length + newBizUpdates.length} change${(updates.length + newBizUpdates.length) !== 1 ? 's' : ''} saved successfully`,
+            'success'
+        );
+        
+        // Remove saved class after animation
+        setTimeout(() => {
+            document.querySelectorAll('.forecast-input.saved').forEach(input => {
+                input.classList.remove('saved');
+            });
+        }, 2000);
+        
     } catch (error) {
         console.error('Save error:', error);
         showStatus('Network error - please try again', 'error');
     } finally {
-        saveBtn.disabled = changes.size === 0;
+        saveBtn.disabled = changes.size === 0 && newBizChanges.size === 0;
         saveBtn.textContent = 'Save All Changes';
     }
 }
@@ -1317,7 +1477,7 @@ function exportCSV() {
 
 // Warn before leaving with unsaved changes
 window.addEventListener('beforeunload', function(e) {
-    if (changes.size > 0) {
+    if (changes.size > 0 || newBizChanges.size > 0) {
         e.preventDefault();
         e.returnValue = '';
     }

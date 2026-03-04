@@ -758,6 +758,42 @@ def api_bulk_update_forecasts():
         return create_error_response(str(e), 500)
 
 
+@planning_bp.route("/api/new-business/bulk", methods=["POST"])
+@admin_required
+@log_requests
+@handle_request_errors
+def api_bulk_update_new_business():
+    """API: Update new_accounts_forecast / new_dollars_forecast for multiple periods."""
+    try:
+        data = request.get_json()
+
+        if not data or "updates" not in data:
+            return create_error_response("No updates provided", 400)
+
+        container = get_container()
+        planning_service = safe_get_service(container, "planning_service")
+
+        planning_service.bulk_update_new_business(
+            updates=data["updates"],
+            updated_by=current_user.full_name,
+            session_notes=data.get("session_notes"),
+        )
+
+        logger.info(f"Bulk new-business update: {len(data['updates'])} rows saved")
+
+        return create_success_response(
+            {
+                "success": True,
+                "message": f"{len(data['updates'])} new-business rows saved successfully",
+                "changes_count": len(data["updates"]),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in bulk new-business update: {e}", exc_info=True)
+        return create_error_response(str(e), 500)
+
+
 @planning_bp.route("/api/forecast/reset", methods=["POST"])
 @admin_required
 @log_requests

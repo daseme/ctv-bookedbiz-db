@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS forecast (
     year INTEGER NOT NULL CHECK (year >= 2000 AND year <= 2100),
     month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
     forecast_amount DECIMAL(12,2) NOT NULL,
+    -- Per-AE/month new business targets
+    new_accounts_forecast INTEGER DEFAULT 0,
+    new_dollars_forecast DECIMAL(12,2) DEFAULT 0,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_by TEXT,
     notes TEXT,

@@ -345,38 +345,6 @@
         opacity: 1;
     }
     
-    .sector-subrow {
-        background: #f8f9fa;
-    }
-    
-    .sector-subrow td {
-        padding: 4px 8px;
-        border-top: none;
-        font-size: 11px;
-    }
-    
-    .sector-subrow td:first-child {
-        border-left: 3px solid var(--nord10);
-    }
-    
-    /* Last row of each sector block: clearer separator between sectors */
-    .sector-subrow.sector-subrow-dollars {
-        border-bottom: 1px solid #cbd5e0;
-    }
-    
-    .sector-subrow td.number input {
-        width: 100%;
-        padding: 3px 5px;
-        font-size: 11px;
-    }
-    
-    .sector-subrow-label {
-        color: var(--nord10);
-        padding-left: 32px !important;
-        font-weight: 400;
-        font-style: italic;
-    }
-    
     /* Quick Fill Section */
     .quick-fill {
         background: #f7fafc;
@@ -670,8 +638,6 @@
             {% if has_sectors %}
             <!-- Sector Rows (hidden by default) -->
             {% if entity_exp %}
-            {% set new_accts_grid = entity_exp.new_accounts_grid() %}
-            {% set new_dollars_grid = entity_exp.new_dollars_grid() %}
             {% for sector_id, sector_code, sector_name in entity_exp.sectors_used() %}
             {% set grid = entity_exp.monthly_grid() %}
             <tr class="sector-row hidden-row" data-ae-parent="{{ ae_safe }}" data-sector="{{ sector_id }}">
@@ -694,40 +660,6 @@
                 </td>
                 {% endfor %}
                 <td class="number sector-total" data-ae="{{ ae_safe }}" data-sector="{{ sector_id }}">$0</td>
-            </tr>
-            <tr class="sector-subrow sector-subrow-accts hidden-row" data-ae-parent="{{ ae_safe }}" data-sector="{{ sector_id }}">
-                <td class="sector-subrow-label">New accts</td>
-                {% for month in range(1, 13) %}
-                <td class="number">
-                    <input type="number"
-                           class="sector-new-accounts"
-                           data-ae="{{ entity.entity_name }}"
-                           data-sector="{{ sector_id }}"
-                           data-month="{{ month }}"
-                           min="0"
-                           value="{{ new_accts_grid.get(sector_id, {}).get(month) if new_accts_grid.get(sector_id, {}).get(month) is not none else '' }}"
-                           onchange="markSectorModified(this)"
-                           placeholder="0">
-                </td>
-                {% endfor %}
-                <td class="number"></td>
-            </tr>
-            <tr class="sector-subrow sector-subrow-dollars hidden-row" data-ae-parent="{{ ae_safe }}" data-sector="{{ sector_id }}">
-                <td class="sector-subrow-label">New $</td>
-                {% for month in range(1, 13) %}
-                <td class="number">
-                    <input type="text"
-                           class="sector-new-dollars"
-                           data-ae="{{ entity.entity_name }}"
-                           data-sector="{{ sector_id }}"
-                           data-month="{{ month }}"
-                           value="{{ '{:,.0f}'.format(new_dollars_grid.get(sector_id, {}).get(month) | float) if new_dollars_grid.get(sector_id, {}).get(month) is not none else '' }}"
-                           onchange="markSectorModified(this)"
-                           onkeydown="handleKeydown(event, this)"
-                           placeholder="0">
-                </td>
-                {% endfor %}
-                <td class="number"></td>
             </tr>
             {% endfor %}
             {% endif %}
@@ -1204,27 +1136,17 @@ async function saveAll() {
             const aeSafe = aeName.replace(/ /g, '-').replace(/'/g, '');
             const allExpectations = [];
             
-            // Collect all sector inputs for this AE (amounts on sector row; new accts / new $ on sub-rows, same month columns)
+            // Collect all sector inputs for this AE (amounts on sector row for each month)
             const sectorRows = document.querySelectorAll(`tr.sector-row[data-ae-parent="${aeSafe}"]`);
             sectorRows.forEach(row => {
                 const sectorId = parseInt(row.dataset.sector);
-                const acctsSubrow = document.querySelector(`tr.sector-subrow-accts[data-ae-parent="${aeSafe}"][data-sector="${sectorId}"]`);
-                const dollarsSubrow = document.querySelector(`tr.sector-subrow-dollars[data-ae-parent="${aeSafe}"][data-sector="${sectorId}"]`);
                 for (let m = 1; m <= 12; m++) {
                     const amountInput = row.querySelector(`input.sector-input[data-month="${m}"]`);
-                    const newAcctsInput = acctsSubrow ? acctsSubrow.querySelector(`input.sector-new-accounts[data-month="${m}"]`) : null;
-                    const newDollarsInput = dollarsSubrow ? dollarsSubrow.querySelector(`input.sector-new-dollars[data-month="${m}"]`) : null;
                     if (amountInput) {
-                        const newAccountsForecast = newAcctsInput && newAcctsInput.value.trim() !== ''
-                            ? parseInt(newAcctsInput.value, 10) : null;
-                        const newDollarsForecast = newDollarsInput && newDollarsInput.value.trim() !== ''
-                            ? parseNumber(newDollarsInput.value) : null;
                         allExpectations.push({
                             sector_id: sectorId,
                             month: m,
-                            amount: parseNumber(amountInput.value),
-                            new_accounts_forecast: newAccountsForecast,
-                            new_dollars_forecast: newDollarsForecast
+                            amount: parseNumber(amountInput.value)
                         });
                     }
                 }
