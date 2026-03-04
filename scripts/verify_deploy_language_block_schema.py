@@ -3,6 +3,7 @@
 Quick verification script for Language Block schema deployment
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -14,11 +15,15 @@ from database.connection import DatabaseConnection
 
 def verify_deployment():
     """Quick verification of the deployed schema."""
+    db_path = os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH")
+    if not db_path:
+        print("❌ No database path. Set DB_PATH or DATABASE_PATH env var.")
+        sys.exit(1)
 
     print("🔍 Verifying Language Block Schema Deployment...")
     print("=" * 60)
 
-    db = DatabaseConnection("data/database/production.db")
+    db = DatabaseConnection(db_path)
 
     try:
         with db.connect() as conn:

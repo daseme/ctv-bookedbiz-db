@@ -1,3 +1,60 @@
+# Eliminate hardcoded/wrong database path fallbacks — COMPLETED
+
+## Summary
+Removed all silent fallback DB paths that could cause writes to wrong database.
+Production code now requires explicit `DB_PATH` or `DATABASE_PATH` env var.
+
+### Changes
+- [x] Flask routes (9 files): `config.get("DB_PATH") or "fallback"` → `config["DB_PATH"]`
+- [x] CLI scripts: removed `"data/database/production.db"` default, fail with clear error if unset
+- [x] Service factory: removed all hardcoded fallbacks, added `_resolve_db_path()` helper
+- [x] Settings module: production env raises `RuntimeError` if no DB env var set
+- [x] Shell scripts: `daily_update.sh` requires `DATABASE_PATH`; `daily-download.sh` uses `$DATABASE_PATH` var
+- [x] Utility scripts (4 files): use env var defaults, fail if not set
+- [x] `.env`: updated `DATABASE_PATH` to canonical `/var/lib/ctv-bookedbiz-db/production.db`
+- [x] Bonus: fixed `language_blocks.py` route (not in original plan) — same fallback pattern
+
+### Verification
+- App startup with `DATABASE_PATH` set: DB_PATH correctly resolved
+- `_choose_db_path("prod", ...)` without env vars: raises `RuntimeError`
+- `grep "data/database/production.db" src/web/routes/ src/services/factory.py cli/ scripts/*.py`: zero matches
+
+---
+
+# Tailscale MagicDNS Rename: pi-ctv → spotops
+
+## Status: IN PROGRESS
+
+### Completed
+- [x] Audit all `pi-ctv` references in repo (scripts, docs, env, systemd)
+- [x] Fix wrong Tailscale IP in failback script (100.81.73.46 → 100.99.11.55)
+- [x] Rename `scripts/failback-to-pi-ctv.sh` → `scripts/failback-to-spotops.sh`
+- [x] Update all script internals (failback, failover, daily-download)
+- [x] Update all 5 docs files (TAILSCALE_AUTH, USER_MANAGEMENT_SETUP, GUIDE_GIT_WORKFLOW, GUIDE-RaspberryWorkflow, GUIDE-failover-failback)
+- [x] Fix wrong IP in GUIDE-failover-failback.md (100.81.73.46 → 100.99.11.55)
+- [x] Update repo_tree.txt and _repo_tree_paths.txt
+- [x] Commit repo changes (commits e428552, 94e4394)
+
+### Infrastructure steps (run manually)
+- [x] `sudo tailscale set --hostname=spotops`
+- [x] `sudo hostnamectl set-hostname spotops`
+- [x] `sudo reboot`
+- [x] Verify after reboot: `hostname`, `tailscale ip -4` (should still be 100.99.11.55), `cat /etc/hosts`
+
+### Post-reboot
+- [ ] Update `~/.ssh/config` and `~/.ssh/known_hosts` on client machines (desktop, laptop)
+- [ ] Update browser bookmarks (`http://pi-ctv:8000` → `http://spotops:8000`)
+- [ ] Check pi2 for any scripts/config referencing `pi-ctv`
+
+### Service cleanup (2026-03-04)
+- [x] `tailscale-serve.service` — already removed (not found)
+- [x] `code-tunnel.service` — updated tunnel name `raspberrypi` → `spotops`, restarted
+- [x] Removed stale `pihole-FTL.service`
+- [x] Unmasked and removed `flaskapp.service` symlink
+- [ ] Fix `pi-weekly-update.service` (script `/usr/local/bin/pi-weekly-update.sh` missing)
+
+---
+
 # Fix Dropbox Backup Path + Update Failover Guide - COMPLETED
 
 Implemented 2026-03-02. PR #187.

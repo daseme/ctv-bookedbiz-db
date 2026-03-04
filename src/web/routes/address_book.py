@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_db_path():
-    return current_app.config.get("DB_PATH") or "./.data/dev.db"
+    return current_app.config["DB_PATH"]
 
 
 _CREATE_ENTITY_METRICS = """

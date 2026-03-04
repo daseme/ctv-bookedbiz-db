@@ -8,6 +8,7 @@ set -e
 PROJECT_DIR="/opt/apps/ctv-bookedbiz-db"
 VENV_PATH="$PROJECT_DIR/.venv"
 LOG_FILE="/var/log/ctv-pi2-download/download.log"
+DATABASE_PATH="${DATABASE_PATH:-${PROJECT_DIR}/data/database/production.db}"
 
 # Ensure log directory exists
 sudo mkdir -p "$(dirname "$LOG_FILE")"
@@ -38,8 +39,8 @@ source "$VENV_PATH/bin/activate"
 
 if python cli_db_sync.py download; then
     # Check database size
-    if [[ -f "$PROJECT_DIR/data/database/production.db" ]]; then
-        DB_SIZE=$(stat -f%z "$PROJECT_DIR/data/database/production.db" 2>/dev/null || stat -c%s "$PROJECT_DIR/data/database/production.db" 2>/dev/null)
+    if [[ -f "$DATABASE_PATH" ]]; then
+        DB_SIZE=$(stat -f%z "$DATABASE_PATH" 2>/dev/null || stat -c%s "$DATABASE_PATH" 2>/dev/null)
         DB_SIZE_MB=$((DB_SIZE / 1024 / 1024))
         log "✓ Database downloaded successfully (${DB_SIZE_MB}MB)"
         
@@ -57,7 +58,7 @@ fi
 
 # Test database integrity (optional quick check)
 if command -v sqlite3 >/dev/null; then
-    if sqlite3 "$PROJECT_DIR/data/database/production.db" "SELECT COUNT(*) FROM sqlite_master;" >/dev/null 2>&1; then
+    if sqlite3 "$DATABASE_PATH" "SELECT COUNT(*) FROM sqlite_master;" >/dev/null 2>&1; then
         log "✓ Database integrity check passed"
     else
         log "⚠️  Database integrity check failed"

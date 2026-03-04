@@ -157,6 +157,16 @@ def _validate_ae_dashboard_service_health(service) -> None:
         ) from e
 
 
+def _resolve_db_path() -> str:
+    """Resolve DB_PATH from environment. Fail if not set."""
+    path = os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH")
+    if not path:
+        raise ServiceCreationError(
+            "DB_PATH not set. Set DB_PATH or DATABASE_PATH env var."
+        )
+    return path
+
+
 def configure_container_from_environment():
     """Configure container with environment-specific settings and enhanced validation."""
     container = get_container()
@@ -179,9 +189,7 @@ def configure_container_from_environment():
     # Build configuration with validation
     config = {
         "PROJECT_ROOT": project_root,
-        "DB_PATH": os.environ.get("DB_PATH")
-        or os.environ.get("DATABASE_PATH")
-        or os.path.join(project_root, "data/database/production.db"),
+        "DB_PATH": _resolve_db_path(),
         "DATA_PATH": os.environ.get(
             "DATA_PATH", os.path.join(project_root, "data/processed")
         ),
@@ -360,7 +368,11 @@ def emergency_register_report_service(container):
             from src.database.connection import DatabaseConnection
 
             container = get_container()
-            db_path = container.get_config("DB_PATH", "data/database/production.db")
+            db_path = container.get_config("DB_PATH")
+            if not db_path:
+                raise ServiceCreationError(
+                    "DB_PATH not configured in container"
+                )
             db_connection = DatabaseConnection(db_path)
             print("✅ Database connection successful")
         except Exception as e:
@@ -517,9 +529,11 @@ def create_database_connection(db_path: Optional[str] = None):
                 "PROJECT_ROOT",
                 os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")),
             )
-            db_path = container.get_config(
-                "DB_PATH", os.path.join(project_root, "data/database/production.db")
-            )
+            db_path = container.get_config("DB_PATH")
+            if not db_path:
+                raise ServiceCreationError(
+                    "DB_PATH not configured in container"
+                )
 
         logger.info(f"Creating database connection to: {db_path}")
         return DatabaseConnection(db_path)
@@ -602,9 +616,11 @@ def create_budget_service():
         data_path = container.get_config(
             "DATA_PATH", os.path.join(project_root, "data")
         )
-        db_path = container.get_config(
-            "DB_PATH", os.path.join(project_root, "data/database/production.db")
-        )
+        db_path = container.get_config("DB_PATH")
+        if not db_path:
+            raise ServiceCreationError(
+                "DB_PATH not configured in container"
+            )
 
         logger.debug(
             f"Creating BudgetService with data_path: {data_path}, db_path: {db_path}"
@@ -765,14 +781,10 @@ def create_market_analysis_service():
         db_connection = container.get("database_connection")
         return MarketAnalysisService(db_connection)
     except Exception as e:
-        logger.warning(f"Database connection issue for market analysis service: {e}")
-        # Fallback to direct connection
-        import sqlite3
-
-        db_path = "data/database/production.db"
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        return MarketAnalysisService(conn)
+        logger.error(f"Database connection issue for market analysis service: {e}")
+        raise ServiceCreationError(
+            f"Cannot create market analysis service without DB connection: {e}"
+        ) from e
 
 
 def create_management_performance_service():

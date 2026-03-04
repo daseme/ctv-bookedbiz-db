@@ -4,6 +4,7 @@ CLI script to populate Dallas Grid language blocks
 Place this in: scripts/populate_dallas_grid.py
 """
 
+import os
 import sys
 import logging
 from pathlib import Path
@@ -21,7 +22,9 @@ def main():
 
     parser = argparse.ArgumentParser(description="Populate Dallas Grid Language Blocks")
     parser.add_argument(
-        "--db-path", default="data/database/production.db", help="Database path"
+        "--db-path",
+        default=os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH"),
+        help="Database path (default: $DB_PATH or $DATABASE_PATH env var)"
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument(
@@ -32,6 +35,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if not args.db_path:
+        print("❌ No database path. Set DB_PATH env var or pass --db-path")
+        sys.exit(1)
 
     # Setup logging
     level = logging.DEBUG if args.verbose else logging.INFO

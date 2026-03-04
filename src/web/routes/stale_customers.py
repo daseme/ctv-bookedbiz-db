@@ -21,7 +21,7 @@ def _require_admin_for_writes():
 
 
 def _get_db_path():
-    return current_app.config.get("DB_PATH") or "./.data/dev.db"
+    return current_app.config["DB_PATH"]
 
 
 @contextmanager

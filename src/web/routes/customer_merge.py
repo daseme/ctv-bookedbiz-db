@@ -34,10 +34,7 @@ def unresolved_bill_codes():
     - unlinked: no alias exists yet, needs Link action
     - needs_backfill: alias exists but spots.customer_id still NULL
     """
-    db_path = (
-        current_app.config.get("DB_PATH")
-        or "./data/database/production.db"
-    )
+    db_path = current_app.config["DB_PATH"]
     uri = f"file:{db_path}?mode=ro"
     conn = sqlite3.connect(uri, uri=True, timeout=5.0)
     conn.row_factory = sqlite3.Row
@@ -99,10 +96,7 @@ def backfill_spots():
             "error": "bill_code and customer_id required",
         }), 400
 
-    db_path = (
-        current_app.config.get("DB_PATH")
-        or "./data/database/production.db"
-    )
+    db_path = current_app.config["DB_PATH"]
     conn = sqlite3.connect(db_path, timeout=10.0)
     try:
         spots_updated = conn.execute("""
