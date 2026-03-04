@@ -1,7 +1,7 @@
 #!/bin/bash
 # Pi2 Daily Database Download Script
 # Location: /opt/apps/ctv-bookedbiz-db/bin/daily-download.sh
-# Runs after pi-ctv uploads to ensure pi2 has latest database
+# Runs after spotops uploads to ensure pi2 has latest database
 
 set -e
 

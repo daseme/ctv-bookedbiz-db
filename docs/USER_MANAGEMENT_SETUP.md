@@ -50,7 +50,7 @@ VALUES ('YourFirstName', 'YourLastName', 'your.email@example.com', 'admin');
 ## Accessing the Application
 
 1. Start the web application (typically via systemd / uvicorn on port 8000). See `docs/GUIDE-RaspberryWorkflow.md` for Pi service details.
-2. Connect to the app **over Tailscale** (e.g. `http://pi-ctv:8000/` or the Pi’s Tailscale IP). You will be signed in automatically if your Tailscale email exists in the `users` table.
+2. Connect to the app **over Tailscale** (e.g. `http://spotops:8000/` or the Pi’s Tailscale IP). You will be signed in automatically if your Tailscale email exists in the `users` table.
 
 ## User Management Features (Admin)
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pi2 Failover Script - Take over from pi-ctv when it goes down
+# Pi2 Failover Script - Take over from spotops when it goes down
 # Location: /opt/apps/ctv-bookedbiz-db/scripts/failover-to-pi2.sh
 
 set -e  # Exit on any error
@@ -100,4 +100,4 @@ echo ""
 echo "📊 Control Station Alpha Dashboard: http://100.96.96.109:5001"
 echo "🔧 Kuma Monitoring:               http://100.96.96.109:3001"
 echo ""
-echo "To failback to pi-ctv, run: ./scripts/failback-to-pi-ctv.sh"
+echo "To failback to spotops, run: ./scripts/failback-to-spotops.sh"

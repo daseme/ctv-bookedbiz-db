@@ -138,13 +138,13 @@ python cli_db_sync.py test
 
 ## Layer 3: Pi2 Cold Standby
 
-Pi2 downloads the latest database from Dropbox daily at 02:30 (25 minutes after the Pi-CTV upload). It can serve as a warm standby with ~30-second failover activation.
+Pi2 downloads the latest database from Dropbox daily at 02:30 (25 minutes after the Spotops upload). It can serve as a warm standby with ~30-second failover activation.
 
 ### Network
 
 | Host | Tailscale IP | Role |
 |------|-------------|------|
-| Pi-CTV (primary) | 100.81.73.46 | Production app on port 8000 |
+| Spotops (primary) | 100.99.11.55 | Production app on port 8000 |
 | Pi2 (standby) | 100.96.96.109 | Mirror, failover on port 8000 |
 
 ### Pi2 services (on Pi2 only)
@@ -154,7 +154,7 @@ Pi2 downloads the latest database from Dropbox daily at 02:30 (25 minutes after 
 - **Log**: `/var/log/ctv-pi2-download/download.log`
 - **Flask**: `flaskapp.service` (disabled by default, started on failover)
 
-### Failover (Pi-CTV down)
+### Failover (Spotops down)
 
 ```bash
 ssh daseme@100.96.96.109
@@ -166,10 +166,10 @@ The script pulls the latest code, validates the local database, starts Flask, an
 
 **Post-failover URL**: `http://100.96.96.109:8000`
 
-### Failback (Pi-CTV restored)
+### Failback (Spotops restored)
 
 ```bash
-./scripts/failback-to-pi-ctv.sh
+./scripts/failback-to-spotops.sh
 ```
 
 Prompts for optional data backup of any changes made during failover, then stops Flask on Pi2.
@@ -210,14 +210,14 @@ cat /opt/apps/ctv-bookedbiz-db/data/pending_orders.json | python3 -m json.tool
 ## Monitoring
 
 ```bash
-# Full backup health check (run from Pi-CTV)
+# Full backup health check (run from Spotops)
 systemctl status litestream                          # Continuous replication
 systemctl list-timers | grep ctv-db-sync             # Nightly Dropbox backup
 tail -5 /var/log/litestream/replicate.log            # Recent WAL activity
 tail -5 /var/log/ctv-db-sync/sync.log                # Last Dropbox result
 
-# Pi-CTV app health
-curl -sf http://100.81.73.46:8000/api/system-stats
+# Spotops app health
+curl -sf http://100.99.11.55:8000/api/system-stats
 
 # Pi2 readiness (from Pi2)
 systemctl list-timers | grep ctv-pi2-download
@@ -236,9 +236,9 @@ ls -lh /opt/apps/ctv-bookedbiz-db/data/database/production.db
 
 | Scenario | RTO | RPO | Recovery source |
 |----------|-----|-----|-----------------|
-| DB corruption (Pi-CTV intact) | 5 min | ~1 sec | Litestream restore from B2 |
-| Pi-CTV hardware failure | 30 sec | 24 hours | Pi2 failover (Dropbox copy) |
-| Pi-CTV hardware failure (with Litestream restore) | 15 min | ~1 sec | Litestream restore to Pi2 |
+| DB corruption (Spotops intact) | 5 min | ~1 sec | Litestream restore from B2 |
+| Spotops hardware failure | 30 sec | 24 hours | Pi2 failover (Dropbox copy) |
+| Spotops hardware failure (with Litestream restore) | 15 min | ~1 sec | Litestream restore to Pi2 |
 | Both Pis destroyed | 30 min | ~1 sec | Litestream restore to new host |
 | All cloud storage lost | N/A | 24 hours | Pi2 local copy |
 
@@ -246,7 +246,7 @@ ls -lh /opt/apps/ctv-bookedbiz-db/data/database/production.db
 
 ## Important File Locations
 
-### Pi-CTV
+### Spotops
 
 ```
 # Production database
@@ -280,7 +280,7 @@ ls -lh /opt/apps/ctv-bookedbiz-db/data/database/production.db
 
 ```
 /opt/apps/ctv-bookedbiz-db/scripts/failover-to-pi2.sh
-/opt/apps/ctv-bookedbiz-db/scripts/failback-to-pi-ctv.sh
+/opt/apps/ctv-bookedbiz-db/scripts/failback-to-spotops.sh
 /opt/apps/ctv-bookedbiz-db/bin/daily-download.sh
 /etc/systemd/system/ctv-pi2-download.service
 /etc/systemd/system/ctv-pi2-download.timer
