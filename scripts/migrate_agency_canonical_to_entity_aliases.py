@@ -13,12 +13,14 @@ Usage:
     python scripts/migrate_agency_canonical_to_entity_aliases.py [--db-path PATH] [--dry-run]
 
 Options:
-    --db-path PATH  Path to SQLite database (default: ./data/database/production.db)
+    --db-path PATH  Path to SQLite database (default: $DB_PATH or $DATABASE_PATH)
     --dry-run       Preview changes without committing
 """
 
 import argparse
+import os
 import sqlite3
+import sys
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -192,8 +194,8 @@ def main():
     )
     parser.add_argument(
         "--db-path",
-        default="./data/database/production.db",
-        help="Path to SQLite database"
+        default=os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH"),
+        help="Path to SQLite database (default: $DB_PATH or $DATABASE_PATH env var)"
     )
     parser.add_argument(
         "--dry-run",
@@ -207,6 +209,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if not args.db_path:
+        print("❌ No database path. Set DB_PATH env var or pass --db-path")
+        sys.exit(1)
 
     print(f"Database: {args.db_path}")
     print(f"Dry run: {args.dry_run}")

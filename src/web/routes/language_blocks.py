@@ -5,7 +5,7 @@ Language Block Reporting blueprint with Year/Month filtering support
 
 import logging
 import sqlite3
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
 from datetime import datetime, date
 from src.services.container import get_container
 from src.web.utils.request_helpers import (
@@ -25,30 +25,11 @@ language_blocks_bp = Blueprint(
 
 
 def get_database_connection():
-    """Get database connection using your existing system"""
+    """Get database connection from Flask app config."""
     try:
-        container = get_container()
-
-        # Try to get database path from container/config
-        try:
-            # First try to get from config
-            db_path = container.get_config("DB_PATH", None)
-            if not db_path:
-                # Try alternative config names
-                db_path = container.get_config("DATABASE_PATH", None)
-            if not db_path:
-                db_path = container.get_config("SQLITE_DB_PATH", None)
-            if not db_path:
-                # Default path based on your system
-                db_path = "/opt/apps/ctv-bookedbiz-db/data/database/production.db"
-
-        except Exception as e:
-            logger.warning(f"Could not get DB path from config: {e}")
-            db_path = "/opt/apps/ctv-bookedbiz-db/data/database/production.db"
-
-        # Create connection
+        db_path = current_app.config["DB_PATH"]
         conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row  # This allows dict-like access
+        conn.row_factory = sqlite3.Row
         return conn
 
     except Exception as e:

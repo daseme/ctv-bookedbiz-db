@@ -72,7 +72,11 @@ check_prerequisites() {
         return 1
     fi
     
-    local db_path="${DATABASE_PATH:-${PROJECT_ROOT}/data/database/production.db}"
+    if [[ -z "${DATABASE_PATH:-}" ]]; then
+        send_notification "ERROR" "DATABASE_PATH env var not set"
+        return 1
+    fi
+    local db_path="${DATABASE_PATH}"
     if [[ ! -f "${db_path}" ]]; then
         send_notification "ERROR" "Database not found: ${db_path}"
         return 1

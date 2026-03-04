@@ -42,7 +42,7 @@ sudo systemctl restart flaskapp
 sudo journalctl -u flaskapp -f
 
 # Check if it's working
-curl -sf http://pi-ctv:5100/health/ && echo "DEV_OK"
+curl -sf http://spotops:5100/health/ && echo "DEV_OK"
 ```
 
 ### 5. When ready for production

@@ -11,11 +11,7 @@ customer_norm_bp = Blueprint("customer_norm", __name__)
 
 
 def _db_path():
-    return (
-        current_app.config.get("DB_PATH")
-        or current_app.config.get("DATABASE_PATH")
-        or "./data/database/production.db"
-    )
+    return current_app.config["DB_PATH"]
 
 
 def _get_db_ro() -> sqlite3.Connection:
@@ -57,7 +53,7 @@ def _error_response(e, path):
 
 def _get_db() -> sqlite3.Connection:
     # Adapt to your app; ensure row_factory for dict-ish rows
-    db_path = current_app.config.get("DATABASE_PATH", "./data/database/production.db")
+    db_path = current_app.config["DB_PATH"]
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn

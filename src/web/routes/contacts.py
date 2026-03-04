@@ -16,7 +16,7 @@ def _require_admin_for_writes():
 
 def _get_service():
     from src.services.contact_service import ContactService
-    db_path = current_app.config.get("DB_PATH") or "./.data/dev.db"
+    db_path = current_app.config["DB_PATH"]
     return ContactService(db_path)
 
 

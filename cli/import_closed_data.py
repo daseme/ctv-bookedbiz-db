@@ -23,7 +23,7 @@ COMMAND LINE OPTIONS:
 - --dry-run         - Preview changes without executing import
 - --force           - Skip confirmation prompts
 - --verbose         - Enable detailed logging
-- --db-path         - Database path (default: data/database/production.db)
+- --db-path         - Database path (default: $DB_PATH or $DATABASE_PATH env var)
 
 IMPORT MODES:
 - HISTORICAL: Processes all months, replaces existing data, closes open months
@@ -713,8 +713,8 @@ Features:
     )
     parser.add_argument(
         "--db-path",
-        default=os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH") or "data/database/production.db",
-        help="Database path (default: $DB_PATH or $DATABASE_PATH or data/database/production.db)"
+        default=os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH"),
+        help="Database path (default: $DB_PATH or $DATABASE_PATH env var)"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Preview import without making changes"
@@ -727,6 +727,13 @@ Features:
     args = parser.parse_args()
 
     # Validation
+    if not args.db_path:
+        print(
+            "❌ No database path specified. "
+            "Set DB_PATH or DATABASE_PATH env var, or pass --db-path"
+        )
+        sys.exit(1)
+
     excel_path = Path(args.excel_file)
     if not excel_path.exists():
         print(f"❌ Excel file not found: {args.excel_file}")

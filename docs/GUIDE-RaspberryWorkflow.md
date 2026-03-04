@@ -1,8 +1,8 @@
-# Raspberry Pi Development Workflow (pi-ctv)
+# Raspberry Pi Development Workflow (spotops)
 
 ## Overview
 
-This document describes how the **CTV BookedBiz DB** web app is deployed and operated on **pi-ctv**, and how developers collaborate safely (code vs data vs service ownership).
+This document describes how the **CTV BookedBiz DB** web app is deployed and operated on **spotops**, and how developers collaborate safely (code vs data vs service ownership).
 
 **Key idea:**  
 - **Production code** lives in `/opt/apps/ctv-bookedbiz-db` (shared read/write for deploy group).  
@@ -16,7 +16,7 @@ This document describes how the **CTV BookedBiz DB** web app is deployed and ope
 ## System Architecture
 
 ### Infrastructure
-- **Host**: Raspberry Pi 5 (ARM64) — `pi-ctv`
+- **Host**: Raspberry Pi 5 (ARM64) — `spotops`
 - **OS**: Debian GNU/Linux
 - **Network**: Tailscale VPN
 - **Repo**: GitHub `daseme/ctv-bookedbiz-db`
@@ -293,7 +293,7 @@ python3 -c "import os,sqlite3; sqlite3.connect(os.environ[\"DATABASE_PATH\"]).ex
 ### Connect (Tailscale SSH)
 
 ```bash
-ssh daseme@pi-ctv
+ssh daseme@spotops
 ```
 
 ### Development cycle
@@ -310,7 +310,7 @@ sudo systemctl restart spotops-dev
 sudo journalctl -u spotops-dev -f
 
 # Test in browser
-# http://pi-ctv:5100/
+# http://spotops:5100/
 ```
 
 ### Deploy to production
@@ -332,7 +332,7 @@ sudo systemctl status ctv-bookedbiz-db --no-pager
 ### Windows → Pi (PowerShell)
 
 ```powershell
-scp "C:\Path\To\File.xlsx" daseme@pi-ctv:/home/daseme/dev/ctv-bookedbiz-db/.data/raw/
+scp "C:\Path\To\File.xlsx" daseme@spotops:/home/daseme/dev/ctv-bookedbiz-db/.data/raw/
 ```
 
 ### Pi → Windows (Tailscale)
@@ -347,7 +347,7 @@ tailscale file cp "./file.xlsx" <windows-device-name>:
 
 ### Remote-SSH (recommended)
 
-- SSH into pi-ctv, open folder:
+- SSH into spotops, open folder:
   - Production: `/opt/apps/ctv-bookedbiz-db`
   - Development: `~/dev/ctv-bookedbiz-db`
 - Python interpreter:
@@ -457,5 +457,5 @@ ss -lptn 'sport = :5100' && curl -s -o /dev/null -w "%{http_code}\n" http://127.
 
 | Environment | URL |
 |-------------|-----|
-| Production | `http://pi-ctv:8000/` |
-| Development | `http://pi-ctv:5100/` |
+| Production | `http://spotops:8000/` |
+| Development | `http://spotops:5100/` |

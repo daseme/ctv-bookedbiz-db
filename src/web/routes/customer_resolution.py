@@ -16,7 +16,7 @@ def _require_admin_for_writes():
 
 def _get_service():
     from src.services.customer_resolution_service import CustomerResolutionService
-    db_path = current_app.config.get("DB_PATH") or "./data/database/production.db"
+    db_path = current_app.config["DB_PATH"]
     return CustomerResolutionService(db_path)
 
 

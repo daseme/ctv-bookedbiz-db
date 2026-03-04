@@ -17,7 +17,7 @@ Yes. When someone opens the app **over your tailnet**:
 You do **not** need `tailscale serve` for identity. The app only requires:
 
 - The Pi is connected to your tailnet (Tailscale running).
-- Users connect to the Pi over Tailscale (e.g. `http://pi-ctv:8000/` or `http://100.x.y.z:8000/` where `100.x.y.z` is the Pi’s Tailscale IP).
+- Users connect to the Pi over Tailscale (e.g. `http://spotops:8000/` or `http://100.x.y.z:8000/` where `100.x.y.z` is the Pi’s Tailscale IP).
 
 Once a request hits the app from a Tailscale IP, the Local API `whois` call returns the correct login identity.
 
@@ -28,6 +28,6 @@ Once a request hits the app from a Tailscale IP, the Local API `whois` call retu
 3. **Socket access (if needed).** If the socket is not group-writable by the app user, use a systemd override for tailscaled with `--socket-group=` and `--socket-perms=0660`. With `--operator=` set, whois will then be allowed for that user (no 403).
 4. **App is bound to a safe interface/port** (e.g. `0.0.0.0:8000` but only reachable over your private network).
 5. **Users table** has a row per allowed user with `email` matching their Tailscale login. Create users via Admin → User Management, or `scripts/create_admin_user.py`.
-6. (Optional) Use MagicDNS or your own DNS to make `http://pi-ctv:8000/` easier to reach from client machines on the tailnet.
+6. (Optional) Use MagicDNS or your own DNS to make `http://spotops:8000/` easier to reach from client machines on the tailnet.
 
 Once that’s in place, sign-in via Tailscale works: users connect over the tailnet and are logged in automatically if their email exists in the app.

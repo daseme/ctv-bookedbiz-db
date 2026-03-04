@@ -86,7 +86,7 @@ scripts\create_admin_user.py
 scripts\ctv-db-validation.env.template
 scripts\ctv-db-validation.service
 scripts\ctv-db-validation.timer
-scripts\failback-to-pi-ctv.sh
+scripts\failback-to-spotops.sh
 scripts\failover-to-pi2.sh
 scripts\generate_nord_routes.py
 scripts\load_review_queue.py

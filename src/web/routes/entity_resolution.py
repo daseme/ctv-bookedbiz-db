@@ -61,13 +61,13 @@ def _get_cfg(tab=None):
 
 def _get_customer_service():
     from src.services.customer_resolution_service import CustomerResolutionService
-    db_path = current_app.config.get("DB_PATH") or "./data/database/production.db"
+    db_path = current_app.config["DB_PATH"]
     return CustomerResolutionService(db_path)
 
 
 def _get_agency_service():
     from src.services.agency_resolution_service import AgencyResolutionService
-    db_path = current_app.config.get("DB_PATH") or "./data/database/production.db"
+    db_path = current_app.config["DB_PATH"]
     return AgencyResolutionService(db_path)
 
 
