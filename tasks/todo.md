@@ -43,7 +43,7 @@ Production code now requires explicit `DB_PATH` or `DATABASE_PATH` env var.
 
 ### Post-reboot
 - [x] Update `~/.ssh/config` and `~/.ssh/known_hosts` on client machines (desktop, laptop)
-- [x] Update browser bookmarks (`http://pi-ctv:8000` → `http://spotops:8000`)
+- [x] Update browser bookmarks (`http://pi-ctv:8000` → `http://spotops`)
 - [ ] Check pi2 for any scripts/config referencing `pi-ctv`
 
 ### Service cleanup (2026-03-04)
@@ -52,6 +52,13 @@ Production code now requires explicit `DB_PATH` or `DATABASE_PATH` env var.
 - [x] Removed stale `pihole-FTL.service`
 - [x] Unmasked and removed `flaskapp.service` symlink
 - [ ] Fix `pi-weekly-update.service` (script `/usr/local/bin/pi-weekly-update.sh` missing)
+
+### Port 80 migration (2026-03-05)
+- [x] Add `AmbientCapabilities=CAP_NET_BIND_SERVICE` to systemd service
+- [x] Change `--port 8000` to `--port 80` in `ctv-bookedbiz-db.service`
+- [x] Verify: `http://spotops` serves app on port 80, port 8000 gone
+- [x] Update `scripts/failback-to-spotops.sh` URL (drop `:8000`)
+- [x] Update browser bookmarks to `http://spotops` (no port)
 
 ---
 
