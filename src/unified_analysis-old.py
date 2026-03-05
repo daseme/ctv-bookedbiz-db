@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import shared utilities
 from utils.date_range_utils import DateRangeUtils
+from utils.query_builders import BroadcastMonthQueryBuilder
 
 
 @dataclass
@@ -78,7 +79,7 @@ class UpdatedUnifiedAnalysisEngine:
 
     def build_year_filter(self, suffixes: List[str]) -> Tuple[str, List[str]]:
         """Build year filter using shared utility."""
-        return DateRangeUtils.build_year_filter(suffixes)
+        return BroadcastMonthQueryBuilder.build_year_filter(suffixes)
 
     # ---------------- Base totals ----------------
 
