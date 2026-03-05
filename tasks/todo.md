@@ -42,8 +42,8 @@ Production code now requires explicit `DB_PATH` or `DATABASE_PATH` env var.
 - [x] Verify after reboot: `hostname`, `tailscale ip -4` (should still be 100.99.11.55), `cat /etc/hosts`
 
 ### Post-reboot
-- [ ] Update `~/.ssh/config` and `~/.ssh/known_hosts` on client machines (desktop, laptop)
-- [ ] Update browser bookmarks (`http://pi-ctv:8000` → `http://spotops:8000`)
+- [x] Update `~/.ssh/config` and `~/.ssh/known_hosts` on client machines (desktop, laptop)
+- [x] Update browser bookmarks (`http://pi-ctv:8000` → `http://spotops:8000`)
 - [ ] Check pi2 for any scripts/config referencing `pi-ctv`
 
 ### Service cleanup (2026-03-04)
@@ -102,16 +102,17 @@ Total estimated impact: ~540 lines of code consolidation across 25+ files.
 
 ## Phase 2 Tasks
 
-### Step 1: LOW RISK - Create Shared Utilities (Immediate Action)
-- [ ] Create src/utils/date_range_utils.py for year range parsing functions
-- [ ] Create src/utils/language_constants.py for language group mappings
-- [ ] Standardize month case statement usage with existing RevenueQueryBuilder
-- [ ] Update imports in affected files (unified_analysis-old.py, market_analysis.py, etc.)
-- [ ] Commit with descriptive message
+### Step 1: LOW RISK - Consolidate Shared Utilities (COMPLETED 2026-03-05)
+- [x] Add `build_language_case_sql()` to LanguageConstants (generates SQL CASE from LANGUAGE_GROUPS dict)
+- [x] Remove duplicate `build_year_filter()` from DateRangeUtils (callers use BroadcastMonthQueryBuilder)
+- [x] Replace hardcoded language CASE in market_analysis.py (was mapping P→Portuguese, now uses canonical P→South Asian)
+- [x] Replace hardcoded language CASE in market_analysis_service.py
+- [x] Update unified_analysis.py QueryBuilder to delegate to BroadcastMonthQueryBuilder
+- [x] Update unified_analysis-old.py to use BroadcastMonthQueryBuilder
+- [x] Add 15 tests in tests/test_utils.py (TDD: RED→GREEN→REFACTOR)
 
-**Estimated Impact**: 115 lines consolidated
-**Risk Level**: LOW - Pure utility functions with no side effects
-**Files Affected**: 5 files (unified_analysis-old.py, market_analysis.py, services/market_analysis_service.py, services/report_data_service.py)
+**Impact**: Eliminated 2 hardcoded SQL CASE statements, 1 duplicate `build_year_filter`, fixed P→Portuguese bug
+**Files Modified**: 7 (language_constants.py, date_range_utils.py, market_analysis.py, market_analysis_service.py, unified_analysis.py, unified_analysis-old.py, tests/test_utils.py)
 
 ### Step 2: MEDIUM RISK - Enhance Query Builders (Careful Planning)
 - [ ] Create CustomerNormalizationQueryBuilder class for customer JOIN patterns
