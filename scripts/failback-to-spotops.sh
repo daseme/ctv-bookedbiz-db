@@ -63,7 +63,7 @@ fi
 echo ""
 echo "✅ FAILBACK COMPLETE!"
 echo "===================="
-echo "• Spotops Flask service: http://100.99.11.55:8000"  
+echo "• Spotops Flask service: http://100.99.11.55"  
 echo "• Pi2 Flask service:     STOPPED"
 echo "• Pi2 remains ready for future failover"
 echo ""
