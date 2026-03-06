@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 import sqlite3
 from contextlib import contextmanager
+from src.utils.query_builders import CustomerNormalizationQueryBuilder
 
 try:
     from rapidfuzz import fuzz
@@ -78,8 +79,8 @@ class CustomerResolutionService:
         Get bill_codes that don't resolve to a customer.
         Uses v_customer_normalization_audit for normalized names.
         """
-        sql = """
-        SELECT 
+        sql = f"""
+        SELECT
             s.bill_code,
             vcna.normalized_name,
             vcna.agency1,
@@ -90,12 +91,12 @@ class CustomerResolutionService:
             MAX(s.air_date) as last_seen
         FROM spots s
         LEFT JOIN customers c ON s.customer_id = c.customer_id
-        LEFT JOIN entity_aliases ea ON ea.alias_name = s.bill_code 
+        LEFT JOIN entity_aliases ea ON ea.alias_name = s.bill_code
             AND ea.entity_type = 'customer' AND ea.is_active = 1
-        LEFT JOIN v_customer_normalization_audit vcna ON vcna.raw_text = s.bill_code
-        WHERE s.bill_code IS NOT NULL 
+        {CustomerNormalizationQueryBuilder.build_customer_join(audit_alias="vcna")}
+        WHERE s.bill_code IS NOT NULL
             AND s.bill_code != ''
-            AND c.customer_id IS NULL 
+            AND c.customer_id IS NULL
             AND ea.alias_id IS NULL
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         GROUP BY s.bill_code

@@ -7,6 +7,7 @@ Uses broadcast_month and month_closures for accurate period comparisons.
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Tuple, Any
 import logging
+from src.utils.query_builders import RevenueQueryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -248,17 +249,15 @@ class PricingAnalysisService:
 
     def get_closed_months(self, limit: int = 100) -> List[str]:
         """Get list of closed months, sorted chronologically (oldest first)."""
-        query = """
+        month_case = RevenueQueryBuilder.build_broadcast_month_case(
+            "broadcast_month"
+        )
+        query = f"""
             SELECT broadcast_month
             FROM month_closures
-            ORDER BY 
+            ORDER BY
                 '20' || SUBSTR(broadcast_month, 5, 2) || '-' ||
-                CASE SUBSTR(broadcast_month, 1, 3)
-                    WHEN 'Jan' THEN '01' WHEN 'Feb' THEN '02' WHEN 'Mar' THEN '03'
-                    WHEN 'Apr' THEN '04' WHEN 'May' THEN '05' WHEN 'Jun' THEN '06'
-                    WHEN 'Jul' THEN '07' WHEN 'Aug' THEN '08' WHEN 'Sep' THEN '09'
-                    WHEN 'Oct' THEN '10' WHEN 'Nov' THEN '11' WHEN 'Dec' THEN '12'
-                END ASC
+                {month_case} ASC
             LIMIT ?
         """
         with self.db.connection() as conn:
