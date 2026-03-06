@@ -1,7 +1,7 @@
 # src/web/routes/customer_resolution.py
 """API routes for customer resolution."""
 
-from flask import Blueprint, current_app, jsonify, request, render_template
+from flask import Blueprint, jsonify, request, render_template
 
 customer_resolution_bp = Blueprint("customer_resolution", __name__)
 

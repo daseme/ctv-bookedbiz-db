@@ -1,7 +1,7 @@
 # src/web/routes/contacts.py
 """API routes for contact management."""
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
 contacts_bp = Blueprint("contacts", __name__)
 

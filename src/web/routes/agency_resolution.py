@@ -1,7 +1,7 @@
 # src/web/routes/agency_resolution.py
 """API routes for agency resolution."""
 
-from flask import Blueprint, current_app, jsonify, request, render_template
+from flask import Blueprint, jsonify, request, render_template
 
 agency_resolution_bp = Blueprint("agency_resolution", __name__)
 

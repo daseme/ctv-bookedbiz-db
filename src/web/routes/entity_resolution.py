@@ -1,7 +1,7 @@
 # src/web/routes/entity_resolution.py
 """Unified routes for advertiser + agency resolution and aliases."""
 
-from flask import Blueprint, current_app, jsonify, request, render_template, redirect
+from flask import Blueprint, jsonify, request, render_template, redirect
 
 entity_resolution_bp = Blueprint("entity_resolution", __name__)
 
