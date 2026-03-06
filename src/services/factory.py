@@ -622,12 +622,12 @@ def create_budget_service():
                 "DB_PATH not configured in container"
             )
 
+        db_connection = container.get("database_connection")
         logger.debug(
-            f"Creating BudgetService with data_path: {data_path}, db_path: {db_path}"
+            f"Creating BudgetService with data_path: {data_path}"
         )
 
-        # Create service with enhanced error handling
-        service = BudgetService(data_path=data_path, db_path=db_path)
+        service = BudgetService(data_path=data_path, db=db_connection)
 
         # Validate budget service health
         _validate_budget_service_health(service)

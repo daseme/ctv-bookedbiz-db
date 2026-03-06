@@ -1,7 +1,7 @@
 # src/web/routes/contacts.py
 """API routes for contact management."""
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
 contacts_bp = Blueprint("contacts", __name__)
 
@@ -16,8 +16,9 @@ def _require_admin_for_writes():
 
 def _get_service():
     from src.services.contact_service import ContactService
-    db_path = current_app.config["DB_PATH"]
-    return ContactService(db_path)
+    from src.services.container import get_container
+    db = get_container().get("database_connection")
+    return ContactService(db)
 
 
 @contacts_bp.route("/api/contacts/<entity_type>/<int:entity_id>", methods=["GET"])

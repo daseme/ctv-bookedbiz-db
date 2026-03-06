@@ -1,7 +1,7 @@
 # src/web/routes/entity_resolution.py
 """Unified routes for advertiser + agency resolution and aliases."""
 
-from flask import Blueprint, current_app, jsonify, request, render_template, redirect
+from flask import Blueprint, jsonify, request, render_template, redirect
 
 entity_resolution_bp = Blueprint("entity_resolution", __name__)
 
@@ -61,14 +61,16 @@ def _get_cfg(tab=None):
 
 def _get_customer_service():
     from src.services.customer_resolution_service import CustomerResolutionService
-    db_path = current_app.config["DB_PATH"]
-    return CustomerResolutionService(db_path)
+    from src.services.container import get_container
+    db = get_container().get("database_connection")
+    return CustomerResolutionService(db)
 
 
 def _get_agency_service():
     from src.services.agency_resolution_service import AgencyResolutionService
-    db_path = current_app.config["DB_PATH"]
-    return AgencyResolutionService(db_path)
+    from src.services.container import get_container
+    db = get_container().get("database_connection")
+    return AgencyResolutionService(db)
 
 
 # ── Page routes ─────────────────────────────────────────────────────────
