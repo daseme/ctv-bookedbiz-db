@@ -538,5 +538,17 @@ try:
 
 ---
 
-**Last Updated**: 2026-03-03
-**Session Context**: IO scanner pending orders permission fix.
+---
+
+### Rule 36: Production Database Is Always /var/lib/ctv-bookedbiz-db/production.db
+
+**Context**: When creating migration 022 (alias spot backfill triggers), incorrectly assumed `data/database/production.db` or `data/database/production_dev.db` was the production database. This is the SAME mistake documented in Rules 21 and 33.
+**Pattern**: Despite two prior lessons about this exact issue, the wrong path was suggested for migration application. The canonical production DB is:
+```
+/var/lib/ctv-bookedbiz-db/production.db
+```
+Nothing else in the project is "production." The files under `data/database/` are either empty skeletons or stale copies.
+**Action**: When applying migrations, ALWAYS apply to `/var/lib/ctv-bookedbiz-db/production.db`. Never suggest `data/database/production.db` or `data/database/production_dev.db` as production targets.
+
+**Last Updated**: 2026-03-06
+**Session Context**: Alias spot backfill trigger migration.
