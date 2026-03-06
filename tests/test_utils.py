@@ -2,7 +2,11 @@
 
 import pytest
 from src.utils.language_constants import LanguageConstants
-from src.utils.query_builders import BroadcastMonthQueryBuilder
+from src.utils.query_builders import (
+    BroadcastMonthQueryBuilder,
+    CustomerNormalizationQueryBuilder,
+    RevenueQueryBuilder,
+)
 
 
 class TestLanguageConstantsBuildCaseSql:
@@ -99,3 +103,57 @@ class TestBroadcastMonthQueryBuilderYearFilter:
         )
         assert sql.count("LIKE ?") == 3
         assert len(params) == 3
+
+
+class TestRevenueQueryBuilder:
+    """Tests for RevenueQueryBuilder imported from query_builders."""
+
+    def test_build_broadcast_month_case_january(self):
+        sql = RevenueQueryBuilder.build_broadcast_month_case()
+        assert "WHEN s.broadcast_month LIKE 'Jan-%' THEN '01'" in sql
+
+    def test_build_quarter_case_q1(self):
+        sql = RevenueQueryBuilder.build_quarter_case()
+        assert "'Q1'" in sql
+        assert "Jan" in sql
+
+    def test_build_year_case_2024(self):
+        sql = RevenueQueryBuilder.build_year_case()
+        assert "WHEN broadcast_month LIKE '%-24' THEN 2024" in sql
+
+    def test_build_base_filters_excludes_trade(self):
+        sql = RevenueQueryBuilder.build_base_filters()
+        assert "Trade" in sql
+        assert "revenue_type" in sql
+
+    def test_build_ae_normalization(self):
+        sql = RevenueQueryBuilder.build_ae_normalization()
+        assert "UPPER(TRIM" in sql
+        assert "UNKNOWN" in sql
+
+
+class TestRevenueQueryBuilderNewMethods:
+    """Tests for new month/quarter number helpers."""
+
+    def test_build_month_number_case_january_returns_1(self):
+        sql = RevenueQueryBuilder.build_month_number_case()
+        assert "WHEN 'Jan' THEN 1" in sql
+
+    def test_build_month_number_case_december_returns_12(self):
+        sql = RevenueQueryBuilder.build_month_number_case()
+        assert "WHEN 'Dec' THEN 12" in sql
+
+    def test_build_month_number_case_custom_expr(self):
+        sql = RevenueQueryBuilder.build_month_number_case("broadcast_month")
+        assert "SUBSTR(broadcast_month, 1, 3)" in sql
+
+    def test_build_quarter_number_case_q1_returns_1(self):
+        sql = RevenueQueryBuilder.build_quarter_number_case()
+        assert "THEN 1" in sql
+        assert "'Jan'" in sql
+        assert "'Feb'" in sql
+        assert "'Mar'" in sql
+
+    def test_build_quarter_number_case_q4_returns_4(self):
+        sql = RevenueQueryBuilder.build_quarter_number_case()
+        assert "ELSE 4" in sql

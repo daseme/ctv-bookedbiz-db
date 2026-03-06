@@ -12,7 +12,11 @@ from datetime import datetime, date
 from decimal import Decimal
 from dataclasses import dataclass
 from enum import Enum
-from src.utils.query_builders import CustomerNormalizationQueryBuilder, BroadcastMonthQueryBuilder
+from src.utils.query_builders import (
+    CustomerNormalizationQueryBuilder,
+    BroadcastMonthQueryBuilder,
+    RevenueQueryBuilder,
+)
 
 # ============================================================================
 # Domain Models (updated with new customer tracking)
@@ -92,110 +96,6 @@ class AEFilter:
         if self.is_unknown_filter():
             return f"( {column} IS NULL OR TRIM({column}) = '' )", []
         return f"UPPER(TRIM({column})) = UPPER(TRIM(?))", [self.ae_value]
-
-
-# ============================================================================
-# Query Builder (enhanced with new customer queries)
-# ============================================================================
-
-
-class RevenueQueryBuilder:
-    """Utility class for building reusable SQL query components"""
-
-    @staticmethod
-    def build_broadcast_month_case(expr: str = "s.broadcast_month") -> str:
-        """Build CASE statement to extract month number from broadcast_month"""
-        return f"""
-            CASE 
-                WHEN {expr} LIKE 'Jan-%' THEN '01'
-                WHEN {expr} LIKE 'Feb-%' THEN '02'
-                WHEN {expr} LIKE 'Mar-%' THEN '03'
-                WHEN {expr} LIKE 'Apr-%' THEN '04'
-                WHEN {expr} LIKE 'May-%' THEN '05'
-                WHEN {expr} LIKE 'Jun-%' THEN '06'
-                WHEN {expr} LIKE 'Jul-%' THEN '07'
-                WHEN {expr} LIKE 'Aug-%' THEN '08'
-                WHEN {expr} LIKE 'Sep-%' THEN '09'
-                WHEN {expr} LIKE 'Oct-%' THEN '10'
-                WHEN {expr} LIKE 'Nov-%' THEN '11'
-                WHEN {expr} LIKE 'Dec-%' THEN '12'
-            END
-        """.strip()
-
-    @staticmethod
-    def build_year_case(expr: str = "broadcast_month") -> str:
-        """Build CASE statement to extract year from broadcast_month"""
-        return f"""
-            CASE 
-                WHEN {expr} LIKE '%-21' THEN 2021
-                WHEN {expr} LIKE '%-22' THEN 2022
-                WHEN {expr} LIKE '%-23' THEN 2023
-                WHEN {expr} LIKE '%-24' THEN 2024
-                WHEN {expr} LIKE '%-25' THEN 2025
-                WHEN {expr} LIKE '%-26' THEN 2026
-                WHEN {expr} LIKE '%-27' THEN 2027
-                WHEN {expr} LIKE '%-28' THEN 2028
-                WHEN {expr} LIKE '%-29' THEN 2029
-                WHEN {expr} LIKE '%-30' THEN 2030
-            END
-        """.strip()
-
-    @staticmethod
-    def build_quarter_case(expr: str = "s.broadcast_month") -> str:
-        """Build CASE statement to extract quarter from broadcast_month"""
-        return f"""
-            CASE 
-              WHEN {expr} LIKE 'Jan-%' OR {expr} LIKE 'Feb-%' OR {expr} LIKE 'Mar-%' THEN 'Q1'
-              WHEN {expr} LIKE 'Apr-%' OR {expr} LIKE 'May-%' OR {expr} LIKE 'Jun-%' THEN 'Q2'
-              WHEN {expr} LIKE 'Jul-%' OR {expr} LIKE 'Aug-%' OR {expr} LIKE 'Sep-%' THEN 'Q3'
-              WHEN {expr} LIKE 'Oct-%' OR {expr} LIKE 'Nov-%' OR {expr} LIKE 'Dec-%' THEN 'Q4'
-            END
-        """.strip()
-
-    @staticmethod
-    def build_year_filter(
-        year_suffixes: List[str],
-        month_column: str = "s.broadcast_month"
-    ) -> Tuple[str, List[str]]:
-        """
-        Build SQL filter for multiple year suffixes using shared utility.
-        
-        Args:
-            year_suffixes: List of 2-digit year suffixes like ["23", "24"]
-            month_column: Column name for broadcast month (default: "s.broadcast_month")
-            
-        Returns:
-            Tuple of (sql_condition, parameters)
-        """
-        return BroadcastMonthQueryBuilder.build_year_filter(year_suffixes, "broadcast_month", "s")
-
-    @staticmethod
-    def build_ae_normalization() -> str:
-        """Build AE normalization expression"""
-        return """
-            CASE
-                WHEN s.sales_person IS NULL OR TRIM(s.sales_person) = '' THEN 'UNKNOWN'
-                ELSE UPPER(TRIM(s.sales_person))
-            END
-        """.strip()
-
-    @staticmethod
-    def build_ae_display() -> str:
-        """Build AE display name expression"""
-        return """
-            CASE 
-              WHEN s.sales_person IS NULL OR TRIM(s.sales_person) = '' THEN 'Unknown'
-              ELSE TRIM(s.sales_person)
-            END
-        """.strip()
-
-    @staticmethod
-    def build_base_filters() -> str:
-        """Build common filters for revenue queries"""
-        return """
-            (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-            AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
-        """
 
 
 # ============================================================================

@@ -26,6 +26,7 @@ from src.web.placement_confirmation_parser import (
     contracts_by_client_15_days,
 )
 from src.models.planning import PlanningPeriod
+from src.utils.query_builders import RevenueQueryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -1005,29 +1006,20 @@ def monthly_revenue_summary():
             date_conditions = []
             params = []
 
+            month_num = RevenueQueryBuilder.build_month_number_case()
             if from_year and from_month:
-                date_conditions.append("""
-                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 + 
-                    CASE SUBSTR(broadcast_month, 1, 3)
-                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                    END) >= ?
+                date_conditions.append(f"""
+                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 +
+                    {month_num}) >= ?
                 """)
                 yy = int(from_year) - 2000
                 mm = int(from_month)
                 params.append(yy * 100 + mm)
 
             if to_year and to_month:
-                date_conditions.append("""
-                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 + 
-                    CASE SUBSTR(broadcast_month, 1, 3)
-                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                    END) <= ?
+                date_conditions.append(f"""
+                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 +
+                    {month_num}) <= ?
                 """)
                 yy = int(to_year) - 2000
                 mm = int(to_month)
@@ -1075,14 +1067,9 @@ def monthly_revenue_summary():
                   AND gross_rate > 0
                   AND {where_clause}
                 GROUP BY broadcast_month
-                ORDER BY 
+                ORDER BY
                     CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER),
-                    CASE SUBSTR(broadcast_month, 1, 3)
-                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                    END
+                    {RevenueQueryBuilder.build_month_number_case()}
             """, params)
             
             # Get closed months
@@ -1102,14 +1089,9 @@ def monthly_revenue_summary():
                   AND gross_rate > 0
                   AND {where_clause}
                 GROUP BY broadcast_month
-                ORDER BY 
+                ORDER BY
                     CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER),
-                    CASE SUBSTR(broadcast_month, 1, 3)
-                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                    END
+                    {RevenueQueryBuilder.build_month_number_case()}
             """, params).fetchall()
             
             monthly_data = []
@@ -1145,12 +1127,7 @@ def monthly_revenue_summary():
             # Get quarterly data
             quarterly_rows = cursor.execute(f"""
                 SELECT 
-                    CASE 
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jan','Feb','Mar') THEN 'Q1'
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Apr','May','Jun') THEN 'Q2'
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jul','Aug','Sep') THEN 'Q3'
-                        ELSE 'Q4'
-                    END as quarter,
+                    {RevenueQueryBuilder.build_quarter_case("broadcast_month")} as quarter,
                     2000 + CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) as year,
                     COUNT(*) as spot_count,
                     SUM(gross_rate) as total_revenue,

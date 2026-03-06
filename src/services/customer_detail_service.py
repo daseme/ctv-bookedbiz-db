@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 from decimal import Decimal
+from src.utils.query_builders import RevenueQueryBuilder
 
 
 @dataclass
@@ -334,12 +335,7 @@ class CustomerDetailService:
             GROUP BY broadcast_month
             ORDER BY
                 CAST('20' || SUBSTR(broadcast_month, 5, 2) AS INTEGER),
-                CASE SUBSTR(broadcast_month, 1, 3)
-                    WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                    WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                    WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                    WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                END
+                {RevenueQueryBuilder.build_month_number_case()}
         """, [customer_id] + date_params)
         
         results = []

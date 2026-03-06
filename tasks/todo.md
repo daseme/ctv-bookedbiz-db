@@ -121,18 +121,17 @@ Total estimated impact: ~540 lines of code consolidation across 25+ files.
 **Impact**: Eliminated 2 hardcoded SQL CASE statements, 1 duplicate `build_year_filter`, fixed P→Portuguese bug
 **Files Modified**: 7 (language_constants.py, date_range_utils.py, market_analysis.py, market_analysis_service.py, unified_analysis.py, unified_analysis-old.py, tests/test_utils.py)
 
-### Step 2: MEDIUM RISK - Enhance Query Builders (Careful Planning)
-- [ ] Create CustomerNormalizationQueryBuilder class for customer JOIN patterns
-- [ ] Enhance existing RevenueQueryBuilder with broadcast month filtering
-- [ ] Update database configurations to use centralized connection profiles
-- [ ] Grep for all usages before refactoring shared query patterns
-- [ ] Update affected services and repositories (8+ files)
-- [ ] Test application thoroughly after each change
-- [ ] Commit with descriptive message
+### Step 2: MEDIUM RISK - Query Builder Consolidation (COMPLETED 2026-03-05)
+- [x] Delete dead `build_customer_select()` and `build_customer_id_select()` (zero callers)
+- [x] Replace 2 remaining inline customer normalization JOINs with `build_customer_join()`
+- [x] Move `RevenueQueryBuilder` from `report_data_service.py` to `src/utils/query_builders.py`
+- [x] Add `build_month_number_case()` (integer 1-12) and `build_quarter_number_case()` (integer 1-4)
+- [x] Replace 7 inline CASE blocks across 4 files with builder calls
+- [x] Add 10 tests for RevenueQueryBuilder (existing + new methods)
+- [x] All 25 unit tests pass, all 85 smoke tests pass
 
-**Estimated Impact**: 115 lines consolidated
-**Risk Level**: MEDIUM - Core business logic requiring verification
-**Files Affected**: 8+ files (services/ae_dashboard_service.py, services/report_data_service.py, web/routes/customer_sector_api.py, repositories/customer_matching_repository.py)
+**Impact**: Moved RevenueQueryBuilder to shared utils, eliminated 7 inline CASE blocks + 2 inline JOINs, deleted 2 dead methods
+**Files Modified**: 9 (query_builders.py, report_data_service.py, spot_repository.py, customer_resolution_service.py, reports.py, management_performance_service.py, customer_detail_service.py, pricing_analysis_service.py, tests/test_utils.py)
 
 ### Step 3: HIGH RISK - Database Connection Standardization (Thorough Testing)
 - [ ] Audit all raw sqlite3.connect() usage across codebase
