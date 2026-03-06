@@ -9,8 +9,7 @@ This just creates customer records for normalized names that don't exist yet.
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
-import sqlite3
-from contextlib import contextmanager
+from src.database.connection import DatabaseConnection
 from src.utils.query_builders import CustomerNormalizationQueryBuilder
 
 try:
@@ -52,27 +51,14 @@ class CustomerResolutionService:
     no duplicate normalization logic.
     """
     
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-    
-    @contextmanager
+    def __init__(self, db: DatabaseConnection):
+        self.db = db
+
     def _db_ro(self):
-        uri = f"file:{self.db_path}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-        finally:
-            conn.close()
-    
-    @contextmanager
+        return self.db.connection_ro()
+
     def _db_rw(self):
-        conn = sqlite3.connect(self.db_path, timeout=10.0)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-        finally:
-            conn.close()
+        return self.db.connection()
     
     def get_unresolved(self, min_revenue: float = 0, limit: int = 100) -> List[UnresolvedCustomer]:
         """

@@ -16,8 +16,9 @@ def _require_admin_for_writes():
 
 def _get_service():
     from src.services.customer_resolution_service import CustomerResolutionService
-    db_path = current_app.config["DB_PATH"]
-    return CustomerResolutionService(db_path)
+    from src.services.container import get_container
+    db = get_container().get("database_connection")
+    return CustomerResolutionService(db)
 
 
 @customer_resolution_bp.route("/customer-resolution")
