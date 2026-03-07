@@ -10,6 +10,21 @@ Remaining:
 
 ---
 
+## Worldlink Auto-Resolution
+
+**Status: BACKLOG** (Low priority)
+
+Worldlink is a broker/agency — their individual advertisers aren't important for day-to-day tracking but we want to preserve the data. Currently each new `Worldlink:<Advertiser>` bill code shows up in the resolution queue and needs manual alias creation.
+
+Options to explore:
+- [ ] Auto-create customer + alias for any `Worldlink:*` / `WorldLink:*` bill code on ingest (strip prefix, create customer if needed)
+- [ ] Mark Worldlink-prefixed bill codes as "auto-resolved" so they don't clutter the resolution queue
+- [ ] Bulk-flag existing Worldlink customers as low-priority so they sort to the bottom
+
+**Context**: 70 distinct Worldlink bill codes, ~860K spots. Most are already resolved. Only 3 were unresolved as of 2026-03-06 (manually fixed).
+
+---
+
 ## Phase 2 Step 3: Database Connection Standardization
 
 **Status: NOT STARTED** (High risk)
