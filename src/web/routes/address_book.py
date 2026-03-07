@@ -3,7 +3,7 @@
 Unified Address Book - view and manage contacts/addresses for agencies and customers.
 """
 
-from flask import Blueprint, render_template, jsonify, request, current_app, Response
+from flask import Blueprint, render_template, jsonify, request, Response
 import sqlite3
 import json
 import csv
@@ -11,7 +11,7 @@ import io
 import math
 from datetime import date, datetime
 from src.services.customer_resolution_service import _score_name
-from contextlib import contextmanager
+from src.services.container import get_container
 
 address_book_bp = Blueprint("address_book", __name__)
 
@@ -27,8 +27,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _get_db_path():
-    return current_app.config["DB_PATH"]
+def _get_db():
+    return get_container().get("database_connection")
 
 
 _CREATE_ENTITY_METRICS = """
@@ -224,25 +224,6 @@ def refresh_entity_signals(conn):
         """, rows_to_insert)
 
 
-@contextmanager
-def _db_ro():
-    uri = f"file:{_get_db_path()}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=5.0)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-@contextmanager
-def _db_rw():
-    conn = sqlite3.connect(_get_db_path(), timeout=10.0)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
 
 
 @address_book_bp.route("/address-book")
@@ -260,7 +241,7 @@ def address_book_guide():
 @address_book_bp.route("/api/address-book/sectors")
 def api_sectors():
     """Get list of all sectors for dropdown."""
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         sectors = conn.execute("""
             SELECT sector_id, sector_code, sector_name, sector_group
             FROM sectors
@@ -277,7 +258,7 @@ def api_sectors():
 @address_book_bp.route("/api/address-book/markets")
 def api_markets():
     """Get list of all markets that have spots, for dropdown filter."""
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # Get distinct markets from spots data
         markets = conn.execute("""
             SELECT DISTINCT market_name
@@ -298,7 +279,7 @@ def api_address_book():
 
     results = []
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # Batch: contact stats for all entities (fixes N+1)
         contact_stats = {}
         for row in conn.execute("""
@@ -324,7 +305,7 @@ def api_address_book():
 
         # Ensure cache tables exist (RW needed for CREATE TABLE)
         # and auto-populate if empty.
-        with _db_rw() as rw_conn:
+        with _get_db().connection() as rw_conn:
             _ensure_cache_tables(rw_conn)
             metrics_count = rw_conn.execute(
                 "SELECT COUNT(*) FROM entity_metrics"
@@ -468,7 +449,7 @@ def api_entity_detail(entity_type, entity_id):
     if entity_type not in ("agency", "customer"):
         return jsonify({"error": "Invalid entity type"}), 400
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # Get entity
         if entity_type == "agency":
             entity = conn.execute("""
@@ -576,7 +557,7 @@ def api_update_address(entity_type, entity_id):
 
     data = request.get_json() or {}
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             table = "agencies" if entity_type == "agency" else "customers"
             id_col = "agency_id" if entity_type == "agency" else "customer_id"
@@ -609,7 +590,7 @@ def api_update_notes(entity_type, entity_id):
     data = request.get_json() or {}
     notes = data.get("notes")
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             table = "agencies" if entity_type == "agency" else "customers"
             id_col = "agency_id" if entity_type == "agency" else "customer_id"
@@ -638,7 +619,7 @@ def api_update_billing_info(entity_type, entity_id):
     edi_billing = 1 if data.get("edi_billing") else 0
     affidavit_required = 1 if data.get("affidavit_required") else 0
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             table = "agencies" if entity_type == "agency" else "customers"
             id_col = "agency_id" if entity_type == "agency" else "customer_id"
@@ -723,7 +704,7 @@ def api_update_sector(entity_type, entity_id):
         except (ValueError, TypeError):
             return jsonify({"error": "Invalid sector_id"}), 400
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             if sector_id:
                 # Upsert into junction table as primary; triggers sync customers.sector_id
@@ -778,7 +759,7 @@ def api_update_sectors(entity_id):
     if len(sectors) > 0 and primary_count != 1:
         return jsonify({"error": "Exactly one sector must be marked as primary"}), 400
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             # Get current state for audit
             old_sectors = conn.execute(
@@ -854,7 +835,7 @@ def api_update_agency(entity_id):
             return jsonify({"error": "Invalid agency_id"}), 400
 
     if agency_id:
-        with _db_ro() as conn:
+        with _get_db().connection_ro() as conn:
             agency = conn.execute(
                 "SELECT agency_name FROM agencies WHERE agency_id = ? AND is_active = 1",
                 [agency_id]
@@ -865,7 +846,7 @@ def api_update_agency(entity_id):
     else:
         agency_name = None
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             conn.execute(
                 "UPDATE customers SET agency_id = ? WHERE customer_id = ?",
@@ -881,7 +862,7 @@ def api_update_agency(entity_id):
 @address_book_bp.route("/api/address-book/agency/<int:agency_id>/customers")
 def api_agency_customers(agency_id):
     """Get customers associated with an agency via spots data."""
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # First verify agency exists
         agency = conn.execute(
             "SELECT agency_name, commission_rate, order_rate_basis FROM agencies WHERE agency_id = ? AND is_active = 1",
@@ -1002,7 +983,7 @@ def _client_portion(name):
 @address_book_bp.route("/api/address-book/agency/<int:agency_id>/duplicates")
 def api_agency_duplicates(agency_id):
     """Find potential duplicate clients within an agency using fuzzy name matching."""
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         agency = conn.execute(
             "SELECT agency_name FROM agencies WHERE agency_id = ? AND is_active = 1",
             [agency_id]
@@ -1179,7 +1160,7 @@ def api_create_entity():
     if not name:
         return jsonify({"error": "Name is required"}), 400
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             # Exact duplicate check (case-insensitive)
             if entity_type == "agency":
@@ -1337,7 +1318,7 @@ def api_deactivate_entity(entity_type, entity_id):
     id_col = "agency_id" if entity_type == "agency" else "customer_id"
     name_col = "agency_name" if entity_type == "agency" else "normalized_name"
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             row = conn.execute(
                 f"SELECT {name_col} AS name, is_active FROM {table} WHERE {id_col} = ?",
@@ -1382,7 +1363,7 @@ def api_reactivate_entity(entity_type, entity_id):
     id_col = "agency_id" if entity_type == "agency" else "customer_id"
     name_col = "agency_name" if entity_type == "agency" else "normalized_name"
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             row = conn.execute(
                 f"SELECT {name_col} AS name, is_active FROM {table} WHERE {id_col} = ?",
@@ -1427,7 +1408,7 @@ def api_refresh_metrics():
     if not customer_ids and not agency_ids:
         return jsonify({"error": "No IDs provided"}), 400
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             _ensure_cache_tables(conn)
             # Delete existing metrics for these IDs
@@ -1494,7 +1475,7 @@ def api_get_addresses(entity_type, entity_id):
     if entity_type not in ("agency", "customer"):
         return jsonify({"error": "Invalid entity type"}), 400
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         addresses = conn.execute("""
             SELECT address_id, address_label, address, city, state, zip,
                    is_primary, notes
@@ -1517,7 +1498,7 @@ def api_create_address(entity_type, entity_id):
     if label not in VALID_ADDRESS_LABELS:
         return jsonify({"error": f"Invalid label. Must be one of: {VALID_ADDRESS_LABELS}"}), 400
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             conn.execute("""
                 INSERT INTO entity_addresses
@@ -1547,7 +1528,7 @@ def api_update_address_entry(address_id):
     """Update an additional address."""
     data = request.get_json() or {}
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             existing = conn.execute(
                 "SELECT 1 FROM entity_addresses WHERE address_id = ? AND is_active = 1",
@@ -1591,7 +1572,7 @@ def api_update_address_entry(address_id):
 @address_book_bp.route("/api/address-book/addresses/<int:address_id>", methods=["DELETE"])
 def api_delete_address(address_id):
     """Soft-delete an additional address."""
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             conn.execute("""
                 UPDATE entity_addresses
@@ -1612,7 +1593,7 @@ def api_delete_address(address_id):
 @address_book_bp.route("/api/address-book/filters")
 def api_get_filters():
     """Get saved filter presets."""
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         filters = conn.execute("""
             SELECT filter_id, filter_name, filter_config, created_by, created_date, is_shared
             FROM saved_filters
@@ -1637,7 +1618,7 @@ def api_save_filter():
     if not filter_name:
         return jsonify({"error": "Filter name required"}), 400
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             conn.execute("""
                 INSERT INTO saved_filters (filter_name, filter_type, filter_config, created_by, is_shared)
@@ -1654,7 +1635,7 @@ def api_save_filter():
 @address_book_bp.route("/api/address-book/filters/<int:filter_id>", methods=["DELETE"])
 def api_delete_filter(filter_id):
     """Delete a saved filter."""
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             conn.execute("DELETE FROM saved_filters WHERE filter_id = ?", [filter_id])
             conn.commit()
@@ -1683,7 +1664,7 @@ def api_export_csv():
     results = []
 
     # Ensure cache tables exist and are populated
-    with _db_rw() as rw_conn:
+    with _get_db().connection() as rw_conn:
         _ensure_cache_tables(rw_conn)
         metrics_count = rw_conn.execute(
             "SELECT COUNT(*) FROM entity_metrics"
@@ -1692,7 +1673,7 @@ def api_export_csv():
             refresh_entity_metrics(rw_conn)
         rw_conn.commit()
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         agency_metrics = {}
         customer_metrics = {}
         agency_client_ids_from_spots = set()
@@ -1792,7 +1773,7 @@ def api_export_csv():
     if sector_filter:
         try:
             sid = int(sector_filter)
-            with _db_ro() as sconn:
+            with _get_db().connection_ro() as sconn:
                 export_sector_ids = set(
                     r["customer_id"] for r in sconn.execute(
                         "SELECT customer_id FROM customer_sectors WHERE sector_id = ?", [sid]
@@ -1885,7 +1866,7 @@ def api_import_contacts():
     skipped = 0
     errors = []
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         for i, row in enumerate(reader, start=2):
             entity_name = (row.get('Entity Name') or '').strip()
             entity_type = (row.get('Type') or '').strip().lower()
@@ -1966,7 +1947,7 @@ def api_get_activities(entity_type, entity_id):
 
     limit = request.args.get("limit", 50, type=int)
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         activities = conn.execute("""
             SELECT
                 ea.activity_id,
@@ -2013,7 +1994,7 @@ def api_create_activity(entity_type, entity_id):
     if activity_type == 'follow_up' and not due_date:
         return jsonify({"error": "due_date is required for follow_up activities"}), 400
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             # Verify entity exists
             if entity_type == "agency":
@@ -2054,7 +2035,7 @@ def api_create_activity(entity_type, entity_id):
 @address_book_bp.route("/api/address-book/activities/<int:activity_id>/complete", methods=["POST"])
 def api_complete_activity(activity_id):
     """Mark a follow-up activity as completed."""
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             activity = conn.execute(
                 "SELECT activity_type, is_completed FROM entity_activity WHERE activity_id = ?",
@@ -2085,7 +2066,7 @@ def api_complete_activity(activity_id):
 @address_book_bp.route("/api/address-book/follow-ups")
 def api_get_follow_ups():
     """Get all incomplete follow-up activities for the dashboard, plus recently completed."""
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         follow_ups = conn.execute("""
             SELECT
                 ea.activity_id,
@@ -2143,7 +2124,7 @@ def api_update_ae(entity_type, entity_id):
     data = request.get_json() or {}
     assigned_ae = (data.get("assigned_ae") or "").strip() or None
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             table = "agencies" if entity_type == "agency" else "customers"
             id_col = "agency_id" if entity_type == "agency" else "customer_id"
@@ -2203,7 +2184,7 @@ def api_ae_history(entity_type, entity_id):
     if entity_type not in ("agency", "customer"):
         return jsonify({"error": "Invalid entity type"}), 400
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         rows = conn.execute("""
             SELECT ae_name, assigned_date, ended_date, created_by, notes
             FROM ae_assignments
@@ -2217,7 +2198,7 @@ def api_ae_history(entity_type, entity_id):
 @address_book_bp.route("/api/address-book/ae-list")
 def api_ae_list():
     """Get sorted list of AE names from spots data and existing assignments."""
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # Get distinct sales_person values from spots
         spot_aes = conn.execute("""
             SELECT DISTINCT sales_person

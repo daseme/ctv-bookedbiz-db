@@ -4,10 +4,9 @@ Stale Customer Report - surfaces customers and agencies with zero spots
 or no recent activity for human review/triage.
 """
 
-from flask import Blueprint, render_template, jsonify, request, current_app
-import sqlite3
-from contextlib import contextmanager
+from flask import Blueprint, render_template, jsonify, request
 from datetime import datetime, date, timedelta
+from src.services.container import get_container
 
 stale_customers_bp = Blueprint("stale_customers", __name__)
 
@@ -20,29 +19,8 @@ def _require_admin_for_writes():
             return jsonify({"error": "Admin access required"}), 403
 
 
-def _get_db_path():
-    return current_app.config["DB_PATH"]
-
-
-@contextmanager
-def _db_ro():
-    uri = f"file:{_get_db_path()}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=5.0)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-@contextmanager
-def _db_rw():
-    conn = sqlite3.connect(_get_db_path(), timeout=10.0)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
+def _get_db():
+    return get_container().get("database_connection")
 
 
 @stale_customers_bp.route("/stale-customers")
@@ -54,7 +32,7 @@ def stale_customers_page():
 @stale_customers_bp.route("/api/stale-customers/sectors")
 def api_stale_sectors():
     """Get list of all sectors for filter dropdown."""
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         sectors = conn.execute("""
             SELECT sector_id, sector_code, sector_name
             FROM sectors
@@ -75,7 +53,7 @@ def api_stale_stats():
 
     cutoff = f"{date.today().year - threshold_years}-01-01"
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # Zero-spot customers (active, no spots, not created in last 90 days)
         grace_cutoff = (date.today() - timedelta(days=90)).isoformat()
         zero_spot_customers = conn.execute("""
@@ -168,7 +146,7 @@ def api_stale_entities():
     grace_cutoff = (date.today() - timedelta(days=90)).isoformat()
     results = []
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # Build customer metrics lookup
         customer_metrics = {}
         rows = conn.execute("""
@@ -363,7 +341,7 @@ def api_stale_customer_detail(entity_type, entity_id):
     if entity_type not in ("customer", "agency"):
         return jsonify({"error": "Invalid entity_type"}), 400
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # 1. Entity basics
         if entity_type == "customer":
             entity = conn.execute("""
@@ -503,7 +481,7 @@ def api_deactivate_entity():
     if not reason:
         return jsonify({"error": "Reason is required for deactivation"}), 400
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             table = "agencies" if entity_type == "agency" else "customers"
             id_col = "agency_id" if entity_type == "agency" else "customer_id"
@@ -576,7 +554,7 @@ def api_bulk_deactivate():
     age_cutoff = f"{date.today().year - 3}-01-01"
     candidates = []
 
-    with _db_ro() as conn:
+    with _get_db().connection_ro() as conn:
         # --- Build metrics lookups (same as api_stale_entities) ---
         customer_metrics = {}
         for row in conn.execute("""
@@ -710,7 +688,7 @@ def api_bulk_deactivate():
     reason = "Bulk deactivate: 3+ years old, zero revenue"
     deactivated = 0
 
-    with _db_rw() as conn:
+    with _get_db().connection() as conn:
         try:
             for c in candidates:
                 table = "agencies" if c["entity_type"] == "agency" else "customers"

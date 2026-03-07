@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import os
 import time
-import sqlite3
 import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -411,27 +410,22 @@ def create_blueprint_context_processors(app: Flask) -> None:
         last_dt = None
         stale = False
         try:
-            db_path = app.config.get("DB_PATH", "")
-            if db_path:
-                uri = f"file:{db_path}?mode=ro"
-                conn = sqlite3.connect(uri, uri=True, timeout=3.0)
-                try:
-                    row = conn.execute(
-                        "SELECT import_date FROM import_batches "
-                        "WHERE status='COMPLETED' "
-                        "ORDER BY import_date DESC LIMIT 1"
-                    ).fetchone()
-                    if row and row[0]:
-                        parsed_utc = datetime.strptime(
-                            row[0], "%Y-%m-%d %H:%M:%S"
-                        ).replace(tzinfo=timezone.utc)
-                        pacific = parsed_utc.astimezone(ZoneInfo("America/Los_Angeles"))
-                        last_dt = pacific.strftime("%Y-%m-%d %I:%M %p %Z")
-                        stale = (
-                            datetime.now(timezone.utc) - parsed_utc
-                        ) > timedelta(hours=24)
-                finally:
-                    conn.close()
+            db = get_container().get("database_connection")
+            with db.connection_ro() as conn:
+                row = conn.execute(
+                    "SELECT import_date FROM import_batches "
+                    "WHERE status='COMPLETED' "
+                    "ORDER BY import_date DESC LIMIT 1"
+                ).fetchone()
+                if row and row[0]:
+                    parsed_utc = datetime.strptime(
+                        row[0], "%Y-%m-%d %H:%M:%S"
+                    ).replace(tzinfo=timezone.utc)
+                    pacific = parsed_utc.astimezone(ZoneInfo("America/Los_Angeles"))
+                    last_dt = pacific.strftime("%Y-%m-%d %I:%M %p %Z")
+                    stale = (
+                        datetime.now(timezone.utc) - parsed_utc
+                    ) > timedelta(hours=24)
         except Exception as e:
             logger.debug("Data freshness lookup failed: %s", e)
 
