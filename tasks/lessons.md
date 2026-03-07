@@ -550,5 +550,18 @@ try:
 Nothing else in the project is "production." The files under `data/database/` are either empty skeletons or stale copies.
 **Action**: When applying migrations, ALWAYS apply to `/var/lib/ctv-bookedbiz-db/production.db`. Never suggest `data/database/production.db` or `data/database/production_dev.db` as production targets.
 
+---
+
+### Rule 37: Database Triggers Must Cover Both Directions of a Relationship
+
+**Context**: Migration 022 added triggers on `entity_aliases` INSERT/UPDATE to backfill `spots.customer_id`. But new spots ingested against *existing* aliases still arrived with NULL `customer_id` — the triggers only fired when aliases changed, not when spots were inserted.
+**Pattern**: When two tables have a relationship that should stay in sync, a trigger on one table only covers half the problem:
+- Trigger on `entity_aliases` → catches new/changed aliases, backfills existing spots
+- Trigger on `spots` → catches new spots, looks up existing aliases
+
+Both are needed for complete coverage. Migration 023 added `trg_set_customer_on_spot_insert` to close the gap.
+**The gap window**: Between migration 022 (alias triggers) and 023 (spot trigger), 5,864 spots were ingested with NULL `customer_id` despite having matching aliases.
+**Action**: When adding a trigger to keep two tables in sync, always consider both INSERT directions. Ask: "What if a row is added to the *other* table?"
+
 **Last Updated**: 2026-03-06
-**Session Context**: Alias spot backfill trigger migration.
+**Session Context**: Spot insert alias lookup trigger (migration 023).
