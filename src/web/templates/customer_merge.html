@@ -462,9 +462,19 @@
                     encodeURIComponent(q)
                 );
                 const results = await r.json();
+                const billCode = document.getElementById('row-' + idx).dataset.bill;
+                const createBtn = `
+                    <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--nord5);">
+                        <button class="btn btn-confirm"
+                            onclick="createAndLink(${idx}, '${esc(billCode)}')">
+                            Create New Customer</button>
+                        <span style="font-size:12px; color:var(--nord3); margin-left:8px;">
+                            from bill code</span>
+                    </div>`;
                 if (!results.length) {
                     container.innerHTML =
-                        '<div class="empty-state">No customers found</div>';
+                        '<div class="empty-state">No customers found</div>' +
+                        createBtn;
                     return;
                 }
                 container.innerHTML = results.map(c => `
@@ -478,7 +488,7 @@
                             </div>
                         </div>
                     </div>
-                `).join('');
+                `).join('') + createBtn;
             } catch (e) {
                 container.innerHTML =
                     '<div class="empty-state">Search error</div>';
@@ -517,6 +527,44 @@
                 'success'
             );
             refreshMetrics(customerId);
+            setTimeout(loadUnresolved, 1500);
+        } catch (e) {
+            row.style.opacity = '1';
+            toast('Error: ' + e.message, 'error');
+        }
+    };
+
+    window.createAndLink = async function(idx, billCode) {
+        const name = prompt(
+            'Create new customer for "' + billCode + '".\n\n' +
+            'Enter customer name (or leave as-is):',
+            billCode
+        );
+        if (!name) return;
+
+        const row = document.getElementById('row-' + idx);
+        row.style.opacity = '0.5';
+        closeLinkSearch(idx);
+        try {
+            const r = await fetch('/api/customer-resolution/create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    bill_code: billCode,
+                    normalized_name: name,
+                }),
+            });
+            const result = await r.json();
+            if (!r.ok || !result.success) {
+                throw new Error(result.error || 'Create failed');
+            }
+            row.classList.add('resolved');
+            toast(
+                'Created "' + name + '" and linked ' +
+                result.spots_updated + ' spots',
+                'success'
+            );
+            refreshMetrics(result.customer_id);
             setTimeout(loadUnresolved, 1500);
         } catch (e) {
             row.style.opacity = '1';
