@@ -25,24 +25,10 @@ Options to explore:
 
 ---
 
-## Phase 2 Step 3: Database Connection Standardization
-
-**Status: NOT STARTED** (High risk)
-
-- [ ] Audit all raw `sqlite3.connect()` usage across codebase
-- [ ] Create migration plan for DatabaseConnection class adoption
-- [ ] Replace raw connections with DatabaseConnection in services (15+ files)
-- [ ] Standardize transaction handling using context managers
-- [ ] Verify ALL affected routes and services work correctly
-- [ ] Test critical business operations (budget, customer, canon tools)
-
-**Estimated Impact**: 230 lines consolidated across 15+ files
-
----
-
 # Completed
 
 - **Eliminate hardcoded DB path fallbacks** — Removed all silent fallback DB paths; production code requires explicit env var (2026-03)
 - **Fix Dropbox Backup Path** — Fixed `DATABASE_PATH` in sync env, added systemd sandbox path, rewrote failover guide. PR #187 (2026-03-02)
 - **Phase 2 Step 1: Shared Utilities** — Consolidated language CASE, date range utils, added 15 tests (2026-03-05)
 - **Phase 2 Step 2: Query Builder** — Moved RevenueQueryBuilder to shared utils, eliminated 7 inline CASE blocks, deleted dead methods, added 10 tests (2026-03-05)
+- **Phase 2 Step 3: DB Connection Standardization** — Replaced raw `sqlite3.connect()` in blueprints.py, stale_customers.py, address_book.py with DatabaseConnection from DI container. Deleted unused CustomerMatchingRepository. -353 lines. PR #207 (2026-03-07)
