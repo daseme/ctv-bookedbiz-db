@@ -405,10 +405,36 @@
                     </div>
                 </div>
             </div>
+
+            <h3>Create New Customer</h3>
+            <p>
+                If no existing customer matches the bill code, you can create one
+                directly from the search panel. A <strong>"Create New Customer"</strong>
+                button appears below the search results (or when no results are found).
+            </p>
+            <div class="step-flow">
+                <div class="step-card">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <strong>Click "Create New Customer"</strong>
+                        <span>A dialog appears with the bill code pre-filled as the
+                            customer name. Edit it if needed (e.g., strip an agency
+                            prefix).</span>
+                    </div>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <strong>Confirm the name</strong>
+                        <span>The system creates the customer, creates the alias, and
+                            backfills all spots in one step.</span>
+                    </div>
+                </div>
+            </div>
             <div class="guide-tip">
-                <strong>Tip:</strong> After linking, the bill code row fades out and the
-                table refreshes after a short delay. The customer's revenue metrics are
-                also recalculated.
+                <strong>Tip:</strong> After linking or creating, the bill code row fades
+                out and the table refreshes after a short delay. The customer's revenue
+                metrics are also recalculated.
             </div>
         </section>
 
@@ -560,6 +586,9 @@
                 <li><strong>Same customer, different bill codes:</strong> Use the
                     Link action in Unresolved Bill Codes to connect the bill code
                     to the correct customer</li>
+                <li><strong>Brand new customer:</strong> Click Link, then use
+                    "Create New Customer" at the bottom of the search results
+                    to create the customer and alias in one step</li>
                 <li><strong>Two records for the same business:</strong> Use Merge
                     Customers to combine them into one</li>
                 <li><strong>Agency-prefixed duplicates</strong> (e.g., "Misfit:Acme"
