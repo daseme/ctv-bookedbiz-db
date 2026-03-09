@@ -1,6 +1,7 @@
 # REPLACE YOUR ENTIRE src/web/routes/customer_sector_api.py file with this:
 
 from flask import Blueprint, request, jsonify
+from flask_login import current_user
 from src.services.container import get_container
 import logging
 from src.utils.query_builders import CustomerNormalizationQueryBuilder
@@ -14,7 +15,6 @@ logger = logging.getLogger(__name__)
 @customer_sector_bp.before_request
 def _require_admin_for_writes():
     if request.method in ('POST', 'PUT', 'DELETE'):
-        from flask_login import current_user
         if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
             return jsonify({"error": "Admin access required"}), 403
 
@@ -890,10 +890,10 @@ def update_customer_sector(customer_id):
         cursor.execute(
             """
             INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
-            VALUES (?, ?, 1, 'web_user')
+            VALUES (?, ?, 1, ?)
             ON CONFLICT(customer_id, sector_id) DO UPDATE SET is_primary = 1
             """,
-            (customer_id, sector_id),
+            (customer_id, sector_id, current_user.full_name),
         )
         # Also update timestamp on customer
         cursor.execute(

@@ -4,6 +4,7 @@ Unified Address Book - view and manage contacts/addresses for agencies and custo
 """
 
 from flask import Blueprint, render_template, jsonify, request, Response
+from flask_login import current_user
 import sqlite3
 import json
 import csv
@@ -19,7 +20,6 @@ address_book_bp = Blueprint("address_book", __name__)
 @address_book_bp.before_request
 def _require_admin_for_writes():
     if request.method in ('POST', 'PUT', 'DELETE'):
-        from flask_login import current_user
         if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
             return jsonify({"error": "Admin access required"}), 403
 
@@ -710,9 +710,9 @@ def api_update_sector(entity_type, entity_id):
                 # Upsert into junction table as primary; triggers sync customers.sector_id
                 conn.execute("""
                     INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
-                    VALUES (?, ?, 1, 'web_user')
+                    VALUES (?, ?, 1, ?)
                     ON CONFLICT(customer_id, sector_id) DO UPDATE SET is_primary = 1
-                """, [entity_id, sector_id])
+                """, [entity_id, sector_id, current_user.full_name])
             else:
                 # Clear all sectors
                 conn.execute(
@@ -786,8 +786,8 @@ def api_update_sectors(entity_id):
                     is_primary = 1 if s.get("is_primary") else 0
                     conn.execute("""
                         INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
-                        VALUES (?, ?, ?, 'web_user')
-                    """, [entity_id, sid, is_primary])
+                        VALUES (?, ?, ?, ?)
+                    """, [entity_id, sid, is_primary, current_user.full_name])
 
             # Audit
             old_ids = [r["sector_id"] for r in old_sectors]
@@ -796,7 +796,7 @@ def api_update_sectors(entity_id):
                 INSERT INTO canon_audit (actor, action, key, value, extra)
                 VALUES (?, 'SECTOR_ASSIGN', ?, ?, ?)
             """, [
-                "web_user",
+                current_user.full_name,
                 f"customer:{entity_id}",
                 f"sectors={new_ids}",
                 f"old_sectors={old_ids}"
@@ -1265,15 +1265,15 @@ def api_create_entity():
             if entity_type == "customer" and sector_id:
                 conn.execute("""
                     INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
-                    VALUES (?, ?, 1, 'web_user')
-                """, [entity_id, sector_id])
+                    VALUES (?, ?, 1, ?)
+                """, [entity_id, sector_id, current_user.full_name])
 
             # AE assignment history (same pattern as api_update_ae)
             if assigned_ae:
                 conn.execute("""
                     INSERT INTO ae_assignments (entity_type, entity_id, ae_name, created_by)
-                    VALUES (?, ?, ?, 'web_user')
-                """, [entity_type, entity_id, assigned_ae])
+                    VALUES (?, ?, ?, ?)
+                """, [entity_type, entity_id, assigned_ae, current_user.full_name])
 
             # Primary contact
             if contact_name:
@@ -1281,16 +1281,16 @@ def api_create_entity():
                     INSERT INTO entity_contacts
                         (entity_type, entity_id, contact_name, contact_title, email, phone,
                          is_primary, contact_role, created_by)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'web_user')
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
                 """, [entity_type, entity_id, contact_name, contact_title,
-                      contact_email, contact_phone, contact_role])
+                      contact_email, contact_phone, contact_role, current_user.full_name])
 
             # Audit trail
             conn.execute("""
                 INSERT INTO canon_audit (actor, action, key, value, extra)
                 VALUES (?, 'CREATE_ENTITY', ?, ?, ?)
             """, [
-                "web_user",
+                current_user.full_name,
                 f"{entity_type}:{entity_id}",
                 name,
                 f"type={entity_type}|sector_id={sector_id or 'none'}|agency_id={agency_id or 'none'}"
@@ -1339,7 +1339,7 @@ def api_deactivate_entity(entity_type, entity_id):
                 INSERT INTO canon_audit (actor, action, key, value, extra)
                 VALUES (?, 'DEACTIVATE_ENTITY', ?, ?, ?)
             """, [
-                "web_user",
+                current_user.full_name,
                 f"{entity_type}:{entity_id}",
                 row["name"],
                 f"type={entity_type}"
@@ -1384,7 +1384,7 @@ def api_reactivate_entity(entity_type, entity_id):
                 INSERT INTO canon_audit (actor, action, key, value, extra)
                 VALUES (?, 'REACTIVATE_ENTITY', ?, ?, ?)
             """, [
-                "web_user",
+                current_user.full_name,
                 f"{entity_type}:{entity_id}",
                 row["name"],
                 f"type={entity_type}"
@@ -1512,7 +1512,7 @@ def api_create_address(entity_type, entity_id):
                 (data.get("state") or "").strip() or None,
                 (data.get("zip") or "").strip() or None,
                 1 if data.get("is_primary") else 0,
-                "web_user",
+                current_user.full_name,
                 (data.get("notes") or "").strip() or None
             ])
             address_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -1623,7 +1623,7 @@ def api_save_filter():
             conn.execute("""
                 INSERT INTO saved_filters (filter_name, filter_type, filter_config, created_by, is_shared)
                 VALUES (?, 'address_book', ?, ?, ?)
-            """, [filter_name, json.dumps(filter_config), "web_user", data.get("is_shared", False)])
+            """, [filter_name, json.dumps(filter_config), current_user.full_name, data.get("is_shared", False)])
             conn.commit()
             filter_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             return jsonify({"success": True, "filter_id": filter_id})
@@ -2016,7 +2016,7 @@ def api_create_activity(entity_type, entity_id):
                 INSERT INTO entity_activity
                     (entity_type, entity_id, activity_type, description, created_by, contact_id, due_date)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, [entity_type, entity_id, activity_type, description or None, "web_user", contact_id, due_date])
+            """, [entity_type, entity_id, activity_type, description or None, current_user.full_name, contact_id, due_date])
 
             activity_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             conn.commit()
@@ -2151,8 +2151,8 @@ def api_update_ae(entity_type, entity_id):
             if assigned_ae:
                 conn.execute("""
                     INSERT INTO ae_assignments (entity_type, entity_id, ae_name, created_by)
-                    VALUES (?, ?, ?, 'web_user')
-                """, [entity_type, entity_id, assigned_ae])
+                    VALUES (?, ?, ?, ?)
+                """, [entity_type, entity_id, assigned_ae, current_user.full_name])
 
             # Update denormalized value on main table
             conn.execute(
@@ -2165,7 +2165,7 @@ def api_update_ae(entity_type, entity_id):
                 INSERT INTO canon_audit (actor, action, key, value, extra)
                 VALUES (?, 'AE_ASSIGN', ?, ?, ?)
             """, [
-                "web_user",
+                current_user.full_name,
                 f"{entity_type}:{entity_id}",
                 assigned_ae or "(cleared)",
                 f"name={row['name']}|old_ae={old_ae or '(none)'}|new_ae={assigned_ae or '(none)'}"

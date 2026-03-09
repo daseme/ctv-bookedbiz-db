@@ -5,6 +5,7 @@ or no recent activity for human review/triage.
 """
 
 from flask import Blueprint, render_template, jsonify, request
+from flask_login import current_user
 from datetime import datetime, date, timedelta
 from src.services.container import get_container
 
@@ -14,7 +15,6 @@ stale_customers_bp = Blueprint("stale_customers", __name__)
 @stale_customers_bp.before_request
 def _require_admin_for_writes():
     if request.method in ('POST', 'PUT', 'DELETE'):
-        from flask_login import current_user
         if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
             return jsonify({"error": "Admin access required"}), 403
 
@@ -511,7 +511,7 @@ def api_deactivate_entity():
                 INSERT INTO canon_audit (actor, action, key, value, extra)
                 VALUES (?, 'DEACTIVATE', ?, ?, ?)
             """, [
-                "web_user",
+                current_user.full_name,
                 f"{entity_type}:{entity_id}",
                 entity["name"],
                 f"reason={reason}"
@@ -711,7 +711,7 @@ def api_bulk_deactivate():
                     INSERT INTO canon_audit (actor, action, key, value, extra)
                     VALUES (?, 'DEACTIVATE', ?, ?, ?)
                 """, [
-                    "web_user",
+                    current_user.full_name,
                     f"{c['entity_type']}:{c['entity_id']}",
                     entity["name"],
                     f"reason={reason}"
