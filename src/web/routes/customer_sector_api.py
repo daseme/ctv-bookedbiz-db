@@ -1083,10 +1083,10 @@ def bulk_update_sectors():
             cursor.execute(
                 """
                 INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
-                VALUES (?, ?, 1, 'bulk_update')
+                VALUES (?, ?, 1, ?)
                 ON CONFLICT(customer_id, sector_id) DO UPDATE SET is_primary = 1
             """,
-                (customer_id, sector_id),
+                (customer_id, sector_id, current_user.full_name),
             )
             cursor.execute(
                 "UPDATE customers SET updated_date = CURRENT_TIMESTAMP WHERE customer_id = ?",
