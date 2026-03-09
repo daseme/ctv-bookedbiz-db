@@ -1903,7 +1903,7 @@
       const isActive = !h.ended_date;
       const start = h.assigned_date ? formatDate(h.assigned_date.split('T')[0].split(' ')[0]) : '';
       const end = h.ended_date ? formatDate(h.ended_date.split('T')[0].split(' ')[0]) : 'Present';
-      const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : 'Manual assignment';
+      const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : `Assigned by ${esc(h.created_by)}`;
       return `
         <div class="ae-history-item">
           <div class="ae-history-dot ${isActive ? 'active' : 'ended'}"></div>
