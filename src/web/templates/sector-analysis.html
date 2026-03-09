@@ -3,7 +3,7 @@
 {% block title %}{{ title }} - CTV Reports{% endblock %}
 
 {% block header_title %}{{ title }}{% endblock %}
-{% block header_subtitle %}Revenue breakdown by sector and market segment{% endblock %}
+{% block header_subtitle %}Revenue breakdown by sector and market segment <button class="guide-btn" onclick="document.getElementById('help-modal').classList.add('active')" title="About this report">?</button>{% endblock %}
 
 {% block breadcrumb %}
 <span class="breadcrumb-separator">›</span>
@@ -242,6 +242,92 @@
     align-items: center;
     gap: 10px;
 }
+
+.guide-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+.guide-btn:hover {
+    background: #e0f2fe;
+    color: #0284c7;
+    border-color: #0284c7;
+}
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 20px;
+    overflow-y: auto;
+}
+.modal-overlay.active { display: flex; }
+
+.info-modal {
+    background: #fff;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 560px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+}
+.info-modal .modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f0f9ff;
+}
+.info-modal .modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #0369a1;
+}
+.info-modal .modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #64748b;
+    padding: 0 4px;
+}
+.info-modal .modal-close:hover { color: #0f172a; }
+.info-modal .modal-body {
+    padding: 24px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.info-modal .info-section {
+    margin-bottom: 20px;
+}
+.info-modal .info-section:last-child { margin-bottom: 0; }
+.info-modal .info-section h4 {
+    margin: 0 0 6px;
+    font-size: 14px;
+    color: #0f172a;
+}
+.info-modal .info-section p {
+    margin: 0;
+    font-size: 13px;
+    color: #475569;
+    line-height: 1.5;
+}
 </style>
 {% endblock %}
 
@@ -473,6 +559,41 @@
             {% endfor %}
         </tbody>
     </table>
+</div>
+
+<div class="modal-overlay" id="help-modal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>Sector Analysis Report</h3>
+      <button class="modal-close" onclick="document.getElementById('help-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What is this report?</h4>
+        <p>Shows revenue distribution across sector groups for a selected year. Sectors are assigned to customers via the Sector Manager and roll up into groups: Outreach, Commercial, Political, and Other.</p>
+      </div>
+      <div class="info-section">
+        <h4>Sector Groups</h4>
+        <p>Each sector belongs to a group. The cards show total revenue, spot count, and individual sector breakdown within each group. Percentages are relative to the group total.</p>
+      </div>
+      <div class="info-section">
+        <h4>Top Customers</h4>
+        <p>The table at the bottom lists the highest-revenue customers for the selected year, along with their sector, spot count, and average spot rate.</p>
+      </div>
+      <div class="info-section">
+        <h4>Year Filter</h4>
+        <p>Use the dropdown to switch between years. Revenue is based on broadcast month, so a year includes all spots whose broadcast month falls within that calendar year.</p>
+      </div>
+      <div class="info-section">
+        <h4>Revenue Exclusions</h4>
+        <p>Trade revenue is excluded from all figures. Only cash spots contribute to the totals.</p>
+      </div>
+      <div class="info-section">
+        <h4>Unassigned Customers</h4>
+        <p>Customers without a sector appear in the "Other" group. Use the <a href="/reports/customer-sector-manager" style="color: #0369a1;">Sector Manager</a> to assign them.</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% endblock %} 
