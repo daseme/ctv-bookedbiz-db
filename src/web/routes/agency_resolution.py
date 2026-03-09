@@ -2,6 +2,7 @@
 """API routes for agency resolution."""
 
 from flask import Blueprint, jsonify, request, render_template
+from flask_login import current_user
 
 agency_resolution_bp = Blueprint("agency_resolution", __name__)
 
@@ -9,7 +10,6 @@ agency_resolution_bp = Blueprint("agency_resolution", __name__)
 @agency_resolution_bp.before_request
 def _require_admin_for_writes():
     if request.method in ('POST', 'PUT', 'DELETE'):
-        from flask_login import current_user
         if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
             return jsonify({"error": "Admin access required"}), 403
 
@@ -61,7 +61,7 @@ def create_agency():
     result = _get_service().create_agency_and_alias(
         agency_raw=agency_raw,
         agency_name=agency_name,
-        created_by="web_user"
+        created_by=current_user.full_name
     )
     return jsonify(result)
 
@@ -78,7 +78,7 @@ def link_agency():
     result = _get_service().link_to_existing(
         agency_raw=agency_raw,
         agency_id=agency_id,
-        created_by="web_user"
+        created_by=current_user.full_name
     )
 
     if not result["success"]:
@@ -107,7 +107,7 @@ def merge_agencies():
     result = _get_service().merge_agencies(
         source_id=int(source_id),
         target_id=int(target_id),
-        merged_by="web_user"
+        merged_by=current_user.full_name
     )
 
     if not result["success"]:
@@ -148,7 +148,7 @@ def get_agency_detail(agency_id: int):
 @agency_resolution_bp.route("/api/agency-aliases/<int:alias_id>", methods=["DELETE"])
 def delete_alias(alias_id: int):
     """Soft-delete an alias."""
-    result = _get_service().delete_alias(alias_id, deleted_by="web_user")
+    result = _get_service().delete_alias(alias_id, deleted_by=current_user.full_name)
     if not result["success"]:
         return jsonify(result), 400
     return jsonify(result)
@@ -166,7 +166,7 @@ def rename_agency(agency_id: int):
     result = _get_service().rename_agency(
         agency_id=agency_id,
         new_name=new_name,
-        renamed_by="web_user"
+        renamed_by=current_user.full_name
     )
 
     if not result["success"]:
@@ -185,7 +185,7 @@ def update_agency_address(agency_id: int):
         city=data.get("city"),
         state=data.get("state"),
         zip_code=data.get("zip"),
-        updated_by="web_user"
+        updated_by=current_user.full_name
     )
 
     if not result["success"]:

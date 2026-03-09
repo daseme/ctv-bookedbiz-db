@@ -2,6 +2,7 @@
 """API routes for contact management."""
 
 from flask import Blueprint, jsonify, request
+from flask_login import current_user
 
 contacts_bp = Blueprint("contacts", __name__)
 
@@ -9,7 +10,6 @@ contacts_bp = Blueprint("contacts", __name__)
 @contacts_bp.before_request
 def _require_admin_for_writes():
     if request.method in ('POST', 'PUT', 'DELETE'):
-        from flask_login import current_user
         if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
             return jsonify({"error": "Admin access required"}), 403
 
@@ -58,7 +58,7 @@ def create_contact(entity_type: str, entity_id: int):
         contact_role=data.get("contact_role"),
         is_primary=data.get("is_primary", False),
         notes=data.get("notes"),
-        created_by="web_user"
+        created_by=current_user.full_name
     )
 
     if not result["success"]:
@@ -88,7 +88,7 @@ def update_contact(contact_id: int):
         phone=data.get("phone"),
         contact_role=data.get("contact_role"),
         notes=data.get("notes"),
-        updated_by="web_user"
+        updated_by=current_user.full_name
     )
 
     if not result["success"]:
@@ -101,7 +101,7 @@ def delete_contact(contact_id: int):
     """Soft-delete a contact."""
     result = _get_service().delete_contact(
         contact_id=contact_id,
-        deleted_by="web_user"
+        deleted_by=current_user.full_name
     )
 
     if not result["success"]:
@@ -114,7 +114,7 @@ def set_primary_contact(contact_id: int):
     """Set a contact as the primary contact for its entity."""
     result = _get_service().set_primary(
         contact_id=contact_id,
-        updated_by="web_user"
+        updated_by=current_user.full_name
     )
 
     if not result["success"]:
