@@ -74,13 +74,16 @@ def get_customers():
                 "spot_count": rev_row[2] if rev_row[2] else 0,
             }
 
-        # Build final customer list - include all customers (even $0 revenue)
+        # Build final customer list - exclude $0 revenue customers
         customers = []
         for row in customer_rows:
             customer_id = row[0]
             revenue_data = revenue_lookup.get(
                 customer_id, {"total_revenue": 0.0, "spot_count": 0}
             )
+
+            if revenue_data["total_revenue"] <= 0:
+                continue
 
             customers.append(
                 {
