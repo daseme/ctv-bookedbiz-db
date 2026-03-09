@@ -28,9 +28,9 @@ def get_customers():
         conn = db.connect()
         cursor = conn.cursor()
 
-        # Get all active customers, excluding WorldLink-related names
+        # Get all active customers, excluding WorldLink broker clients
         customer_query = """
-        SELECT 
+        SELECT
             c.customer_id,
             c.normalized_name,
             COALESCE(s.sector_name, 'Unassigned') AS sector,
@@ -38,13 +38,16 @@ def get_customers():
         FROM customers c
         LEFT JOIN sectors s ON c.sector_id = s.sector_id
         WHERE c.is_active = 1
-          -- Filter out WorldLink clients by name patterns
+          AND c.customer_id NOT IN (
+              SELECT DISTINCT target_entity_id
+              FROM entity_aliases
+              WHERE entity_type = 'customer'
+                AND is_active = 1
+                AND (alias_name LIKE 'WorldLink:%'
+                  OR alias_name LIKE 'Worldlink:%')
+          )
           AND c.normalized_name NOT LIKE '%WorldLink%'
-          AND c.normalized_name NOT LIKE '%Worldlink%' 
-          AND c.normalized_name NOT LIKE 'Direct Donor%'
-          AND c.normalized_name NOT LIKE 'Marketing Architects%'
-          AND c.normalized_name NOT LIKE '%FinanceBuzz%'
-          AND c.normalized_name NOT LIKE '%Marketing Arch%'
+          AND c.normalized_name NOT LIKE '%Worldlink%'
         ORDER BY c.normalized_name
         """
 
