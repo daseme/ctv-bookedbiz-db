@@ -611,6 +611,7 @@
         <table class="data-table">
             <thead>
                 <tr>
+                    <th>Bill Code</th>
                     <th>Air Date</th>
                     <th>Month</th>
                     <th>Time</th>
@@ -625,6 +626,7 @@
             <tbody>
                 {% for spot in report.recent_spots %}
                 <tr>
+                    <td style="font-family: monospace; font-size: 12px;">{{ spot.bill_code }}</td>
                     <td>{{ spot.air_date }}</td>
                     <td>{{ spot.broadcast_month }}</td>
                     <td style="font-family: monospace;">{{ spot.time_in or '-' }}</td>
