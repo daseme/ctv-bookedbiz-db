@@ -189,7 +189,14 @@
           </div>
           <div class="info-section">
             <h4>Assigned By</h4>
-            <p>Shows who assigned the current sector and when (hover for date). Older entries may show "web_user" or "unsplit_tool" from before user tracking was added.</p>
+            <p>Shows who or what assigned the current sector (hover for date). Values you may see:</p>
+            <ul style="margin:6px 0 0;padding-left:18px;font-size:13px;color:#475569;line-height:1.7">
+              <li><strong>A person's name</strong> &mdash; manually assigned through this tool or the Address Book</li>
+              <li><strong>migration_010</strong> &mdash; backfilled when the multi-sector system was first created (carried over from the original single-sector field)</li>
+              <li><strong>migration_011</strong> &mdash; reassigned during the sector taxonomy cleanup (renamed or reorganized sectors)</li>
+              <li><strong>unsplit_tool</strong> &mdash; assigned by an automated tool that split compound customer records into separate entries</li>
+              <li><strong>web_user</strong> &mdash; manually assigned before user tracking was added</li>
+            </ul>
           </div>
           <div class="info-section">
             <h4>Excluded customers</h4>
