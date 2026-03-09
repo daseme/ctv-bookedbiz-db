@@ -90,6 +90,7 @@ class MarketBreakdown:
 class RecentSpot:
     """Recent spot activity record."""
     spot_id: int
+    bill_code: str
     air_date: str
     broadcast_month: str
     time_in: Optional[str]
@@ -476,6 +477,7 @@ class CustomerDetailService:
         cursor.execute(f"""
             SELECT
                 s.spot_id,
+                s.bill_code,
                 s.air_date,
                 s.broadcast_month,
                 s.time_in,
@@ -499,16 +501,17 @@ class CustomerDetailService:
         for row in cursor.fetchall():
             results.append(RecentSpot(
                 spot_id=row[0],
-                air_date=row[1],
-                broadcast_month=row[2],
-                time_in=row[3],
-                length_seconds=row[4],
-                gross_rate=Decimal(str(row[5] or 0)),
-                station_net=Decimal(str(row[6] or 0)),
-                sales_person=row[7],
-                language_code=row[8],
-                market_code=row[9],
-                revenue_type=row[10]
+                bill_code=row[1],
+                air_date=row[2],
+                broadcast_month=row[3],
+                time_in=row[4],
+                length_seconds=row[5],
+                gross_rate=Decimal(str(row[6] or 0)),
+                station_net=Decimal(str(row[7] or 0)),
+                sales_person=row[8],
+                language_code=row[9],
+                market_code=row[10],
+                revenue_type=row[11]
             ))
         
         return results
