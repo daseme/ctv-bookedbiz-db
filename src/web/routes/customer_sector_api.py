@@ -34,9 +34,13 @@ def get_customers():
             c.customer_id,
             c.normalized_name,
             COALESCE(s.sector_name, 'Unassigned') AS sector,
-            c.updated_date
+            c.updated_date,
+            cs.assigned_by,
+            cs.assigned_date
         FROM customers c
         LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        LEFT JOIN customer_sectors cs
+            ON c.customer_id = cs.customer_id AND cs.is_primary = 1
         WHERE c.is_active = 1
           AND c.customer_id NOT IN (
               SELECT DISTINCT target_entity_id
@@ -88,6 +92,9 @@ def get_customers():
             if revenue_data["total_revenue"] <= 0:
                 continue
 
+            assigned_by = row[4] or None
+            assigned_date = str(row[5])[:10] if row[5] else None
+
             customers.append(
                 {
                     "id": customer_id,
@@ -96,6 +103,8 @@ def get_customers():
                     "lastUpdated": str(row[3])[:10] if row[3] else "2025-01-01",
                     "totalRevenue": revenue_data["total_revenue"],
                     "spotCount": revenue_data["spot_count"],
+                    "assignedBy": assigned_by,
+                    "assignedDate": assigned_date,
                     "resolutionStatus": "resolved",
                     "isUnresolved": False,
                 }

@@ -129,7 +129,7 @@ class CustomerSectorUI {
                         <th>Assign Sector</th>
                         <th>Status</th>
                         <th>Revenue</th>
-                        <th>Last Updated</th>
+                        <th>Assigned By</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -173,8 +173,8 @@ class CustomerSectorUI {
                     <td style="color: var(--nord3); font-size: 14px; font-weight: 600;">
                         ${revenueFormatted}
                     </td>
-                    <td style="color: var(--nord3); font-size: 13px;">
-                        ${customer.lastUpdated}
+                    <td style="color: var(--nord3); font-size: 13px;" title="${customer.assignedDate || ''}">
+                        ${customer.assignedBy || '<span style="color:#94a3b8">—</span>'}
                     </td>
                 </tr>
             `;
