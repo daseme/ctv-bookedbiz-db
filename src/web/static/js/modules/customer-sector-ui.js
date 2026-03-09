@@ -150,7 +150,7 @@ class CustomerSectorUI {
                                ${isSelected ? 'checked' : ''}>
                     </td>
                     <td>
-                        <div class="customer-name" title="${customer.name}">${customer.name}</div>
+                        <div class="customer-name" title="${customer.name}"><a href="/reports/customer/${customer.id}" style="color: inherit; text-decoration: none; border-bottom: 1px dotted var(--nord3);">${customer.name}</a></div>
                     </td>
                     <td>
                         <span class="sector-badge ${customer.sector ? 'assigned' : 'unassigned'}">
