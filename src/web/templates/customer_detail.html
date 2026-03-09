@@ -10,7 +10,7 @@
 {% endblock %}
 
 {% block header_title %}{{ report.summary.normalized_name }}{% endblock %}
-{% block header_subtitle %}Customer Revenue Analysis and Performance Tracking{% endblock %}
+{% block header_subtitle %}Customer Revenue Analysis and Performance Tracking <button class="guide-btn" onclick="document.getElementById('help-modal').classList.add('active')" title="About this report">?</button>{% endblock %}
 
 {% block extra_styles %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
@@ -339,6 +339,93 @@
         color: white;
         margin-left: auto;
     }
+
+    .guide-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.15s;
+        margin-left: 8px;
+        vertical-align: middle;
+    }
+    .guide-btn:hover {
+        background: #e0f2fe;
+        color: #0284c7;
+        border-color: #0284c7;
+    }
+
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 40px 20px;
+        overflow-y: auto;
+    }
+    .modal-overlay.active { display: flex; }
+
+    .info-modal {
+        background: #fff;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 560px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+    }
+    .info-modal .modal-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f0f9ff;
+    }
+    .info-modal .modal-header h3 {
+        margin: 0;
+        font-size: 18px;
+        color: #0369a1;
+    }
+    .info-modal .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #64748b;
+        padding: 0 4px;
+    }
+    .info-modal .modal-close:hover { color: #0f172a; }
+    .info-modal .modal-body {
+        padding: 24px;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .info-modal .info-section {
+        margin-bottom: 20px;
+    }
+    .info-modal .info-section:last-child { margin-bottom: 0; }
+    .info-modal .info-section h4 {
+        margin: 0 0 6px;
+        font-size: 14px;
+        color: #0f172a;
+    }
+    .info-modal .info-section p {
+        margin: 0;
+        font-size: 13px;
+        color: #475569;
+        line-height: 1.5;
+    }
 </style>
 {% endblock %}
 
@@ -567,6 +654,41 @@
     </div>
 </div>
 {% endif %}
+
+<div class="modal-overlay" id="help-modal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>Customer Detail Report</h3>
+      <button class="modal-close" onclick="document.getElementById('help-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>Monthly Revenue Chart</h4>
+        <p>Shows gross revenue by broadcast month for the most recent 24 months that have activity. Only months where this customer had spots appear &mdash; gaps between bars mean the customer had no spots that month.</p>
+      </div>
+      <div class="info-section">
+        <h4>KPI Cards</h4>
+        <p>Without a date filter: lifetime totals, current-year YTD with year-over-year change, prior full-year totals, and average spot rate across all time. With a date filter active: totals and averages are scoped to the filtered range and the YoY cards are hidden.</p>
+      </div>
+      <div class="info-section">
+        <h4>Date Filter</h4>
+        <p>Use the date picker bar at the top to narrow every section on this page &mdash; KPIs, chart, breakdowns, and recent activity &mdash; to a specific air-date range. Click Reset to return to the lifetime view.</p>
+      </div>
+      <div class="info-section">
+        <h4>Revenue Exclusions</h4>
+        <p>Trade revenue is excluded from all calculations on this page. Only cash spots contribute to gross and net figures.</p>
+      </div>
+      <div class="info-section">
+        <h4>Breakdowns</h4>
+        <p>Language, Account Executive, and Market sections show each category's share of total gross revenue. Percentages and bars are relative to the current view (lifetime or filtered range).</p>
+      </div>
+      <div class="info-section">
+        <h4>Bill Code Aliases</h4>
+        <p>The raw billing codes from traffic logs that resolve to this customer. When new spots arrive with one of these codes, they are automatically linked to this customer record.</p>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
