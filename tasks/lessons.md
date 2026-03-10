@@ -563,5 +563,38 @@ Both are needed for complete coverage. Migration 023 added `trg_set_customer_on_
 **The gap window**: Between migration 022 (alias triggers) and 023 (spot trigger), 5,864 spots were ingested with NULL `customer_id` despite having matching aliases.
 **Action**: When adding a trigger to keep two tables in sync, always consider both INSERT directions. Ask: "What if a row is added to the *other* table?"
 
-**Last Updated**: 2026-03-06
-**Session Context**: Spot insert alias lookup trigger (migration 023).
+---
+
+### Rule 38: WorldLink Filter Must Be `'WorldLink%'` (No Colon) — Catches All Variants
+
+**Context**: House planning tool showed WorldLink accounts under the House heading. The forecast pipeline for House was inflated. Multiple queries used wrong bill_code filter patterns to separate WorldLink spots from House.
+**Pattern**: WorldLink spots have `sales_person = 'House'` but are identified by `bill_code LIKE 'WorldLink%'`. The prefix is `WorldLink` with NO colon — because some bill codes use a space separator (e.g., `WorldLink Broker Fees (DO NOT INVOICE)`) instead of a colon. Wrong patterns found:
+- `NOT LIKE 'WL%'` — doesn't match `WorldLink*` at all (sector_planning_repository)
+- `LIKE 'WL:%'` — no bill codes use this prefix (planning_repository detail views)
+- `LIKE 'WORLDLINK:%'` — SQLite LIKE is case-sensitive by default (planning_repository detail views)
+- `LIKE 'WorldLink:%'` — misses `WorldLink Broker Fees (DO NOT INVOICE)` (space, not colon)
+
+**Known WorldLink bill_code formats**:
+- `WorldLink:<Advertiser>` (colon separator, most common)
+- `WorldLink Broker Fees (DO NOT INVOICE)` (space separator, broker fees)
+
+**The correct patterns**:
+```sql
+-- Selecting WorldLink spots (catches both colon and space variants)
+WHERE bill_code LIKE 'WorldLink%'
+
+-- Excluding WorldLink from House
+WHERE sales_person = 'House'
+  AND (bill_code NOT LIKE 'WorldLink%' OR bill_code IS NULL)
+```
+
+**How to audit**:
+```bash
+rg "LIKE.*WL|LIKE.*orldlink|LIKE.*orldLink" --type py src/
+```
+All results should use exactly `'WorldLink%'` — no `WL%`, `WL:%`, `WORLDLINK:%`, or `WorldLink:%`.
+
+**Action**: When adding any query that touches House or WorldLink revenue, use `LIKE 'WorldLink%'` (no colon). The canonical source is `planning_repository.py:get_booked_revenue()`.
+
+**Last Updated**: 2026-03-10
+**Session Context**: WorldLink accounts appearing under House in planning tool, inflated House forecast pipeline.

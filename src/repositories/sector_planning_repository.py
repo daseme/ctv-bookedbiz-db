@@ -87,7 +87,7 @@ class SectorPlanningRepository(BaseService):
 
         # For House, exclude WorldLink spots
         if ae_name == "House":
-            query += " AND (sp.bill_code NOT LIKE 'WL%' OR sp.bill_code IS NULL)"
+            query += " AND (sp.bill_code NOT LIKE 'WorldLink%' OR sp.bill_code IS NULL)"
 
         query += """
             GROUP BY 
@@ -184,13 +184,36 @@ class SectorPlanningRepository(BaseService):
             WHERE sp.broadcast_month LIKE ?
               AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
               AND sp.sales_person = 'House'
-              AND (sp.bill_code NOT LIKE 'WL%' OR sp.bill_code IS NULL)
-            GROUP BY 
+              AND (sp.bill_code NOT LIKE 'WorldLink%' OR sp.bill_code IS NULL)
+            GROUP BY
                 COALESCE(c.sector_id, 0),
                 COALESCE(s.sector_code, 'UNK'),
                 COALESCE(s.sector_name, 'Unassigned'),
                 substr(sp.broadcast_month, 1, 3)
-            
+
+            UNION ALL
+
+            -- WorldLink identified by bill_code prefix
+            SELECT
+                'WorldLink' as sales_person,
+                COALESCE(c.sector_id, 0) as sector_id,
+                COALESCE(s.sector_code, 'UNK') as sector_code,
+                COALESCE(s.sector_name, 'Unassigned') as sector_name,
+                substr(sp.broadcast_month, 1, 3) as month_abbr,
+                SUM(COALESCE(sp.gross_rate, 0)) as booked_amount,
+                COUNT(sp.spot_id) as spot_count
+            FROM spots sp
+            LEFT JOIN customers c ON sp.customer_id = c.customer_id
+            LEFT JOIN sectors s ON c.sector_id = s.sector_id
+            WHERE sp.broadcast_month LIKE ?
+              AND (sp.revenue_type != 'Trade' OR sp.revenue_type IS NULL)
+              AND sp.bill_code LIKE 'WorldLink%'
+            GROUP BY
+                COALESCE(c.sector_id, 0),
+                COALESCE(s.sector_code, 'UNK'),
+                COALESCE(s.sector_name, 'Unassigned'),
+                substr(sp.broadcast_month, 1, 3)
+
             ORDER BY sales_person, sector_name, month_abbr
         """
 
@@ -210,7 +233,7 @@ class SectorPlanningRepository(BaseService):
         }
 
         with self.safe_connection() as conn:
-            cursor = conn.execute(query, [year_suffix, year_suffix])
+            cursor = conn.execute(query, [year_suffix, year_suffix, year_suffix])
             rows = cursor.fetchall()
 
         # Group by entity
