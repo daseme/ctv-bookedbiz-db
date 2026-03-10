@@ -495,12 +495,7 @@
         border-radius: 50%;
     }
     
-    /* Booked exceeds forecast entered - visual indicator */
-    .forecast-input.booked-exceeds {
-        background: #ecfdf5;
-        border-color: var(--nord14);
-    }
-    
+    /* Booked exceeds forecast entered - subtle corner indicator only */
     .booked-exceeds-indicator {
         position: absolute;
         top: 2px;
@@ -869,7 +864,7 @@
                 {% set booked_exceeds = row and row.is_booked_exceeds_forecast_entered and not is_past %}
                 <td class="number forecast-cell {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if is_active %}active-period{% endif %}">
                     <input type="text" 
-                           class="forecast-input {% if row and row.is_forecast_overridden %}modified{% endif %} {% if is_past %}past-month{% endif %} {% if booked_exceeds %}booked-exceeds{% endif %}"
+                           class="forecast-input {% if row and row.is_forecast_overridden %}modified{% endif %} {% if is_past %}past-month{% endif %}"
                            data-ae="{{ ed.entity.entity_name }}"
                            data-year="{{ period.year }}"
                            data-month="{{ period.month }}"
@@ -973,7 +968,7 @@
     Booked = gross_rate from spots table.
     Pipeline = Forecast minus Booked.
     Forecast defaults to Budget until adjusted; auto-floors to Booked if Booked exceeds entered value.
-    Yellow = modified forecast. Green = Booked exceeds entered forecast.
+    Yellow = modified forecast. Green triangle = Booked exceeds entered forecast.
     Blue columns = active planning window.
     Grey columns = closed months (read-only). Forecast and pipeline locked to actuals — no more revenue expected.
 </div>
@@ -1046,12 +1041,8 @@ function markModified(input) {
     // Display the effective value
     input.value = formatNumber(effectiveValue);
     
-    // Track whether booked exceeds what user entered
-    if (bookedValue > enteredValue) {
-        input.classList.add('booked-exceeds');
-        input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
-    } else {
-        input.classList.remove('booked-exceeds');
+    // Reset title when user edits
+    if (bookedValue <= enteredValue) {
         input.title = '';
     }
     
@@ -1187,14 +1178,7 @@ function resetChanges() {
             input.value = formatNumber(Math.max(original, bookedValue));
             input.classList.remove('modified');
             
-            // Re-check booked exceeds status
-            if (bookedValue > original) {
-                input.classList.add('booked-exceeds');
-                input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
-            } else {
-                input.classList.remove('booked-exceeds');
-                input.title = '';
-            }
+            input.title = '';
         }
     });
     
@@ -1239,15 +1223,7 @@ async function saveChanges() {
                     // Update original to the new entered value
                     originalValues.set(key, value.amount);
                     
-                    // Re-check booked exceeds with new value
-                    const bookedValue = parseNumber(input.dataset.booked || '0');
-                    if (bookedValue > value.amount) {
-                        input.classList.add('booked-exceeds');
-                        input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
-                    } else {
-                        input.classList.remove('booked-exceeds');
-                        input.title = '';
-                    }
+                    input.title = '';
                 }
             });
             
