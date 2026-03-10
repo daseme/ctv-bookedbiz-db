@@ -105,7 +105,7 @@ class AEService:
                        ROUND(SUM(gross_rate), 2) as total_revenue,
                        ROUND(AVG(gross_rate), 2) as avg_rate
                 FROM spots 
-                WHERE (agency_id = 'WorldLink' OR bill_code LIKE 'WorldLink:%')
+                WHERE (agency_id = 'WorldLink' OR bill_code LIKE 'WorldLink%')
                 AND gross_rate IS NOT NULL
                 AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                 AND strftime('%Y', broadcast_month) = ?
@@ -148,7 +148,7 @@ class AEService:
                 query = """
                 SELECT ROUND(SUM(gross_rate), 2) as revenue
                 FROM spots
-                WHERE (agency_id = 'WorldLink' OR bill_code LIKE 'WorldLink:%')
+                WHERE (agency_id = 'WorldLink' OR bill_code LIKE 'WorldLink%')
                 AND strftime('%Y-%m', broadcast_month) = ?
                 AND gross_rate IS NOT NULL
                 AND (revenue_type != 'Trade' OR revenue_type IS NULL)

@@ -47,8 +47,8 @@ def get_customers():
               FROM entity_aliases
               WHERE entity_type = 'customer'
                 AND is_active = 1
-                AND (alias_name LIKE 'WorldLink:%'
-                  OR alias_name LIKE 'Worldlink:%')
+                AND (alias_name LIKE 'WorldLink%'
+                  OR alias_name LIKE 'Worldlink%')
           )
           AND c.normalized_name NOT LIKE '%WorldLink%'
           AND c.normalized_name NOT LIKE '%Worldlink%'

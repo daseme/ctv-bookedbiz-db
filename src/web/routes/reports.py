@@ -487,10 +487,10 @@ def ae_dashboard_personal():
                     entity_filter = "WHERE 1=1"
                 elif ae_name == "WorldLink":
                     # WorldLink revenue is identified by bill_code prefix, not sales_person
-                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
+                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink%'"
                 elif ae_name == "House":
                     # House revenue excludes WorldLink bill_codes
-                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink:%'"
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink%'"
                     query_params.insert(0, ae_name)
                 else:
                     # Standard AE lookup by sales_person
@@ -571,9 +571,9 @@ def ae_dashboard_personal():
                     # Show all contracts - no entity filter
                     entity_filter = "WHERE 1=1"
                 elif ae_name == "WorldLink":
-                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
+                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink%'"
                 elif ae_name == "House":
-                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink:%'"
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink%'"
                     params.append(ae_name)
                 else:
                     entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
