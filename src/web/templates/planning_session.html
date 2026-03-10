@@ -866,7 +866,7 @@
                 {% set row = ed.rows_by_period.get(period.key) %}
                 {% set is_active = period in active_periods %}
                 {% set is_past = period in past_periods %}
-                {% set booked_exceeds = row and row.is_booked_exceeds_forecast_entered %}
+                {% set booked_exceeds = row and row.is_booked_exceeds_forecast_entered and not is_past %}
                 <td class="number forecast-cell {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if is_active %}active-period{% endif %}">
                     <input type="text" 
                            class="forecast-input {% if row and row.is_forecast_overridden %}modified{% endif %} {% if is_past %}past-month{% endif %} {% if booked_exceeds %}booked-exceeds{% endif %}"
