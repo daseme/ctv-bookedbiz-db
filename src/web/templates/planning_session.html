@@ -873,14 +873,14 @@
                            data-is-past="{{ 'true' if is_past else 'false' }}"
                            value="{{ "{:,.0f}".format(row.booked.amount if (row and is_past) else (row.forecast.amount if row else 0)) }}"
                            {% if is_past %}readonly title="Past month - showing actuals"{% endif %}
-                           {% if booked_exceeds %}title="Booked (${{ "{:,.0f}".format(row.booked.amount) }}) exceeds entered forecast. Consider updating."{% endif %}
+                           {% if booked_exceeds %}title="Forecast auto-raised from ${{ "{:,.0f}".format(row.forecast_entered.amount) }} to match booked"{% endif %}
                            onchange="markModified(this)"
                            onkeydown="handleKeydown(event, this)">
                     {% if row and row.is_forecast_overridden %}
                     <span class="override-indicator" title="Modified from budget"></span>
                     {% endif %}
                     {% if booked_exceeds %}
-                    <span class="booked-exceeds-indicator" title="Booked exceeds entered forecast"></span>
+                    <span class="booked-exceeds-indicator" title="Forecast auto-raised from ${{ "{:,.0f}".format(row.forecast_entered.amount) }} to match booked"></span>
                     {% endif %}
                 </td>
                 {% endfor %}
