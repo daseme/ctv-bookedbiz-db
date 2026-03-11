@@ -303,6 +303,10 @@ def initialize_services():
         container.register_singleton("pending_order_service", create_pending_order_service)
         print("✅ pending_order_service registered")
 
+        print("🔧 Registering entity_metrics_service...")
+        container.register_singleton("entity_metrics_service", create_entity_metrics_service)
+        print("✅ entity_metrics_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -426,6 +430,15 @@ def create_pricing_trends_service():
     container = get_container()
     db_connection = container.get("database_connection")
     return PricingTrendsService(db_connection)
+
+
+def create_entity_metrics_service():
+    """Factory function for EntityMetricsService."""
+    from src.services.entity_metrics_service import EntityMetricsService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return EntityMetricsService(db_connection)
 
 
 def create_pending_order_service():
