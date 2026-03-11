@@ -351,6 +351,68 @@ unpredictable behavior.
 
 ---
 
+## Data Operations
+
+### Customer Merge and Agency ID Backfill (2026-03-11)
+
+**Problem**: `agency_id` on the `customers` table was almost entirely unused (4 of 302
+active customers). Agency relationships were encoded only in the `Agency:Name` prefix
+of `normalized_name`. This caused:
+- Duplicate customers when the same advertiser was imported under agency name variants
+  (e.g., "Sagent:Cal Fire" vs "Sagent Marketing:Cal Fire")
+- No structured way to query "all customers through Agency X"
+- Customer detail page couldn't show agency badge (template already supported it via
+  `report.summary.agency_name`, but the JOIN on `agency_id` returned NULL)
+
+**Merges performed** (6 total — source deactivated, spots+aliases moved to target):
+
+| Source | Target | Spots moved |
+|---|---|---|
+| 431: Admerasia:McDonald's | 23: McDonald's | 1,120 |
+| 396: Sagent:CalTrans | 448: Sagent Marketing:CalTrans | 2,561 |
+| 395: Sagent:Cal Fire | 393: Sagent Marketing:Cal Fire | 2,927 |
+| 330: Imprenta Communications Group, Inc.:PG&E | 331: Imprenta:PG&E | 0 |
+| 450: opAD Media Solutions LLC:NY State DoH | 555: opAD:NY State DoH | 0 |
+| 451: opAD Media Solutions LLC:NY Dept HMH | 554: opAD:NY Dept HMH | 0 |
+| 449: Solsken Communications:My Sister's House | 399: Solsken:My Sister's House | 767 |
+
+**Agency ID backfill**: 146 customers now have `agency_id` set (was 4). Backfill matched
+`SUBSTR(normalized_name, 1, INSTR(normalized_name, ':') - 1)` to `agencies.agency_name`.
+Unmatched cases were due to:
+- Agency record was inactive (6 reactivated: IDs 90, 91, 99, 100, 104, 107)
+- Name variant: hyphen vs no hyphen ("Brown-Miller" → agency "Brown Miller"),
+  "Inc." suffix, "LLC" suffix, case mismatch
+
+**Remaining**: 22 Worldlink-prefixed customers have no `agency_id` (intentional — Worldlink
+is handled separately). 128 customers without agency prefix have no `agency_id` (correct —
+they're direct advertisers).
+
+**How to find future duplicates**:
+```sql
+-- Same advertiser, same agency (name variants)
+WITH parsed AS (
+  SELECT customer_id, normalized_name,
+    SUBSTR(normalized_name, INSTR(normalized_name, ':') + 1) as advertiser,
+    SUBSTR(normalized_name, 1, INSTR(normalized_name, ':') - 1) as prefix
+  FROM customers WHERE is_active = 1 AND normalized_name LIKE '%:%'
+)
+SELECT p1.customer_id, p1.normalized_name, p2.customer_id, p2.normalized_name
+FROM parsed p1 JOIN parsed p2
+  ON p1.advertiser = p2.advertiser AND p1.customer_id < p2.customer_id
+  AND (p1.prefix LIKE p2.prefix || '%' OR p2.prefix LIKE p1.prefix || '%');
+```
+
+**How to find missing `agency_id`**:
+```sql
+SELECT customer_id, normalized_name,
+  SUBSTR(normalized_name, 1, INSTR(normalized_name, ':') - 1) as prefix
+FROM customers
+WHERE is_active = 1 AND agency_id IS NULL AND normalized_name LIKE '%:%'
+  AND normalized_name NOT LIKE 'Worldlink:%' AND normalized_name NOT LIKE 'WorldLink:%';
+```
+
+---
+
 ## Business Logic
 
 ### Language Codes Are Business Logic, Not Technical Data
