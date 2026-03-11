@@ -137,11 +137,46 @@ class PlanningService(BaseService):
     def _build_entity_planning_data(
         self, entity: RevenueEntity, periods: List[PlanningPeriod]
     ) -> EntityPlanningData:
-        """Build complete planning data for an entity across periods."""
+        """Build complete planning data for an entity across periods.
+
+        Uses batch queries: 3 queries total instead of 3 per period.
+        """
+        budgets = self.repository.get_budgets_for_periods(
+            entity.entity_name, periods
+        )
+        forecasts = self.repository.get_forecasts_for_periods(
+            entity.entity_name, periods
+        )
+        booked = self.repository.get_booked_revenue_for_periods(
+            entity.entity_name, periods
+        )
+
         rows = []
         for period in periods:
-            row = self.repository.get_planning_row(entity, period)
-            rows.append(row)
+            budget_amount = budgets.get(period)
+            forecast_data = forecasts.get(period)
+            booked_amount = booked.get(period, Decimal("0"))
+
+            if forecast_data:
+                forecast_amount = forecast_data["amount"]
+                forecast_updated = forecast_data["updated_date"]
+                forecast_updated_by = forecast_data["updated_by"]
+            else:
+                forecast_amount = budget_amount or Decimal("0")
+                forecast_updated = None
+                forecast_updated_by = None
+
+            rows.append(
+                PlanningRow(
+                    entity=entity,
+                    period=period,
+                    budget=Money(budget_amount or Decimal("0")),
+                    forecast_entered=Money(forecast_amount),
+                    booked=Money(booked_amount),
+                    forecast_updated=forecast_updated,
+                    forecast_updated_by=forecast_updated_by,
+                )
+            )
 
         return EntityPlanningData(entity=entity, rows=rows)
 
@@ -276,12 +311,21 @@ class PlanningService(BaseService):
         }
 
     def get_company_summary(
-        self, months_ahead: int = 2, planning_year: Optional[int] = None
+        self,
+        months_ahead: int = 2,
+        planning_year: Optional[int] = None,
+        entity_data: Optional[List[EntityPlanningData]] = None,
     ) -> Dict[str, Any]:
         """
         Get high-level company summary for planning window.
 
-        Now returns full year data with active window indicated.
+        Returns full year data with active window indicated.
+
+        Args:
+            months_ahead: Number of months beyond current to include (default 2)
+            planning_year: Year to plan for (default: current year)
+            entity_data: Pre-loaded entity planning data from get_planning_summary.
+                When provided, skips DB queries and computes totals from this data.
         """
         if planning_year is None:
             planning_year = date.today().year
@@ -289,6 +333,14 @@ class PlanningService(BaseService):
         all_periods = PlanningPeriod.full_year(planning_year)
         active_periods = PlanningPeriod.planning_window(months_ahead)
         past_periods = PlanningPeriod.past_periods(planning_year)
+
+        # Build entity data if not provided (backward compatibility)
+        if entity_data is None:
+            entities = self.repository.get_active_revenue_entities()
+            entity_data = [
+                self._build_entity_planning_data(entity, all_periods)
+                for entity in entities
+            ]
 
         total_budget = Money.zero()
         total_forecast = Money.zero()
@@ -299,24 +351,34 @@ class PlanningService(BaseService):
         periods_by_key = {}
 
         for period in all_periods:
-            totals = self.get_period_totals(period)
-            total_budget = total_budget + totals["budget"]
-            total_forecast = total_forecast + totals["forecast"]
-            total_booked = total_booked + totals["booked"]
+            period_budget = Money.zero()
+            period_forecast = Money.zero()
+            period_booked = Money.zero()
+
+            for ed in entity_data:
+                row = ed.row_for_period(period)
+                if row:
+                    period_budget = period_budget + row.budget
+                    period_forecast = period_forecast + row.forecast
+                    period_booked = period_booked + row.booked
+
+            total_budget = total_budget + period_budget
+            total_forecast = total_forecast + period_forecast
+            total_booked = total_booked + period_booked
             # Effective = booked for past months, forecast for current/future
-            effective = totals["booked"] if period in past_periods else totals["forecast"]
+            effective = period_booked if period in past_periods else period_forecast
             total_effective = total_effective + effective
 
             period_data = {
                 "period": period,
-                "budget": totals["budget"],
-                "forecast": totals["forecast"],
-                "booked": totals["booked"],
-                "pipeline": totals["pipeline"],
-                "variance": totals["variance"],
+                "budget": period_budget,
+                "forecast": period_forecast,
+                "booked": period_booked,
+                "pipeline": period_forecast - period_booked,
+                "variance": period_forecast - period_budget,
                 "pct_booked": (
-                    float(totals["booked"].amount / totals["forecast"].amount * 100)
-                    if totals["forecast"].amount > 0
+                    float(period_booked.amount / period_forecast.amount * 100)
+                    if period_forecast.amount > 0
                     else 0
                 ),
                 "is_active": period in active_periods,

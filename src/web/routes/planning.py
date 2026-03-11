@@ -9,7 +9,8 @@ Provides:
 
 import logging
 from flask import Blueprint, render_template, request, jsonify
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 
 
@@ -151,9 +152,11 @@ def planning_session():
         )
         
         company_summary = planning_service.get_company_summary(
-            months_ahead=months_ahead, planning_year=planning_year
+            months_ahead=months_ahead,
+            planning_year=planning_year,
+            entity_data=summary.entity_data,
         )
-        
+
         db_connection = container.get("database_connection")
         with db_connection.connection() as conn:
             row = conn.execute(
@@ -166,10 +169,7 @@ def planning_session():
             utc_dt = datetime.fromisoformat(row["last_updated"]).replace(
                 tzinfo=timezone.utc
             )
-            pacific = timezone(timedelta(hours=-8))
-            if _is_pacific_dst(utc_dt):
-                pacific = timezone(timedelta(hours=-7))
-            local_dt = utc_dt.astimezone(pacific)
+            local_dt = utc_dt.astimezone(ZoneInfo("America/Los_Angeles"))
             last_forecast_update = local_dt.strftime("%b %d, %Y %I:%M %p")
 
         template_data = {
@@ -224,7 +224,7 @@ def forecast_history(ae_name: str, year: int, month: int):
 def budget_entry():
     """Budget entry page with sector expectations."""
     try:
-        year = request.args.get("year", 2026, type=int)
+        year = request.args.get("year", date.today().year, type=int)
         
         container = get_container()
         planning_service = safe_get_service(container, "planning_service")
@@ -555,7 +555,9 @@ def api_get_summary():
             months_ahead=months_ahead, planning_year=planning_year
         )
         company = planning_service.get_company_summary(
-            months_ahead=months_ahead, planning_year=planning_year
+            months_ahead=months_ahead,
+            planning_year=planning_year,
+            entity_data=summary.entity_data,
         )
         
         data = {
@@ -1009,20 +1011,6 @@ def api_add_entity():
 # ============================================================================
 # Helper Functions
 # ============================================================================
-
-def _is_pacific_dst(dt: datetime) -> bool:
-    """Check if a datetime falls within US Pacific DST (Mar second Sun – Nov first Sun)."""
-    year = dt.year
-    # Second Sunday in March
-    mar1 = datetime(year, 3, 1, tzinfo=timezone.utc)
-    dst_start = mar1 + timedelta(days=(6 - mar1.weekday()) % 7 + 7)
-    # First Sunday in November
-    nov1 = datetime(year, 11, 1, tzinfo=timezone.utc)
-    dst_end = nov1 + timedelta(days=(6 - nov1.weekday()) % 7)
-    # DST transitions at 2 AM local = 10 AM UTC
-    dst_start = dst_start.replace(hour=10)
-    dst_end = dst_end.replace(hour=9)
-    return dst_start <= dt < dst_end
 
 
 def _get_budget_data_for_year(year: int) -> dict:
