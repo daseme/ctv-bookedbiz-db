@@ -1413,8 +1413,7 @@ function renderBookedDetail(data) {
     
     let currentSector = null;
     sortedCustomers.forEach(customer => {
-        console.log('customer_id:', customer.customer_id, 'name:', customer.customer_name);
-        const pct = data.total_revenue > 0 
+        const pct = data.total_revenue > 0
             ? (customer.revenue / data.total_revenue * 100).toFixed(1) 
             : 0;
         
@@ -1680,6 +1679,30 @@ function renderSectorError(entityName, message) {
     `;
 }
 
+
+async function loadSectorSummaries(year) {
+    try {
+        const response = await fetch(`/planning/api/sector-summary/${year}`);
+        const result = await response.json();
+        if (result.success && result.summaries) {
+            Object.entries(result.summaries).forEach(([entityName, summary]) => {
+                const header = document.querySelector(`.entity-header[data-entity="${entityName}"]`);
+                if (header) {
+                    const nameCell = header.querySelector('.entity-name-cell');
+                    if (nameCell && !nameCell.querySelector('.sector-summary')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'sector-summary';
+                        badge.style.cssText = 'font-size:11px;color:#718096;font-weight:400;margin-left:12px;';
+                        badge.textContent = summary;
+                        nameCell.appendChild(badge);
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        // Sector summaries are informational — don't block the page
+    }
+}
 
 // Call on page load
 document.addEventListener('DOMContentLoaded', function() {
