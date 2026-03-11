@@ -151,9 +151,11 @@ def planning_session():
         )
         
         company_summary = planning_service.get_company_summary(
-            months_ahead=months_ahead, planning_year=planning_year
+            months_ahead=months_ahead,
+            planning_year=planning_year,
+            entity_data=summary.entity_data,
         )
-        
+
         db_connection = container.get("database_connection")
         with db_connection.connection() as conn:
             row = conn.execute(
@@ -555,7 +557,9 @@ def api_get_summary():
             months_ahead=months_ahead, planning_year=planning_year
         )
         company = planning_service.get_company_summary(
-            months_ahead=months_ahead, planning_year=planning_year
+            months_ahead=months_ahead,
+            planning_year=planning_year,
+            entity_data=summary.entity_data,
         )
         
         data = {
