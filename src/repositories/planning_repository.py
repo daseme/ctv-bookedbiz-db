@@ -205,6 +205,43 @@ class PlanningRepository(BaseService):
                 "notes": row["notes"],
             }
 
+    def get_forecasts_for_periods(
+        self, ae_name: str, periods: List[PlanningPeriod]
+    ) -> Dict[PlanningPeriod, Dict[str, Any]]:
+        """Get forecast data with metadata for multiple periods."""
+        if not periods:
+            return {}
+
+        with self.safe_connection() as conn:
+            placeholders = ",".join(["(?, ?)" for _ in periods])
+            params = []
+            for p in periods:
+                params.extend([p.year, p.month])
+
+            cursor = conn.execute(
+                f"""
+                SELECT year, month, forecast_amount,
+                       updated_date, updated_by, notes
+                FROM forecast
+                WHERE ae_name = ? AND (year, month) IN ({placeholders})
+            """,
+                [ae_name] + params,
+            )
+
+            result = {}
+            for row in cursor.fetchall():
+                period = PlanningPeriod(year=row["year"], month=row["month"])
+                result[period] = {
+                    "amount": Decimal(str(row["forecast_amount"])),
+                    "updated_date": datetime.fromisoformat(row["updated_date"])
+                    if row["updated_date"]
+                    else None,
+                    "updated_by": row["updated_by"],
+                    "notes": row["notes"],
+                }
+
+            return result
+
     def save_forecast(self, update: ForecastUpdate) -> ForecastChange:
         """Save a forecast update and record history."""
         with self.safe_transaction() as conn:
