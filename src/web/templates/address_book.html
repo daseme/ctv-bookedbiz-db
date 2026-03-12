@@ -1482,7 +1482,40 @@
     }
 
     // Render card view
-    grid.innerHTML = currentData.map(renderCard).join('');
+    if (groupByAgency) {
+      const { groups, topLevel } = buildHierarchy(currentData);
+      let html = '';
+
+      for (const g of groups) {
+        const clientCount = g.clients.length;
+        const mutedClass = g.matched ? '' : ' muted';
+        html += `<div class="agency-group" data-agency-id="${g.agency.entity_id}">
+          <div class="agency-group-header${mutedClass}">
+            <span class="expand-icon">▶</span>
+            <span>${esc(g.agency.entity_name)}</span>
+            <span class="client-count">(${clientCount} client${clientCount !== 1 ? 's' : ''})</span>
+            ${g.agency.assigned_ae ? `<span class="ae-badge">${esc(g.agency.assigned_ae)}</span>` : ''}
+          </div>
+          <div class="agency-group-clients">
+            ${g.clients.map(renderCard).join('')}
+          </div>
+        </div>`;
+      }
+
+      html += topLevel.map(renderCard).join('');
+      grid.innerHTML = html;
+
+      // Attach expand/collapse handlers
+      document.querySelectorAll('.agency-group-header').forEach(header => {
+        header.addEventListener('click', () => {
+          header.classList.toggle('expanded');
+          header.nextElementSibling.classList.toggle('expanded');
+        });
+      });
+    } else {
+      grid.innerHTML = currentData.map(renderCard).join('');
+    }
+
     document.querySelectorAll('.entity-card').forEach(card => {
       card.addEventListener('click', () => openDetail(card.dataset.type, card.dataset.id));
     });
