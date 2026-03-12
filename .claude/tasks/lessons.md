@@ -323,6 +323,18 @@ When adding new route files, auth must be present from the start.
 
 ---
 
+## Template Block Names
+
+### base.html Block Names — Get These Right
+- `{% block extra_styles %}` — for CSS in `<head>`
+- `{% block extra_js %}` — for scripts before `</body>` (line 889)
+- `{% block scripts %}` — also for scripts (line 743)
+- **NOT** `{% block extra_scripts %}` — this doesn't exist and Jinja2 silently ignores it
+
+Jinja2 does NOT warn when a child template defines a block that doesn't exist in
+the parent. The block content is silently dropped. Always verify block names
+against `base.html` when creating new templates.
+
 ## Template & Code Cleanup
 
 ### Verify All References Before Deleting Any File
