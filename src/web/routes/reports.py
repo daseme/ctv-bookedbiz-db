@@ -644,6 +644,38 @@ def ae_dashboard_personal():
         except Exception as e:
             logger.warning(f"Could not get contracts highlight from placement files: {e}")
 
+        # Waiting for copy — spots with "NEED COPY" in media column
+        waiting_for_copy = []
+        try:
+            db_connection = container.get("database_connection")
+            conn = db_connection.connect()
+            try:
+                wfc_ae_clause = "" if show_all_revenue else "AND UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
+                wfc_params = [] if show_all_revenue else [ae_name]
+                rows = conn.execute(f"""
+                    SELECT
+                        COALESCE(c.normalized_name, s.bill_code) AS customer,
+                        s.sales_person,
+                        s.broadcast_month,
+                        s.market_name,
+                        COUNT(*) AS spot_count,
+                        COALESCE(SUM(s.gross_rate), 0) AS total_gross
+                    FROM spots s
+                    LEFT JOIN customers c ON s.customer_id = c.customer_id
+                    WHERE LOWER(s.media) LIKE '%need copy%'
+                      AND s.is_historical = 0
+                      AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                      {wfc_ae_clause}
+                    GROUP BY customer, s.sales_person,
+                             s.broadcast_month, s.market_name
+                    ORDER BY s.broadcast_month, customer
+                """, wfc_params).fetchall()
+                waiting_for_copy = [dict(r) for r in rows]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Could not load waiting for copy: {e}")
+
         # Pending insertion orders
         pending_orders = []
         pending_orders_count = 0
@@ -705,6 +737,7 @@ def ae_dashboard_personal():
                 "account_end_date": account_end_date,
                 "contracts_highlight": contracts_highlight,
                 "today": date.today().isoformat(),
+                "waiting_for_copy": waiting_for_copy,
                 "pending_orders": pending_orders,
                 "pending_orders_count": pending_orders_count,
                 "pending_orders_scanned_at": pending_orders_scanned_at,

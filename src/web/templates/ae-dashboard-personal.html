@@ -326,6 +326,63 @@
     </div>
     {% endif %}
 
+    <!-- Waiting for Copy -->
+    {% if waiting_for_copy %}
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600; color: #92400e;">
+            Waiting for Copy
+            <span style="font-size: 0.85em; font-weight: normal; color: #b45309;">
+                ({{ waiting_for_copy | length }})
+            </span>
+        </h3>
+        <div style="background: white; border: 1px solid #fde68a; border-radius: 6px; overflow: hidden;">
+            <table class="monthly-table" style="margin: 0;">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        {% if is_admin_or_management %}
+                        <th>Sales Person</th>
+                        {% endif %}
+                        <th>Month</th>
+                        <th>Market</th>
+                        <th class="numeric">Spots</th>
+                        <th class="numeric">Gross</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set ns = namespace(total_gross=0, total_spots=0) %}
+                    {% for row in waiting_for_copy %}
+                    <tr>
+                        <td>{{ row.customer }}</td>
+                        {% if is_admin_or_management %}
+                        <td>{{ row.sales_person }}</td>
+                        {% endif %}
+                        <td>{{ row.broadcast_month }}</td>
+                        <td>{{ row.market_name or '' }}</td>
+                        <td class="numeric">{{ row.spot_count }}</td>
+                        <td class="numeric">{{ "${:,.0f}".format(row.total_gross) }}</td>
+                    </tr>
+                    {% set ns.total_gross = ns.total_gross + row.total_gross %}
+                    {% set ns.total_spots = ns.total_spots + row.spot_count %}
+                    {% endfor %}
+                    {% if waiting_for_copy | length > 1 %}
+                    <tr style="font-weight: bold; border-top: 2px solid #4c566a;">
+                        <td>Total</td>
+                        {% if is_admin_or_management %}
+                        <td></td>
+                        {% endif %}
+                        <td></td>
+                        <td></td>
+                        <td class="numeric">{{ ns.total_spots }}</td>
+                        <td class="numeric">{{ "${:,.0f}".format(ns.total_gross) }}</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Pending Insertion Orders -->
     {% if pending_orders %}
     <div style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
