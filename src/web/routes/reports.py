@@ -656,7 +656,9 @@ def ae_dashboard_personal():
                     SELECT
                         COALESCE(c.normalized_name, s.bill_code) AS customer,
                         s.sales_person,
-                        s.contract,
+                        MIN(s.contract) AS first_contract,
+                        MAX(s.contract) AS last_contract,
+                        COUNT(DISTINCT s.contract) AS contract_count,
                         MIN(s.broadcast_month) AS first_month,
                         MAX(s.broadcast_month) AS last_month,
                         COUNT(DISTINCT s.broadcast_month) AS month_count,
@@ -668,8 +670,8 @@ def ae_dashboard_personal():
                       AND s.is_historical = 0
                       AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
                       {wfc_ae_clause}
-                    GROUP BY customer, s.sales_person, s.contract
-                    ORDER BY customer, s.contract
+                    GROUP BY customer, s.sales_person
+                    ORDER BY customer
                 """, wfc_params).fetchall()
                 waiting_for_copy = [dict(r) for r in rows]
             finally:

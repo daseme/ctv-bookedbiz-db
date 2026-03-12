@@ -357,7 +357,7 @@
                         {% if is_admin_or_management %}
                         <td>{{ row.sales_person }}</td>
                         {% endif %}
-                        <td>{{ row.contract or '' }}</td>
+                        <td>{{ row.first_contract or '' }}{% if row.contract_count > 1 %} &ndash; {{ row.last_contract }}{% endif %}</td>
                         <td>{{ row.first_month }}{% if row.month_count > 1 %} &ndash; {{ row.last_month }}{% endif %}</td>
                         <td class="numeric">{{ row.spot_count }}</td>
                         <td class="numeric">{{ "${:,.0f}".format(row.total_gross) }}</td>
