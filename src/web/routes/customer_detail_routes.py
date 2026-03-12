@@ -22,6 +22,7 @@ def customer_detail(customer_id: int):
     
     start_date = request.args.get("start_date", "")
     end_date = request.args.get("end_date", "")
+    from_page = request.args.get("from", "")
 
     with db.connection() as conn:
         service = CustomerDetailService(conn)
@@ -37,6 +38,7 @@ def customer_detail(customer_id: int):
         report=report,
         start_date=start_date,
         end_date=end_date,
+        from_page=from_page,
         page_title=f"Customer: {report.summary.normalized_name}",
     )
 
