@@ -311,6 +311,22 @@ def initialize_services():
         container.register_singleton("entity_service", create_entity_service)
         print("✅ entity_service registered")
 
+        print("🔧 Registering activity_service...")
+        container.register_singleton("activity_service", create_activity_service)
+        print("✅ activity_service registered")
+
+        print("🔧 Registering address_service...")
+        container.register_singleton("address_service", create_address_service)
+        print("✅ address_service registered")
+
+        print("🔧 Registering saved_filter_service...")
+        container.register_singleton("saved_filter_service", create_saved_filter_service)
+        print("✅ saved_filter_service registered")
+
+        print("🔧 Registering export_service...")
+        container.register_singleton("export_service", create_export_service)
+        print("✅ export_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -443,6 +459,42 @@ def create_entity_service():
     container = get_container()
     db_connection = container.get("database_connection")
     return EntityService(db_connection)
+
+
+def create_activity_service():
+    """Factory function for ActivityService."""
+    from src.services.activity_service import ActivityService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return ActivityService(db_connection)
+
+
+def create_address_service():
+    """Factory function for AddressService."""
+    from src.services.address_service import AddressService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return AddressService(db_connection)
+
+
+def create_saved_filter_service():
+    """Factory function for SavedFilterService."""
+    from src.services.saved_filter_service import SavedFilterService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return SavedFilterService(db_connection)
+
+
+def create_export_service():
+    """Factory function for ExportService."""
+    from src.services.export_service import ExportService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return ExportService(db_connection)
 
 
 def create_entity_metrics_service():
