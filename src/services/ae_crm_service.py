@@ -1,9 +1,6 @@
 """Service for AE CRM page -- scoped account queries and stats."""
 
-import logging
 from src.services.base_service import BaseService
-
-logger = logging.getLogger(__name__)
 
 
 class AeCrmService(BaseService):

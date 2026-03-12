@@ -88,7 +88,6 @@ def api_stats():
     """Return summary stats JSON for the current AE."""
     ae_name, _, _, _ = _resolve_ae_name()
     crm_svc = _svc("ae_crm_service")
-    activity_svc = _svc("activity_service")
     with _db().connection_ro() as conn:
         stats = crm_svc.get_stats(conn, ae_name=ae_name)
         return jsonify(stats)
@@ -114,10 +113,12 @@ def api_revenue_trend(entity_type, entity_id):
 def api_recent_activity():
     """Return recent activities across all AE's accounts."""
     ae_name, _, _, _ = _resolve_ae_name()
+    if not ae_name:
+        return jsonify([])
     activity_svc = _svc("activity_service")
     with _db().connection_ro() as conn:
         return jsonify(
             activity_svc.get_recent_activity_for_ae(
-                conn, ae_name=ae_name or "", limit=15
+                conn, ae_name=ae_name, limit=15
             )
         )
