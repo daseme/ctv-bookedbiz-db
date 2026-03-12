@@ -242,3 +242,135 @@ class TestGetFollowUpsAeFilter:
         svc, conn = ae_db
         results = svc.get_follow_ups(conn, ae_name="Nobody")
         assert len(results) == 0
+
+
+class _FakeDbConnection:
+    """Wraps a raw sqlite3 connection to provide connection()/connection_ro()."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    class _ContextWrapper:
+        def __init__(self, conn):
+            self._conn = conn
+        def __enter__(self):
+            return self._conn
+        def __exit__(self, *args):
+            pass
+
+    def connection(self):
+        return self._ContextWrapper(self._conn)
+
+    def connection_ro(self):
+        return self._ContextWrapper(self._conn)
+
+
+@pytest.fixture
+def activity_db():
+    """DB with assigned_ae columns for cross-account activity tests."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE agencies (
+            agency_id INTEGER PRIMARY KEY,
+            agency_name TEXT, assigned_ae TEXT,
+            is_active INTEGER DEFAULT 1
+        );
+        CREATE TABLE customers (
+            customer_id INTEGER PRIMARY KEY,
+            normalized_name TEXT, agency_id INTEGER,
+            assigned_ae TEXT, is_active INTEGER DEFAULT 1
+        );
+        CREATE TABLE entity_contacts (
+            contact_id INTEGER PRIMARY KEY,
+            contact_name TEXT
+        );
+        CREATE TABLE entity_activity (
+            activity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT, entity_id INTEGER,
+            activity_type TEXT, description TEXT,
+            activity_date TEXT DEFAULT (datetime('now')),
+            created_by TEXT,
+            created_date TEXT DEFAULT (datetime('now')),
+            contact_id INTEGER, due_date TEXT,
+            is_completed INTEGER DEFAULT 0,
+            completed_date TEXT
+        );
+
+        INSERT INTO agencies (agency_id, agency_name, assigned_ae)
+            VALUES (1, 'Agency Alpha', 'Alice');
+        INSERT INTO customers (customer_id, normalized_name, assigned_ae)
+            VALUES (10, 'Customer One', 'Alice'),
+                   (20, 'Customer Two', 'Bob');
+    """)
+    conn.commit()
+    fake_db = _FakeDbConnection(conn)
+    yield fake_db
+    conn.close()
+
+
+@pytest.fixture
+def activity_service(activity_db):
+    db_conn = DatabaseConnection.__new__(DatabaseConnection)
+    db_conn.db_path = ":memory:"
+    return ActivityService(db_conn)
+
+
+class TestGetRecentActivityForAe:
+    """Test cross-account recent activity for an AE."""
+
+    def _seed_activities(self, activity_db):
+        with activity_db.connection() as conn:
+            conn.execute("""
+                INSERT INTO entity_activity
+                    (entity_type, entity_id, activity_type,
+                     description, created_by, activity_date)
+                VALUES
+                    ('customer', 10, 'note', 'Called client',
+                     'Alice', '2026-03-12 10:00:00'),
+                    ('customer', 10, 'email', 'Sent proposal',
+                     'Alice', '2026-03-11 09:00:00'),
+                    ('agency', 1, 'meeting', 'Quarterly review',
+                     'Alice', '2026-03-10 14:00:00'),
+                    ('customer', 20, 'call', 'Bob activity',
+                     'Bob', '2026-03-12 11:00:00')
+            """)
+            conn.commit()
+
+    def test_returns_only_ae_activities(
+        self, activity_service, activity_db
+    ):
+        self._seed_activities(activity_db)
+        with activity_db.connection_ro() as conn:
+            results = activity_service.get_recent_activity_for_ae(
+                conn, ae_name="Alice"
+            )
+        entity_names = {r["entity_name"] for r in results}
+        assert "Customer Two" not in entity_names
+        assert "Customer One" in entity_names
+
+    def test_respects_limit(self, activity_service, activity_db):
+        self._seed_activities(activity_db)
+        with activity_db.connection_ro() as conn:
+            results = activity_service.get_recent_activity_for_ae(
+                conn, ae_name="Alice", limit=2
+            )
+        assert len(results) <= 2
+
+    def test_ordered_by_date_desc(self, activity_service, activity_db):
+        self._seed_activities(activity_db)
+        with activity_db.connection_ro() as conn:
+            results = activity_service.get_recent_activity_for_ae(
+                conn, ae_name="Alice"
+            )
+        dates = [r["activity_date"] for r in results]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_includes_entity_name(self, activity_service, activity_db):
+        self._seed_activities(activity_db)
+        with activity_db.connection_ro() as conn:
+            results = activity_service.get_recent_activity_for_ae(
+                conn, ae_name="Alice"
+            )
+        for r in results:
+            assert r["entity_name"] is not None

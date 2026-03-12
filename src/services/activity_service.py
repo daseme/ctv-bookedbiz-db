@@ -194,6 +194,46 @@ class ActivityService(BaseService):
             results.append(d)
         return results
 
+    def get_recent_activity_for_ae(self, conn, ae_name, limit=15):
+        """Get recent activities across all entities assigned to an AE.
+
+        Returns list of activity dicts with entity_name, ordered by
+        activity_date descending.
+        """
+        rows = conn.execute("""
+            SELECT
+                ea.activity_id,
+                ea.entity_type,
+                ea.entity_id,
+                ea.activity_type,
+                ea.activity_date,
+                ea.description,
+                ea.created_by,
+                ea.due_date,
+                ea.is_completed,
+                CASE ea.entity_type
+                    WHEN 'agency' THEN (
+                        SELECT agency_name FROM agencies
+                        WHERE agency_id = ea.entity_id)
+                    WHEN 'customer' THEN (
+                        SELECT normalized_name FROM customers
+                        WHERE customer_id = ea.entity_id)
+                END AS entity_name
+            FROM entity_activity ea
+            WHERE (
+                (ea.entity_type = 'customer' AND ea.entity_id IN (
+                    SELECT customer_id FROM customers
+                    WHERE assigned_ae = ?))
+                OR
+                (ea.entity_type = 'agency' AND ea.entity_id IN (
+                    SELECT agency_id FROM agencies
+                    WHERE assigned_ae = ?))
+            )
+            ORDER BY ea.activity_date DESC
+            LIMIT ?
+        """, [ae_name, ae_name, limit]).fetchall()
+        return [dict(r) for r in rows]
+
     def _classify_urgency(self, follow_up, today_iso):
         """Classify follow-up urgency based on due date."""
         if follow_up["is_completed"]:
