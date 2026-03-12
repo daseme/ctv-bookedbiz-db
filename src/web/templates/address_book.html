@@ -1,14 +1,12 @@
 {% extends "base.html" %}
+{% from "macros/breadcrumbs.html" import breadcrumb_trail %}
 
 {% block title %}Address Book - SpotOps{% endblock %}
 {% block header_title %}Address Book{% endblock %}
 {% block header_subtitle %}Unified directory of agencies and advertisers with contacts{% endblock %}
 
 {% block breadcrumb %}
-<span class="breadcrumb-separator">›</span>
-<span>Data Management</span>
-<span class="breadcrumb-separator">›</span>
-<span class="breadcrumb-current">Address Book</span>
+{{ breadcrumb_trail([("Data Management", "")], "Address Book") }}
 {% endblock %}
 
 {% block extra_styles %}
