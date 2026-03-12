@@ -1345,7 +1345,8 @@
         (r.notes || '').toLowerCase().includes(search) ||
         (r.sector_name || '').toLowerCase().includes(search) ||
         (r.sector_code || '').toLowerCase().includes(search) ||
-        (r.primary_contact || '').toLowerCase().includes(search)
+        (r.primary_contact || '').toLowerCase().includes(search) ||
+        (r.agency_name || '').toLowerCase().includes(search)
       );
     }
 
@@ -1467,6 +1468,13 @@
       <div class="stat customers"><div class="val">${customers}</div><div class="lbl">Advertisers</div></div>
       <div class="stat"><div class="val">${withContacts}</div><div class="lbl">With Contacts</div></div>
       <div class="stat attention"><div class="val">${needsAttention}</div><div class="lbl">Needs Attention</div></div>`;
+    if (groupByAgency) {
+      const { groups } = buildHierarchy(currentData);
+      const agencyClients = currentData.filter(d => d.entity_type === 'customer' && d.agency_id).length;
+      document.getElementById('stats').innerHTML += `
+        <div class="stat"><div class="val">${groups.length}</div><div class="lbl">Agency Groups</div></div>
+        <div class="stat"><div class="val">${agencyClients}</div><div class="lbl">Agency Clients</div></div>`;
+    }
     document.getElementById('count').textContent = `${currentData.length} entities`;
   }
 
