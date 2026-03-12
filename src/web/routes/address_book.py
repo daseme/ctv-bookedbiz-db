@@ -771,6 +771,7 @@ def api_complete_activity(activity_id):
 @address_book_bp.route("/api/address-book/follow-ups")
 def api_get_follow_ups():
     """Get incomplete and recently completed follow-ups."""
+    ae_name = request.args.get("ae")
     activity_svc = _svc("activity_service")
     with _db().connection_ro() as conn:
-        return jsonify(activity_svc.get_follow_ups(conn))
+        return jsonify(activity_svc.get_follow_ups(conn, ae_name=ae_name))

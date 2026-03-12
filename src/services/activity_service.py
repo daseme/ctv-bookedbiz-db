@@ -135,12 +135,32 @@ class ActivityService(BaseService):
 
         return {"success": True, "is_completed": new_status}
 
-    def get_follow_ups(self, conn):
+    def get_follow_ups(self, conn, ae_name=None):
         """Get incomplete follow-ups plus recently completed ones.
+
+        Args:
+            ae_name: If provided, only return follow-ups for entities
+                assigned to this AE. None returns all.
 
         Returns list of follow-up dicts with urgency classification.
         """
-        rows = conn.execute("""
+        ae_filter = ""
+        params = []
+        if ae_name:
+            ae_filter = """
+              AND (
+                  (ea.entity_type = 'customer' AND ea.entity_id IN (
+                      SELECT customer_id FROM customers
+                      WHERE assigned_ae = ?))
+                  OR
+                  (ea.entity_type = 'agency' AND ea.entity_id IN (
+                      SELECT agency_id FROM agencies
+                      WHERE assigned_ae = ?))
+              )
+            """
+            params = [ae_name, ae_name]
+
+        rows = conn.execute(f"""
             SELECT
                 ea.activity_id,
                 ea.entity_type,
@@ -162,8 +182,9 @@ class ActivityService(BaseService):
             WHERE ea.activity_type = 'follow_up'
               AND (ea.is_completed = 0
                    OR ea.completed_date >= datetime('now', '-7 days'))
+              {ae_filter}
             ORDER BY ea.is_completed ASC, ea.due_date ASC
-        """).fetchall()
+        """, params).fetchall()
 
         today = date.today().isoformat()
         results = []

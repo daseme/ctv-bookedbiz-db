@@ -150,3 +150,95 @@ def test_create_activity_entity_not_found(db):
     )
     assert "error" in result
     assert result.get("status") == 404
+
+
+@pytest.fixture
+def ae_db():
+    """DB with assigned_ae columns and seed data for AE filtering."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE agencies (
+            agency_id INTEGER PRIMARY KEY,
+            agency_name TEXT, assigned_ae TEXT,
+            is_active INTEGER DEFAULT 1
+        );
+        CREATE TABLE customers (
+            customer_id INTEGER PRIMARY KEY,
+            normalized_name TEXT, agency_id INTEGER,
+            assigned_ae TEXT, is_active INTEGER DEFAULT 1
+        );
+        CREATE TABLE entity_contacts (
+            contact_id INTEGER PRIMARY KEY,
+            contact_name TEXT
+        );
+        CREATE TABLE entity_activity (
+            activity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT, entity_id INTEGER,
+            activity_type TEXT, description TEXT,
+            activity_date TEXT DEFAULT (datetime('now')),
+            created_by TEXT,
+            created_date TEXT DEFAULT (datetime('now')),
+            contact_id INTEGER, due_date TEXT,
+            is_completed INTEGER DEFAULT 0,
+            completed_date TEXT
+        );
+
+        INSERT INTO agencies (agency_id, agency_name, assigned_ae)
+            VALUES (1, 'Agency Alpha', 'Alice');
+        INSERT INTO customers (customer_id, normalized_name, assigned_ae)
+            VALUES (10, 'Customer One', 'Alice'),
+                   (20, 'Customer Two', 'Bob');
+
+        -- Alice's follow-ups
+        INSERT INTO entity_activity
+            (entity_type, entity_id, activity_type, description,
+             created_by, due_date, is_completed)
+        VALUES
+            ('customer', 10, 'follow_up', 'Call about renewal',
+             'Alice', '2026-03-15', 0),
+            ('agency', 1, 'follow_up', 'Review Q2 plan',
+             'Alice', '2026-03-10', 0);
+
+        -- Bob's follow-up
+        INSERT INTO entity_activity
+            (entity_type, entity_id, activity_type, description,
+             created_by, due_date, is_completed)
+        VALUES
+            ('customer', 20, 'follow_up', 'Send proposal',
+             'Bob', '2026-03-12', 0);
+    """)
+    conn.commit()
+
+    db_conn = DatabaseConnection.__new__(DatabaseConnection)
+    db_conn.db_path = ":memory:"
+    svc = ActivityService(db_conn)
+    yield svc, conn
+    conn.close()
+
+
+class TestGetFollowUpsAeFilter:
+    """Test get_follow_ups with optional ae_name parameter."""
+
+    def test_no_filter_returns_all(self, ae_db):
+        svc, conn = ae_db
+        results = svc.get_follow_ups(conn)
+        assert len(results) == 3
+
+    def test_filter_by_ae_returns_only_assigned(self, ae_db):
+        svc, conn = ae_db
+        results = svc.get_follow_ups(conn, ae_name="Alice")
+        assert len(results) == 2
+        names = {r["entity_name"] for r in results}
+        assert names == {"Customer One", "Agency Alpha"}
+
+    def test_filter_by_ae_excludes_others(self, ae_db):
+        svc, conn = ae_db
+        results = svc.get_follow_ups(conn, ae_name="Bob")
+        assert len(results) == 1
+        assert results[0]["entity_name"] == "Customer Two"
+
+    def test_filter_nonexistent_ae_returns_empty(self, ae_db):
+        svc, conn = ae_db
+        results = svc.get_follow_ups(conn, ae_name="Nobody")
+        assert len(results) == 0
