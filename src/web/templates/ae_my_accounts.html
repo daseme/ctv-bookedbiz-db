@@ -188,6 +188,60 @@
 }
 .empty-state p { margin: 8px 0; font-size: 14px; }
 
+/* Guide Button */
+.guide-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid #cbd5e1; background: #fff; color: #64748b;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: all 0.15s; flex-shrink: 0;
+}
+.guide-btn:hover { background: #e0f2fe; color: #0284c7; border-color: #0284c7; }
+
+/* Guide Modal */
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 1100;
+    align-items: flex-start; justify-content: center;
+    padding: 40px 20px; overflow-y: auto;
+}
+.modal-overlay.active { display: flex; }
+.guide-modal {
+    background: #fff; border-radius: 12px; width: 100%; max-width: 620px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+}
+.guide-modal .modal-header {
+    padding: 20px 24px; border-bottom: 1px solid #e2e8f0;
+    display: flex; justify-content: space-between; align-items: center;
+    background: #f0f9ff; border-radius: 12px 12px 0 0;
+}
+.guide-modal .modal-header h3 { margin: 0; font-size: 18px; color: #0369a1; }
+.guide-modal .modal-close {
+    background: none; border: none; font-size: 24px; color: #94a3b8;
+    cursor: pointer; padding: 4px 8px;
+}
+.guide-modal .modal-close:hover { color: #334155; }
+.guide-modal .modal-body { padding: 24px; max-height: 70vh; overflow-y: auto; }
+.guide-modal .info-section { margin-bottom: 20px; }
+.guide-modal .info-section:last-child { margin-bottom: 0; }
+.guide-modal .info-section h4 {
+    margin: 0 0 6px; font-size: 14px; color: #0f172a;
+    display: flex; align-items: center; gap: 8px;
+}
+.guide-modal .info-section p {
+    margin: 0; font-size: 13px; color: #475569; line-height: 1.6;
+}
+.guide-modal .info-section ul {
+    margin: 6px 0 0; padding-left: 20px; font-size: 13px;
+    color: #475569; line-height: 1.6;
+}
+.guide-modal .info-section ul li { margin-bottom: 4px; }
+.guide-modal .info-section .kbd {
+    display: inline-block; padding: 1px 6px; border: 1px solid #d1d5db;
+    border-radius: 3px; background: #f3f4f6; font-size: 12px;
+    font-family: monospace; color: #374151;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .summary-bar { grid-template-columns: repeat(2, 1fr); }
@@ -213,6 +267,11 @@
             </option>
             {% endfor %}
         </select>
+        <button class="guide-btn" onclick="document.getElementById('guide-modal').classList.add('active')" title="How this page works">?</button>
+    </div>
+    {% else %}
+    <div style="text-align:right; margin-bottom:8px;">
+        <button class="guide-btn" onclick="document.getElementById('guide-modal').classList.add('active')" title="How this page works">?</button>
     </div>
     {% endif %}
 
@@ -282,6 +341,83 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- Guide Modal -->
+<div class="modal-overlay" id="guide-modal">
+  <div class="guide-modal">
+    <div class="modal-header">
+      <h3>My Accounts &mdash; Quick Guide</h3>
+      <button class="modal-close" onclick="document.getElementById('guide-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What Is This Page?</h4>
+        <p>My Accounts is your CRM dashboard &mdash; a single view of every customer and agency in your book of business. It shows account health signals, revenue snapshots, follow-up reminders, and a running activity log so nothing falls through the cracks.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Summary Bar</h4>
+        <p>The four cards at the top show your totals at a glance:</p>
+        <ul>
+          <li><strong>Active Accounts</strong> &mdash; how many customers and agencies are assigned to you</li>
+          <li><strong>Trailing 12-Mo Revenue</strong> &mdash; combined booked revenue for the last 12 broadcast months (excludes Trade)</li>
+          <li><strong>Need Attention</strong> &mdash; accounts with a signal (churned, gone quiet, growing, etc.)</li>
+          <li><strong>Open Follow-ups</strong> &mdash; incomplete follow-up tasks; overdue count shown in orange when &gt; 0</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <h4>Action Items</h4>
+        <p>Overdue and due-today follow-ups appear in the amber banner. Click an account name to open its detail panel, or click <strong>Complete</strong> to mark a follow-up done. The banner hides when there&rsquo;s nothing urgent.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Accounts Table</h4>
+        <p>Every active account assigned to you, sortable by any column header. Click an account name to open the detail panel. Use the search bar to filter by name.</p>
+        <ul>
+          <li><strong>Signal</strong> &mdash; colored badge when the system detects a pattern (e.g., Churned, Gone Quiet, Growing). No badge means the account is steady.</li>
+          <li><strong>Trailing Revenue</strong> &mdash; last 12 months of booked revenue for that account</li>
+          <li><strong>Last Activity</strong> &mdash; most recent note, call, email, or meeting you logged</li>
+          <li><strong>Next Follow-up</strong> &mdash; earliest open follow-up date</li>
+          <li><strong>+ Log</strong> &mdash; shortcut to open the detail panel and log activity</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <h4>Detail Panel</h4>
+        <p>The slide-out panel on the right has three tabs:</p>
+        <ul>
+          <li><strong>Activity</strong> &mdash; log notes, calls, emails, and meetings. Add a follow-up date to any entry to create a reminder. Full activity timeline below the form.</li>
+          <li><strong>Info</strong> &mdash; primary contact, sectors, agency, markets, and assigned AE. Data comes from the Address Book.</li>
+          <li><strong>Revenue</strong> &mdash; bar chart of monthly booked revenue for the last 12 months. Useful for spotting trends before they become signals.</li>
+        </ul>
+        <p>Press <span class="kbd">Esc</span> to close the panel. It remembers which account you had open if you navigate away and come back.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Recent Activity</h4>
+        <p>The feed at the bottom shows the last 15 activities logged across all your accounts &mdash; a quick way to see what&rsquo;s been happening without clicking into each one.</p>
+      </div>
+
+      {% if is_admin %}
+      <div class="info-section">
+        <h4>Admin / Management View</h4>
+        <p>The AE dropdown at the top lets you view any AE&rsquo;s book. Select &ldquo;All AEs&rdquo; to see every active account across the team. Stats, action items, and activity all scope to the selected AE.</p>
+      </div>
+      {% endif %}
+
+      <div class="info-section">
+        <h4>Tips</h4>
+        <ul>
+          <li>Log activity right after a call or email &mdash; keeps the timeline accurate and builds a history for handoffs</li>
+          <li>Use follow-ups liberally &mdash; they surface in Action Items when they&rsquo;re due so you don&rsquo;t have to remember</li>
+          <li>Check the Signal column daily &mdash; churned and gone-quiet accounts need proactive outreach</li>
+          <li>Click a customer name in the detail panel&rsquo;s header for the full Customer Detail report with contract-level data</li>
+        </ul>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Detail Panel -->

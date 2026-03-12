@@ -21,8 +21,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
 
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closeDetail();
+        if (e.key === 'Escape') {
+            const guide = document.getElementById('guide-modal');
+            if (guide.classList.contains('active')) {
+                guide.classList.remove('active');
+            } else {
+                closeDetail();
+            }
+        }
     });
+
+    document.getElementById('guide-modal')
+        .addEventListener('click', e => {
+            if (e.target.classList.contains('modal-overlay')) {
+                e.target.classList.remove('active');
+            }
+        });
 
     // Restore last open panel
     const saved = sessionStorage.getItem('crm_open_entity');
