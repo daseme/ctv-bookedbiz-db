@@ -220,7 +220,7 @@ class EntityService(BaseService):
                        agency_name as entity_name,
                        address, city, state, zip, notes,
                        assigned_ae,
-                       po_number, edi_billing,
+                       po_number, edi_billing, edi_code,
                        commission_rate, order_rate_basis,
                        is_active,
                        NULL as sector_id, NULL as sector_name
@@ -921,14 +921,20 @@ class EntityService(BaseService):
                     "'gross' or 'net'"
                 }
 
+            edi_code = (
+                (data.get("edi_code") or "").strip()[:10]
+                or None
+            )
             conn.execute(f"""
                 UPDATE {table}
                 SET po_number = ?, edi_billing = ?,
+                    edi_code = ?,
                     commission_rate = ?,
                     order_rate_basis = ?
                 WHERE {id_col} = ?
             """, [
-                po_number, edi_billing, commission_rate,
+                po_number, edi_billing, edi_code,
+                commission_rate,
                 order_rate_basis, entity_id
             ])
 

@@ -81,7 +81,7 @@ class ExportService(BaseService):
                 a.agency_name as entity_name,
                 a.address, a.city, a.state, a.zip,
                 a.notes, a.assigned_ae,
-                a.po_number, a.edi_billing,
+                a.po_number, a.edi_billing, a.edi_code,
                 NULL as sector_name,
                 (SELECT contact_name FROM entity_contacts ec
                  WHERE ec.entity_type = 'agency'
@@ -240,7 +240,7 @@ class ExportService(BaseService):
             "Entity Name", "Type", "Sector", "Assigned AE",
             "Primary Contact", "Email", "Phone",
             "Address", "City", "State", "ZIP",
-            "PO Number", "EDI Billing",
+            "PO Number", "EDI Billing", "EDI Code",
             "Markets", "Last Active", "Total Revenue", "Notes",
         ])
 
@@ -260,6 +260,7 @@ class ExportService(BaseService):
                 r.get("zip", ""),
                 r.get("po_number", ""),
                 "Yes" if r.get("edi_billing") else "No",
+                r.get("edi_code", ""),
                 r.get("markets", ""),
                 r.get("last_active", ""),
                 f"${rev:,.2f}" if rev else "",

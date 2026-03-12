@@ -17,6 +17,7 @@ CREATE TABLE agencies (
     notes TEXT,
     po_number TEXT,
     edi_billing INTEGER DEFAULT 0,
+    edi_code TEXT,
     commission_rate REAL,
     order_rate_basis TEXT,
     assigned_ae TEXT,

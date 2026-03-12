@@ -657,9 +657,15 @@
       <!-- EDI Billing + Commission (agencies only) -->
       <div class="detail-section" id="edi-section" style="display:none">
         <h3><span class="icon">💰</span> Billing</h3>
-        <div class="edi-toggle">
-          <input type="checkbox" id="detail-edi-billing">
-          <label for="detail-edi-billing">EDI Billing</label>
+        <div class="billing-row" style="align-items:center">
+          <div class="edi-toggle">
+            <input type="checkbox" id="detail-edi-billing">
+            <label for="detail-edi-billing">EDI Billing</label>
+          </div>
+          <div class="form-field" style="max-width:160px">
+            <label>EDI Code</label>
+            <input type="text" id="detail-edi-code" maxlength="10" placeholder="e.g. ABC1234">
+          </div>
         </div>
         <div class="billing-row" style="margin-top:12px">
           <div class="form-field" style="max-width:180px">
@@ -2026,6 +2032,7 @@
       ediSection.style.display = 'block';
       poSection.style.display = 'none';
       document.getElementById('detail-edi-billing').checked = !!currentEntity.edi_billing;
+      document.getElementById('detail-edi-code').value = currentEntity.edi_code || '';
       document.getElementById('detail-commission-rate').value = currentEntity.commission_rate ?? '';
       document.getElementById('detail-order-rate-basis').value = currentEntity.order_rate_basis || '';
     } else {
@@ -2113,7 +2120,7 @@
     const trackChange = () => { hasUnsavedChanges = true; };
     ['detail-notes', 'detail-address', 'detail-city', 'detail-state', 'detail-zip',
      'detail-agency', 'detail-ae', 'detail-po-number', 'detail-commission-rate',
-     'detail-cust-commission-rate'].forEach(id => {
+     'detail-cust-commission-rate', 'detail-edi-code'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', trackChange, { once: true });
     });
@@ -2964,7 +2971,7 @@
 
       // Save AE + billing in parallel
       const billingBody = currentEntity.entity_type === 'agency'
-        ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked, commission_rate: document.getElementById('detail-commission-rate').value || null, order_rate_basis: document.getElementById('detail-order-rate-basis').value || null }
+        ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked, edi_code: document.getElementById('detail-edi-code').value.trim() || null, commission_rate: document.getElementById('detail-commission-rate').value || null, order_rate_basis: document.getElementById('detail-order-rate-basis').value || null }
         : { po_number: document.getElementById('detail-po-number').value.trim() || null, edi_billing: false, affidavit_required: document.getElementById('detail-affidavit-required').checked, commission_rate: document.getElementById('detail-cust-commission-rate').value || null, order_rate_basis: document.getElementById('detail-cust-order-rate-basis').value || null };
 
       await Promise.all([
