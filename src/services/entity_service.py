@@ -52,6 +52,16 @@ class EntityService(BaseService):
             sector_counts[row["customer_id"]] = row["cnt"]
             customer_sector_ids[row["customer_id"]] = row["sids"] or ""
 
+        # Batch: client count per agency
+        client_counts = {}
+        for row in conn.execute("""
+            SELECT agency_id, COUNT(*) as cnt
+            FROM customers
+            WHERE is_active = 1 AND agency_id IS NOT NULL
+            GROUP BY agency_id
+        """).fetchall():
+            client_counts[row["agency_id"]] = row["cnt"]
+
         # Load entity_metrics
         agency_markets = {}
         agency_metrics = {}
@@ -124,6 +134,9 @@ class EntityService(BaseService):
             row["primary_contact"] = cs.get("primary_contact")
             row["sector_count"] = 0
             row["sector_ids"] = ""
+            row["client_count"] = client_counts.get(
+                row["entity_id"], 0
+            )
             row["markets"] = agency_markets.get(
                 row["entity_id"], ""
             )
@@ -149,9 +162,12 @@ class EntityService(BaseService):
                 c.notes, c.assigned_ae, c.is_active,
                 c.sector_id,
                 s.sector_name,
-                s.sector_code
+                s.sector_code,
+                c.agency_id,
+                ag.agency_name
             FROM customers c
             LEFT JOIN sectors s ON c.sector_id = s.sector_id
+            LEFT JOIN agencies ag ON c.agency_id = ag.agency_id
             {active_clause}
             ORDER BY c.normalized_name
         """).fetchall()

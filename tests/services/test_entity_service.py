@@ -645,3 +645,70 @@ class TestUpdateAgency:
 
         result = service.update_agency(conn, cid, 9999)
         assert "not found" in result["error"]
+
+
+class TestListEntitiesAgencyFields:
+    """Test agency-related fields in list_entities response."""
+
+    def test_customer_includes_agency_id(self, service, conn):
+        """Customers linked to an agency include agency_id."""
+        conn.executescript("""
+            INSERT OR IGNORE INTO agencies (agency_id, agency_name, is_active)
+            VALUES (100, 'Test Agency', 1);
+            INSERT OR IGNORE INTO customers
+                (customer_id, normalized_name, is_active, agency_id)
+            VALUES (200, 'Agency Client', 1, 100);
+        """)
+        results = service.list_entities(conn)
+        client = next(
+            (r for r in results
+             if r["entity_type"] == "customer"
+             and r["entity_id"] == 200),
+            None,
+        )
+        assert client is not None
+        assert client["agency_id"] == 100
+        assert client["agency_name"] == "Test Agency"
+
+    def test_direct_advertiser_has_null_agency(self, service, conn):
+        """Direct advertisers have agency_id=None."""
+        conn.executescript("""
+            INSERT OR IGNORE INTO customers
+                (customer_id, normalized_name, is_active, agency_id)
+            VALUES (201, 'Direct Advertiser', 1, NULL);
+        """)
+        results = service.list_entities(conn)
+        direct = next(
+            (r for r in results
+             if r["entity_type"] == "customer"
+             and r["entity_id"] == 201),
+            None,
+        )
+        assert direct is not None
+        assert direct["agency_id"] is None
+        assert direct["agency_name"] is None
+
+    def test_agency_includes_client_count(self, service, conn):
+        """Agencies include a count of active linked customers."""
+        conn.executescript("""
+            INSERT OR IGNORE INTO agencies (agency_id, agency_name, is_active)
+            VALUES (100, 'Test Agency', 1);
+            INSERT OR IGNORE INTO customers
+                (customer_id, normalized_name, is_active, agency_id)
+            VALUES (200, 'Client A', 1, 100);
+            INSERT OR IGNORE INTO customers
+                (customer_id, normalized_name, is_active, agency_id)
+            VALUES (201, 'Client B', 1, 100);
+            INSERT OR IGNORE INTO customers
+                (customer_id, normalized_name, is_active, agency_id)
+            VALUES (202, 'Inactive Client', 0, 100);
+        """)
+        results = service.list_entities(conn)
+        agency = next(
+            (r for r in results
+             if r["entity_type"] == "agency"
+             and r["entity_id"] == 100),
+            None,
+        )
+        assert agency is not None
+        assert agency["client_count"] == 2
