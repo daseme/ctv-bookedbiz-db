@@ -418,6 +418,84 @@
   .signal-item .signal-name{font-weight:600;font-size:13px;color:#0f172a}
   .signal-item .signal-detail{font-size:12px;color:#475569;margin-top:2px}
   .signals-list{display:flex;flex-direction:column;gap:8px}
+
+  /* Group toggle */
+  #group-toggle.grouped {
+      background: var(--nord8, #88c0d0);
+      color: white;
+  }
+
+  /* Hierarchical card styles */
+  .agency-group {
+      margin-bottom: 16px;
+  }
+  .agency-group-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 14px;
+  }
+  .agency-group-header:hover {
+      background: #e2e8f0;
+  }
+  .agency-group-header .expand-icon {
+      transition: transform 0.2s;
+      font-size: 12px;
+  }
+  .agency-group-header.expanded .expand-icon {
+      transform: rotate(90deg);
+  }
+  .agency-group-header .client-count {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: normal;
+  }
+  .agency-group-header.muted {
+      opacity: 0.5;
+  }
+  .agency-group-clients {
+      display: none;
+      padding-left: 24px;
+      margin-top: 8px;
+  }
+  .agency-group-clients.expanded {
+      display: block;
+  }
+
+  /* Table hierarchy styles */
+  tr.agency-parent-row {
+      background: #f8fafc;
+      font-weight: 500;
+  }
+  tr.agency-parent-row td.name-cell {
+      cursor: pointer;
+  }
+  tr.agency-parent-row .expand-icon {
+      margin-right: 4px;
+      font-size: 11px;
+      display: inline-block;
+      transition: transform 0.2s;
+      cursor: pointer;
+      padding: 2px 4px;
+  }
+  tr.agency-parent-row.expanded .expand-icon {
+      transform: rotate(90deg);
+  }
+  tr.agency-child-row {
+      display: none;
+  }
+  tr.agency-child-row.visible {
+      display: table-row;
+  }
+  tr.agency-child-row td.name-cell {
+      padding-left: 32px;
+  }
 </style>
 {% endblock %}
 
@@ -487,6 +565,8 @@
   <div class="view-toggle">
     <button id="view-cards" class="active" title="Card View">Cards</button>
     <button id="view-table" title="Table View">Table</button>
+    <span style="margin:0 4px;color:#cbd5e1;">|</span>
+    <button id="group-toggle" title="Group by agency">⊞</button>
   </div>
   <span class="count" id="count"></span>
 </div>
@@ -1494,6 +1574,88 @@
     localStorage.setItem('addressBookView', 'table');
     applyViewMode();
   });
+
+  // Group by agency toggle
+  let groupByAgency = localStorage.getItem('addressBookGroup') === 'true';
+  const groupBtn = document.getElementById('group-toggle');
+  if (groupByAgency) groupBtn.classList.add('grouped');
+
+  groupBtn.addEventListener('click', () => {
+    groupByAgency = !groupByAgency;
+    localStorage.setItem('addressBookGroup', groupByAgency);
+    groupBtn.classList.toggle('grouped', groupByAgency);
+    renderGrid();
+  });
+
+  function buildHierarchy(data) {
+    const agencyMap = {};
+    const topLevel = [];
+
+    for (const e of data) {
+      if (e.entity_type === 'agency') {
+        agencyMap[e.entity_id] = { agency: e, clients: [], matched: true };
+      }
+    }
+
+    for (const e of data) {
+      if (e.entity_type !== 'customer') continue;
+      if (e.agency_id && agencyMap[e.agency_id]) {
+        agencyMap[e.agency_id].clients.push(e);
+      } else if (e.agency_id) {
+        const parentAgency = allData.find(
+          a => a.entity_type === 'agency' && a.entity_id === e.agency_id
+        );
+        if (parentAgency) {
+          agencyMap[e.agency_id] = {
+            agency: parentAgency,
+            clients: [e],
+            matched: false,
+          };
+        } else {
+          topLevel.push(e);
+        }
+      } else {
+        topLevel.push(e);
+      }
+    }
+
+    const groups = [];
+    const agencyGroups = Object.values(agencyMap)
+      .filter(g => g.clients.length > 0)
+      .sort((a, b) =>
+        a.agency.entity_name.toLowerCase()
+          .localeCompare(b.agency.entity_name.toLowerCase())
+      );
+    for (const g of agencyGroups) {
+      groups.push({
+        type: 'agency-group',
+        agency: g.agency,
+        clients: g.clients,
+        matched: g.matched,
+      });
+    }
+
+    for (const e of data) {
+      if (e.entity_type === 'agency' && agencyMap[e.entity_id]
+          && agencyMap[e.entity_id].clients.length === 0) {
+        const agencyClients = allData.filter(
+          c => c.entity_type === 'customer' && c.agency_id === e.entity_id
+        );
+        if (agencyClients.length > 0) {
+          groups.push({
+            type: 'agency-group',
+            agency: e,
+            clients: agencyClients,
+            matched: true,
+          });
+        } else {
+          topLevel.push(e);
+        }
+      }
+    }
+
+    return { groups, topLevel };
+  }
 
   // Select all handler
   document.getElementById('select-all').addEventListener('change', function() {
