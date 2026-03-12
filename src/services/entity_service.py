@@ -174,10 +174,11 @@ class EntityService(BaseService):
 
         for c in customers:
             row = dict(c)
-            if (':' in row["entity_name"]
-                    or row["entity_id"]
-                    in agency_client_ids_from_spots):
+            if ':' in row["entity_name"] and not row["agency_id"]:
                 continue
+            row["agency_booked"] = (
+                row["entity_id"] in agency_client_ids_from_spots
+            )
             cs = contact_stats.get(
                 ("customer", row["entity_id"]), {}
             )

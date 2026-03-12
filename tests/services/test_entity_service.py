@@ -712,3 +712,53 @@ class TestListEntitiesAgencyFields:
         )
         assert agency is not None
         assert agency["client_count"] == 2
+
+    def test_agency_booked_customer_included_with_flag(self, service, conn):
+        """Customers whose spots all come from agency are included
+        with agency_booked=True."""
+        conn.executescript("""
+            INSERT OR IGNORE INTO agencies (agency_id, agency_name, is_active)
+            VALUES (100, 'Test Agency', 1);
+            INSERT OR IGNORE INTO customers
+                (customer_id, normalized_name, is_active, agency_id)
+            VALUES (300, 'Agency Booked Client', 1, 100);
+            INSERT OR IGNORE INTO entity_metrics
+                (entity_type, entity_id, markets, last_active,
+                 total_revenue, spot_count, agency_spot_count)
+            VALUES ('customer', 300, 'NYC', '2025-01-01',
+                    50000, 100, 100);
+        """)
+        results = service.list_entities(conn)
+        client = next(
+            (r for r in results
+             if r["entity_type"] == "customer"
+             and r["entity_id"] == 300),
+            None,
+        )
+        assert client is not None
+        assert client["agency_booked"] is True
+
+    def test_mixed_booked_customer_not_flagged(self, service, conn):
+        """Customers with some non-agency spots have
+        agency_booked=False."""
+        conn.executescript("""
+            INSERT OR IGNORE INTO agencies (agency_id, agency_name, is_active)
+            VALUES (100, 'Test Agency', 1);
+            INSERT OR IGNORE INTO customers
+                (customer_id, normalized_name, is_active, agency_id)
+            VALUES (301, 'Mixed Client', 1, 100);
+            INSERT OR IGNORE INTO entity_metrics
+                (entity_type, entity_id, markets, last_active,
+                 total_revenue, spot_count, agency_spot_count)
+            VALUES ('customer', 301, 'NYC', '2025-01-01',
+                    50000, 100, 50);
+        """)
+        results = service.list_entities(conn)
+        client = next(
+            (r for r in results
+             if r["entity_type"] == "customer"
+             and r["entity_id"] == 301),
+            None,
+        )
+        assert client is not None
+        assert client["agency_booked"] is False

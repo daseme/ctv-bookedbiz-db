@@ -1464,9 +1464,13 @@
 
   function updateStats() {
     const agencies = currentData.filter(d => d.entity_type === 'agency').length;
-    const customers = currentData.filter(d => d.entity_type === 'customer').length;
-    const withContacts = currentData.filter(d => d.contact_count > 0).length;
-    const needsAttention = currentData.filter(d => d.signals?.some(s => NEGATIVE_SIGNALS.includes(s.signal_type))).length;
+    const visibleCustomers = currentData.filter(d => d.entity_type === 'customer' && !d.agency_booked);
+    const customers = groupByAgency
+      ? currentData.filter(d => d.entity_type === 'customer').length
+      : visibleCustomers.length;
+    const statsBase = groupByAgency ? currentData : currentData.filter(d => !d.agency_booked);
+    const withContacts = statsBase.filter(d => d.contact_count > 0).length;
+    const needsAttention = statsBase.filter(d => d.signals?.some(s => NEGATIVE_SIGNALS.includes(s.signal_type))).length;
     document.getElementById('stats').innerHTML = `
       <div class="stat agencies"><div class="val">${agencies}</div><div class="lbl">Agencies</div></div>
       <div class="stat customers"><div class="val">${customers}</div><div class="lbl">Advertisers</div></div>
@@ -1479,7 +1483,8 @@
         <div class="stat"><div class="val">${groups.length}</div><div class="lbl">Agency Groups</div></div>
         <div class="stat"><div class="val">${agencyClients}</div><div class="lbl">Agency Clients</div></div>`;
     }
-    document.getElementById('count').textContent = `${currentData.length} entities`;
+    const countBase = groupByAgency ? currentData.length : statsBase.length + agencies;
+    document.getElementById('count').textContent = `${countBase} entities`;
   }
 
   function renderGrid() {
@@ -1525,7 +1530,7 @@
         });
       });
     } else {
-      grid.innerHTML = currentData.map(renderCard).join('');
+      grid.innerHTML = currentData.filter(e => !e.agency_booked).map(renderCard).join('');
     }
 
     document.querySelectorAll('.entity-card').forEach(card => {
@@ -1628,7 +1633,7 @@
       });
 
     } else {
-      tbody.innerHTML = currentData.map(e => renderTableRow(e, false)).join('');
+      tbody.innerHTML = currentData.filter(e => !e.agency_booked).map(e => renderTableRow(e, false)).join('');
     }
 
     // Attach click handlers for non-agency-parent name cells
