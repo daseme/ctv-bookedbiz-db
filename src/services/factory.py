@@ -510,13 +510,7 @@ def create_pending_order_service():
     """Factory function for PendingOrderService."""
     from src.services.pending_order_service import PendingOrderService
 
-    container = get_container()
-    project_root = container.get_config(
-        "PROJECT_ROOT",
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")),
-    )
-    json_path = os.path.join(project_root, "data", "pending_orders.json")
-    return PendingOrderService(json_path=json_path)
+    return PendingOrderService()
 
 
 def create_emergency_container():
