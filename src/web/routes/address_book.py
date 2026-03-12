@@ -9,7 +9,6 @@ import sqlite3
 import json
 import csv
 import io
-import math
 from datetime import date, datetime
 from src.services.customer_resolution_service import _score_name
 from src.services.container import get_container
@@ -29,200 +28,6 @@ logger = logging.getLogger(__name__)
 
 def _get_db():
     return get_container().get("database_connection")
-
-
-_CREATE_ENTITY_METRICS = """
-    CREATE TABLE IF NOT EXISTS entity_metrics (
-        entity_type TEXT NOT NULL,
-        entity_id INTEGER NOT NULL,
-        markets TEXT,
-        last_active TEXT,
-        total_revenue REAL DEFAULT 0,
-        spot_count INTEGER DEFAULT 0,
-        agency_spot_count INTEGER DEFAULT 0,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (entity_type, entity_id)
-    )
-"""
-
-_CREATE_ENTITY_SIGNALS = """
-    CREATE TABLE IF NOT EXISTS entity_signals (
-        entity_type TEXT NOT NULL,
-        entity_id INTEGER NOT NULL,
-        signal_type TEXT NOT NULL,
-        signal_label TEXT NOT NULL,
-        signal_priority INTEGER NOT NULL,
-        trailing_revenue REAL,
-        prior_revenue REAL,
-        computed_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (entity_type, entity_id, signal_type)
-    )
-"""
-
-
-def _ensure_cache_tables(conn):
-    """Create cache tables if they don't exist."""
-    conn.execute(_CREATE_ENTITY_METRICS)
-    conn.execute(_CREATE_ENTITY_SIGNALS)
-
-
-def refresh_entity_metrics(conn):
-    """Rebuild entity_metrics from spots data. Callable from import service."""
-    _ensure_cache_tables(conn)
-    conn.execute("DELETE FROM entity_metrics")
-    conn.execute("""
-        INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count)
-        SELECT
-            'agency', agency_id,
-            GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END),
-            MAX(air_date),
-            SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END),
-            COUNT(*)
-        FROM spots WHERE agency_id IS NOT NULL
-        GROUP BY agency_id
-    """)
-    conn.execute("""
-        INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count, agency_spot_count)
-        SELECT
-            'customer', customer_id,
-            GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END),
-            MAX(air_date),
-            SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END),
-            COUNT(*),
-            COUNT(agency_id)
-        FROM spots WHERE customer_id IS NOT NULL
-        GROUP BY customer_id
-    """)
-
-
-def _fmt_revenue(val):
-    """Format revenue for signal labels: $1.2M / $145K / $800."""
-    if val is None:
-        return "$0"
-    v = abs(val)
-    if v >= 1_000_000:
-        return f"${v/1_000_000:.1f}M"
-    elif v >= 1_000:
-        return f"${v/1_000:.0f}K"
-    else:
-        return f"${v:,.0f}"
-
-
-def refresh_entity_signals(conn):
-    """Rebuild entity_signals from spots data. Callable from import service."""
-    _ensure_cache_tables(conn)
-    conn.execute("DELETE FROM entity_signals")
-    today = date.today().isoformat()
-
-    _SIGNAL_QUERY = """
-        SELECT {id_col} as entity_id,
-          SUM(CASE WHEN air_date >= date('now','-12 months') AND air_date <= date('now')
-                   AND (revenue_type != 'Trade' OR revenue_type IS NULL) THEN gross_rate ELSE 0 END) as trailing_12m,
-          SUM(CASE WHEN air_date >= date('now','-24 months') AND air_date < date('now','-12 months')
-                   AND (revenue_type != 'Trade' OR revenue_type IS NULL) THEN gross_rate ELSE 0 END) as prior_12m,
-          SUM(CASE WHEN air_date > date('now')
-                   AND (revenue_type != 'Trade' OR revenue_type IS NULL) THEN gross_rate ELSE 0 END) as future_rev,
-          SUM(CASE WHEN air_date > date('now') THEN 1 ELSE 0 END) as future_spots,
-          SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END) as lifetime_rev,
-          MIN(air_date) as first_spot,
-          MAX(CASE WHEN air_date <= date('now') THEN air_date END) as last_past_spot,
-          COUNT(DISTINCT CASE WHEN air_date >= date('now','-24 months') AND air_date <= date('now')
-                THEN strftime('%Y-%m', air_date) END) as active_months_24m
-        FROM spots WHERE {id_col} IS NOT NULL GROUP BY {id_col}
-    """
-
-    rows_to_insert = []
-
-    for entity_type, id_col in [("agency", "agency_id"), ("customer", "customer_id")]:
-        query = _SIGNAL_QUERY.format(id_col=id_col)
-        for row in conn.execute(query).fetchall():
-            eid = row["entity_id"]
-            trailing = row["trailing_12m"] or 0
-            prior = row["prior_12m"] or 0
-            future_rev = row["future_rev"] or 0
-            future_spots = row["future_spots"] or 0
-            lifetime = row["lifetime_rev"] or 0
-            first_spot = row["first_spot"]
-            last_past = row["last_past_spot"]
-            active_months = row["active_months_24m"] or 0
-
-            # --- Signal 1: Churned ---
-            # prior_12m >= $10K AND trailing + future == 0 AND no future spots
-            if prior >= 10_000 and (trailing + future_rev) == 0 and future_spots == 0:
-                priority = 1
-                label = f"{_fmt_revenue(prior)} prior year \u2192 $0"
-                rows_to_insert.append((entity_type, eid, "churned", label, priority, trailing, prior))
-
-            # --- Signal 2: Declining ---
-            # prior_12m >= $10K AND trailing < prior * 0.70
-            # Suppress if future_rev >= gap * 0.50
-            elif prior >= 10_000 and trailing > 0 and trailing < prior * 0.70:
-                gap = prior - trailing
-                if future_rev < gap * 0.50:
-                    pct = round((1 - trailing / prior) * 100)
-                    priority = 2
-                    label = f"{_fmt_revenue(prior)} \u2192 {_fmt_revenue(trailing)} (-{pct}%)"
-                    rows_to_insert.append((entity_type, eid, "declining", label, priority, trailing, prior))
-
-            # --- Signal 3: Gone Quiet ---
-            # lifetime >= $10K, days since last_past_spot exceeds tier threshold, no future spots
-            if lifetime >= 10_000 and last_past and future_spots == 0:
-                try:
-                    last_date = date.fromisoformat(last_past)
-                    days_quiet = (date.today() - last_date).days
-                except (ValueError, TypeError):
-                    days_quiet = 0
-
-                # Determine tier threshold
-                if active_months >= 20:
-                    threshold = 90
-                    cadence = "books monthly"
-                elif active_months >= 12:
-                    threshold = 120
-                    cadence = "books regularly"
-                elif active_months >= 6:
-                    threshold = 240
-                    cadence = "books seasonally"
-                else:
-                    threshold = None  # Skip occasional/new accounts
-                    cadence = ""
-
-                if threshold and days_quiet > threshold:
-                    # Don't duplicate if already flagged churned
-                    if not any(r[0] == entity_type and r[1] == eid and r[2] == "churned" for r in rows_to_insert):
-                        priority = 3
-                        label = f"Quiet {days_quiet}d \u00b7 {cadence}"
-                        rows_to_insert.append((entity_type, eid, "gone_quiet", label, priority, trailing, prior))
-
-            # --- Signal 4: New Account ---
-            # first_spot within 12 months AND lifetime >= $5K
-            if first_spot and lifetime >= 5_000:
-                try:
-                    first_date = date.fromisoformat(first_spot)
-                    months_since_first = (date.today().year - first_date.year) * 12 + (date.today().month - first_date.month)
-                except (ValueError, TypeError):
-                    months_since_first = 999
-
-                if months_since_first <= 12:
-                    priority = 4
-                    month_str = first_date.strftime("%b %Y")
-                    label = f"New \u00b7 first booked {month_str} \u00b7 {_fmt_revenue(lifetime)}"
-                    rows_to_insert.append((entity_type, eid, "new_account", label, priority, trailing, prior))
-
-            # --- Signal 5: Growing ---
-            # trailing >= $10K AND prior > 0 AND trailing > prior * 1.30
-            if trailing >= 10_000 and prior > 0 and trailing > prior * 1.30:
-                pct = round((trailing / prior - 1) * 100)
-                priority = 5
-                label = f"{_fmt_revenue(prior)} \u2192 {_fmt_revenue(trailing)} (+{pct}%)"
-                rows_to_insert.append((entity_type, eid, "growing", label, priority, trailing, prior))
-
-    if rows_to_insert:
-        conn.executemany("""
-            INSERT INTO entity_signals (entity_type, entity_id, signal_type, signal_label, signal_priority, trailing_revenue, prior_revenue)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, rows_to_insert)
-
 
 
 
@@ -303,26 +108,11 @@ def api_address_book():
             sector_counts[row["customer_id"]] = row["cnt"]
             customer_sector_ids[row["customer_id"]] = row["sids"] or ""
 
-        # Ensure cache tables exist (RW needed for CREATE TABLE)
-        # and auto-populate if empty.
+        # Ensure cache tables exist and auto-populate if empty.
+        metrics_svc = get_container().get("entity_metrics_service")
         with _get_db().connection() as rw_conn:
-            _ensure_cache_tables(rw_conn)
-            metrics_count = rw_conn.execute(
-                "SELECT COUNT(*) FROM entity_metrics"
-            ).fetchone()[0]
-            if metrics_count == 0:
-                logger.info("entity_metrics empty — refreshing inline")
-                refresh_entity_metrics(rw_conn)
-                refresh_entity_signals(rw_conn)
-                rw_conn.commit()
-            else:
-                signals_count = rw_conn.execute(
-                    "SELECT COUNT(*) FROM entity_signals"
-                ).fetchone()[0]
-                if signals_count == 0:
-                    logger.info("entity_signals empty — refreshing inline")
-                    refresh_entity_signals(rw_conn)
-                    rw_conn.commit()
+            metrics_svc.auto_refresh_if_empty(rw_conn)
+            rw_conn.commit()
 
         agency_markets = {}
         agency_metrics = {}
@@ -535,14 +325,11 @@ def api_entity_detail(entity_type, entity_id):
             result["sectors"] = [dict(s) for s in sectors]
 
         # Get signals for this entity
+        metrics_svc = get_container().get("entity_metrics_service")
         try:
-            signals = conn.execute("""
-                SELECT signal_type, signal_label, signal_priority
-                FROM entity_signals
-                WHERE entity_type = ? AND entity_id = ?
-                ORDER BY signal_priority
-            """, [entity_type, entity_id]).fetchall()
-            result["signals"] = [dict(s) for s in signals]
+            result["signals"] = metrics_svc.get_entity_signals(
+                conn, entity_type, entity_id
+            )
         except sqlite3.OperationalError:
             result["signals"] = []
 
@@ -1408,52 +1195,14 @@ def api_refresh_metrics():
     if not customer_ids and not agency_ids:
         return jsonify({"error": "No IDs provided"}), 400
 
+    metrics_svc = get_container().get("entity_metrics_service")
     with _get_db().connection() as conn:
         try:
-            _ensure_cache_tables(conn)
-            # Delete existing metrics for these IDs
-            for cid in customer_ids:
-                conn.execute(
-                    "DELETE FROM entity_metrics WHERE entity_type='customer' AND entity_id=?",
-                    [int(cid)]
-                )
-            for aid in agency_ids:
-                conn.execute(
-                    "DELETE FROM entity_metrics WHERE entity_type='agency' AND entity_id=?",
-                    [int(aid)]
-                )
-
-            # Re-insert customer metrics
-            if customer_ids:
-                placeholders = ','.join('?' * len(customer_ids))
-                conn.execute(f"""
-                    INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count, agency_spot_count)
-                    SELECT
-                        'customer', customer_id,
-                        GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END),
-                        MAX(air_date),
-                        SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END),
-                        COUNT(*),
-                        COUNT(agency_id)
-                    FROM spots WHERE customer_id IN ({placeholders})
-                    GROUP BY customer_id
-                """, [int(c) for c in customer_ids])
-
-            # Re-insert agency metrics
-            if agency_ids:
-                placeholders = ','.join('?' * len(agency_ids))
-                conn.execute(f"""
-                    INSERT INTO entity_metrics (entity_type, entity_id, markets, last_active, total_revenue, spot_count)
-                    SELECT
-                        'agency', agency_id,
-                        GROUP_CONCAT(DISTINCT CASE WHEN market_name != '' THEN market_name END),
-                        MAX(air_date),
-                        SUM(CASE WHEN revenue_type != 'Trade' OR revenue_type IS NULL THEN gross_rate ELSE 0 END),
-                        COUNT(*)
-                    FROM spots WHERE agency_id IN ({placeholders})
-                    GROUP BY agency_id
-                """, [int(a) for a in agency_ids])
-
+            metrics_svc.refresh_metrics_for_ids(
+                conn,
+                customer_ids=[int(c) for c in customer_ids],
+                agency_ids=[int(a) for a in agency_ids],
+            )
             conn.commit()
             return jsonify({"success": True, "refreshed": len(customer_ids) + len(agency_ids)})
 
@@ -1664,13 +1413,9 @@ def api_export_csv():
     results = []
 
     # Ensure cache tables exist and are populated
+    metrics_svc = get_container().get("entity_metrics_service")
     with _get_db().connection() as rw_conn:
-        _ensure_cache_tables(rw_conn)
-        metrics_count = rw_conn.execute(
-            "SELECT COUNT(*) FROM entity_metrics"
-        ).fetchone()[0]
-        if metrics_count == 0:
-            refresh_entity_metrics(rw_conn)
+        metrics_svc.auto_refresh_if_empty(rw_conn)
         rw_conn.commit()
 
     with _get_db().connection_ro() as conn:
