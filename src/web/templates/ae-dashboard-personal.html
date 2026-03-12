@@ -344,7 +344,7 @@
                         <th>Sales Person</th>
                         {% endif %}
                         <th>Contract</th>
-                        <th>Month</th>
+                        <th>Months</th>
                         <th class="numeric">Spots</th>
                         <th class="numeric">Gross</th>
                     </tr>
@@ -358,7 +358,7 @@
                         <td>{{ row.sales_person }}</td>
                         {% endif %}
                         <td>{{ row.contract or '' }}</td>
-                        <td>{{ row.broadcast_month }}</td>
+                        <td>{{ row.first_month }}{% if row.month_count > 1 %} &ndash; {{ row.last_month }}{% endif %}</td>
                         <td class="numeric">{{ row.spot_count }}</td>
                         <td class="numeric">{{ "${:,.0f}".format(row.total_gross) }}</td>
                     </tr>
