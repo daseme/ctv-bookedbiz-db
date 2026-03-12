@@ -327,6 +327,10 @@ def initialize_services():
         container.register_singleton("export_service", create_export_service)
         print("✅ export_service registered")
 
+        print("🔧 Registering ae_crm_service...")
+        container.register_singleton("ae_crm_service", create_ae_crm_service)
+        print("✅ ae_crm_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -495,6 +499,15 @@ def create_export_service():
     container = get_container()
     db_connection = container.get("database_connection")
     return ExportService(db_connection)
+
+
+def create_ae_crm_service():
+    """Factory function for AeCrmService."""
+    from src.services.ae_crm_service import AeCrmService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return AeCrmService(db_connection)
 
 
 def create_entity_metrics_service():
