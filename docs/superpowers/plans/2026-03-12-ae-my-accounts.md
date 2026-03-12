@@ -563,6 +563,19 @@ class TestGetAccounts:
         assert cust_one["signal_type"] == "declining"
         assert cust_one["signal_priority"] == 2
 
+    def test_includes_trailing_revenue(self, crm_service, crm_db):
+        with crm_db.connection_ro() as conn:
+            accounts = crm_service.get_accounts(conn, ae_name="Alice")
+        cust_one = next(
+            a for a in accounts if a["entity_name"] == "Customer One"
+        )
+        assert cust_one["trailing_revenue"] == 5000
+        # No signal for Customer Two, so trailing_revenue = 0
+        cust_two = next(
+            a for a in accounts if a["entity_name"] == "Customer Two"
+        )
+        assert cust_two["trailing_revenue"] == 0
+
     def test_no_ae_returns_all_active(self, crm_service, crm_db):
         with crm_db.connection_ro() as conn:
             accounts = crm_service.get_accounts(conn, ae_name=None)
@@ -582,6 +595,12 @@ class TestGetStats:
         with crm_db.connection_ro() as conn:
             stats = crm_service.get_stats(conn, ae_name="Alice")
         assert stats["account_count"] == 3
+
+    def test_trailing_revenue(self, crm_service, crm_db):
+        with crm_db.connection_ro() as conn:
+            stats = crm_service.get_stats(conn, ae_name="Alice")
+        # entity_signals has trailing_revenue=5000 for customer 10 only
+        assert stats["trailing_revenue"] == 5000
 
     def test_signal_count(self, crm_service, crm_db):
         with crm_db.connection_ro() as conn:
@@ -696,6 +715,7 @@ class AeCrmService(BaseService):
                 es.signal_type,
                 es.signal_label,
                 es.signal_priority,
+                COALESCE(es.trailing_revenue, 0) AS trailing_revenue,
                 (SELECT MAX(ea.activity_date)
                  FROM entity_activity ea
                  WHERE ea.entity_type = e.entity_type
@@ -748,12 +768,15 @@ class AeCrmService(BaseService):
     def get_stats(self, conn, ae_name=None):
         """Get summary stats for the AE's book of business.
 
-        Returns dict with account_count, signal_count,
-        follow_up_count, overdue_count.
+        Returns dict with account_count, trailing_revenue,
+        signal_count, follow_up_count, overdue_count.
         """
         accounts = self.get_accounts(conn, ae_name)
         signal_count = sum(
             1 for a in accounts if a.get("signal_type")
+        )
+        trailing_revenue = sum(
+            a.get("trailing_revenue", 0) for a in accounts
         )
 
         ae_filter = ""
@@ -785,6 +808,7 @@ class AeCrmService(BaseService):
 
         return {
             "account_count": len(accounts),
+            "trailing_revenue": trailing_revenue,
             "signal_count": signal_count,
             "follow_up_count": follow_up_row["total"] or 0,
             "overdue_count": follow_up_row["overdue"] or 0,
@@ -1255,16 +1279,20 @@ Create `src/web/templates/ae_my_accounts.html`:
             <div class="stat-label">Active Accounts</div>
         </div>
         <div class="stat-card">
+            <div class="stat-value" id="stat-revenue">-</div>
+            <div class="stat-label">Trailing 12-Mo Revenue</div>
+        </div>
+        <div class="stat-card">
             <div class="stat-value" id="stat-signals">-</div>
             <div class="stat-label">Need Attention</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" id="card-followups">
             <div class="stat-value" id="stat-followups">-</div>
-            <div class="stat-label">Open Follow-ups</div>
-        </div>
-        <div class="stat-card" id="card-overdue">
-            <div class="stat-value" id="stat-overdue">-</div>
-            <div class="stat-label">Overdue</div>
+            <div class="stat-label">Open Follow-ups
+                <span id="stat-overdue-label" style="display:none;">
+                    (<span id="stat-overdue" style="color:#e53e3e;"></span> overdue)
+                </span>
+            </div>
         </div>
     </div>
 
@@ -1288,6 +1316,7 @@ Create `src/web/templates/ae_my_accounts.html`:
                     <th data-sort="entity_name">Name</th>
                     <th data-sort="entity_type">Type</th>
                     <th data-sort="signal_priority">Signal</th>
+                    <th data-sort="trailing_revenue">Trailing Revenue</th>
                     <th data-sort="last_activity_date">Last Activity</th>
                     <th data-sort="next_follow_up_date">Next Follow-up</th>
                     <th>Actions</th>
@@ -1406,14 +1435,19 @@ async function loadStats() {
         const stats = await resp.json();
         document.getElementById('stat-accounts')
             .textContent = stats.account_count;
+        document.getElementById('stat-revenue')
+            .textContent = '$' + Math.round(
+                stats.trailing_revenue).toLocaleString();
         document.getElementById('stat-signals')
             .textContent = stats.signal_count;
         document.getElementById('stat-followups')
             .textContent = stats.follow_up_count;
-        document.getElementById('stat-overdue')
-            .textContent = stats.overdue_count;
         if (stats.overdue_count > 0) {
-            document.getElementById('card-overdue')
+            document.getElementById('stat-overdue')
+                .textContent = stats.overdue_count;
+            document.getElementById('stat-overdue-label')
+                .style.display = 'inline';
+            document.getElementById('card-followups')
                 .classList.add('has-warning');
         }
     } catch (err) {
@@ -1459,6 +1493,9 @@ function renderAccounts(accounts) {
             <td>${a.signal_label
                 ? `<span class="badge badge-${a.signal_type}">${esc(a.signal_label)}</span>`
                 : '<span style="color:#cbd5e0;">&mdash;</span>'}</td>
+            <td style="text-align:right;">${a.trailing_revenue
+                ? '$' + Math.round(a.trailing_revenue).toLocaleString()
+                : '&mdash;'}</td>
             <td>${a.last_activity_date
                 ? formatDate(a.last_activity_date) : '&mdash;'}</td>
             <td>${a.next_follow_up_date
