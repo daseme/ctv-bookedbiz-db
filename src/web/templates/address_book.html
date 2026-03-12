@@ -424,6 +424,10 @@
       background: var(--nord8, #88c0d0);
       color: white;
   }
+  #group-toggle:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+  }
 
   /* Hierarchical card styles */
   .agency-group {
@@ -1792,6 +1796,15 @@
       toolbar.classList.add('active');
     } else {
       toolbar.classList.remove('active');
+    }
+    // Disable grouping when bulk selecting
+    const groupBtn = document.getElementById('group-toggle');
+    if (selectedEntities.size > 0) {
+      groupBtn.disabled = true;
+      groupBtn.title = 'Grouping disabled during bulk selection';
+    } else {
+      groupBtn.disabled = false;
+      groupBtn.title = 'Group by agency';
     }
   }
 
