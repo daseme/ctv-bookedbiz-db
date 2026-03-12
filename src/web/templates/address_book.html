@@ -99,6 +99,18 @@
   .detail-modal .modal-header .type-badge{font-size:12px;padding:4px 10px;border-radius:12px;font-weight:500}
   .detail-modal .modal-header .type-badge.agency{background:#e0f2fe;color:#0369a1}
   .detail-modal .modal-header .type-badge.customer{background:#ede9fe;color:#6d28d9}
+  .btn-view-detail {
+      font-size: 13px;
+      padding: 4px 12px;
+      background: var(--nord8, #88c0d0);
+      color: white;
+      border-radius: 4px;
+      text-decoration: none;
+      white-space: nowrap;
+  }
+  .btn-view-detail:hover {
+      background: var(--nord9, #81a1c1);
+  }
   .modal-close{background:none;border:none;font-size:24px;color:#94a3b8;cursor:pointer;padding:4px 8px}
   .modal-close:hover{color:#334155}
   .detail-modal .modal-body{padding:24px}
@@ -515,7 +527,8 @@
 <div class="modal-overlay" id="detail-modal">
   <div class="detail-modal">
     <div class="modal-header">
-      <h2><span id="detail-name"></span> <span class="type-badge" id="detail-type-badge"></span> <a id="detail-page-link" href="#" target="_blank" title="Open detail page" style="font-size:14px;color:#0ea5e9;text-decoration:none;display:none">↗</a></h2>
+      <h2><span id="detail-name"></span> <span class="type-badge" id="detail-type-badge"></span></h2>
+      <a id="detail-page-link" href="#" title="View full customer detail page" class="btn btn-view-detail" style="display:none">View Full Detail →</a>
       <button class="modal-close">&times;</button>
     </div>
     <div class="modal-body">
@@ -1660,8 +1673,8 @@
     // Detail page link (customers only)
     const pageLink = document.getElementById('detail-page-link');
     if (type === 'customer') {
-      pageLink.href = `/reports/customer/${id}`;
-      pageLink.style.display = 'inline';
+      pageLink.href = `/reports/customer/${id}?from=address-book`;
+      pageLink.style.display = 'inline-block';
     } else {
       pageLink.style.display = 'none';
     }
@@ -1949,7 +1962,7 @@
             : `<span style="color:#94a3b8" title="Inherited from agency">${effectiveRate}%${basisSuffix}</span>`;
         }
         return `<tr>
-          <td><a href="/reports/customer/${c.customer_id}" target="_blank" style="color:#0ea5e9;text-decoration:none">${esc(c.customer_name)}</a></td>
+          <td><a href="/reports/customer/${c.customer_id}?from=address-book" style="color:#0ea5e9;text-decoration:none">${esc(c.customer_name)}</a></td>
           <td>${esc(c.sector_name || '-')}</td>
           <td><input class="po-input" data-customer-id="${c.customer_id}" value="${esc(c.po_number || '')}" placeholder="—"><span class="po-saved">✓</span></td>
           <td>${commStr}</td>
