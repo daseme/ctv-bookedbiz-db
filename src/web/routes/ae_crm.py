@@ -93,21 +93,6 @@ def api_stats():
         return jsonify(stats)
 
 
-@ae_crm_bp.route(
-    "/api/ae/my-accounts/<entity_type>/<int:entity_id>/revenue-trend"
-)
-@role_required(UserRole.AE)
-def api_revenue_trend(entity_type, entity_id):
-    """Return monthly revenue trend for a single entity."""
-    if entity_type not in ("agency", "customer"):
-        return jsonify({"error": "Invalid entity type"}), 400
-    crm_svc = _svc("ae_crm_service")
-    with _db().connection_ro() as conn:
-        return jsonify(crm_svc.get_revenue_trend(
-            conn, entity_type, entity_id
-        ))
-
-
 @ae_crm_bp.route("/api/ae/my-accounts/recent-activity")
 @role_required(UserRole.AE)
 def api_recent_activity():
@@ -122,3 +107,18 @@ def api_recent_activity():
                 conn, ae_name=ae_name, limit=15
             )
         )
+
+
+@ae_crm_bp.route(
+    "/api/ae/my-accounts/<entity_type>/<int:entity_id>/revenue-trend"
+)
+@role_required(UserRole.AE)
+def api_revenue_trend(entity_type, entity_id):
+    """Return monthly revenue trend for a single entity."""
+    if entity_type not in ("agency", "customer"):
+        return jsonify({"error": "Invalid entity type"}), 400
+    crm_svc = _svc("ae_crm_service")
+    with _db().connection_ro() as conn:
+        return jsonify(crm_svc.get_revenue_trend(
+            conn, entity_type, entity_id
+        ))
