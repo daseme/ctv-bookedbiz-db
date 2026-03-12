@@ -656,8 +656,8 @@ def ae_dashboard_personal():
                     SELECT
                         COALESCE(c.normalized_name, s.bill_code) AS customer,
                         s.sales_person,
+                        s.contract,
                         s.broadcast_month,
-                        s.market_name,
                         COUNT(*) AS spot_count,
                         COALESCE(SUM(s.gross_rate), 0) AS total_gross
                     FROM spots s
@@ -667,7 +667,7 @@ def ae_dashboard_personal():
                       AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
                       {wfc_ae_clause}
                     GROUP BY customer, s.sales_person,
-                             s.broadcast_month, s.market_name
+                             s.contract, s.broadcast_month
                     ORDER BY s.broadcast_month, customer
                 """, wfc_params).fetchall()
                 waiting_for_copy = [dict(r) for r in rows]
