@@ -112,6 +112,20 @@ class BillCodeAlias:
 
 
 @dataclass
+class ContactInfo:
+    """Contact record for a customer."""
+    contact_id: int
+    contact_name: str
+    contact_title: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    contact_role: Optional[str]
+    is_primary: bool
+    last_contacted: Optional[str]
+    notes: Optional[str]
+
+
+@dataclass
 class CustomerDetailReport:
     """Complete customer detail report."""
     summary: CustomerSummary
@@ -122,6 +136,7 @@ class CustomerDetailReport:
     market_breakdown: list[MarketBreakdown] = field(default_factory=list)
     recent_spots: list[RecentSpot] = field(default_factory=list)
     bill_code_aliases: list[BillCodeAlias] = field(default_factory=list)
+    contacts: list[ContactInfo] = field(default_factory=list)
     date_range_label: str = ""
     has_date_filter: bool = False
 
@@ -194,6 +209,7 @@ class CustomerDetailService:
             market_breakdown=self._get_market_breakdown(customer_id),
             recent_spots=self._get_recent_spots(customer_id),
             bill_code_aliases=self._get_aliases(customer_id),
+            contacts=self._get_contacts(customer_id),
             date_range_label=self._format_date_label(
                 start_date, end_date
             ) if has_filter else "",
@@ -538,5 +554,35 @@ class CustomerDetailService:
                 confidence_score=row[1] or 100,
                 created_date=row[2]
             ))
-        
+
         return results
+
+    def _get_contacts(self, customer_id: int) -> list[ContactInfo]:
+        """Get active contacts for this customer."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT
+                contact_id, contact_name, contact_title,
+                email, phone, contact_role, is_primary,
+                last_contacted, notes
+            FROM entity_contacts
+            WHERE entity_type = 'customer'
+                AND entity_id = ?
+                AND is_active = 1
+            ORDER BY is_primary DESC, contact_name ASC
+        """, [customer_id])
+
+        return [
+            ContactInfo(
+                contact_id=row[0],
+                contact_name=row[1],
+                contact_title=row[2],
+                email=row[3],
+                phone=row[4],
+                contact_role=row[5],
+                is_primary=bool(row[6]),
+                last_contacted=row[7],
+                notes=row[8],
+            )
+            for row in cursor.fetchall()
+        ]
