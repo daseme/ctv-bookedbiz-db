@@ -309,7 +309,10 @@ class RevenueClassificationService(BaseService):
         )
 
     def update_sector(self, conn, customer_id, sector_id):
-        """Update a customer's sector assignment.
+        """Update a customer's sector assignment via junction table.
+
+        Uses the customer_sectors junction table so that the sync trigger
+        keeps customers.sector_id in sync automatically.
 
         Args:
             conn: sqlite3.Connection.
@@ -334,14 +337,39 @@ class RevenueClassificationService(BaseService):
             if not sec:
                 raise ValueError(f"Sector {sector_id} not found")
 
-        conn.execute(
-            "UPDATE customers SET sector_id = ? WHERE customer_id = ?",
-            (sector_id, customer_id),
-        )
+            conn.execute(
+                "INSERT INTO customer_sectors "
+                "(customer_id, sector_id, is_primary, assigned_by) "
+                "VALUES (?, ?, 1, 'rcm_web') "
+                "ON CONFLICT(customer_id, sector_id) "
+                "DO UPDATE SET is_primary = 1",
+                (customer_id, sector_id),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM customer_sectors "
+                "WHERE customer_id = ? AND is_primary = 1",
+                (customer_id,),
+            )
+            conn.execute(
+                "UPDATE customers SET sector_id = NULL "
+                "WHERE customer_id = ?",
+                (customer_id,),
+            )
 
     def get_sectors(self, conn):
-        """Return all sectors as a list of {sector_id, sector_name} dicts."""
+        """Return active sectors with group info for optgroup rendering."""
         rows = conn.execute(
-            "SELECT sector_id, sector_name FROM sectors ORDER BY sector_name"
+            "SELECT sector_id, sector_name, "
+            "COALESCE(sector_group, 'Other') AS sector_group "
+            "FROM sectors WHERE is_active = 1 "
+            "ORDER BY sector_group, sector_name"
         ).fetchall()
-        return [{"sector_id": r["sector_id"], "sector_name": r["sector_name"]} for r in rows]
+        return [
+            {
+                "sector_id": r["sector_id"],
+                "sector_name": r["sector_name"],
+                "sector_group": r["sector_group"],
+            }
+            for r in rows
+        ]

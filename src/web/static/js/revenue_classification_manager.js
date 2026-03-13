@@ -82,7 +82,20 @@
     const aes = [...new Set(customers.map((c) => c.assigned_ae).filter(Boolean))].sort();
 
     if (sectorSel.options.length <= 1 && allSectors.length) {
-      allSectors.forEach((s) => sectorSel.appendChild(new Option(s.sector_name, s.sector_id)));
+      const groupOrder = ['Commercial','Financial','Healthcare','Outreach','Political','Other'];
+      const groups = {};
+      allSectors.forEach((s) => {
+        const g = s.sector_group || 'Other';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(s);
+      });
+      groupOrder.forEach((g) => {
+        if (!groups[g] || groups[g].length === 0) return;
+        const og = document.createElement('optgroup');
+        og.label = g;
+        groups[g].forEach((s) => og.appendChild(new Option(s.sector_name, s.sector_id)));
+        sectorSel.appendChild(og);
+      });
     }
     if (aeSel.options.length <= 1) {
       aes.forEach((a) => aeSel.appendChild(new Option(a, a)));
@@ -93,10 +106,22 @@
   }
 
   function sectorOptions(selectedId) {
-    let html = '<option value="">--</option>';
+    const groupOrder = ['Commercial','Financial','Healthcare','Outreach','Political','Other'];
+    const groups = {};
     allSectors.forEach((s) => {
-      const sel = s.sector_id === selectedId ? ' selected' : '';
-      html += `<option value="${s.sector_id}"${sel}>${esc(s.sector_name)}</option>`;
+      const g = s.sector_group || 'Other';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(s);
+    });
+    let html = '<option value="">Unassigned</option>';
+    groupOrder.forEach((g) => {
+      if (!groups[g] || groups[g].length === 0) return;
+      html += `<optgroup label="${g}">`;
+      groups[g].forEach((s) => {
+        const sel = s.sector_id === selectedId ? ' selected' : '';
+        html += `<option value="${s.sector_id}"${sel}>${esc(s.sector_name)}</option>`;
+      });
+      html += '</optgroup>';
     });
     return html;
   }
@@ -179,7 +204,7 @@
         (c) => `
       <tr>
         <td><a href="/reports/customer/${c.customer_id}" class="customer-link">${esc(c.name)}</a></td>
-        <td><select class="sector-select" data-id="${c.customer_id}" onchange="window._rcmSector(this)">${sectorOptions(c.sector_id)}</select></td>
+        <td><select class="sector-select" data-id="${c.customer_id}" data-prev="${c.sector_id || ''}" onchange="window._rcmSector(this)">${sectorOptions(c.sector_id)}</select></td>
         <td>
           <button class="cls-toggle ${c.revenue_class}"
             data-id="${c.customer_id}"

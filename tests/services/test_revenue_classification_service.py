@@ -25,8 +25,45 @@ def rc_db():
         CREATE TABLE sectors (
             sector_id INTEGER PRIMARY KEY,
             sector_name TEXT,
-            sector_code TEXT
+            sector_code TEXT,
+            sector_group TEXT DEFAULT 'Other',
+            is_active INTEGER DEFAULT 1
         );
+        CREATE TABLE customer_sectors (
+            customer_sector_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            sector_id INTEGER NOT NULL,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            assigned_by TEXT NOT NULL DEFAULT 'system',
+            UNIQUE(customer_id, sector_id)
+        );
+        CREATE TRIGGER trg_customer_sectors_insert_primary
+        AFTER INSERT ON customer_sectors
+        WHEN NEW.is_primary = 1
+        BEGIN
+            UPDATE customer_sectors
+            SET is_primary = 0
+            WHERE customer_id = NEW.customer_id
+              AND customer_sector_id != NEW.customer_sector_id
+              AND is_primary = 1;
+            UPDATE customers
+            SET sector_id = NEW.sector_id
+            WHERE customer_id = NEW.customer_id;
+        END;
+        CREATE TRIGGER trg_customer_sectors_update_primary
+        AFTER UPDATE OF is_primary ON customer_sectors
+        WHEN NEW.is_primary = 1 AND OLD.is_primary = 0
+        BEGIN
+            UPDATE customer_sectors
+            SET is_primary = 0
+            WHERE customer_id = NEW.customer_id
+              AND customer_sector_id != NEW.customer_sector_id
+              AND is_primary = 1;
+            UPDATE customers
+            SET sector_id = NEW.sector_id
+            WHERE customer_id = NEW.customer_id;
+        END;
         CREATE TABLE spots (
             spot_id INTEGER PRIMARY KEY,
             customer_id INTEGER,
@@ -37,8 +74,10 @@ def rc_db():
         );
 
         -- Sectors
-        INSERT INTO sectors VALUES (1, 'Automotive', 'AUTO');
-        INSERT INTO sectors VALUES (2, 'Political', 'POLITICAL');
+        INSERT INTO sectors (sector_id, sector_name, sector_code, sector_group)
+            VALUES (1, 'Automotive', 'AUTO', 'Commercial');
+        INSERT INTO sectors (sector_id, sector_name, sector_code, sector_group)
+            VALUES (2, 'Political', 'POLITICAL', 'Political');
 
         -- Customers
         INSERT INTO customers VALUES
@@ -344,3 +383,63 @@ class TestUpdateClassification:
         )
         with pytest.raises(ValueError):
             svc.update_classification(rc_db, 9999, "regular")
+
+
+class TestUpdateSector:
+    def test_assigns_sector_via_junction_table(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        svc.update_sector(rc_db, 30, 2)
+
+        row = rc_db.execute(
+            "SELECT sector_id FROM customers WHERE customer_id = 30"
+        ).fetchone()
+        assert row["sector_id"] == 2
+
+        jt = rc_db.execute(
+            "SELECT sector_id, is_primary FROM customer_sectors "
+            "WHERE customer_id = 30 AND is_primary = 1"
+        ).fetchone()
+        assert jt["sector_id"] == 2
+
+    def test_clears_sector_to_null(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        svc.update_sector(rc_db, 10, None)
+
+        row = rc_db.execute(
+            "SELECT sector_id FROM customers WHERE customer_id = 10"
+        ).fetchone()
+        assert row["sector_id"] is None
+
+    def test_rejects_nonexistent_sector(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        with pytest.raises(ValueError):
+            svc.update_sector(rc_db, 10, 999)
+
+    def test_rejects_nonexistent_customer(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        with pytest.raises(ValueError):
+            svc.update_sector(rc_db, 9999, 1)
