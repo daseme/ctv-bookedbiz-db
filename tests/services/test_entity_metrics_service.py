@@ -4,6 +4,7 @@ import os
 import tempfile
 import sqlite3
 from datetime import date, timedelta
+from dateutil.relativedelta import relativedelta
 
 import pytest
 
@@ -30,7 +31,8 @@ CREATE TABLE spots (
     air_date TEXT,
     gross_rate REAL DEFAULT 0,
     revenue_type TEXT,
-    broadcast_month TEXT
+    broadcast_month TEXT,
+    is_historical INTEGER DEFAULT 0
 );
 CREATE TABLE entity_metrics (
     entity_type TEXT,
@@ -284,3 +286,177 @@ class TestGetMaps:
         assert isinstance(signals, list)
         assert len(signals) >= 1
         assert signals[0]["signal_type"] == "churned"
+
+
+def _bm_string(d):
+    """Convert a date to broadcast_month format like 'Jan-25'."""
+    return d.strftime("%b-%y")
+
+
+def _insert_spot_bm(conn, spot_id, customer_id=None, agency_id=None,
+                    broadcast_month="Jan-25", gross_rate=1000.0,
+                    revenue_type="Cash", is_historical=0):
+    """Insert a spot with broadcast_month for renewal gap tests."""
+    conn.execute(
+        "INSERT INTO spots "
+        "(spot_id, customer_id, agency_id, market_name, air_date, "
+        "gross_rate, revenue_type, broadcast_month, is_historical) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (spot_id, customer_id, agency_id, "Denver", "2026-01-15",
+         gross_rate, revenue_type, broadcast_month, is_historical),
+    )
+
+
+class TestRenewalGapSignal:
+    """Tests for the renewal_gap signal in refresh_signals."""
+
+    def _trailing_months(self):
+        """Return 3 broadcast month strings for trailing window."""
+        today = date.today()
+        return [
+            _bm_string(today - relativedelta(months=i))
+            for i in range(1, 4)
+        ]
+
+    def _forward_months(self):
+        """Return 3 broadcast month strings for forward window."""
+        today = date.today()
+        return [
+            _bm_string(today + relativedelta(months=i))
+            for i in range(0, 3)
+        ]
+
+    def test_renewal_gap_detected(self, service, conn):
+        """Customer with trailing revenue and $0 forward gets gap signal."""
+        conn.execute(
+            "INSERT INTO customers (customer_id, normalized_name) "
+            "VALUES (100, 'GapCo')"
+        )
+        for i, bm in enumerate(self._trailing_months()):
+            _insert_spot_bm(conn, 500 + i, customer_id=100,
+                            broadcast_month=bm, gross_rate=5000)
+        conn.commit()
+
+        service.refresh_signals(conn)
+
+        row = conn.execute(
+            "SELECT * FROM entity_signals "
+            "WHERE entity_type='customer' AND entity_id=100 "
+            "AND signal_type='renewal_gap'"
+        ).fetchone()
+        assert row is not None
+        assert row["signal_priority"] == 1
+
+    def test_no_gap_when_forward_sufficient(self, service, conn):
+        """No gap when forward revenue >= 25% of trailing."""
+        conn.execute(
+            "INSERT INTO customers (customer_id, normalized_name) "
+            "VALUES (101, 'HealthyCo')"
+        )
+        for i, bm in enumerate(self._trailing_months()):
+            _insert_spot_bm(conn, 600 + i, customer_id=101,
+                            broadcast_month=bm, gross_rate=5000)
+        for i, bm in enumerate(self._forward_months()):
+            _insert_spot_bm(conn, 610 + i, customer_id=101,
+                            broadcast_month=bm, gross_rate=5000)
+        conn.commit()
+
+        service.refresh_signals(conn)
+
+        row = conn.execute(
+            "SELECT * FROM entity_signals "
+            "WHERE entity_type='customer' AND entity_id=101 "
+            "AND signal_type='renewal_gap'"
+        ).fetchone()
+        assert row is None
+
+    def test_gap_when_forward_below_25pct(self, service, conn):
+        """Gap created when forward is 20% of trailing."""
+        conn.execute(
+            "INSERT INTO customers (customer_id, normalized_name) "
+            "VALUES (102, 'SlippingCo')"
+        )
+        trailing_total = 15000  # 5000 * 3
+        for i, bm in enumerate(self._trailing_months()):
+            _insert_spot_bm(conn, 700 + i, customer_id=102,
+                            broadcast_month=bm, gross_rate=5000)
+        # Forward = 20% of trailing = 3000, spread across 3 months
+        for i, bm in enumerate(self._forward_months()):
+            _insert_spot_bm(conn, 710 + i, customer_id=102,
+                            broadcast_month=bm, gross_rate=1000)
+        conn.commit()
+
+        service.refresh_signals(conn)
+
+        row = conn.execute(
+            "SELECT * FROM entity_signals "
+            "WHERE entity_type='customer' AND entity_id=102 "
+            "AND signal_type='renewal_gap'"
+        ).fetchone()
+        assert row is not None
+        assert row["trailing_revenue"] == trailing_total
+        assert row["prior_revenue"] == 3000  # forward stored in prior_revenue
+
+    def test_no_gap_for_zero_trailing(self, service, conn):
+        """No gap when trailing is $0 (nothing to renew)."""
+        conn.execute(
+            "INSERT INTO customers (customer_id, normalized_name) "
+            "VALUES (103, 'InactiveCo')"
+        )
+        conn.commit()
+
+        service.refresh_signals(conn)
+
+        row = conn.execute(
+            "SELECT * FROM entity_signals "
+            "WHERE entity_type='customer' AND entity_id=103 "
+            "AND signal_type='renewal_gap'"
+        ).fetchone()
+        assert row is None
+
+    def test_renewal_gap_label_includes_dollars(self, service, conn):
+        """Label includes trailing and forward dollar amounts."""
+        conn.execute(
+            "INSERT INTO customers (customer_id, normalized_name) "
+            "VALUES (104, 'LabelCo')"
+        )
+        for i, bm in enumerate(self._trailing_months()):
+            _insert_spot_bm(conn, 800 + i, customer_id=104,
+                            broadcast_month=bm, gross_rate=10000)
+        conn.commit()
+
+        service.refresh_signals(conn)
+
+        row = conn.execute(
+            "SELECT * FROM entity_signals "
+            "WHERE entity_type='customer' AND entity_id=104 "
+            "AND signal_type='renewal_gap'"
+        ).fetchone()
+        assert row is not None
+        assert "$30,000 trailing" in row["signal_label"]
+        assert "$0 forward" in row["signal_label"]
+
+    def test_renewal_gap_for_agency(self, service, conn):
+        """Agency with trailing revenue but no forward gets gap signal."""
+        conn.execute(
+            "INSERT INTO agencies (agency_id, agency_name) "
+            "VALUES (50, 'GapAgency')"
+        )
+        conn.execute(
+            "INSERT INTO customers (customer_id, normalized_name, "
+            "agency_id) VALUES (105, 'AgencyCust', 50)"
+        )
+        for i, bm in enumerate(self._trailing_months()):
+            _insert_spot_bm(conn, 900 + i, customer_id=105,
+                            broadcast_month=bm, gross_rate=8000)
+        conn.commit()
+
+        service.refresh_signals(conn)
+
+        row = conn.execute(
+            "SELECT * FROM entity_signals "
+            "WHERE entity_type='agency' AND entity_id=50 "
+            "AND signal_type='renewal_gap'"
+        ).fetchone()
+        assert row is not None
+        assert row["signal_priority"] == 1

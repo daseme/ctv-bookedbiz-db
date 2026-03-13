@@ -147,6 +147,8 @@ class EntityMetricsService(BaseService):
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, rows_to_insert)
 
+        self._compute_renewal_gap_signals(conn)
+
     def _compute_signals_for_row(self, entity_type, row, rows_to_insert):
         """Evaluate all signal rules for one entity row."""
         eid = row["entity_id"]
@@ -260,6 +262,78 @@ class EntityMetricsService(BaseService):
                 (entity_type, eid, "growing", label,
                  priority, trailing, prior)
             )
+
+    def _compute_renewal_gap_signals(self, conn):
+        """Detect accounts with trailing revenue but little forward booking."""
+        bm_to_iso = """
+            '20' || SUBSTR(s.broadcast_month, 5, 2) || '-' ||
+            CASE SUBSTR(s.broadcast_month, 1, 3)
+                WHEN 'Jan' THEN '01' WHEN 'Feb' THEN '02'
+                WHEN 'Mar' THEN '03' WHEN 'Apr' THEN '04'
+                WHEN 'May' THEN '05' WHEN 'Jun' THEN '06'
+                WHEN 'Jul' THEN '07' WHEN 'Aug' THEN '08'
+                WHEN 'Sep' THEN '09' WHEN 'Oct' THEN '10'
+                WHEN 'Nov' THEN '11' WHEN 'Dec' THEN '12'
+            END
+        """
+        configs = [
+            ("customer_id", "customer", "customers",
+             "s.customer_id = e.customer_id"),
+            ("agency_id", "agency", "agencies",
+             "s.customer_id IN "
+             "(SELECT customer_id FROM customers "
+             "WHERE agency_id = e.agency_id)"),
+        ]
+        for entity_col, entity_type, entity_table, join_clause in configs:
+            gap_rows = conn.execute(f"""
+                SELECT
+                    sub.entity_id,
+                    sub.trailing_3m,
+                    sub.forward_3m
+                FROM (
+                    SELECT
+                        e.{entity_col} AS entity_id,
+                        COALESCE(SUM(CASE
+                            WHEN {bm_to_iso}
+                                >= strftime('%Y-%m', 'now', '-3 months')
+                             AND {bm_to_iso}
+                                < strftime('%Y-%m', 'now')
+                            THEN s.gross_rate ELSE 0 END), 0)
+                            AS trailing_3m,
+                        COALESCE(SUM(CASE
+                            WHEN {bm_to_iso}
+                                >= strftime('%Y-%m', 'now')
+                             AND {bm_to_iso}
+                                < strftime('%Y-%m', 'now', '+3 months')
+                            THEN s.gross_rate ELSE 0 END), 0)
+                            AS forward_3m
+                    FROM {entity_table} e
+                    LEFT JOIN spots s ON {join_clause}
+                        AND s.is_historical = 0
+                        AND (s.revenue_type != 'Trade'
+                             OR s.revenue_type IS NULL)
+                    WHERE e.is_active = 1
+                    GROUP BY e.{entity_col}
+                ) sub
+                WHERE sub.trailing_3m > 0
+                  AND sub.forward_3m < sub.trailing_3m * 0.25
+            """).fetchall()
+
+            for row in gap_rows:
+                trailing = row["trailing_3m"]
+                forward = row["forward_3m"]
+                label = (
+                    f"Renewal gap: ${trailing:,.0f} trailing, "
+                    f"${forward:,.0f} forward"
+                )
+                conn.execute("""
+                    INSERT OR REPLACE INTO entity_signals
+                        (entity_type, entity_id, signal_type,
+                         signal_label, signal_priority,
+                         trailing_revenue, prior_revenue)
+                    VALUES (?, ?, 'renewal_gap', ?, 1, ?, ?)
+                """, [entity_type, row["entity_id"],
+                      label, trailing, forward])
 
     def refresh_metrics_for_ids(
         self, conn, customer_ids=None, agency_ids=None
