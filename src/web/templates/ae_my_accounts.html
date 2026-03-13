@@ -296,7 +296,35 @@
     display: flex; gap: 6px; margin-top: 6px;
 }
 
+/* Health Score */
+.health-dot {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%;
+    font-size: 11px; font-weight: 700; color: #fff;
+}
+.health-dot.green { background: #38a169; }
+.health-dot.yellow { background: #d69e2e; }
+.health-dot.red { background: #e53e3e; }
+
+/* Tier Badge */
+.tier-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+}
+.tier-badge.tier-A { background: #ebf8ff; color: #2b6cb0; border: 1px solid #bee3f8; }
+.tier-badge.tier-B { background: #f0fff4; color: #276749; border: 1px solid #c6f6d5; }
+.tier-badge.tier-C { background: #f7fafc; color: #718096; border: 1px solid #e2e8f0; }
+
+/* Touch Status */
+.touch-status { font-weight: 500; }
+.touch-green { color: #38a169; }
+.touch-yellow { color: #d69e2e; }
+.touch-red { color: #e53e3e; }
+
 /* Responsive */
+@media (max-width: 1200px) {
+    .summary-bar { grid-template-columns: repeat(3, 1fr); }
+}
 @media (max-width: 768px) {
     .summary-bar { grid-template-columns: repeat(2, 1fr); }
     .detail-overlay { width: 100%; }
@@ -384,10 +412,12 @@
                 <tr>
                     <th data-sort="entity_name">Name</th>
                     <th data-sort="entity_type">Type</th>
+                    <th data-sort="health_score">Health</th>
+                    <th data-sort="tier">Tier</th>
                     <th data-sort="signal_priority">Signal</th>
-                    <th data-sort="trailing_revenue">Trailing Revenue</th>
-                    <th data-sort="last_activity_date">Last Activity</th>
-                    <th data-sort="next_follow_up_date">Next Follow-up</th>
+                    <th data-sort="trailing_revenue">Revenue</th>
+                    <th data-sort="days_since_touch">Touch</th>
+                    <th data-sort="next_follow_up_date">Follow-up</th>
                     <th>Actions</th>
                 </tr>
             </thead>

@@ -1,7 +1,7 @@
 /* AE My Accounts — CRM page client logic */
 
 let allAccounts = [];
-let currentSort = { key: 'signal_priority', dir: 'asc' };
+let currentSort = { key: 'health_score', dir: 'asc' };
 let currentEntity = null;
 let revenueChart = null;
 
@@ -93,9 +93,31 @@ async function loadStats() {
 // ── Accounts ──────────────────────────────────────────────────────
 async function loadAccounts() {
     try {
-        const resp = await fetch('/api/ae/my-accounts' +
-            window.location.search);
-        allAccounts = await resp.json();
+        const qs = window.location.search;
+        const [acctResp, healthResp] = await Promise.all([
+            fetch('/api/ae/my-accounts' + qs),
+            fetch('/api/ae/my-accounts/health' + qs),
+        ]);
+        allAccounts = await acctResp.json();
+        const healthData = await healthResp.json();
+
+        const healthMap = {};
+        healthData.forEach(h => {
+            healthMap[`${h.entity_type}:${h.entity_id}`] = h;
+        });
+
+        allAccounts.forEach(a => {
+            const h = healthMap[`${a.entity_type}:${a.entity_id}`];
+            if (h) {
+                a.health_score = h.health_score;
+                a.health_color = h.health_color;
+                a.tier = h.tier;
+                a.tier_cadence_days = h.tier_cadence_days;
+                a.days_since_touch = h.days_since_touch;
+                a.touch_status = h.touch_status;
+            }
+        });
+
         renderAccounts(allAccounts);
     } catch (err) {
         console.error('Failed to load accounts:', err);
@@ -125,14 +147,30 @@ function renderAccounts(accounts) {
             </td>
             <td><span class="badge badge-${a.entity_type}">
                 ${a.entity_type}</span></td>
+            <td style="text-align:center;">
+                ${a.health_score != null
+                    ? `<span class="health-dot ${a.health_color}"
+                             title="Health: ${a.health_score}/100">
+                           ${a.health_score}
+                       </span>`
+                    : '&mdash;'}
+            </td>
+            <td style="text-align:center;">
+                ${a.tier
+                    ? `<span class="tier-badge tier-${a.tier}">${a.tier}</span>`
+                    : '&mdash;'}
+            </td>
             <td>${a.signal_label
                 ? `<span class="badge badge-${a.signal_type}">${esc(a.signal_label)}</span>`
                 : '<span style="color:#cbd5e0;">&mdash;</span>'}</td>
             <td style="text-align:right;">${a.trailing_revenue
                 ? '$' + Math.round(a.trailing_revenue).toLocaleString()
                 : '&mdash;'}</td>
-            <td>${a.last_activity_date
-                ? formatDate(a.last_activity_date) : '&mdash;'}</td>
+            <td class="touch-status ${a.touch_status ? 'touch-' + a.touch_status : ''}">
+                ${a.days_since_touch != null
+                    ? a.days_since_touch + 'd'
+                    : 'Never'}
+            </td>
             <td>${a.next_follow_up_date
                 ? `${formatDate(a.next_follow_up_date)}`
                 : '&mdash;'}</td>
@@ -164,8 +202,9 @@ function sortAccounts(key) {
     }
     allAccounts.sort((a, b) => {
         let va = a[key], vb = b[key];
-        if (va == null) va = key === 'signal_priority' ? 999 : '';
-        if (vb == null) vb = key === 'signal_priority' ? 999 : '';
+        const numKeys = ['signal_priority', 'health_score', 'days_since_touch'];
+        if (va == null) va = numKeys.includes(key) ? 999 : '';
+        if (vb == null) vb = numKeys.includes(key) ? 999 : '';
         if (va < vb) return currentSort.dir === 'asc' ? -1 : 1;
         if (va > vb) return currentSort.dir === 'asc' ? 1 : -1;
         return 0;
