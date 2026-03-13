@@ -64,12 +64,13 @@ Revenue queries:
 - Include all booked months for the selected year (historical AND forward-booked, `is_historical = 0` is NOT filtered)
 - Exclude Trade: `WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)`
 - Filter by broadcast_month year matching the selected year
+- Only include spots with a non-NULL `customer_id` (unresolved spots are excluded from classification revenue)
 
 ### Controls Row
 
 | Control | Behavior |
 |---------|----------|
-| **Year selector** | Dropdown of available years. Defaults to current year. Changes update all sections. |
+| **Year selector** | Dropdown of available years (derived from distinct broadcast_month year suffixes in the spots table). Defaults to current year. Changes update all sections. Populated by the summary API which returns an `available_years` list. |
 | **Sector filter** | Dropdown of all sectors. Filters table and recalculates summary/chart for filtered subset. |
 | **AE filter** | Dropdown of assigned AEs. Same filtering behavior. |
 | **Classification filter** | All / Regular / Irregular. Filters table, summary adjusts to show filtered totals. |
@@ -122,13 +123,23 @@ All under the existing reports blueprint or a new classification blueprint:
 Methods:
 
 **`get_summary(conn, year, filters=None)`**
-Returns summary cards data and monthly breakdown for the chart. Single query that groups by broadcast_month and revenue_class, with optional sector/AE filtering.
+Returns summary cards data, monthly breakdown for the chart, and available years list. Single query groups by broadcast_month and revenue_class, with optional filtering. Also queries distinct years from spots for the year dropdown.
 
 **`get_customers(conn, year, filters=None)`**
-Returns customer list with revenue for the selected year and prior year. Joins customers with aggregated spots data. Two subqueries: one for selected year revenue, one for prior year.
+Returns customer list with revenue for the selected year and prior year. Joins customers with aggregated spots data. Two subqueries: one for selected year revenue, one for prior year. YoY percentage is `None` when prior year revenue is zero (displayed as "New" in the UI).
 
 **`update_classification(conn, customer_id, revenue_class)`**
 Updates the customer's `revenue_class` field. Validates the value is 'regular' or 'irregular'.
+
+**`filters` parameter shape** (applies to `get_summary` and `get_customers`):
+```python
+filters = {
+    "sector_id": int | None,      # filter by sector
+    "ae": str | None,             # filter by assigned_ae (exact match)
+    "classification": str | None,  # 'regular' or 'irregular'
+}
+```
+All keys are optional. `None` or missing key means no filter on that dimension.
 
 ### Broadcast Month to Year Mapping
 
