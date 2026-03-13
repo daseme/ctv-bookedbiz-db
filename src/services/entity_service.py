@@ -106,6 +106,24 @@ class EntityService(BaseService):
                 "signal_priority": srow["signal_priority"]
             })
 
+        # Batch: sectors per agency (from child customers)
+        agency_sectors = {}
+        for row in conn.execute("""
+            SELECT c.agency_id,
+                   GROUP_CONCAT(DISTINCT s.sector_name) as sector_names,
+                   GROUP_CONCAT(DISTINCT CAST(s.sector_id AS TEXT)) as sids,
+                   COUNT(DISTINCT s.sector_id) as cnt
+            FROM customers c
+            JOIN sectors s ON c.sector_id = s.sector_id
+            WHERE c.agency_id IS NOT NULL AND c.is_active = 1
+            GROUP BY c.agency_id
+        """).fetchall():
+            agency_sectors[row["agency_id"]] = {
+                "names": row["sector_names"] or "",
+                "ids": row["sids"] or "",
+                "count": row["cnt"],
+            }
+
         # Agencies
         active_clause = (
             "" if include_inactive else "WHERE a.is_active = 1"
@@ -132,8 +150,10 @@ class EntityService(BaseService):
             )
             row["contact_count"] = cs.get("contact_count", 0)
             row["primary_contact"] = cs.get("primary_contact")
-            row["sector_count"] = 0
-            row["sector_ids"] = ""
+            asec = agency_sectors.get(row["entity_id"], {})
+            row["sector_name"] = asec.get("names", None)
+            row["sector_count"] = asec.get("count", 0)
+            row["sector_ids"] = asec.get("ids", "")
             row["client_count"] = client_counts.get(
                 row["entity_id"], 0
             )

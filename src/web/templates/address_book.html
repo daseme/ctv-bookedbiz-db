@@ -1367,21 +1367,12 @@
       filtered = filtered.filter(r => r.contact_count === 0);
     }
 
-    // Sector filter — match customers by sector, keep agencies that parent a matched customer
+    // Sector filter — agencies now carry child customer sector_ids
     if (sectorFilter) {
       const sid = sectorFilter;
-      const matchedCustomers = filtered.filter(r => {
-        if (r.entity_type !== 'customer') return false;
+      filtered = filtered.filter(r => {
         const ids = (r.sector_ids || '').split(',');
         return ids.includes(sid);
-      });
-      const parentAgencyIds = new Set(matchedCustomers.map(c => c.agency_id).filter(Boolean));
-      filtered = filtered.filter(r => {
-        if (r.entity_type === 'customer') {
-          const ids = (r.sector_ids || '').split(',');
-          return ids.includes(sid);
-        }
-        return parentAgencyIds.has(r.entity_id);
       });
     }
 
@@ -1897,9 +1888,9 @@
 
   function renderCard(e) {
     const extraSectors = (e.sector_count || 0) > 1 ? ` <span class="extra-count" title="${e.sector_count - 1} additional tag${e.sector_count - 1 > 1 ? 's' : ''}">+${e.sector_count - 1}</span>` : '';
-    const sectorBadge = e.entity_type === 'customer'
-      ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}${extraSectors}</span>`
-      : '';
+    const sectorBadge = e.sector_name
+      ? `<span class="sector-badge">${esc(e.sector_name)}${extraSectors}</span>`
+      : (e.entity_type === 'customer' ? '<span class="sector-badge none">No sector</span>' : '');
     const aeBadge = e.assigned_ae
       ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>`
       : '';
