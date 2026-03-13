@@ -180,3 +180,54 @@ class ManagerDashboardService(BaseService):
               )
         """).fetchall()
         return [{"item_type": "renewal_gap_stale", **dict(r)} for r in rows]
+
+    def get_weekly_activity(self, conn, ae_names):
+        """Activity counts by type per AE for the last 7 days.
+
+        Counts note, call, email, meeting, and completed follow_ups.
+        Excludes status_change and incomplete follow_ups.
+
+        Args:
+            conn: Database connection (read-only preferred).
+            ae_names: List of AE name strings.
+
+        Returns:
+            Dict mapping ae_name -> {note, call, email, meeting,
+            follow_up, total} counts.
+        """
+        base = {
+            "note": 0, "call": 0, "email": 0,
+            "meeting": 0, "follow_up": 0, "total": 0,
+        }
+        if not ae_names:
+            return {}
+
+        result = {ae: dict(base) for ae in ae_names}
+
+        for ae in ae_names:
+            rows = conn.execute("""
+                SELECT ea.activity_type, COUNT(*) AS n
+                FROM entity_activity ea
+                WHERE ea.activity_date >= date('now', '-7 days')
+                  AND ea.activity_type IN (
+                      'note', 'call', 'email', 'meeting', 'follow_up')
+                  AND (ea.activity_type != 'follow_up'
+                       OR ea.is_completed = 1)
+                  AND (
+                      (ea.entity_type = 'customer' AND ea.entity_id IN (
+                          SELECT customer_id FROM customers
+                          WHERE assigned_ae = ?))
+                      OR
+                      (ea.entity_type = 'agency' AND ea.entity_id IN (
+                          SELECT agency_id FROM agencies
+                          WHERE assigned_ae = ?))
+                  )
+                GROUP BY ea.activity_type
+            """, [ae, ae]).fetchall()
+            total = 0
+            for r in rows:
+                result[ae][r["activity_type"]] = r["n"]
+                total += r["n"]
+            result[ae]["total"] = total
+
+        return result

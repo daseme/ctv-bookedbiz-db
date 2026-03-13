@@ -214,3 +214,65 @@ class TestAttentionItems:
         self.conn.execute("DELETE FROM entity_signals")
         items = self.svc.get_attention_items(self.conn)
         assert items == []
+
+
+class TestWeeklyActivity:
+    """Tests for get_weekly_activity()."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, mgr_db):
+        self.svc, self.conn = mgr_db
+        today = date.today().isoformat()
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        old = (date.today() - timedelta(days=10)).isoformat()
+        self.conn.executemany("""
+            INSERT INTO entity_activity
+                (entity_type, entity_id, activity_type, activity_date,
+                 created_by, is_completed)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, [
+            ('customer', 10, 'call', today, 'Alice', 0),
+            ('customer', 10, 'call', yesterday, 'Alice', 0),
+            ('customer', 11, 'email', today, 'Alice', 0),
+            ('agency', 1, 'meeting', today, 'Alice', 0),
+            ('customer', 20, 'note', today, 'Bob', 0),
+            ('customer', 20, 'call', old, 'Bob', 0),  # >7d, excluded
+            ('customer', 10, 'status_change', today, 'system', 0),  # excluded
+        ])
+
+    def test_counts_per_ae(self):
+        result = self.svc.get_weekly_activity(self.conn, ["Alice", "Bob"])
+        assert result["Alice"]["call"] == 2
+        assert result["Alice"]["email"] == 1
+        assert result["Alice"]["meeting"] == 1
+        assert result["Bob"]["note"] == 1
+
+    def test_excludes_old_activity(self):
+        result = self.svc.get_weekly_activity(self.conn, ["Bob"])
+        assert result["Bob"]["call"] == 0
+
+    def test_excludes_status_change(self):
+        result = self.svc.get_weekly_activity(self.conn, ["Alice"])
+        assert "status_change" not in result["Alice"]
+
+    def test_total_per_ae(self):
+        result = self.svc.get_weekly_activity(self.conn, ["Alice"])
+        assert result["Alice"]["total"] == 4  # 2 call + 1 email + 1 meeting
+
+    def test_counts_completed_followups(self):
+        self.conn.execute("""
+            INSERT INTO entity_activity
+                (entity_type, entity_id, activity_type, activity_date,
+                 created_by, is_completed, completed_date)
+            VALUES ('customer', 11, 'follow_up', ?, 'Alice', 1, ?)
+        """, [date.today().isoformat(), date.today().isoformat()])
+        result = self.svc.get_weekly_activity(self.conn, ["Alice"])
+        assert result["Alice"]["follow_up"] == 1
+
+    def test_excludes_incomplete_followups(self):
+        result = self.svc.get_weekly_activity(self.conn, ["Alice"])
+        assert result["Alice"]["follow_up"] == 0
+
+    def test_zero_activity_ae(self):
+        result = self.svc.get_weekly_activity(self.conn, ["Nobody"])
+        assert result["Nobody"]["total"] == 0
