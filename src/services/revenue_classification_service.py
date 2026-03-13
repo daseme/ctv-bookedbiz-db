@@ -15,6 +15,31 @@ VALID_CLASSES = ("regular", "irregular")
 
 WORLDLINK_AGENCY_ID = 5
 
+WORLDLINK_NAME_PREFIXES = (
+    "worldlink",
+    "marketing architect",
+    "direct donor",
+)
+
+WORLDLINK_NAME_CONTAINS = (
+    "(marketing architects)",
+    "(direct donor)",
+)
+
+
+def _is_worldlink(agency_id, name):
+    """Check if a customer belongs to the WorldLink group."""
+    if agency_id == WORLDLINK_AGENCY_ID:
+        return True
+    lower = (name or "").lower()
+    for prefix in WORLDLINK_NAME_PREFIXES:
+        if lower.startswith(prefix):
+            return True
+    for substr in WORLDLINK_NAME_CONTAINS:
+        if substr in lower:
+            return True
+    return False
+
 
 class RevenueClassificationService(BaseService):
     """Analyze and manage customer revenue classification."""
@@ -189,10 +214,7 @@ class RevenueClassificationService(BaseService):
 
         for r in rows:
             name = r["name"] or ""
-            is_worldlink = (
-                r["agency_id"] == WORLDLINK_AGENCY_ID
-                or name.lower().startswith("worldlink")
-            )
+            is_worldlink = _is_worldlink(r["agency_id"], name)
             cur = r["current_year_revenue"]
             prior = r["prior_year_revenue"]
 
@@ -261,7 +283,12 @@ class RevenueClassificationService(BaseService):
         if customer_id == WORLDLINK_AGENCY_ID:
             conn.execute(
                 "UPDATE customers SET revenue_class = ? "
-                "WHERE agency_id = ? OR LOWER(normalized_name) LIKE 'worldlink%'",
+                "WHERE agency_id = ? "
+                "OR LOWER(normalized_name) LIKE 'worldlink%' "
+                "OR LOWER(normalized_name) LIKE 'marketing architect%' "
+                "OR LOWER(normalized_name) LIKE 'direct donor%' "
+                "OR LOWER(normalized_name) LIKE '%(marketing architects)%' "
+                "OR LOWER(normalized_name) LIKE '%(direct donor)%'",
                 (revenue_class, WORLDLINK_AGENCY_ID),
             )
             return
