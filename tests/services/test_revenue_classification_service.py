@@ -17,6 +17,7 @@ def rc_db():
             normalized_name TEXT,
             assigned_ae TEXT,
             sector_id INTEGER,
+            agency_id INTEGER,
             revenue_class TEXT DEFAULT 'regular'
                 CHECK (revenue_class IN ('regular', 'irregular')),
             is_active INTEGER DEFAULT 1
@@ -41,13 +42,13 @@ def rc_db():
 
         -- Customers
         INSERT INTO customers VALUES
-            (10, 'Acme Auto', 'Alice', 1, 'regular', 1);
+            (10, 'Acme Auto', 'Alice', 1, NULL, 'regular', 1);
         INSERT INTO customers VALUES
-            (20, 'Campaign Co', 'Bob', 2, 'irregular', 1);
+            (20, 'Campaign Co', 'Bob', 2, NULL, 'irregular', 1);
         INSERT INTO customers VALUES
-            (30, 'Beta Motors', 'Alice', 1, 'regular', 1);
+            (30, 'Beta Motors', 'Alice', 1, NULL, 'regular', 1);
         INSERT INTO customers VALUES
-            (40, 'Inactive Corp', 'Alice', 1, 'regular', 0);
+            (40, 'Inactive Corp', 'Alice', 1, NULL, 'regular', 0);
 
         -- 2025 spots for Acme Auto (regular)
         INSERT INTO spots VALUES (1, 10, 'Jan-25', 5000.0, 'Cash', 1);
@@ -167,7 +168,7 @@ class TestGetSummary:
         assert result["unclassified_count"] == 0
 
         rc_db.execute(
-            "INSERT INTO customers VALUES (50, 'New Co', 'Alice', 1, NULL, 1)"
+            "INSERT INTO customers VALUES (50, 'New Co', 'Alice', 1, NULL, NULL, 1)"
         )
         result = svc.get_summary(rc_db, 2025)
         assert result["unclassified_count"] == 1

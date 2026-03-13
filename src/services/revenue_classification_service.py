@@ -13,6 +13,8 @@ TRADE_FILTER = "(s.revenue_type != 'Trade' OR s.revenue_type IS NULL)"
 
 VALID_CLASSES = ("regular", "irregular")
 
+WORLDLINK_AGENCY_ID = 5
+
 
 class RevenueClassificationService(BaseService):
     """Analyze and manage customer revenue classification."""
@@ -152,6 +154,7 @@ class RevenueClassificationService(BaseService):
             SELECT
                 c.customer_id,
                 c.normalized_name AS name,
+                c.agency_id,
                 c.sector_id,
                 COALESCE(sec.sector_name, '') AS sector_name,
                 COALESCE(c.revenue_class, 'regular') AS revenue_class,
@@ -179,28 +182,64 @@ class RevenueClassificationService(BaseService):
         """, params).fetchall()
 
         result = []
+        wl_cur = 0.0
+        wl_prior = 0.0
+        wl_class = "regular"
+        non_wl = []
+
         for r in rows:
+            name = r["name"] or ""
+            is_worldlink = (
+                r["agency_id"] == WORLDLINK_AGENCY_ID
+                or name.lower().startswith("worldlink")
+            )
             cur = r["current_year_revenue"]
             prior = r["prior_year_revenue"]
-            yoy_dollar = cur - prior
-            yoy_pct = (
-                round(yoy_dollar / prior * 100, 1)
-                if prior > 0 else None
-            )
-            result.append({
-                "customer_id": r["customer_id"],
-                "name": r["name"],
-                "sector_id": r["sector_id"],
-                "sector_name": r["sector_name"],
-                "revenue_class": r["revenue_class"],
-                "assigned_ae": r["assigned_ae"],
-                "current_year_revenue": cur,
-                "prior_year_revenue": prior,
-                "yoy_dollar": yoy_dollar,
-                "yoy_pct": yoy_pct,
+
+            if is_worldlink:
+                wl_cur += cur
+                wl_prior += prior
+                if r["revenue_class"] == "irregular":
+                    wl_class = "irregular"
+            else:
+                yoy_dollar = cur - prior
+                yoy_pct = (
+                    round(yoy_dollar / prior * 100, 1)
+                    if prior > 0 else None
+                )
+                non_wl.append({
+                    "customer_id": r["customer_id"],
+                    "name": name,
+                    "sector_id": r["sector_id"],
+                    "sector_name": r["sector_name"],
+                    "revenue_class": r["revenue_class"],
+                    "assigned_ae": r["assigned_ae"],
+                    "current_year_revenue": cur,
+                    "prior_year_revenue": prior,
+                    "yoy_dollar": yoy_dollar,
+                    "yoy_pct": yoy_pct,
+                })
+
+        if wl_cur > 0 or wl_prior > 0:
+            wl_yoy = wl_cur - wl_prior
+            non_wl.append({
+                "customer_id": WORLDLINK_AGENCY_ID,
+                "name": "WorldLink (Agency)",
+                "sector_id": None,
+                "sector_name": "",
+                "revenue_class": wl_class,
+                "assigned_ae": "",
+                "current_year_revenue": wl_cur,
+                "prior_year_revenue": wl_prior,
+                "yoy_dollar": wl_yoy,
+                "yoy_pct": (
+                    round(wl_yoy / wl_prior * 100, 1)
+                    if wl_prior > 0 else None
+                ),
             })
 
-        return result
+        non_wl.sort(key=lambda c: c["current_year_revenue"], reverse=True)
+        return non_wl
 
     def update_classification(self, conn, customer_id, revenue_class):
         """Update a customer's revenue classification.
@@ -218,6 +257,14 @@ class RevenueClassificationService(BaseService):
                 f"Invalid revenue_class '{revenue_class}'. "
                 f"Must be one of: {VALID_CLASSES}"
             )
+
+        if customer_id == WORLDLINK_AGENCY_ID:
+            conn.execute(
+                "UPDATE customers SET revenue_class = ? "
+                "WHERE agency_id = ? OR LOWER(normalized_name) LIKE 'worldlink%'",
+                (revenue_class, WORLDLINK_AGENCY_ID),
+            )
+            return
 
         row = conn.execute(
             "SELECT customer_id FROM customers WHERE customer_id = ?",
