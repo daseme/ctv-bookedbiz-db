@@ -295,6 +295,53 @@
         height: 250px;
     }
 }
+
+/* Guide Button & Modal */
+.guide-btn {
+    width: 28px; height: 28px; border-radius: 50%; display: inline-flex;
+    align-items: center; justify-content: center;
+    border: 1px solid #cbd5e1; background: #fff; color: #64748b;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: all 0.15s; flex-shrink: 0;
+}
+.guide-btn:hover { background: #e0f2fe; color: #0284c7; border-color: #0284c7; }
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 1100;
+    align-items: flex-start; justify-content: center;
+    padding: 40px 20px; overflow-y: auto;
+}
+.modal-overlay.active { display: flex; }
+.guide-modal {
+    background: #fff; border-radius: 12px; width: 100%; max-width: 620px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+}
+.guide-modal .modal-header {
+    padding: 20px 24px; border-bottom: 1px solid #e2e8f0;
+    display: flex; justify-content: space-between; align-items: center;
+    background: #f0f9ff; border-radius: 12px 12px 0 0;
+}
+.guide-modal .modal-header h3 { margin: 0; font-size: 18px; color: #0369a1; }
+.guide-modal .modal-close {
+    background: none; border: none; font-size: 24px; color: #94a3b8;
+    cursor: pointer; padding: 4px 8px;
+}
+.guide-modal .modal-close:hover { color: #334155; }
+.guide-modal .modal-body { padding: 24px; max-height: 70vh; overflow-y: auto; }
+.guide-modal .info-section { margin-bottom: 20px; }
+.guide-modal .info-section:last-child { margin-bottom: 0; }
+.guide-modal .info-section h4 {
+    margin: 0 0 6px; font-size: 14px; color: #0f172a;
+    display: flex; align-items: center; gap: 8px;
+}
+.guide-modal .info-section p {
+    margin: 0; font-size: 13px; color: #475569; line-height: 1.6;
+}
+.guide-modal .info-section ul {
+    margin: 6px 0 0; padding-left: 20px; font-size: 13px;
+    color: #475569; line-height: 1.6;
+}
+.guide-modal .info-section ul li { margin-bottom: 4px; }
 </style>
 {% endblock %}
 
@@ -303,7 +350,7 @@
     <!-- AE Selector (for admins/management) -->
     {% if is_admin_or_management %}
     <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
-        <form method="GET" action="/reports/ae-dashboard-personal" style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+        <form method="GET" action="/reports/ae-dashboard-personal" style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <label for="ae-select" style="font-weight: 600; color: #4a5568; font-size: 14px; white-space: nowrap;">Select AE:</label>
                 <select id="ae-select" name="ae" onchange="this.form.submit()" style="min-width: 200px; max-width: 260px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 14px; background: white;">
@@ -322,7 +369,12 @@
                     {% endfor %}
                 </select>
             </div>
+            <button type="button" class="guide-btn" onclick="document.getElementById('guide-modal').classList.add('active')" title="How this page works">?</button>
         </form>
+    </div>
+    {% else %}
+    <div style="text-align:right; margin-bottom:8px;">
+        <button class="guide-btn" onclick="document.getElementById('guide-modal').classList.add('active')" title="How this page works">?</button>
     </div>
     {% endif %}
 
@@ -1310,5 +1362,84 @@
             attachSortingListeners();
         });
     </script>
+
+<!-- Guide Modal -->
+<div class="modal-overlay" id="guide-modal">
+  <div class="guide-modal">
+    <div class="modal-header">
+      <h3>My Dashboard &mdash; Quick Guide</h3>
+      <button class="modal-close" onclick="document.getElementById('guide-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What Is This Page?</h4>
+        <p>My Dashboard is your personal revenue command center. It tracks your booked revenue against budget and forecast month by month, shows recent contract activity, and flags operational items like missing copy and pending insertion orders.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Waiting for Copy</h4>
+        <p>Spots that have been booked but still need creative copy assigned. These show up when the &ldquo;media&rdquo; field on a spot contains &ldquo;NEED COPY.&rdquo; Each row shows the customer, contract, month range, spot count, and gross revenue. Get copy submitted so these spots can go to air on schedule.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Pending Insertion Orders</h4>
+        <p>Contracts that have been entered into the system but don&rsquo;t yet have a signed insertion order on file. These need follow-up with the client or agency to get the paperwork completed.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Contracts Added (Last 7 Days)</h4>
+        <p>A quick highlight reel of contracts booked in the past week. Today&rsquo;s additions are highlighted in blue. Click &ldquo;See More&rdquo; for the full contracts-added report with additional detail and date filtering.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Summary Cards</h4>
+        <p>Three cards showing your year-to-date position:</p>
+        <ul>
+          <li><strong>Total Booked Revenue</strong> &mdash; confirmed orders in the system, shown as a percentage of your annual budget</li>
+          <li><strong>Total Forecast</strong> &mdash; your projected revenue (booked + expected), shown as a percentage of budget</li>
+          <li><strong>Total Budget</strong> &mdash; your assigned annual revenue target, with booked-vs-forecast percentage showing how much of your pipeline has converted</li>
+        </ul>
+        <p>Color coding: <span style="color:#22543d; font-weight:600;">green</span> = at or above target, <span style="color:#4a5568; font-weight:600;">gray</span> = close, <span style="color:#742a2a; font-weight:600;">red</span> = below target.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Monthly Revenue Chart</h4>
+        <p>A line chart plotting your booked revenue, forecast, and budget month by month. Use it to spot trends &mdash; months where booked is tracking below forecast may need attention. Click &ldquo;Show Details&rdquo; to expand the full monthly breakdown table with exact numbers and percentages.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Monthly Breakdown Table</h4>
+        <p>Detailed month-by-month numbers (toggled from the chart). Each row shows:</p>
+        <ul>
+          <li><strong>Booked Revenue</strong> &mdash; confirmed orders for that month</li>
+          <li><strong>Forecast</strong> &mdash; your projected total (booked + expected)</li>
+          <li><strong>Budget</strong> &mdash; your monthly target</li>
+          <li><strong>Booked vs Forecast</strong> &mdash; how much of your pipeline has converted to orders</li>
+          <li><strong>Forecast vs Budget</strong> &mdash; whether your pipeline is on track to hit budget</li>
+          <li><strong>Booked vs Budget</strong> &mdash; the bottom line &mdash; are confirmed orders meeting the target?</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <h4>Account Revenue</h4>
+        <p>Every account in your book grouped by sector, with revenue and percentage of total budget. Click a sector row to expand and see individual accounts. Click an account name to go to its detail page.</p>
+        <ul>
+          <li><strong>Date filters</strong> &mdash; narrow the revenue window to a specific period</li>
+          <li><strong>Sort Sectors</strong> &mdash; alphabetical or by revenue</li>
+          <li><strong>Sort Accounts</strong> &mdash; by revenue or name within each sector</li>
+        </ul>
+        <p>Use this to understand where your revenue is concentrated and which accounts are driving your numbers.</p>
+      </div>
+
+      {% if is_admin_or_management %}
+      <div class="info-section">
+        <h4>Admin / Management View</h4>
+        <p>You&rsquo;re seeing the AE selector at the top because you have management access. Use it to switch between AEs and review their individual dashboards. The year filter lets you compare performance across years.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 </div>
 {% endblock %}
