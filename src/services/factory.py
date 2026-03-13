@@ -335,6 +335,10 @@ def initialize_services():
         container.register_singleton("signal_action_service", create_signal_action_service)
         print("✅ signal_action_service registered")
 
+        print("🔧 Registering health_score_service...")
+        container.register_singleton("health_score_service", create_health_score_service)
+        print("✅ health_score_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -927,6 +931,15 @@ def create_signal_action_service():
     container = get_container()
     db_connection = container.get("database_connection")
     return SignalActionService(db_connection)
+
+
+def create_health_score_service():
+    """Factory function for HealthScoreService."""
+    from src.services.health_score_service import HealthScoreService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return HealthScoreService(db_connection)
 
 
 def register_critical_services(container):
