@@ -323,6 +323,18 @@ When adding new route files, auth must be present from the start.
 
 ---
 
+## Template Block Names
+
+### base.html Block Names — Get These Right
+- `{% block extra_styles %}` — for CSS in `<head>`
+- `{% block extra_js %}` — for scripts before `</body>` (line 889)
+- `{% block scripts %}` — also for scripts (line 743)
+- **NOT** `{% block extra_scripts %}` — this doesn't exist and Jinja2 silently ignores it
+
+Jinja2 does NOT warn when a child template defines a block that doesn't exist in
+the parent. The block content is silently dropped. Always verify block names
+against `base.html` when creating new templates.
+
 ## Template & Code Cleanup
 
 ### Verify All References Before Deleting Any File
@@ -410,6 +422,36 @@ FROM customers
 WHERE is_active = 1 AND agency_id IS NULL AND normalized_name LIKE '%:%'
   AND normalized_name NOT LIKE 'Worldlink:%' AND normalized_name NOT LIKE 'WorldLink:%';
 ```
+
+### Address Book Entity Filtering Has Multiple Exclusion Layers
+The `list_entities()` method in `entity_service.py` excludes customers from the
+address book list using two independent filters:
+
+1. **Colon filter**: Customers with `:` in `normalized_name` (the `Agency:Client`
+   naming convention) — this hides 142+ customers
+2. **Agency-booked filter**: Customers where `agency_spot_count == spot_count` in
+   `entity_metrics` — all their revenue comes through an agency
+
+These filters were designed for a **flat list** to avoid double-counting revenue
+already attributed to the agency. When building **hierarchical views** (grouping
+customers under agencies), these customers must be included — otherwise the
+hierarchy has no children to display.
+
+**The fix pattern**: Include the customers in the data with a flag (`agency_booked`)
+and filter at the **rendering layer** based on view mode:
+- Flat view: hide `agency_booked` customers (preserves original behavior)
+- Grouped view: show them nested under their agency
+
+**Key data facts** (as of 2026-03-11):
+- 146 customers have `agency_id` set; 142 of those have `:` in the name
+- 22 Worldlink-prefixed customers have `:` but no `agency_id` (intentional)
+- 69 customers have `agency_booked=True` but no `agency_id` (spots booked through
+  agency but customer not formally linked)
+
+**When adding new list views or filters**: always verify whether existing exclusion
+logic in the service layer will hide data the new view needs. Service-layer
+exclusions should be feature flags, not hard filters, when the data has multiple
+valid presentations.
 
 ---
 

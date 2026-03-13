@@ -303,6 +303,48 @@ def initialize_services():
         container.register_singleton("pending_order_service", create_pending_order_service)
         print("✅ pending_order_service registered")
 
+        print("🔧 Registering entity_metrics_service...")
+        container.register_singleton("entity_metrics_service", create_entity_metrics_service)
+        print("✅ entity_metrics_service registered")
+
+        print("🔧 Registering entity_service...")
+        container.register_singleton("entity_service", create_entity_service)
+        print("✅ entity_service registered")
+
+        print("🔧 Registering activity_service...")
+        container.register_singleton("activity_service", create_activity_service)
+        print("✅ activity_service registered")
+
+        print("🔧 Registering address_service...")
+        container.register_singleton("address_service", create_address_service)
+        print("✅ address_service registered")
+
+        print("🔧 Registering saved_filter_service...")
+        container.register_singleton("saved_filter_service", create_saved_filter_service)
+        print("✅ saved_filter_service registered")
+
+        print("🔧 Registering export_service...")
+        container.register_singleton("export_service", create_export_service)
+        print("✅ export_service registered")
+
+        print("🔧 Registering ae_crm_service...")
+        container.register_singleton("ae_crm_service", create_ae_crm_service)
+        print("✅ ae_crm_service registered")
+
+        print("🔧 Registering signal_action_service...")
+        container.register_singleton("signal_action_service", create_signal_action_service)
+        print("✅ signal_action_service registered")
+
+        print("🔧 Registering health_score_service...")
+        container.register_singleton("health_score_service", create_health_score_service)
+        print("✅ health_score_service registered")
+
+        print("🔧 Registering manager_dashboard_service...")
+        container.register_singleton("manager_dashboard_service", create_manager_dashboard_service)
+        print("✅ manager_dashboard_service registered")
+
+        container.register_singleton("revenue_classification_service", create_revenue_classification_service)
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -428,17 +470,74 @@ def create_pricing_trends_service():
     return PricingTrendsService(db_connection)
 
 
+def create_entity_service():
+    """Factory function for EntityService."""
+    from src.services.entity_service import EntityService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return EntityService(db_connection)
+
+
+def create_activity_service():
+    """Factory function for ActivityService."""
+    from src.services.activity_service import ActivityService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return ActivityService(db_connection)
+
+
+def create_address_service():
+    """Factory function for AddressService."""
+    from src.services.address_service import AddressService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return AddressService(db_connection)
+
+
+def create_saved_filter_service():
+    """Factory function for SavedFilterService."""
+    from src.services.saved_filter_service import SavedFilterService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return SavedFilterService(db_connection)
+
+
+def create_export_service():
+    """Factory function for ExportService."""
+    from src.services.export_service import ExportService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return ExportService(db_connection)
+
+
+def create_ae_crm_service():
+    """Factory function for AeCrmService."""
+    from src.services.ae_crm_service import AeCrmService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return AeCrmService(db_connection)
+
+
+def create_entity_metrics_service():
+    """Factory function for EntityMetricsService."""
+    from src.services.entity_metrics_service import EntityMetricsService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return EntityMetricsService(db_connection)
+
+
 def create_pending_order_service():
     """Factory function for PendingOrderService."""
     from src.services.pending_order_service import PendingOrderService
 
-    container = get_container()
-    project_root = container.get_config(
-        "PROJECT_ROOT",
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")),
-    )
-    json_path = os.path.join(project_root, "data", "pending_orders.json")
-    return PendingOrderService(json_path=json_path)
+    return PendingOrderService()
 
 
 def create_emergency_container():
@@ -829,6 +928,42 @@ def create_user_service():
     except Exception as e:
         logger.error(f"Failed to create user service: {e}")
         raise ServiceCreationError(f"User service creation failed: {e}") from e
+
+
+def create_signal_action_service():
+    """Factory function for SignalActionService."""
+    from src.services.signal_action_service import SignalActionService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return SignalActionService(db_connection)
+
+
+def create_health_score_service():
+    """Factory function for HealthScoreService."""
+    from src.services.health_score_service import HealthScoreService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return HealthScoreService(db_connection)
+
+
+def create_manager_dashboard_service():
+    """Factory function for ManagerDashboardService."""
+    from src.services.manager_dashboard_service import ManagerDashboardService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return ManagerDashboardService(db_connection)
+
+
+def create_revenue_classification_service():
+    """Factory function for RevenueClassificationService."""
+    from src.services.revenue_classification_service import RevenueClassificationService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return RevenueClassificationService(db_connection)
 
 
 def register_critical_services(container):

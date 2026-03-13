@@ -717,15 +717,14 @@ class BroadcastMonthImportService(BaseService):
 
     def _refresh_cache_tables(self):
         """Refresh denormalized cache tables in a separate transaction."""
-        from src.web.routes.address_book import (
-            refresh_entity_metrics,
-            refresh_entity_signals,
-        )
+        from src.services.entity_metrics_service import EntityMetricsService
+
+        metrics_service = EntityMetricsService(self.db_connection)
         try:
             with self.safe_transaction() as conn:
-                refresh_entity_metrics(conn)
+                metrics_service.refresh_metrics(conn)
                 tqdm.write("✅ Entity metrics cache refreshed")
-                refresh_entity_signals(conn)
+                metrics_service.refresh_signals(conn)
                 tqdm.write("✅ Entity signals cache refreshed")
         except Exception as e:
             tqdm.write(

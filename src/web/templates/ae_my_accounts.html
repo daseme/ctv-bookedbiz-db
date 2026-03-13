@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+{% from "macros/breadcrumbs.html" import breadcrumb_trail %}
+
+{% block title %}{{ title }} - CTV Reports{% endblock %}
+{% block header_title %}{{ title }}{% endblock %}
+{% block breadcrumb %}
+{{ breadcrumb_trail([], "My Accounts") }}
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.crm-container { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
+
+/* AE Selector */
+.ae-selector {
+    background: white; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    display: flex; align-items: center; gap: 12px;
+}
+.ae-selector select {
+    padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 4px;
+    font-size: 14px; min-width: 200px;
+}
+
+/* Summary Bar */
+.summary-bar {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px;
+    margin-bottom: 20px;
+}
+.stat-card {
+    background: white; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 16px 20px; text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.stat-card .stat-value {
+    font-size: 28px; font-weight: 700; color: #2d3748;
+}
+.stat-card .stat-label {
+    font-size: 13px; color: #718096; margin-top: 4px;
+}
+.stat-card.has-warning .stat-value { color: #c05621; }
+
+/* Action Items */
+.action-items {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 20px;
+}
+.action-items h3 { margin: 0 0 12px; font-size: 15px; color: #92400e; }
+.action-item-row {
+    display: flex; align-items: center; gap: 12px; padding: 8px 0;
+    border-bottom: 1px solid #fef3c7;
+}
+.action-item-row:last-child { border-bottom: none; }
+.urgency-overdue { color: #e53e3e; font-weight: 600; }
+.urgency-due-today { color: #dd6b20; font-weight: 600; }
+
+/* Accounts Table */
+.accounts-section {
+    background: white; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 20px; margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.accounts-section h3 {
+    margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #2d3748;
+}
+.search-bar {
+    width: 100%; padding: 10px 14px; border: 1px solid #e2e8f0;
+    border-radius: 6px; font-size: 14px; margin-bottom: 12px;
+}
+.accounts-table {
+    width: 100%; border-collapse: collapse; font-size: 14px;
+}
+.accounts-table th {
+    text-align: left; padding: 10px 12px; border-bottom: 2px solid #e2e8f0;
+    color: #718096; font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer;
+}
+.accounts-table td {
+    padding: 10px 12px; border-bottom: 1px solid #f0f0f0;
+}
+.accounts-table tr:hover { background: #f7fafc; }
+.accounts-table .account-name {
+    color: #2b6cb0; cursor: pointer; font-weight: 500;
+}
+.accounts-table .account-name:hover { text-decoration: underline; }
+
+/* Type & Signal Badges */
+.badge {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+}
+.badge-customer { background: #ebf4ff; color: #2b6cb0; }
+.badge-agency { background: #f0fff4; color: #276749; }
+.badge-declining { background: #fed7d7; color: #c53030; }
+.badge-churned { background: #fff5f5; color: #e53e3e; }
+.badge-gone_quiet { background: #fefcbf; color: #975a16; }
+.badge-growing { background: #c6f6d5; color: #276749; }
+.badge-new_account { background: #bee3f8; color: #2a4365; }
+
+/* Slide-out Detail Panel */
+.detail-overlay {
+    display: none; position: fixed; top: 0; right: 0;
+    width: 480px; height: 100vh; background: white;
+    border-left: 1px solid #e2e8f0;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+    z-index: 1000; overflow-y: auto;
+    transition: transform 0.2s ease;
+}
+.detail-overlay.open { display: block; }
+.detail-header {
+    padding: 20px; border-bottom: 1px solid #e2e8f0;
+    position: sticky; top: 0; background: white; z-index: 1;
+}
+.detail-header .close-btn {
+    float: right; background: none; border: none;
+    font-size: 20px; cursor: pointer; color: #718096;
+}
+.detail-header h2 {
+    margin: 0 0 8px; font-size: 18px; color: #2d3748;
+}
+.detail-tabs {
+    display: flex; border-bottom: 1px solid #e2e8f0;
+    padding: 0 20px;
+}
+.detail-tab {
+    padding: 12px 16px; cursor: pointer; font-size: 13px;
+    color: #718096; border-bottom: 2px solid transparent;
+    font-weight: 500;
+}
+.detail-tab.active {
+    color: #2b6cb0; border-bottom-color: #2b6cb0;
+}
+.detail-body { padding: 20px; }
+
+/* Activity Timeline */
+.activity-form {
+    display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.activity-form select {
+    padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 4px;
+    font-size: 13px;
+}
+.activity-form input[type="text"] {
+    flex: 1; min-width: 200px; padding: 8px 10px;
+    border: 1px solid #e2e8f0; border-radius: 4px; font-size: 13px;
+}
+.activity-form button {
+    padding: 8px 16px; background: #2b6cb0; color: white;
+    border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
+}
+.activity-form button:hover { background: #2c5282; }
+.follow-up-toggle {
+    font-size: 12px; color: #718096; cursor: pointer; width: 100%;
+}
+.timeline-entry {
+    padding: 10px 0; border-bottom: 1px solid #f0f0f0;
+}
+.timeline-entry:last-child { border-bottom: none; }
+.timeline-meta {
+    font-size: 12px; color: #718096; margin-bottom: 4px;
+}
+.timeline-desc { font-size: 14px; color: #2d3748; }
+.badge-note { background: #e2e8f0; color: #4a5568; }
+.badge-call { background: #bee3f8; color: #2a4365; }
+.badge-email { background: #c6f6d5; color: #276749; }
+.badge-meeting { background: #e9d8fd; color: #553c9a; }
+.badge-follow_up { background: #fefcbf; color: #975a16; }
+
+/* Recent Activity Feed */
+.recent-activity {
+    background: white; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 20px; margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.recent-activity h3 {
+    margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #2d3748;
+}
+
+/* Revenue Chart */
+.revenue-chart-container {
+    height: 200px; margin-top: 12px;
+}
+
+/* Empty States */
+.empty-state {
+    text-align: center; padding: 40px 20px; color: #a0aec0;
+}
+.empty-state p { margin: 8px 0; font-size: 14px; }
+
+/* Guide Button */
+.guide-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid #cbd5e1; background: #fff; color: #64748b;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: all 0.15s; flex-shrink: 0;
+}
+.guide-btn:hover { background: #e0f2fe; color: #0284c7; border-color: #0284c7; }
+
+/* Guide Modal */
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 1100;
+    align-items: flex-start; justify-content: center;
+    padding: 40px 20px; overflow-y: auto;
+}
+.modal-overlay.active { display: flex; }
+.guide-modal {
+    background: #fff; border-radius: 12px; width: 100%; max-width: 620px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+}
+.guide-modal .modal-header {
+    padding: 20px 24px; border-bottom: 1px solid #e2e8f0;
+    display: flex; justify-content: space-between; align-items: center;
+    background: #f0f9ff; border-radius: 12px 12px 0 0;
+}
+.guide-modal .modal-header h3 { margin: 0; font-size: 18px; color: #0369a1; }
+.guide-modal .modal-close {
+    background: none; border: none; font-size: 24px; color: #94a3b8;
+    cursor: pointer; padding: 4px 8px;
+}
+.guide-modal .modal-close:hover { color: #334155; }
+.guide-modal .modal-body { padding: 24px; max-height: 70vh; overflow-y: auto; }
+.guide-modal .info-section { margin-bottom: 20px; }
+.guide-modal .info-section:last-child { margin-bottom: 0; }
+.guide-modal .info-section h4 {
+    margin: 0 0 6px; font-size: 14px; color: #0f172a;
+    display: flex; align-items: center; gap: 8px;
+}
+.guide-modal .info-section p {
+    margin: 0; font-size: 13px; color: #475569; line-height: 1.6;
+}
+.guide-modal .info-section ul {
+    margin: 6px 0 0; padding-left: 20px; font-size: 13px;
+    color: #475569; line-height: 1.6;
+}
+.guide-modal .info-section ul li { margin-bottom: 4px; }
+.guide-modal .info-section .kbd {
+    display: inline-block; padding: 1px 6px; border: 1px solid #d1d5db;
+    border-radius: 3px; background: #f3f4f6; font-size: 12px;
+    font-family: monospace; color: #374151;
+}
+
+/* Signal Queue */
+.signal-queue {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 20px;
+}
+.signal-queue h3 { margin: 0 0 12px; font-size: 15px; color: #991b1b; }
+.signal-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid #fee2e2;
+}
+.signal-item:last-child { border-bottom: none; }
+.signal-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+}
+.signal-badge.renewal_gap { background: #dc2626; color: #fff; }
+.signal-badge.churned { background: #991b1b; color: #fff; }
+.signal-badge.declining { background: #ea580c; color: #fff; }
+.signal-badge.gone_quiet { background: #d97706; color: #fff; }
+.signal-badge.new_account { background: #059669; color: #fff; }
+.signal-badge.growing { background: #2563eb; color: #fff; }
+.signal-aging {
+    font-size: 12px; font-weight: 600; min-width: 40px;
+    text-align: center;
+}
+.signal-aging.normal { color: #6b7280; }
+.signal-aging.warning { color: #d97706; }
+.signal-aging.critical { color: #dc2626; }
+.signal-info { flex: 1; min-width: 0; }
+.signal-info .entity-link {
+    font-weight: 500; color: #2e3440; cursor: pointer;
+    text-decoration: underline; text-decoration-color: #d8dee9;
+}
+.signal-info .entity-link:hover { color: #5e81ac; }
+.signal-info .signal-label { font-size: 13px; color: #6b7280; }
+.signal-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.signal-actions button {
+    padding: 4px 10px; border-radius: 4px; border: 1px solid #d1d5db;
+    background: #fff; font-size: 12px; cursor: pointer;
+}
+.signal-actions button:hover { background: #f3f4f6; }
+.snooze-form {
+    display: none; padding: 10px; background: #fffbeb;
+    border: 1px solid #fde68a; border-radius: 6px; margin-top: 8px;
+}
+.snooze-form input, .snooze-form textarea {
+    padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px;
+    font-size: 13px; width: 100%; box-sizing: border-box;
+}
+.snooze-form textarea { height: 40px; resize: vertical; }
+.snooze-form .snooze-form-actions {
+    display: flex; gap: 6px; margin-top: 6px;
+}
+
+/* Health Score */
+.health-dot {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%;
+    font-size: 11px; font-weight: 700; color: #fff;
+}
+.health-dot.green { background: #38a169; }
+.health-dot.yellow { background: #d69e2e; }
+.health-dot.red { background: #e53e3e; }
+
+/* Tier Badge */
+.tier-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+}
+.tier-badge.tier-A { background: #ebf8ff; color: #2b6cb0; border: 1px solid #bee3f8; }
+.tier-badge.tier-B { background: #f0fff4; color: #276749; border: 1px solid #c6f6d5; }
+.tier-badge.tier-C { background: #f7fafc; color: #718096; border: 1px solid #e2e8f0; }
+
+/* Touch Status */
+.touch-status { font-weight: 500; }
+.touch-green { color: #38a169; }
+.touch-yellow { color: #d69e2e; }
+.touch-red { color: #e53e3e; }
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .summary-bar { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
+    .summary-bar { grid-template-columns: repeat(2, 1fr); }
+    .detail-overlay { width: 100%; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crm-container">
+
+    {% if is_admin %}
+    <div class="ae-selector">
+        <label style="font-weight:600; color:#4a5568; font-size:14px;">
+            AE:
+        </label>
+        <select id="ae-select" onchange="switchAe(this.value)">
+            <option value="">All AEs</option>
+            {% for ae in ae_list %}
+            <option value="{{ ae }}"
+                {% if selected_ae == ae %}selected{% endif %}>
+                {{ ae }}
+            </option>
+            {% endfor %}
+        </select>
+        <button class="guide-btn" onclick="document.getElementById('guide-modal').classList.add('active')" title="How this page works">?</button>
+    </div>
+    {% else %}
+    <div style="text-align:right; margin-bottom:8px;">
+        <button class="guide-btn" onclick="document.getElementById('guide-modal').classList.add('active')" title="How this page works">?</button>
+    </div>
+    {% endif %}
+
+    <!-- Summary Bar -->
+    <div class="summary-bar" id="summary-bar">
+        <div class="stat-card">
+            <div class="stat-value" id="stat-accounts">-</div>
+            <div class="stat-label">Active Accounts</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-revenue">-</div>
+            <div class="stat-label">Trailing 12-Mo Revenue</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-signals">-</div>
+            <div class="stat-label">Need Attention</div>
+        </div>
+        <div class="stat-card" id="card-followups">
+            <div class="stat-value" id="stat-followups">-</div>
+            <div class="stat-label">Open Follow-ups
+                <span id="stat-overdue-label" style="display:none;">
+                    (<span id="stat-overdue" style="color:#e53e3e;"></span> overdue)
+                </span>
+            </div>
+        </div>
+        <div class="stat-card" id="card-at-risk">
+            <div class="stat-value" id="stat-at-risk" style="color:#dc2626;">-</div>
+            <div class="stat-label">Revenue At Risk</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-compliance">-</div>
+            <div class="stat-label">Touch Compliance</div>
+        </div>
+    </div>
+
+    <!-- Signal Queue -->
+    <div class="signal-queue" id="signal-queue" style="display:none;">
+        <h3>Signals Requiring Action
+            <span id="signal-queue-count" style="font-weight:400; color:#991b1b;"></span>
+        </h3>
+        <div id="signal-queue-list"></div>
+    </div>
+
+    <!-- Action Items (hidden when empty) -->
+    <div class="action-items" id="action-items" style="display:none;">
+        <h3>Action Items</h3>
+        <div id="action-items-list"></div>
+    </div>
+
+    <!-- Accounts Table -->
+    <div class="accounts-section">
+        <h3>Accounts
+            <span id="accounts-count"
+                  style="font-weight:400; color:#718096;"></span>
+        </h3>
+        <input type="text" class="search-bar" id="account-search"
+               placeholder="Search accounts...">
+        <table class="accounts-table">
+            <thead>
+                <tr>
+                    <th data-sort="entity_name">Name</th>
+                    <th data-sort="entity_type">Type</th>
+                    <th data-sort="health_score">Health</th>
+                    <th data-sort="tier">Tier</th>
+                    <th data-sort="signal_priority">Signal</th>
+                    <th data-sort="trailing_revenue">Revenue</th>
+                    <th data-sort="days_since_touch">Touch</th>
+                    <th data-sort="next_follow_up_date">Follow-up</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="accounts-tbody"></tbody>
+        </table>
+        <div class="empty-state" id="accounts-empty" style="display:none;">
+            <p>No accounts assigned. Contact your manager.</p>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="recent-activity">
+        <h3>Recent Activity</h3>
+        <div id="recent-activity-list">
+            <div class="empty-state">
+                <p>No activity yet. Log your first note or call.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Guide Modal -->
+<div class="modal-overlay" id="guide-modal">
+  <div class="guide-modal">
+    <div class="modal-header">
+      <h3>My Accounts &mdash; Quick Guide</h3>
+      <button class="modal-close" onclick="document.getElementById('guide-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What Is This Page?</h4>
+        <p>My Accounts is your CRM dashboard &mdash; a single view of every customer and agency in your book of business. It shows account health signals, revenue snapshots, follow-up reminders, and a running activity log so nothing falls through the cracks.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Summary Bar</h4>
+        <p>The five cards at the top show your totals at a glance:</p>
+        <ul>
+          <li><strong>Active Accounts</strong> &mdash; how many customers and agencies are assigned to you</li>
+          <li><strong>Trailing 12-Mo Revenue</strong> &mdash; combined booked revenue for the last 12 broadcast months (excludes Trade)</li>
+          <li><strong>Need Attention</strong> &mdash; accounts with a signal (churned, gone quiet, growing, etc.)</li>
+          <li><strong>Open Follow-ups</strong> &mdash; incomplete follow-up tasks; overdue count shown in orange when &gt; 0</li>
+          <li><strong>Revenue At Risk</strong> &mdash; total trailing revenue from accounts with negative signals (churned, declining, gone quiet, renewal gap)</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <h4>Action Items</h4>
+        <p>Overdue and due-today follow-ups appear in the amber banner. Click an account name to open its detail panel, or click <strong>Complete</strong> to mark a follow-up done. The banner hides when there&rsquo;s nothing urgent.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Signal Queue</h4>
+        <p>Signals are automatically generated alerts about account health changes.
+        They appear at the top of your page when accounts need attention.</p>
+        <p><strong>Signal types:</strong> Churned (lost all revenue), Declining (revenue dropping),
+        Gone Quiet (no recent activity), Renewal Gap (upcoming revenue drop-off),
+        New Account (recently started), Growing (revenue increasing).</p>
+        <p><strong>Aging colors:</strong> Gray = 0-3 days, Yellow = 4-7 days, Red = 8+ days.</p>
+        <p><strong>Actions:</strong></p>
+        <ul>
+            <li><strong>Log activity</strong> (note, call, email, meeting) on the account &mdash;
+                signals auto-acknowledge when you work the account</li>
+            <li><strong>Snooze</strong> &mdash; defer with a reason and date (e.g., seasonal pattern)</li>
+            <li><strong>Dismiss</strong> &mdash; mark as not actionable with a reason</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <h4>Accounts Table</h4>
+        <p>Every active account assigned to you, sortable by any column header. Click an account name to open the detail panel. Use the search bar to filter by name.</p>
+        <ul>
+          <li><strong>Signal</strong> &mdash; colored badge when the system detects a pattern (e.g., Churned, Gone Quiet, Growing). No badge means the account is steady.</li>
+          <li><strong>Trailing Revenue</strong> &mdash; last 12 months of booked revenue for that account</li>
+          <li><strong>Last Activity</strong> &mdash; most recent note, call, email, or meeting you logged</li>
+          <li><strong>Next Follow-up</strong> &mdash; earliest open follow-up date</li>
+          <li><strong>+ Log</strong> &mdash; shortcut to open the detail panel and log activity</li>
+        </ul>
+      </div>
+
+      <div class="info-section">
+        <h4>Health Score</h4>
+        <p>Each account gets a health score (0-100) based on four factors:</p>
+        <ul>
+          <li><strong>Revenue Trend (30%)</strong> &mdash; how trailing 3 months compare to prior 3 months</li>
+          <li><strong>Signal State (25%)</strong> &mdash; what signal the system has detected (churned = 0, growing = 100)</li>
+          <li><strong>Last Touch (25%)</strong> &mdash; days since your last note, call, email, or meeting</li>
+          <li><strong>Follow-up Compliance (20%)</strong> &mdash; any overdue follow-up drops this to zero</li>
+        </ul>
+        <p>Colors: <span style="color:#38a169;">green (70-100)</span>, <span style="color:#d69e2e;">yellow (40-69)</span>, <span style="color:#e53e3e;">red (0-39)</span>. Accounts sort by health score (worst first) so you focus where it matters.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Account Tiers &amp; Touch Cadence</h4>
+        <p>Accounts are auto-tiered by trailing 12-month revenue within your book:</p>
+        <ul>
+          <li><strong>A (top 20%)</strong> &mdash; touch every 7 days</li>
+          <li><strong>B (middle 40%)</strong> &mdash; touch every 14 days</li>
+          <li><strong>C (bottom 40%)</strong> &mdash; touch every 30 days</li>
+        </ul>
+        <p>The &ldquo;Touch&rdquo; column shows days since your last touch, colored green/yellow/red against the tier cadence. Touch Compliance in the summary bar shows what percentage of your accounts are within their cadence window.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Detail Panel</h4>
+        <p>The slide-out panel on the right has three tabs:</p>
+        <ul>
+          <li><strong>Activity</strong> &mdash; log notes, calls, emails, and meetings. Add a follow-up date to any entry to create a reminder. Full activity timeline below the form.</li>
+          <li><strong>Info</strong> &mdash; primary contact, sectors, agency, markets, and assigned AE. Data comes from the Address Book.</li>
+          <li><strong>Revenue</strong> &mdash; bar chart of monthly booked revenue for the last 12 months. Useful for spotting trends before they become signals.</li>
+        </ul>
+        <p>Press <span class="kbd">Esc</span> to close the panel. It remembers which account you had open if you navigate away and come back.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Recent Activity</h4>
+        <p>The feed at the bottom shows the last 15 activities logged across all your accounts &mdash; a quick way to see what&rsquo;s been happening without clicking into each one.</p>
+      </div>
+
+      {% if is_admin %}
+      <div class="info-section">
+        <h4>Admin / Management View</h4>
+        <p>The AE dropdown at the top lets you view any AE&rsquo;s book. Select &ldquo;All AEs&rdquo; to see every active account across the team. Stats, action items, and activity all scope to the selected AE.</p>
+      </div>
+      {% endif %}
+
+      <div class="info-section">
+        <h4>Tips</h4>
+        <ul>
+          <li>Log activity right after a call or email &mdash; keeps the timeline accurate and builds a history for handoffs</li>
+          <li>Use follow-ups liberally &mdash; they surface in Action Items when they&rsquo;re due so you don&rsquo;t have to remember</li>
+          <li>Check the Signal column daily &mdash; churned and gone-quiet accounts need proactive outreach</li>
+          <li>Click a customer name in the detail panel&rsquo;s header for the full Customer Detail report with contract-level data</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Panel -->
+<div class="detail-overlay" id="detail-panel">
+    <div class="detail-header">
+        <button class="close-btn" onclick="closeDetail()">&times;</button>
+        <h2 id="detail-name"></h2>
+        <div id="detail-badges"></div>
+        <a id="detail-link" href="#"
+           style="font-size:13px; color:#2b6cb0;">
+            View Full Detail &rarr;
+        </a>
+    </div>
+    <div class="detail-tabs">
+        <div class="detail-tab active" data-tab="activity"
+             onclick="switchTab('activity')">Activity</div>
+        <div class="detail-tab" data-tab="info"
+             onclick="switchTab('info')">Info</div>
+        <div class="detail-tab" data-tab="revenue"
+             onclick="switchTab('revenue')">Revenue</div>
+    </div>
+    <div class="detail-body" id="detail-body">
+        <!-- Tab content loaded dynamically -->
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const CRM_AE_NAME = {{ ae_name | tojson }};
+</script>
+<script src="/static/js/ae_my_accounts.js"></script>
+{% endblock %}

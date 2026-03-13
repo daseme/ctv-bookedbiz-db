@@ -580,6 +580,12 @@
                         <div class="nav-dropdown-item-title">Management Performance</div>
                         <div class="nav-dropdown-item-desc">Quarterly performance with budget pacing and YoY</div>
                     </a>
+                    {% if current_user.is_authenticated and current_user.role.value in ('admin', 'management') %}
+                    <a href="/manager/dashboard" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Manager Dashboard</div>
+                        <div class="nav-dropdown-item-desc">Cross-AE scoreboard, attention items, activity</div>
+                    </a>
+                    {% endif %}
                     <a href="/reports/monthly/revenue-summary" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">Monthly Revenue Summary</div>
                         <div class="nav-dropdown-item-desc">Monthly revenue overview and trends</div>
@@ -637,6 +643,10 @@
                         <a href="/reports/customer-sector-manager" class="nav-dropdown-item">
                             <div class="nav-dropdown-item-title">Customer Sector Manager</div>
                             <div class="nav-dropdown-item-desc">Manage customer sector assignments</div>
+                        </a>
+                        <a href="/reports/revenue-classification-manager" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Revenue Classification</div>
+                            <div class="nav-dropdown-item-desc">Manage regular vs irregular revenue</div>
                         </a>
                     </div>
                 </div>
@@ -767,6 +777,7 @@
                 '/address-book': 'datamanagement',
                 '/stale-customers': 'datamanagement',
                 '/reports/customer-sector-manager': 'datamanagement',
+                '/reports/revenue-classification-manager': 'datamanagement',
                 '/planning/': 'budgeting',
                 '/planning/budget': 'budgeting',
                 '/users/': 'admin',

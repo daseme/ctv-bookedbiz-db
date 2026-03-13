@@ -1,6 +1,36 @@
 # Active Tasks
 
-## Tailscale MagicDNS Rename: pi-ctv → spotops
+## AE My Accounts — Phase 4 (Address Book Refactor)
+
+**Status: DEBUGGING — page loads but data doesn't populate**
+**Branch:** `refactor/address-book-service-extraction`
+
+All code is committed (9 commits `cbcb059..9e8fdb0`). Backend verified:
+- [x] Service layer (AeCrmService) — 15 tests pass
+- [x] Activity extensions (AE filter, recent activity) — 15 tests pass
+- [x] Routes registered, correct HTTP codes (302/401 unauthenticated)
+- [x] Factory registration confirmed
+- [x] Blueprint registration confirmed
+- [x] **BUG: Data doesn't populate in browser** — FIXED: template used `{% block extra_scripts %}` but base.html defines `{% block extra_js %}`. Scripts never loaded. (commit e903410)
+
+**Key files:**
+- Service: `src/services/ae_crm_service.py`
+- Routes: `src/web/routes/ae_crm.py`
+- Template: `src/web/templates/ae_my_accounts.html`
+- JS: `src/web/static/js/ae_my_accounts.js`
+- Tests: `tests/services/test_ae_crm_service.py`, `tests/services/test_activity_service.py`
+
+**To debug:** Check browser console for JS errors. Likely causes:
+1. API fetch URLs not matching routes (check window.location.search passthrough)
+2. DOM element IDs in template don't match JS selectors
+3. CRM_AE_NAME variable not set correctly for non-admin users
+4. JSON response shape doesn't match what JS expects
+
+---
+
+---
+
+## Tailscale MagicDNS Rename: pi-ctv -> spotops
 
 **Status: NEARLY COMPLETE** (2026-03-04)
 

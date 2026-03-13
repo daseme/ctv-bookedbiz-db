@@ -1,12 +1,18 @@
 {% extends "base.html" %}
+{% from "macros/breadcrumbs.html" import breadcrumb_trail %}
 
 {% block title %}{{ page_title }}{% endblock %}
 
 {% block breadcrumb %}
-<span class="breadcrumb-separator">›</span>
-<span>Reporting</span>
-<span class="breadcrumb-separator">›</span>
-<span class="breadcrumb-current">Customer Detail</span>
+{% if from_page == 'address-book' %}
+{{ breadcrumb_trail([("Data Management", ""), ("Address Book", "/address-book")], report.summary.normalized_name) }}
+{% elif from_page == 'ae-dashboard' %}
+{{ breadcrumb_trail([("Reporting", ""), ("AE Dashboard", "/ae-dashboard")], report.summary.normalized_name) }}
+{% elif from_page == 'customer-merge' %}
+{{ breadcrumb_trail([("Data Management", ""), ("Customer Merge", "/customer-merge")], report.summary.normalized_name) }}
+{% else %}
+{{ breadcrumb_trail([("Reporting", "/reports")], "Customer Detail") }}
+{% endif %}
 {% endblock %}
 
 {% block header_title %}{{ report.summary.normalized_name }}{% endblock %}
@@ -430,7 +436,15 @@
 {% endblock %}
 
 {% block content %}
+{% if from_page == 'address-book' %}
+<a href="/address-book" class="back-link">← Back to Address Book</a>
+{% elif from_page == 'ae-dashboard' %}
+<a href="/ae-dashboard" class="back-link">← Back to AE Dashboard</a>
+{% elif from_page == 'customer-merge' %}
+<a href="/customer-merge" class="back-link">← Back to Customer Merge</a>
+{% else %}
 <a href="javascript:history.back()" class="back-link">← Back</a>
+{% endif %}
 
 <form method="GET" class="date-filter-bar">
     <label for="start_date">Start Date:</label>

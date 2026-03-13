@@ -22,6 +22,7 @@ def customer_detail(customer_id: int):
     
     start_date = request.args.get("start_date", "")
     end_date = request.args.get("end_date", "")
+    from_page = request.args.get("from", "")
 
     with db.connection() as conn:
         service = CustomerDetailService(conn)
@@ -37,6 +38,7 @@ def customer_detail(customer_id: int):
         report=report,
         start_date=start_date,
         end_date=end_date,
+        from_page=from_page,
         page_title=f"Customer: {report.summary.normalized_name}",
     )
 
@@ -45,18 +47,20 @@ def customer_detail(customer_id: int):
 def customer_monthly_trend_api(customer_id: int):
     """API endpoint for monthly trend chart data."""
     from flask import jsonify
-    
-    db = current_app.extensions.get('db')
-    if not db:
-        return jsonify({"error": "Database not available"}), 500
-    
+
+    try:
+        container = get_container()
+        db = container.get('database_connection')
+    except Exception as e:
+        return jsonify({"error": f"Database not available: {e}"}), 500
+
     with db.connection() as conn:
         service = CustomerDetailService(conn)
         trend = service._get_monthly_trend(customer_id, months=36)
-    
+
     return jsonify({
         "labels": [m.broadcast_month for m in trend],
         "gross": [float(m.gross_revenue) for m in trend],
         "net": [float(m.net_revenue) for m in trend],
-        "spots": [m.spot_count for m in trend]
+        "spots": [m.spot_count for m in trend],
     })
