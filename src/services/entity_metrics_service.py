@@ -85,6 +85,16 @@ class EntityMetricsService(BaseService):
     def refresh_signals(self, conn):
         """Delete and recompute all entity signals from spots."""
         self.ensure_cache_tables(conn)
+
+        # Snapshot current signals before delete
+        before_snapshot = {
+            (r["entity_type"], r["entity_id"], r["signal_type"])
+            for r in conn.execute(
+                "SELECT entity_type, entity_id, signal_type"
+                " FROM entity_signals"
+            ).fetchall()
+        }
+
         conn.execute("DELETE FROM entity_signals")
 
         signal_query = """
@@ -148,6 +158,26 @@ class EntityMetricsService(BaseService):
             """, rows_to_insert)
 
         self._compute_renewal_gap_signals(conn)
+
+        # Build AE lookup for signal action assignment
+        ae_rows = conn.execute("""
+            SELECT 'agency' AS entity_type, agency_id AS entity_id,
+                   assigned_ae
+            FROM agencies WHERE is_active = 1 AND assigned_ae IS NOT NULL
+            UNION ALL
+            SELECT 'customer' AS entity_type, customer_id AS entity_id,
+                   assigned_ae
+            FROM customers WHERE is_active = 1 AND assigned_ae IS NOT NULL
+        """).fetchall()
+        ae_lookup = {
+            (r["entity_type"], r["entity_id"]): r["assigned_ae"]
+            for r in ae_rows
+        }
+
+        # Sync signal actions with refreshed signals
+        from src.services.signal_action_service import SignalActionService
+        svc = SignalActionService(self.db_connection)
+        svc.sync_from_signals(conn, before_snapshot, ae_lookup)
 
     def _compute_signals_for_row(self, entity_type, row, rows_to_insert):
         """Evaluate all signal rules for one entity row."""

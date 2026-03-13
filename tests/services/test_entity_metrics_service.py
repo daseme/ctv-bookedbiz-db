@@ -15,13 +15,15 @@ SCHEMA = """
 CREATE TABLE agencies (
     agency_id INTEGER PRIMARY KEY,
     agency_name TEXT UNIQUE,
-    is_active INTEGER DEFAULT 1
+    is_active INTEGER DEFAULT 1,
+    assigned_ae TEXT
 );
 CREATE TABLE customers (
     customer_id INTEGER PRIMARY KEY,
     normalized_name TEXT UNIQUE,
     agency_id INTEGER,
-    is_active INTEGER DEFAULT 1
+    is_active INTEGER DEFAULT 1,
+    assigned_ae TEXT
 );
 CREATE TABLE spots (
     spot_id INTEGER PRIMARY KEY,
@@ -55,6 +57,20 @@ CREATE TABLE entity_signals (
     prior_revenue REAL,
     computed_at TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (entity_type, entity_id, signal_type)
+);
+CREATE TABLE signal_actions (
+    action_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL CHECK (entity_type IN ('customer', 'agency')),
+    entity_id INTEGER NOT NULL,
+    signal_type TEXT NOT NULL,
+    assigned_ae TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'new'
+        CHECK (status IN ('new', 'acknowledged', 'snoozed', 'dismissed')),
+    reason TEXT,
+    snooze_until DATE,
+    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_by TEXT
 );
 """
 
