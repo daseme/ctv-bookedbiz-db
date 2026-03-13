@@ -109,6 +109,61 @@ def api_recent_activity():
         )
 
 
+@ae_crm_bp.route("/api/ae/my-accounts/signal-queue")
+@role_required(UserRole.AE)
+def api_signal_queue():
+    """Return signal action queue for the current AE."""
+    ae_name, _, _, _ = _resolve_ae_name()
+    if not ae_name:
+        return jsonify([])
+    signal_svc = _svc("signal_action_service")
+    with _db().connection() as conn:
+        return jsonify(signal_svc.get_queue(conn, ae_name=ae_name))
+
+
+@ae_crm_bp.route(
+    "/api/ae/my-accounts/signal-queue/<int:action_id>/snooze",
+    methods=["POST"],
+)
+@role_required(UserRole.AE)
+def api_snooze_signal(action_id):
+    """Snooze a signal action."""
+    data = request.get_json(silent=True) or {}
+    reason = data.get("reason", "")
+    snooze_until = data.get("snooze_until", "")
+    if not snooze_until:
+        return jsonify({"error": "snooze_until date is required"}), 400
+    signal_svc = _svc("signal_action_service")
+    with _db().connection() as conn:
+        result = signal_svc.snooze_action(
+            conn, action_id, reason, snooze_until,
+            updated_by=current_user.full_name,
+        )
+        if "error" in result:
+            return jsonify(result), result.get("status", 400)
+        return jsonify(result)
+
+
+@ae_crm_bp.route(
+    "/api/ae/my-accounts/signal-queue/<int:action_id>/dismiss",
+    methods=["POST"],
+)
+@role_required(UserRole.AE)
+def api_dismiss_signal(action_id):
+    """Dismiss a signal action."""
+    data = request.get_json(silent=True) or {}
+    reason = data.get("reason", "")
+    signal_svc = _svc("signal_action_service")
+    with _db().connection() as conn:
+        result = signal_svc.dismiss_action(
+            conn, action_id, reason,
+            updated_by=current_user.full_name,
+        )
+        if "error" in result:
+            return jsonify(result), result.get("status", 400)
+        return jsonify(result)
+
+
 @ae_crm_bp.route(
     "/api/ae/my-accounts/<entity_type>/<int:entity_id>/revenue-trend"
 )
