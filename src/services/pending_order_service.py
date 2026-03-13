@@ -34,7 +34,11 @@ class PendingOrderService:
             logger.warning("Could not list IO path %s: %s", self.io_path, exc)
             return []
 
+        skip_folders = {"traffic only"}
+
         for ae_name in ae_names:
+            if ae_name.lower() in skip_folders:
+                continue
             ae_path = os.path.join(self.io_path, ae_name)
             if not os.path.isdir(ae_path):
                 continue
