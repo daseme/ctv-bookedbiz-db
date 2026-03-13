@@ -9,8 +9,8 @@
   let chart = null;
   let allCustomers = [];
   let allSectors = [];
-  let sortCol = 'current_year_revenue';
-  let sortAsc = false;
+  let sortCol = 'name';
+  let sortAsc = true;
 
   const yearSel = $('#year-select');
   const sectorSel = $('#sector-filter');

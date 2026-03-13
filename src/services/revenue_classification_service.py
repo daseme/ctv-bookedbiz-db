@@ -7,9 +7,22 @@ MONTH_ABBREVS = [
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ]
 
-YEAR_EXTRACT = "CAST('20' || SUBSTR(s.broadcast_month, 5, 2) AS INTEGER)"
-
 TRADE_FILTER = "(s.revenue_type != 'Trade' OR s.revenue_type IS NULL)"
+
+
+def _bm_values(year):
+    """Return list of broadcast_month values for a given year."""
+    yy = str(year)[-2:]
+    return [f"{m}-{yy}" for m in MONTH_ABBREVS]
+
+
+def _bm_placeholders(year, prefix):
+    """Return (sql_fragment, params_dict) for broadcast_month IN clause."""
+    values = _bm_values(year)
+    keys = [f"{prefix}_{i}" for i in range(12)]
+    sql = ", ".join(f":{k}" for k in keys)
+    params = dict(zip(keys, values))
+    return f"s.broadcast_month IN ({sql})", params
 
 VALID_CLASSES = ("regular", "irregular")
 
@@ -60,12 +73,13 @@ class RevenueClassificationService(BaseService):
             unclassified_count, monthly list, available_years list.
         """
         filters = filters or {}
+        bm_sql, bm_params = _bm_placeholders(year, "bm")
         where_clauses = [
             "s.customer_id IS NOT NULL",
             TRADE_FILTER,
-            f"{YEAR_EXTRACT} = :year",
+            bm_sql,
         ]
-        params = {"year": year}
+        params = {**bm_params}
 
         if filters.get("sector_id"):
             where_clauses.append("c.sector_id = :sector_id")
@@ -124,13 +138,12 @@ class RevenueClassificationService(BaseService):
             "WHERE is_active = 1 AND revenue_class IS NULL"
         ).fetchone()["cnt"]
 
-        year_rows = conn.execute(f"""
-            SELECT DISTINCT {YEAR_EXTRACT} AS yr
-            FROM spots s
-            WHERE s.customer_id IS NOT NULL AND {TRADE_FILTER}
-            ORDER BY yr
-        """).fetchall()
-        available_years = [r["yr"] for r in year_rows]
+        year_rows = conn.execute(
+            "SELECT DISTINCT SUBSTR(broadcast_month, 5, 2) AS yy "
+            "FROM spots WHERE customer_id IS NOT NULL "
+            "ORDER BY yy"
+        ).fetchall()
+        available_years = [2000 + int(r["yy"]) for r in year_rows]
 
         sectors = self.get_sectors(conn)
 
@@ -158,8 +171,10 @@ class RevenueClassificationService(BaseService):
             prior_year_revenue, yoy_dollar, yoy_pct.
         """
         filters = filters or {}
+        cy_sql, cy_params = _bm_placeholders(year, "cy")
+        py_sql, py_params = _bm_placeholders(year - 1, "py")
         cust_where = ["c.is_active = 1"]
-        params = {"year": year, "prior_year": year - 1}
+        params = {**cy_params, **py_params}
 
         if filters.get("sector_id"):
             cust_where.append("c.sector_id = :sector_id")
@@ -195,14 +210,14 @@ class RevenueClassificationService(BaseService):
                 SELECT s.customer_id, SUM(s.gross_rate) AS rev
                 FROM spots s
                 WHERE {spot_filter}
-                  AND {YEAR_EXTRACT} = :year
+                  AND {cy_sql}
                 GROUP BY s.customer_id
             ) cy ON c.customer_id = cy.customer_id
             LEFT JOIN (
                 SELECT s.customer_id, SUM(s.gross_rate) AS rev
                 FROM spots s
                 WHERE {spot_filter}
-                  AND {YEAR_EXTRACT} = :prior_year
+                  AND {py_sql}
                 GROUP BY s.customer_id
             ) py ON c.customer_id = py.customer_id
             WHERE {cust_filter}
