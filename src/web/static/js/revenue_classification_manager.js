@@ -52,19 +52,19 @@
   }
 
   function populateYears(years) {
-    const cur = yearSel.value;
-    if (yearSel.options.length <= 1 || yearSel.options[0].text === 'Loading...') {
+    const isInitial = yearSel.options.length <= 1 || yearSel.options[0].text === 'Loading...';
+    const cur = isInitial ? null : parseInt(yearSel.value, 10);
+    if (isInitial) {
       yearSel.innerHTML = '';
       const now = new Date().getFullYear();
       const defaultYear = years.includes(now) ? now : years[years.length - 1];
       years.forEach((y) => {
         const opt = new Option(y, y);
-        if (y === defaultYear && !cur) opt.selected = true;
+        if (y === defaultYear) opt.selected = true;
         yearSel.appendChild(opt);
       });
-      if (cur && years.includes(parseInt(cur, 10))) {
-        yearSel.value = cur;
-      }
+    } else if (cur && years.includes(cur)) {
+      yearSel.value = cur;
     }
     const yr = currentYear();
     const thCur = $('#th-current-year');
