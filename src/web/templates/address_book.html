@@ -1367,21 +1367,38 @@
       filtered = filtered.filter(r => r.contact_count === 0);
     }
 
-    // Sector filter — match against sector_ids (comma-separated string of all assigned sector IDs)
+    // Sector filter — match customers by sector, keep agencies that parent a matched customer
     if (sectorFilter) {
       const sid = sectorFilter;
-      filtered = filtered.filter(r => {
+      const matchedCustomers = filtered.filter(r => {
         if (r.entity_type !== 'customer') return false;
         const ids = (r.sector_ids || '').split(',');
         return ids.includes(sid);
       });
+      const parentAgencyIds = new Set(matchedCustomers.map(c => c.agency_id).filter(Boolean));
+      filtered = filtered.filter(r => {
+        if (r.entity_type === 'customer') {
+          const ids = (r.sector_ids || '').split(',');
+          return ids.includes(sid);
+        }
+        return parentAgencyIds.has(r.entity_id);
+      });
     }
 
-    // Market filter
+    // Market filter — keep agencies that parent a matched customer
     if (marketFilter) {
-      filtered = filtered.filter(r => {
+      const marketMatched = filtered.filter(r => {
         const markets = (r.markets || '').split(',');
         return markets.includes(marketFilter);
+      });
+      const marketParentIds = new Set(
+        marketMatched.filter(r => r.entity_type === 'customer' && r.agency_id)
+          .map(c => c.agency_id)
+      );
+      filtered = filtered.filter(r => {
+        const markets = (r.markets || '').split(',');
+        if (markets.includes(marketFilter)) return true;
+        return r.entity_type === 'agency' && marketParentIds.has(r.entity_id);
       });
     }
 
@@ -1394,15 +1411,25 @@
       }
     }
 
-    // Signal filter
+    // Signal filter — keep agencies that parent a matched customer
     if (signalFilter) {
+      let signalMatched;
       if (signalFilter === 'attention') {
-        filtered = filtered.filter(r => r.signals?.some(s => NEGATIVE_SIGNALS.includes(s.signal_type)));
+        signalMatched = filtered.filter(r => r.signals?.some(s => NEGATIVE_SIGNALS.includes(s.signal_type)));
       } else if (signalFilter === 'clean') {
-        filtered = filtered.filter(r => !r.signals || r.signals.length === 0);
+        signalMatched = filtered.filter(r => !r.signals || r.signals.length === 0);
       } else {
-        filtered = filtered.filter(r => r.signals?.some(s => s.signal_type === signalFilter));
+        signalMatched = filtered.filter(r => r.signals?.some(s => s.signal_type === signalFilter));
       }
+      const signalParentIds = new Set(
+        signalMatched.filter(r => r.entity_type === 'customer' && r.agency_id)
+          .map(c => c.agency_id)
+      );
+      filtered = signalMatched.concat(
+        filtered.filter(r => r.entity_type === 'agency'
+          && !signalMatched.includes(r)
+          && signalParentIds.has(r.entity_id))
+      );
     }
 
     // Sort
