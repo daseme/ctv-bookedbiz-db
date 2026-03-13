@@ -44,6 +44,7 @@ from src.web.routes.contacts import contacts_bp
 from src.web.routes.address_book import address_book_bp
 from src.web.routes.ae_crm import ae_crm_bp
 from src.web.routes.manager_dashboard import manager_bp
+from src.web.routes.revenue_classification import revenue_class_bp
 from src.web.routes.stale_customers import stale_customers_bp
 from src.web.routes.customer_merge import customer_merge_bp
 
@@ -139,6 +140,9 @@ def register_blueprints(app: Flask) -> None:
 
         app.register_blueprint(manager_bp)
         logger.info("Registered manager dashboard blueprint")
+
+        app.register_blueprint(revenue_class_bp)
+        logger.info("Registered revenue classification blueprint")
 
         register_template_filters(app)
         logger.info("Registered template filters")

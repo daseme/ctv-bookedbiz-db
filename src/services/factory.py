@@ -343,6 +343,8 @@ def initialize_services():
         container.register_singleton("manager_dashboard_service", create_manager_dashboard_service)
         print("✅ manager_dashboard_service registered")
 
+        container.register_singleton("revenue_classification_service", create_revenue_classification_service)
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -953,6 +955,15 @@ def create_manager_dashboard_service():
     container = get_container()
     db_connection = container.get("database_connection")
     return ManagerDashboardService(db_connection)
+
+
+def create_revenue_classification_service():
+    """Factory function for RevenueClassificationService."""
+    from src.services.revenue_classification_service import RevenueClassificationService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return RevenueClassificationService(db_connection)
 
 
 def register_critical_services(container):
