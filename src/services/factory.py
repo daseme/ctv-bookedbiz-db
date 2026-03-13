@@ -331,6 +331,10 @@ def initialize_services():
         container.register_singleton("ae_crm_service", create_ae_crm_service)
         print("✅ ae_crm_service registered")
 
+        print("🔧 Registering signal_action_service...")
+        container.register_singleton("signal_action_service", create_signal_action_service)
+        print("✅ signal_action_service registered")
+
         # List what got registered
         services = container.list_services()
         print(f"📋 Final registered services: {services}")
@@ -914,6 +918,15 @@ def create_user_service():
     except Exception as e:
         logger.error(f"Failed to create user service: {e}")
         raise ServiceCreationError(f"User service creation failed: {e}") from e
+
+
+def create_signal_action_service():
+    """Factory function for SignalActionService."""
+    from src.services.signal_action_service import SignalActionService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return SignalActionService(db_connection)
 
 
 def register_critical_services(container):
