@@ -1,6 +1,7 @@
 """Revenue Classification Manager routes and API."""
 
 import logging
+from datetime import date
 from flask import Blueprint, render_template, jsonify, request
 
 from src.models.users import UserRole
@@ -49,9 +50,7 @@ def revenue_classification_page():
 @role_required(UserRole.MANAGEMENT)
 def api_summary():
     """Return summary stats and monthly chart data."""
-    year = request.args.get("year", type=int)
-    if not year:
-        return jsonify({"error": "year parameter required"}), 400
+    year = request.args.get("year", type=int) or date.today().year
 
     svc = _svc()
     filters = _parse_filters()
@@ -63,9 +62,7 @@ def api_summary():
 @role_required(UserRole.MANAGEMENT)
 def api_customers():
     """Return customer list with revenue data."""
-    year = request.args.get("year", type=int)
-    if not year:
-        return jsonify({"error": "year parameter required"}), 400
+    year = request.args.get("year", type=int) or date.today().year
 
     svc = _svc()
     filters = _parse_filters()
