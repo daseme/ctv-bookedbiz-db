@@ -164,6 +164,18 @@ def api_dismiss_signal(action_id):
         return jsonify(result)
 
 
+@ae_crm_bp.route("/api/ae/my-accounts/health")
+@role_required(UserRole.AE)
+def api_health_scores():
+    """Return health scores with tiers for the current AE."""
+    ae_name, _, _, _ = _resolve_ae_name()
+    health_svc = _svc("health_score_service")
+    with _db().connection_ro() as conn:
+        return jsonify(
+            health_svc.get_health_with_tiers(conn, ae_name=ae_name)
+        )
+
+
 @ae_crm_bp.route(
     "/api/ae/my-accounts/<entity_type>/<int:entity_id>/revenue-trend"
 )
