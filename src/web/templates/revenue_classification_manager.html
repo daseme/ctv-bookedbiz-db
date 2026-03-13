@@ -39,6 +39,10 @@
   .cls-toggle.regular{background:#eff6ff;border-color:#93c5fd;color:#2563eb}
   .cls-toggle.irregular{background:#fffbeb;border-color:#fcd34d;color:#d97706}
   .cls-toggle:hover{filter:brightness(.95)}
+  @keyframes row-saved{0%{background:rgba(34,197,94,.18)}100%{background:transparent}}
+  @keyframes row-error{0%{background:rgba(239,68,68,.18)}100%{background:transparent}}
+  .rcm-table tr.flash-saved{animation:row-saved .8s ease-out}
+  .rcm-table tr.flash-error{animation:row-error .8s ease-out}
   .yoy-positive{color:#16a34a;font-weight:600}
   .yoy-negative{color:#dc2626;font-weight:600}
   .yoy-new{color:#64748b;font-style:italic}
