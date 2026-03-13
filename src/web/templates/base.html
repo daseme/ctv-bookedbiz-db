@@ -580,6 +580,12 @@
                         <div class="nav-dropdown-item-title">Management Performance</div>
                         <div class="nav-dropdown-item-desc">Quarterly performance with budget pacing and YoY</div>
                     </a>
+                    {% if current_user.is_authenticated and current_user.role.value in ('admin', 'management') %}
+                    <a href="/manager/dashboard" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Manager Dashboard</div>
+                        <div class="nav-dropdown-item-desc">Cross-AE scoreboard, attention items, activity</div>
+                    </a>
+                    {% endif %}
                     <a href="/reports/monthly/revenue-summary" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">Monthly Revenue Summary</div>
                         <div class="nav-dropdown-item-desc">Monthly revenue overview and trends</div>
