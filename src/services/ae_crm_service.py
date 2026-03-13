@@ -130,12 +130,37 @@ class AeCrmService(BaseService):
               {ae_filter}
         """, params).fetchone()
 
+        # Revenue at risk: sum of trailing_revenue for renewal_gap signals
+        signal_ae_filter = ""
+        signal_params = []
+        if ae_name:
+            signal_ae_filter = """
+                AND (
+                    (es.entity_type = 'customer' AND es.entity_id IN (
+                        SELECT customer_id FROM customers
+                        WHERE assigned_ae = ?))
+                    OR
+                    (es.entity_type = 'agency' AND es.entity_id IN (
+                        SELECT agency_id FROM agencies
+                        WHERE assigned_ae = ?))
+                )
+            """
+            signal_params = [ae_name, ae_name]
+
+        at_risk_row = conn.execute(f"""
+            SELECT COALESCE(SUM(es.trailing_revenue), 0) AS at_risk
+            FROM entity_signals es
+            WHERE es.signal_type = 'renewal_gap'
+              {signal_ae_filter}
+        """, signal_params).fetchone()
+
         return {
             "account_count": len(accounts),
             "trailing_revenue": trailing_revenue,
             "signal_count": signal_count,
             "follow_up_count": follow_up_row["total"] or 0,
             "overdue_count": follow_up_row["overdue"] or 0,
+            "revenue_at_risk": at_risk_row["at_risk"],
         }
 
     def get_revenue_trend(self, conn, entity_type, entity_id):

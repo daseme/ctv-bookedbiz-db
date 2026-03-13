@@ -198,6 +198,30 @@ class TestGetStats:
         assert stats["follow_up_count"] >= 1
         assert stats["overdue_count"] >= 1
 
+    def test_revenue_at_risk_sums_renewal_gaps(self, crm_service, crm_db):
+        with crm_db.connection() as conn:
+            conn.execute("""
+                INSERT INTO entity_signals
+                    (entity_type, entity_id, signal_type, signal_label,
+                     signal_priority, trailing_revenue, prior_revenue)
+                VALUES
+                    ('customer', 10, 'renewal_gap',
+                     'Renewal gap: $8,000 trailing, $0 forward',
+                     1, 8000, 0),
+                    ('customer', 11, 'renewal_gap',
+                     'Renewal gap: $3,000 trailing, $0 forward',
+                     1, 3000, 0)
+            """)
+            conn.commit()
+        with crm_db.connection_ro() as conn:
+            stats = crm_service.get_stats(conn, ae_name="Alice")
+        assert stats["revenue_at_risk"] == 11000
+
+    def test_revenue_at_risk_zero_when_no_gaps(self, crm_service, crm_db):
+        with crm_db.connection_ro() as conn:
+            stats = crm_service.get_stats(conn, ae_name="Alice")
+        assert stats["revenue_at_risk"] == 0
+
 
 class TestGetRevenueTrend:
     """Test revenue trend for an entity."""
