@@ -132,6 +132,8 @@ class RevenueClassificationService(BaseService):
         """).fetchall()
         available_years = [r["yr"] for r in year_rows]
 
+        sectors = self.get_sectors(conn)
+
         return {
             "regular_total": regular_total,
             "irregular_total": irregular_total,
@@ -139,6 +141,7 @@ class RevenueClassificationService(BaseService):
             "unclassified_count": unclassified,
             "monthly": monthly,
             "available_years": available_years,
+            "sectors": sectors,
         }
 
     def get_customers(self, conn, year, filters=None):
@@ -304,3 +307,41 @@ class RevenueClassificationService(BaseService):
             "UPDATE customers SET revenue_class = ? WHERE customer_id = ?",
             (revenue_class, customer_id),
         )
+
+    def update_sector(self, conn, customer_id, sector_id):
+        """Update a customer's sector assignment.
+
+        Args:
+            conn: sqlite3.Connection.
+            customer_id: Integer customer ID.
+            sector_id: Integer sector ID, or None to clear.
+
+        Raises:
+            ValueError: If customer not found or sector invalid.
+        """
+        row = conn.execute(
+            "SELECT customer_id FROM customers WHERE customer_id = ?",
+            (customer_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"Customer {customer_id} not found")
+
+        if sector_id is not None:
+            sec = conn.execute(
+                "SELECT sector_id FROM sectors WHERE sector_id = ?",
+                (sector_id,),
+            ).fetchone()
+            if not sec:
+                raise ValueError(f"Sector {sector_id} not found")
+
+        conn.execute(
+            "UPDATE customers SET sector_id = ? WHERE customer_id = ?",
+            (sector_id, customer_id),
+        )
+
+    def get_sectors(self, conn):
+        """Return all sectors as a list of {sector_id, sector_name} dicts."""
+        rows = conn.execute(
+            "SELECT sector_id, sector_name FROM sectors ORDER BY sector_name"
+        ).fetchall()
+        return [{"sector_id": r["sector_id"], "sector_name": r["sector_name"]} for r in rows]

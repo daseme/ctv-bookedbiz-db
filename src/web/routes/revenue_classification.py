@@ -76,18 +76,23 @@ def api_customers():
 )
 @role_required(UserRole.MANAGEMENT)
 def api_update_classification(customer_id):
-    """Update a customer's revenue classification."""
+    """Update a customer's revenue classification and/or sector."""
     data = request.get_json(silent=True) or {}
-    revenue_class = data.get("revenue_class", "").strip()
-
-    if revenue_class not in ("regular", "irregular"):
-        return jsonify({"error": "revenue_class must be 'regular' or 'irregular'"}), 400
 
     svc = _svc()
     with _db().connection() as conn:
         try:
-            svc.update_classification(conn, customer_id, revenue_class)
+            if "revenue_class" in data:
+                revenue_class = data["revenue_class"].strip()
+                if revenue_class not in ("regular", "irregular"):
+                    return jsonify({"error": "revenue_class must be 'regular' or 'irregular'"}), 400
+                svc.update_classification(conn, customer_id, revenue_class)
+
+            if "sector_id" in data:
+                sector_id = data["sector_id"]
+                svc.update_sector(conn, customer_id, sector_id)
+
             conn.commit()
-            return jsonify({"success": True, "revenue_class": revenue_class})
+            return jsonify({"success": True})
         except ValueError as e:
             return jsonify({"error": str(e)}), 404

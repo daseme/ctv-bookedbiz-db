@@ -6,6 +6,7 @@
 
   let chart = null;
   let allCustomers = [];
+  let allSectors = [];
   let sortCol = 'current_year_revenue';
   let sortAsc = false;
 
@@ -39,6 +40,7 @@
     renderSummary(summary);
     renderChart(summary.monthly);
     populateYears(summary.available_years);
+    if (summary.sectors) allSectors = summary.sectors;
     allCustomers = customers;
     populateFilterDropdowns(customers);
     renderTable();
@@ -77,17 +79,10 @@
     const curSector = sectorSel.value;
     const curAe = aeSel.value;
 
-    // Build unique sector (id, name) pairs and AE names
-    const sectorMap = new Map();
-    customers.forEach((c) => {
-      if (c.sector_id && c.sector_name) sectorMap.set(c.sector_id, c.sector_name);
-    });
     const aes = [...new Set(customers.map((c) => c.assigned_ae).filter(Boolean))].sort();
 
-    if (sectorSel.options.length <= 1) {
-      [...sectorMap.entries()]
-        .sort((a, b) => a[1].localeCompare(b[1]))
-        .forEach(([id, name]) => sectorSel.appendChild(new Option(name, id)));
+    if (sectorSel.options.length <= 1 && allSectors.length) {
+      allSectors.forEach((s) => sectorSel.appendChild(new Option(s.sector_name, s.sector_id)));
     }
     if (aeSel.options.length <= 1) {
       aes.forEach((a) => aeSel.appendChild(new Option(a, a)));
@@ -95,6 +90,15 @@
 
     if (curSector) sectorSel.value = curSector;
     if (curAe) aeSel.value = curAe;
+  }
+
+  function sectorOptions(selectedId) {
+    let html = '<option value="">--</option>';
+    allSectors.forEach((s) => {
+      const sel = s.sector_id === selectedId ? ' selected' : '';
+      html += `<option value="${s.sector_id}"${sel}>${esc(s.sector_name)}</option>`;
+    });
+    return html;
   }
 
   function renderChart(monthly) {
@@ -175,7 +179,7 @@
         (c) => `
       <tr>
         <td><a href="/address-book/customer/${c.customer_id}" class="customer-link">${esc(c.name)}</a></td>
-        <td>${esc(c.sector_name)}</td>
+        <td><select class="sector-select" data-id="${c.customer_id}" onchange="window._rcmSector(this)">${sectorOptions(c.sector_id)}</select></td>
         <td>
           <button class="cls-toggle ${c.revenue_class}"
             data-id="${c.customer_id}"
@@ -244,6 +248,38 @@
       btn.dataset.cls = oldCls;
       if (cust) cust.revenue_class = oldCls;
       console.error('Classification update failed:', e);
+    }
+  };
+
+  window._rcmSector = async function (sel) {
+    const id = sel.dataset.id;
+    const newSectorId = sel.value ? parseInt(sel.value, 10) : null;
+    const oldSectorId = sel.dataset.prev || '';
+
+    sel.dataset.prev = sel.value;
+
+    const cust = allCustomers.find((c) => c.customer_id === parseInt(id, 10));
+    if (cust) {
+      cust.sector_id = newSectorId;
+      const sec = allSectors.find((s) => s.sector_id === newSectorId);
+      cust.sector_name = sec ? sec.sector_name : '';
+    }
+
+    try {
+      const res = await fetch('/api/revenue-classification/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sector_id: newSectorId }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+    } catch (e) {
+      sel.value = oldSectorId;
+      if (cust) {
+        cust.sector_id = oldSectorId ? parseInt(oldSectorId, 10) : null;
+        const sec = allSectors.find((s) => s.sector_id === cust.sector_id);
+        cust.sector_name = sec ? sec.sector_name : '';
+      }
+      console.error('Sector update failed:', e);
     }
   };
 
