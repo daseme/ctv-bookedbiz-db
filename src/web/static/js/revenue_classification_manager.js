@@ -178,7 +178,7 @@
       .map(
         (c) => `
       <tr>
-        <td><a href="/address-book/customer/${c.customer_id}" class="customer-link">${esc(c.name)}</a></td>
+        <td><a href="/reports/customer/${c.customer_id}" class="customer-link">${esc(c.name)}</a></td>
         <td><select class="sector-select" data-id="${c.customer_id}" onchange="window._rcmSector(this)">${sectorOptions(c.sector_id)}</select></td>
         <td>
           <button class="cls-toggle ${c.revenue_class}"
