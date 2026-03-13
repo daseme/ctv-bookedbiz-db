@@ -98,6 +98,26 @@ class ActivityService(BaseService):
             "SELECT last_insert_rowid()"
         ).fetchone()[0]
 
+        # Auto-acknowledge signal actions for qualifying activity types
+        if activity_type in ("note", "call", "email", "meeting"):
+            conn.execute("""
+                UPDATE signal_actions
+                SET status = 'acknowledged',
+                    updated_by = ?,
+                    updated_date = CURRENT_TIMESTAMP
+                WHERE entity_type = ? AND entity_id = ?
+                  AND status = 'new'
+            """, [created_by, entity_type, entity_id])
+            conn.execute("""
+                UPDATE signal_actions
+                SET status = 'acknowledged',
+                    updated_by = ?,
+                    updated_date = CURRENT_TIMESTAMP
+                WHERE entity_type = ? AND entity_id = ?
+                  AND status = 'snoozed'
+                  AND snooze_until < date('now')
+            """, [created_by, entity_type, entity_id])
+
         return {
             "success": True,
             "activity_id": activity_id,

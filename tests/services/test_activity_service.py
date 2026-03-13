@@ -41,6 +41,21 @@ def db():
             contact_name TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE signal_actions (
+            action_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            signal_type TEXT NOT NULL,
+            assigned_ae TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'new',
+            reason TEXT,
+            snooze_until DATE,
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_by TEXT
+        )
+    """)
     conn.execute(
         "INSERT INTO agencies (agency_id, agency_name) VALUES (1, 'Test Agency')"
     )
@@ -374,3 +389,129 @@ class TestGetRecentActivityForAe:
             )
         for r in results:
             assert r["entity_name"] is not None
+
+
+class TestAutoAcknowledgeOnActivity:
+    """Test that logging qualifying activities auto-acknowledges signals."""
+
+    @pytest.fixture
+    def ack_db(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE agencies (
+                agency_id INTEGER PRIMARY KEY,
+                agency_name TEXT, is_active INTEGER DEFAULT 1
+            );
+            CREATE TABLE customers (
+                customer_id INTEGER PRIMARY KEY,
+                normalized_name TEXT, is_active INTEGER DEFAULT 1
+            );
+            CREATE TABLE entity_contacts (
+                contact_id INTEGER PRIMARY KEY, contact_name TEXT
+            );
+            CREATE TABLE entity_activity (
+                activity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT, entity_id INTEGER,
+                activity_type TEXT, description TEXT,
+                activity_date TEXT DEFAULT (datetime('now')),
+                created_by TEXT,
+                created_date TEXT DEFAULT (datetime('now')),
+                contact_id INTEGER, due_date TEXT,
+                is_completed INTEGER DEFAULT 0,
+                completed_date TEXT
+            );
+            CREATE TABLE signal_actions (
+                action_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                signal_type TEXT NOT NULL,
+                assigned_ae TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'new',
+                reason TEXT, snooze_until DATE,
+                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_by TEXT
+            );
+            INSERT INTO customers VALUES (1, 'Test Customer', 1);
+            INSERT INTO agencies VALUES (1, 'Test Agency', 1);
+        """)
+        conn.commit()
+        db_conn = DatabaseConnection.__new__(DatabaseConnection)
+        db_conn.db_path = ":memory:"
+        svc = ActivityService(db_conn)
+        yield svc, conn
+        conn.close()
+
+    def _seed_signal(self, conn, entity_type="customer", entity_id=1,
+                     signal_type="churned", status="new"):
+        conn.execute(
+            "INSERT INTO signal_actions "
+            "(entity_type, entity_id, signal_type, assigned_ae, status) "
+            "VALUES (?, ?, ?, 'Alice', ?)",
+            [entity_type, entity_id, signal_type, status],
+        )
+        conn.commit()
+
+    def test_logging_call_acknowledges_signal(self, ack_db):
+        svc, conn = ack_db
+        self._seed_signal(conn)
+        svc.create_activity(
+            conn, "customer", 1, "call", "Called client", "Alice",
+        )
+        row = conn.execute(
+            "SELECT status FROM signal_actions WHERE action_id = 1"
+        ).fetchone()
+        assert row["status"] == "acknowledged"
+
+    def test_logging_note_acknowledges_signal(self, ack_db):
+        svc, conn = ack_db
+        self._seed_signal(conn)
+        svc.create_activity(
+            conn, "customer", 1, "note", "Left a note", "Alice",
+        )
+        row = conn.execute(
+            "SELECT status FROM signal_actions WHERE action_id = 1"
+        ).fetchone()
+        assert row["status"] == "acknowledged"
+
+    def test_status_change_does_not_acknowledge(self, ack_db):
+        svc, conn = ack_db
+        self._seed_signal(conn)
+        svc.create_activity(
+            conn, "customer", 1, "status_change", "Changed status", "system",
+        )
+        row = conn.execute(
+            "SELECT status FROM signal_actions WHERE action_id = 1"
+        ).fetchone()
+        assert row["status"] == "new"
+
+    def test_follow_up_does_not_acknowledge(self, ack_db):
+        svc, conn = ack_db
+        self._seed_signal(conn)
+        svc.create_activity(
+            conn, "customer", 1, "follow_up", "Set reminder", "Alice",
+            due_date="2026-04-01",
+        )
+        row = conn.execute(
+            "SELECT status FROM signal_actions WHERE action_id = 1"
+        ).fetchone()
+        assert row["status"] == "new"
+
+    def test_acknowledge_does_not_touch_dismissed(self, ack_db):
+        svc, conn = ack_db
+        self._seed_signal(conn, status="dismissed")
+        svc.create_activity(
+            conn, "customer", 1, "call", "Called again", "Alice",
+        )
+        row = conn.execute(
+            "SELECT status FROM signal_actions WHERE action_id = 1"
+        ).fetchone()
+        assert row["status"] == "dismissed"
+
+    def test_no_signal_actions_no_error(self, ack_db):
+        svc, conn = ack_db
+        result = svc.create_activity(
+            conn, "customer", 1, "call", "Just a call", "Alice",
+        )
+        assert result["success"] is True
