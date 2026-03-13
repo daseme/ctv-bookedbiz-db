@@ -25,7 +25,7 @@
 
 /* Summary Bar */
 .summary-bar {
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px;
     margin-bottom: 20px;
 }
 .stat-card {
@@ -383,6 +383,10 @@
             <div class="stat-value" id="stat-at-risk" style="color:#dc2626;">-</div>
             <div class="stat-label">Revenue At Risk</div>
         </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-compliance">-</div>
+            <div class="stat-label">Touch Compliance</div>
+        </div>
     </div>
 
     <!-- Signal Queue -->
@@ -496,6 +500,29 @@
           <li><strong>Next Follow-up</strong> &mdash; earliest open follow-up date</li>
           <li><strong>+ Log</strong> &mdash; shortcut to open the detail panel and log activity</li>
         </ul>
+      </div>
+
+      <div class="info-section">
+        <h4>Health Score</h4>
+        <p>Each account gets a health score (0-100) based on four factors:</p>
+        <ul>
+          <li><strong>Revenue Trend (30%)</strong> &mdash; how trailing 3 months compare to prior 3 months</li>
+          <li><strong>Signal State (25%)</strong> &mdash; what signal the system has detected (churned = 0, growing = 100)</li>
+          <li><strong>Last Touch (25%)</strong> &mdash; days since your last note, call, email, or meeting</li>
+          <li><strong>Follow-up Compliance (20%)</strong> &mdash; any overdue follow-up drops this to zero</li>
+        </ul>
+        <p>Colors: <span style="color:#38a169;">green (70-100)</span>, <span style="color:#d69e2e;">yellow (40-69)</span>, <span style="color:#e53e3e;">red (0-39)</span>. Accounts sort by health score (worst first) so you focus where it matters.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Account Tiers &amp; Touch Cadence</h4>
+        <p>Accounts are auto-tiered by trailing 12-month revenue within your book:</p>
+        <ul>
+          <li><strong>A (top 20%)</strong> &mdash; touch every 7 days</li>
+          <li><strong>B (middle 40%)</strong> &mdash; touch every 14 days</li>
+          <li><strong>C (bottom 40%)</strong> &mdash; touch every 30 days</li>
+        </ul>
+        <p>The &ldquo;Touch&rdquo; column shows days since your last touch, colored green/yellow/red against the tier cadence. Touch Compliance in the summary bar shows what percentage of your accounts are within their cadence window.</p>
       </div>
 
       <div class="info-section">

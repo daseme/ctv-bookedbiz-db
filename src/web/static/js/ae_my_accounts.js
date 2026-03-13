@@ -77,6 +77,8 @@ async function loadStats() {
             .textContent = stats.follow_up_count;
         document.getElementById('stat-at-risk').textContent =
             '$' + (stats.revenue_at_risk || 0).toLocaleString();
+        document.getElementById('stat-compliance').textContent =
+            (stats.touch_compliance || 0) + '%';
         if (stats.overdue_count > 0) {
             document.getElementById('stat-overdue')
                 .textContent = stats.overdue_count;

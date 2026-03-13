@@ -313,6 +313,23 @@ class HealthScoreService(BaseService):
                 result[key] = r["trailing_12m"]
         return result
 
+    def touch_compliance(self, health_results):
+        """Percentage of accounts where touch is within cadence.
+
+        Args:
+            health_results: Output from get_health_with_tiers().
+
+        Returns:
+            Integer 0-100 representing compliance percentage.
+        """
+        if not health_results:
+            return 100
+        within = sum(
+            1 for r in health_results
+            if r.get("touch_status") in ("green", "yellow")
+        )
+        return round(within / len(health_results) * 100)
+
     def _touch_status(self, days_since_touch, cadence_days):
         """Compute touch status color relative to cadence window.
 

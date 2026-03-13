@@ -532,3 +532,58 @@ class TestTouchCadence:
         s = _find(scores, "customer", 300)
         assert s["tier"] == "A"
         assert s["touch_status"] == "yellow"
+
+
+class TestTouchCompliance:
+    """Test touch compliance percentage computation."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, health_db):
+        self.svc, self.conn = health_db
+
+    def test_all_touched_is_100(self):
+        # Touch all 3 customers + 1 agency for Alice
+        for cid in [10, 11, 12]:
+            self.conn.execute(
+                "INSERT INTO entity_activity "
+                "(entity_type, entity_id, activity_type, "
+                "activity_date, created_by) "
+                "VALUES ('customer', ?, 'call', "
+                "datetime('now', '-1 day'), 'Alice')",
+                [cid],
+            )
+        self.conn.execute(
+            "INSERT INTO entity_activity "
+            "(entity_type, entity_id, activity_type, "
+            "activity_date, created_by) "
+            "VALUES ('agency', 1, 'call', "
+            "datetime('now', '-1 day'), 'Alice')"
+        )
+        self.conn.commit()
+        results = self.svc.get_health_with_tiers(
+            self.conn, ae_name="Alice"
+        )
+        pct = self.svc.touch_compliance(results)
+        assert pct == 100
+
+    def test_none_touched_is_0(self):
+        results = self.svc.get_health_with_tiers(
+            self.conn, ae_name="Alice"
+        )
+        pct = self.svc.touch_compliance(results)
+        assert pct == 0
+
+    def test_partial_compliance(self):
+        self.conn.execute(
+            "INSERT INTO entity_activity "
+            "(entity_type, entity_id, activity_type, "
+            "activity_date, created_by) "
+            "VALUES ('customer', 10, 'call', "
+            "datetime('now', '-1 day'), 'Alice')"
+        )
+        self.conn.commit()
+        results = self.svc.get_health_with_tiers(
+            self.conn, ae_name="Alice"
+        )
+        pct = self.svc.touch_compliance(results)
+        assert pct == 25  # 1 of 4 (3 customers + 1 agency)

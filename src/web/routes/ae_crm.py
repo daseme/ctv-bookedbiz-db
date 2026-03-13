@@ -88,8 +88,15 @@ def api_stats():
     """Return summary stats JSON for the current AE."""
     ae_name, _, _, _ = _resolve_ae_name()
     crm_svc = _svc("ae_crm_service")
+    health_svc = _svc("health_score_service")
     with _db().connection_ro() as conn:
         stats = crm_svc.get_stats(conn, ae_name=ae_name)
+        health = health_svc.get_health_with_tiers(conn, ae_name=ae_name)
+        stats["touch_compliance"] = health_svc.touch_compliance(health)
+        stats["avg_health_score"] = (
+            round(sum(h["health_score"] for h in health) / len(health))
+            if health else 0
+        )
         return jsonify(stats)
 
 
