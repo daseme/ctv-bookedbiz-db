@@ -9,6 +9,7 @@ let revenueChart = null;
 document.addEventListener('DOMContentLoaded', () => {
     loadStats();
     loadAccounts();
+    loadSignalQueue();
     loadActionItems();
     loadRecentActivity();
 
@@ -74,6 +75,8 @@ async function loadStats() {
             .textContent = stats.signal_count;
         document.getElementById('stat-followups')
             .textContent = stats.follow_up_count;
+        document.getElementById('stat-at-risk').textContent =
+            '$' + (stats.revenue_at_risk || 0).toLocaleString();
         if (stats.overdue_count > 0) {
             document.getElementById('stat-overdue')
                 .textContent = stats.overdue_count;
@@ -238,6 +241,129 @@ async function completeFollowUp(activityId, btn) {
         }
     } catch (err) {
         console.error('Failed to complete follow-up:', err);
+    }
+}
+
+// ── Signal Queue ──────────────────────────────────────────────────
+async function loadSignalQueue() {
+    try {
+        const qs = window.location.search;
+        const resp = await fetch(
+            `/api/ae/my-accounts/signal-queue${qs}`);
+        const items = await resp.json();
+        const container = document.getElementById('signal-queue');
+        const list = document.getElementById('signal-queue-list');
+        const count = document.getElementById('signal-queue-count');
+
+        if (!items.length) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = '';
+        count.textContent = `(${items.length})`;
+        list.innerHTML = items.map(renderSignalItem).join('');
+    } catch (err) {
+        console.error('Failed to load signal queue:', err);
+    }
+}
+
+function agingClass(days) {
+    if (days >= 8) return 'critical';
+    if (days >= 4) return 'warning';
+    return 'normal';
+}
+
+function renderSignalItem(item) {
+    return `
+        <div class="signal-item">
+            <span class="signal-aging ${agingClass(item.days_aging)}">
+                ${item.days_aging}d
+            </span>
+            <span class="signal-badge ${item.signal_type}">
+                ${esc(item.signal_label)}
+            </span>
+            <div class="signal-info">
+                <span class="entity-link"
+                      onclick="openDetail('${item.entity_type}', ${item.entity_id})">
+                    ${esc(item.entity_name)}
+                </span>
+                <div class="signal-label">
+                    ${esc(item.signal_detail || '')}
+                </div>
+            </div>
+            <div class="signal-actions">
+                <button onclick="snoozeSignal(${item.action_id})">
+                    Snooze
+                </button>
+                <button onclick="dismissSignal(${item.action_id})">
+                    Dismiss
+                </button>
+            </div>
+        </div>
+        <div class="snooze-form" id="snooze-form-${item.action_id}">
+            <input type="date" id="snooze-date-${item.action_id}">
+            <textarea id="snooze-reason-${item.action_id}"
+                      placeholder="Reason (e.g., seasonal pattern)">
+            </textarea>
+            <div class="snooze-form-actions">
+                <button onclick="submitSnooze(${item.action_id})">
+                    Confirm Snooze
+                </button>
+                <button onclick="snoozeSignal(${item.action_id})">
+                    Cancel
+                </button>
+            </div>
+        </div>`;
+}
+
+function snoozeSignal(actionId) {
+    const form = document.getElementById(`snooze-form-${actionId}`);
+    form.style.display = form.style.display === 'none'
+        ? 'block' : 'none';
+}
+
+async function submitSnooze(actionId) {
+    const reason = document.getElementById(
+        `snooze-reason-${actionId}`).value.trim();
+    const snoozeUntil = document.getElementById(
+        `snooze-date-${actionId}`).value;
+    if (!snoozeUntil) return;
+
+    try {
+        await fetch(
+            `/api/ae/my-accounts/signal-queue/${actionId}/snooze`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    reason,
+                    snooze_until: snoozeUntil,
+                }),
+            }
+        );
+        loadSignalQueue();
+    } catch (err) {
+        console.error('Failed to snooze signal:', err);
+    }
+}
+
+async function dismissSignal(actionId) {
+    const reason = prompt('Why is this not actionable?');
+    if (reason === null) return;
+
+    try {
+        await fetch(
+            `/api/ae/my-accounts/signal-queue/${actionId}/dismiss`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason }),
+            }
+        );
+        loadSignalQueue();
+    } catch (err) {
+        console.error('Failed to dismiss signal:', err);
     }
 }
 

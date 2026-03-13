@@ -25,7 +25,7 @@
 
 /* Summary Bar */
 .summary-bar {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;
     margin-bottom: 20px;
 }
 .stat-card {
@@ -242,6 +242,60 @@
     font-family: monospace; color: #374151;
 }
 
+/* Signal Queue */
+.signal-queue {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 20px;
+}
+.signal-queue h3 { margin: 0 0 12px; font-size: 15px; color: #991b1b; }
+.signal-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid #fee2e2;
+}
+.signal-item:last-child { border-bottom: none; }
+.signal-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+}
+.signal-badge.renewal_gap { background: #dc2626; color: #fff; }
+.signal-badge.churned { background: #991b1b; color: #fff; }
+.signal-badge.declining { background: #ea580c; color: #fff; }
+.signal-badge.gone_quiet { background: #d97706; color: #fff; }
+.signal-badge.new_account { background: #059669; color: #fff; }
+.signal-badge.growing { background: #2563eb; color: #fff; }
+.signal-aging {
+    font-size: 12px; font-weight: 600; min-width: 40px;
+    text-align: center;
+}
+.signal-aging.normal { color: #6b7280; }
+.signal-aging.warning { color: #d97706; }
+.signal-aging.critical { color: #dc2626; }
+.signal-info { flex: 1; min-width: 0; }
+.signal-info .entity-link {
+    font-weight: 500; color: #2e3440; cursor: pointer;
+    text-decoration: underline; text-decoration-color: #d8dee9;
+}
+.signal-info .entity-link:hover { color: #5e81ac; }
+.signal-info .signal-label { font-size: 13px; color: #6b7280; }
+.signal-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.signal-actions button {
+    padding: 4px 10px; border-radius: 4px; border: 1px solid #d1d5db;
+    background: #fff; font-size: 12px; cursor: pointer;
+}
+.signal-actions button:hover { background: #f3f4f6; }
+.snooze-form {
+    display: none; padding: 10px; background: #fffbeb;
+    border: 1px solid #fde68a; border-radius: 6px; margin-top: 8px;
+}
+.snooze-form input, .snooze-form textarea {
+    padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px;
+    font-size: 13px; width: 100%; box-sizing: border-box;
+}
+.snooze-form textarea { height: 40px; resize: vertical; }
+.snooze-form .snooze-form-actions {
+    display: flex; gap: 6px; margin-top: 6px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .summary-bar { grid-template-columns: repeat(2, 1fr); }
@@ -297,6 +351,18 @@
                 </span>
             </div>
         </div>
+        <div class="stat-card" id="card-at-risk">
+            <div class="stat-value" id="stat-at-risk" style="color:#dc2626;">-</div>
+            <div class="stat-label">Revenue At Risk</div>
+        </div>
+    </div>
+
+    <!-- Signal Queue -->
+    <div class="signal-queue" id="signal-queue" style="display:none;">
+        <h3>Signals Requiring Action
+            <span id="signal-queue-count" style="font-weight:400; color:#991b1b;"></span>
+        </h3>
+        <div id="signal-queue-list"></div>
     </div>
 
     <!-- Action Items (hidden when empty) -->
@@ -358,18 +424,36 @@
 
       <div class="info-section">
         <h4>Summary Bar</h4>
-        <p>The four cards at the top show your totals at a glance:</p>
+        <p>The five cards at the top show your totals at a glance:</p>
         <ul>
           <li><strong>Active Accounts</strong> &mdash; how many customers and agencies are assigned to you</li>
           <li><strong>Trailing 12-Mo Revenue</strong> &mdash; combined booked revenue for the last 12 broadcast months (excludes Trade)</li>
           <li><strong>Need Attention</strong> &mdash; accounts with a signal (churned, gone quiet, growing, etc.)</li>
           <li><strong>Open Follow-ups</strong> &mdash; incomplete follow-up tasks; overdue count shown in orange when &gt; 0</li>
+          <li><strong>Revenue At Risk</strong> &mdash; total trailing revenue from accounts with negative signals (churned, declining, gone quiet, renewal gap)</li>
         </ul>
       </div>
 
       <div class="info-section">
         <h4>Action Items</h4>
         <p>Overdue and due-today follow-ups appear in the amber banner. Click an account name to open its detail panel, or click <strong>Complete</strong> to mark a follow-up done. The banner hides when there&rsquo;s nothing urgent.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Signal Queue</h4>
+        <p>Signals are automatically generated alerts about account health changes.
+        They appear at the top of your page when accounts need attention.</p>
+        <p><strong>Signal types:</strong> Churned (lost all revenue), Declining (revenue dropping),
+        Gone Quiet (no recent activity), Renewal Gap (upcoming revenue drop-off),
+        New Account (recently started), Growing (revenue increasing).</p>
+        <p><strong>Aging colors:</strong> Gray = 0-3 days, Yellow = 4-7 days, Red = 8+ days.</p>
+        <p><strong>Actions:</strong></p>
+        <ul>
+            <li><strong>Log activity</strong> (note, call, email, meeting) on the account &mdash;
+                signals auto-acknowledge when you work the account</li>
+            <li><strong>Snooze</strong> &mdash; defer with a reason and date (e.g., seasonal pattern)</li>
+            <li><strong>Dismiss</strong> &mdash; mark as not actionable with a reason</li>
+        </ul>
       </div>
 
       <div class="info-section">
