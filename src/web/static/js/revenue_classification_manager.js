@@ -4,6 +4,8 @@
   const $ = (sel) => document.querySelector(sel);
   const fmt = (n) => '$' + Math.round(n).toLocaleString();
 
+  const WORLDLINK_ID = 5;
+
   let chart = null;
   let allCustomers = [];
   let allSectors = [];
@@ -201,10 +203,18 @@
 
     tbody.innerHTML = filtered
       .map(
-        (c) => `
+        (c) => {
+          const isWL = c.customer_id === WORLDLINK_ID && c.name === 'WorldLink (Agency)';
+          const nameCell = isWL
+            ? `<span class="customer-link" style="cursor:default">${esc(c.name)}</span>`
+            : `<a href="/reports/customer/${c.customer_id}" class="customer-link">${esc(c.name)}</a>`;
+          const sectorCell = isWL
+            ? '<span style="color:#94a3b8;font-size:12px">—</span>'
+            : `<select class="sector-select" data-id="${c.customer_id}" data-prev="${c.sector_id || ''}" onchange="window._rcmSector(this)">${sectorOptions(c.sector_id)}</select>`;
+          return `
       <tr>
-        <td><a href="/reports/customer/${c.customer_id}" class="customer-link">${esc(c.name)}</a></td>
-        <td><select class="sector-select" data-id="${c.customer_id}" data-prev="${c.sector_id || ''}" onchange="window._rcmSector(this)">${sectorOptions(c.sector_id)}</select></td>
+        <td>${nameCell}</td>
+        <td>${sectorCell}</td>
         <td>
           <button class="cls-toggle ${c.revenue_class}"
             data-id="${c.customer_id}"
@@ -217,7 +227,8 @@
         <td>${fmt(c.current_year_revenue)}</td>
         <td>${fmt(c.prior_year_revenue)}</td>
         <td>${yoyCell(c)}</td>
-      </tr>`
+      </tr>`;
+        }
       )
       .join('');
   }
