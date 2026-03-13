@@ -146,3 +146,71 @@ class TestScoreboardStats:
         result = self.svc.get_scoreboard(self.conn, ["Nobody"])
         assert result["Nobody"]["account_count"] == 0
         assert result["Nobody"]["revenue_at_risk"] == 0
+
+
+class TestAttentionItems:
+    """Tests for get_attention_items()."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, mgr_db):
+        self.svc, self.conn = mgr_db
+
+    def test_includes_unworked_signal_over_7d(self):
+        items = self.svc.get_attention_items(self.conn)
+        unworked = [i for i in items if i["item_type"] == "unworked_signal"]
+        assert len(unworked) == 1
+        assert unworked[0]["entity_name"] == "Acme Corp"
+        assert unworked[0]["assigned_ae"] == "Alice"
+        assert unworked[0]["days_aging"] >= 10
+
+    def test_excludes_signal_under_7d(self):
+        items = self.svc.get_attention_items(self.conn)
+        unworked = [i for i in items if i["item_type"] == "unworked_signal"]
+        bobs = [i for i in unworked if i["assigned_ae"] == "Bob"]
+        assert len(bobs) == 0
+
+    def test_customer_10_in_renewal_gap_stale_by_default(self):
+        items = self.svc.get_attention_items(self.conn)
+        stale = [i for i in items
+                 if i["item_type"] == "renewal_gap_stale"
+                 and i["entity_name"] == "Acme Corp"]
+        assert len(stale) == 1
+
+    def test_includes_renewal_gap_stale_14d(self):
+        self.conn.execute("""
+            INSERT INTO entity_signals VALUES
+                ('agency', 1, 'renewal_gap', 'Renewal gap', 1, 8000)
+        """)
+        items = self.svc.get_attention_items(self.conn)
+        stale = [i for i in items if i["item_type"] == "renewal_gap_stale"]
+        assert any(i["entity_name"] == "MediaMax" for i in stale)
+
+    def test_excludes_renewal_gap_with_recent_activity(self):
+        self.conn.execute("""
+            INSERT INTO entity_activity
+                (entity_type, entity_id, activity_type, activity_date,
+                 created_by)
+            VALUES ('customer', 10, 'call', date('now', '-2 days'), 'Alice')
+        """)
+        items = self.svc.get_attention_items(self.conn)
+        stale = [i for i in items
+                 if i["item_type"] == "renewal_gap_stale"
+                 and i["entity_name"] == "Acme Corp"]
+        assert len(stale) == 0
+
+    def test_sorted_by_revenue_descending(self):
+        self.conn.execute("""
+            INSERT INTO entity_signals VALUES
+                ('agency', 1, 'renewal_gap', 'Renewal gap', 1, 8000)
+        """)
+        items = self.svc.get_attention_items(self.conn)
+        revenues = [i.get("trailing_revenue", 0) for i in items]
+        assert revenues == sorted(revenues, reverse=True)
+
+    def test_empty_when_no_issues(self):
+        self.conn.execute(
+            "UPDATE signal_actions SET status = 'acknowledged'"
+        )
+        self.conn.execute("DELETE FROM entity_signals")
+        items = self.svc.get_attention_items(self.conn)
+        assert items == []
