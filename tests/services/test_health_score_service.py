@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import pytest
 
 from src.database.connection import DatabaseConnection
-from src.services.health_score_service import HealthScoreService
+from src.services.health_score_service import TIER_CADENCE, HealthScoreService
 
 
 # ---------------------------------------------------------------------------
@@ -386,3 +386,149 @@ class TestCompositeScore:
         assert ("customer", 20) in ids
         assert ("agency", 1) in ids
         assert len(ids) >= 5
+
+
+# ---------------------------------------------------------------------------
+# Helpers for tiering/cadence tests
+# ---------------------------------------------------------------------------
+
+
+def _insert_trailing_12m(conn, customer_id, total_revenue):
+    """Insert spots spread across trailing 12 months for tier ranking."""
+    monthly = total_revenue / 12
+    d = date.today()
+    for offset in range(1, 13):
+        year = d.year
+        month = d.month - offset
+        while month <= 0:
+            month += 12
+            year -= 1
+        month_abbr = date(year, month, 1).strftime("%b")
+        bm = f"{month_abbr}-{str(year)[2:]}"
+        conn.execute(
+            "INSERT INTO spots "
+            "(customer_id, broadcast_month, gross_rate, is_historical) "
+            "VALUES (?, ?, ?, 0)",
+            (customer_id, bm, monthly),
+        )
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Account tiering
+# ---------------------------------------------------------------------------
+
+
+class TestAccountTiering:
+    @pytest.fixture(autouse=True)
+    def _setup(self, health_db):
+        self.svc, self.conn = health_db
+
+        # Remove all fixture entities so we have exactly 5 controlled customers
+        self.conn.execute("DELETE FROM customers")
+        self.conn.execute("DELETE FROM agencies")
+        self.conn.executemany(
+            "INSERT INTO customers (customer_id, normalized_name, assigned_ae, is_active) "
+            "VALUES (?, ?, 'Alice', 1)",
+            [
+                (100, "Alice Top"),
+                (101, "Alice High"),
+                (102, "Alice Mid"),
+                (103, "Alice Low"),
+                (104, "Alice Bottom"),
+            ],
+        )
+        self.conn.commit()
+
+        # Revenue: 100 > 80 > 60 > 40 > 20
+        # Percentile rank (0-based / 5): 0/5=0.0, 1/5=0.2, 2/5=0.4, 3/5=0.6, 4/5=0.8
+        # A: <0.20  → customer 100 only
+        # B: 0.20–0.60 → customers 101, 102
+        # C: >=0.60 → customers 103, 104
+        _insert_trailing_12m(self.conn, 100, 100_000)
+        _insert_trailing_12m(self.conn, 101, 80_000)
+        _insert_trailing_12m(self.conn, 102, 60_000)
+        _insert_trailing_12m(self.conn, 103, 40_000)
+        _insert_trailing_12m(self.conn, 104, 20_000)
+
+    def test_tiers_assigned_by_revenue_rank(self):
+        scores = self.svc.get_health_with_tiers(self.conn, ae_name="Alice")
+        by_id = {s["entity_id"]: s for s in scores if s["entity_type"] == "customer"}
+
+        assert by_id[100]["tier"] == "A"
+        assert by_id[101]["tier"] == "B"
+        assert by_id[102]["tier"] == "B"
+        assert by_id[103]["tier"] == "C"
+        assert by_id[104]["tier"] == "C"
+
+    def test_tier_cadence_days(self):
+        assert TIER_CADENCE["A"] == 7
+        assert TIER_CADENCE["B"] == 14
+        assert TIER_CADENCE["C"] == 30
+
+    def test_single_account_is_tier_a(self):
+        """An AE with a single account gets tier A (top 20% of 1)."""
+        self.conn.execute(
+            "INSERT INTO customers (customer_id, normalized_name, assigned_ae, is_active) "
+            "VALUES (200, 'Bob Only', 'Bob', 1)"
+        )
+        self.conn.commit()
+        _insert_trailing_12m(self.conn, 200, 5_000)
+
+        scores = self.svc.get_health_with_tiers(self.conn, ae_name="Bob")
+        by_id = {s["entity_id"]: s for s in scores if s["entity_type"] == "customer"}
+        assert by_id[200]["tier"] == "A"
+
+
+# ---------------------------------------------------------------------------
+# Touch cadence
+# ---------------------------------------------------------------------------
+
+
+class TestTouchCadence:
+    @pytest.fixture(autouse=True)
+    def _setup(self, health_db):
+        self.svc, self.conn = health_db
+
+        # Single customer for Alice — becomes tier A (1 account = rank 0 / 1 = 0.0 < 0.20)
+        self.conn.execute("DELETE FROM customers")
+        self.conn.execute(
+            "INSERT INTO customers (customer_id, normalized_name, assigned_ae, is_active) "
+            "VALUES (300, 'Alice Solo', 'Alice', 1)"
+        )
+        self.conn.commit()
+        _insert_trailing_12m(self.conn, 300, 10_000)
+
+    def _add_touch(self, days_ago):
+        touch_date = (date.today() - timedelta(days=days_ago)).isoformat()
+        self.conn.execute(
+            "INSERT INTO entity_activity "
+            "(entity_type, entity_id, activity_type, activity_date) "
+            "VALUES ('customer', 300, 'call', ?)",
+            (touch_date,),
+        )
+        self.conn.commit()
+
+    def test_touch_within_cadence_is_green(self):
+        """Touch 3 days ago on tier A (7d cadence, 3/7=43% < 75%) = green."""
+        self._add_touch(3)
+        scores = self.svc.get_health_with_tiers(self.conn, ae_name="Alice")
+        s = _find(scores, "customer", 300)
+        assert s["tier"] == "A"
+        assert s["tier_cadence_days"] == 7
+        assert s["touch_status"] == "green"
+
+    def test_no_touch_is_red(self):
+        """No touch at all = red."""
+        scores = self.svc.get_health_with_tiers(self.conn, ae_name="Alice")
+        s = _find(scores, "customer", 300)
+        assert s["touch_status"] == "red"
+        assert s["days_since_touch"] is None
+
+    def test_touch_nearing_cadence_is_yellow(self):
+        """Touch 6 days ago on tier A (7d cadence, 6/7=86% > 75%) = yellow."""
+        self._add_touch(6)
+        scores = self.svc.get_health_with_tiers(self.conn, ae_name="Alice")
+        s = _find(scores, "customer", 300)
+        assert s["tier"] == "A"
+        assert s["touch_status"] == "yellow"

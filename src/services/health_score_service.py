@@ -30,6 +30,8 @@ BM_TO_ISO = """
     END
 """
 
+TIER_CADENCE = {"A": 7, "B": 14, "C": 30}
+
 
 class HealthScoreService(BaseService):
     """Computes live health scores for AE accounts."""
@@ -219,3 +221,112 @@ class HealthScoreService(BaseService):
         if score >= 40:
             return "yellow"
         return "red"
+
+    # ------------------------------------------------------------------
+    # Tiering and touch cadence
+    # ------------------------------------------------------------------
+
+    def get_health_with_tiers(self, conn, ae_name=None):
+        """Health scores plus tier, cadence, and touch status.
+
+        Args:
+            conn: Database connection.
+            ae_name: Filter to this AE. None returns all active.
+
+        Returns:
+            List of health score dicts enriched with tier,
+            tier_cadence_days, days_since_touch, and touch_status.
+        """
+        scores = self.get_health_scores(conn, ae_name)
+        touches = self._load_last_touches(conn)
+        trailing_12m = self._load_trailing_12m(conn)
+        entities = self._load_entities(conn, ae_name)
+
+        # Build ae -> list of (key, revenue) for ranking within each AE
+        ae_buckets: dict[str, list[tuple[tuple, float]]] = {}
+        for e in entities:
+            key = (e["entity_type"], e["entity_id"])
+            ae = e["assigned_ae"] or ""
+            revenue = trailing_12m.get(key, 0.0)
+            ae_buckets.setdefault(ae, []).append((key, revenue))
+
+        # Assign tiers per AE by revenue rank (descending)
+        tiers: dict[tuple, str] = {}
+        for ae, items in ae_buckets.items():
+            items.sort(key=lambda x: x[1], reverse=True)
+            n = len(items)
+            for rank, (key, _) in enumerate(items):
+                percentile = rank / n
+                if percentile < 0.20:
+                    tiers[key] = "A"
+                elif percentile < 0.60:
+                    tiers[key] = "B"
+                else:
+                    tiers[key] = "C"
+
+        # Enrich each score dict
+        for score in scores:
+            key = (score["entity_type"], score["entity_id"])
+            tier = tiers.get(key, "C")
+            cadence_days = TIER_CADENCE[tier]
+            days_since_touch = touches.get(key)
+            score["tier"] = tier
+            score["tier_cadence_days"] = cadence_days
+            score["days_since_touch"] = days_since_touch
+            score["touch_status"] = self._touch_status(days_since_touch, cadence_days)
+
+        return scores
+
+    def _load_trailing_12m(self, conn):
+        """Load trailing 12-month revenue per entity for tier ranking.
+
+        Returns:
+            Dict mapping (entity_type, entity_id) -> float revenue.
+        """
+        result = {}
+        for entity_col, entity_type, entity_table, join_clause in [
+            ("customer_id", "customer", "customers",
+             "s.customer_id = e.customer_id"),
+            ("agency_id", "agency", "agencies",
+             "s.customer_id IN "
+             "(SELECT customer_id FROM customers "
+             "WHERE agency_id = e.agency_id)"),
+        ]:
+            rows = conn.execute(f"""
+                SELECT e.{entity_col} AS entity_id,
+                       COALESCE(SUM(CASE
+                           WHEN {BM_TO_ISO}
+                               >= strftime('%Y-%m', 'now', '-12 months')
+                            AND {BM_TO_ISO}
+                               < strftime('%Y-%m', 'now')
+                            AND (s.revenue_type != 'Trade'
+                                 OR s.revenue_type IS NULL)
+                           THEN s.gross_rate ELSE 0 END), 0) AS trailing_12m
+                FROM {entity_table} e
+                LEFT JOIN spots s ON {join_clause}
+                    AND s.is_historical = 0
+                WHERE e.is_active = 1
+                GROUP BY e.{entity_col}
+            """).fetchall()
+            for r in rows:
+                key = (entity_type, r["entity_id"])
+                result[key] = r["trailing_12m"]
+        return result
+
+    def _touch_status(self, days_since_touch, cadence_days):
+        """Compute touch status color relative to cadence window.
+
+        Args:
+            days_since_touch: Days since last touch, or None if never touched.
+            cadence_days: Target cadence in days for this tier.
+
+        Returns:
+            'green', 'yellow', or 'red'.
+        """
+        if days_since_touch is None:
+            return "red"
+        if days_since_touch > cadence_days:
+            return "red"
+        if days_since_touch > cadence_days * 0.75:
+            return "yellow"
+        return "green"
