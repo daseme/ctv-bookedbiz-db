@@ -18,7 +18,7 @@ class SignalActionService(BaseService):
 
         Returns signal_actions with status='new' plus expired snoozes,
         joined with entity_signals for label/revenue data.
-        Sorted by signal_priority ASC then age DESC.
+        Sorted by signal_priority ASC, then created_date ASC (oldest first).
 
         Args:
             conn: Database connection (writable — reverts expired snoozes).

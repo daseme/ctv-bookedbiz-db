@@ -124,7 +124,6 @@ class TestGetQueue:
         assert all(r["assigned_ae"] == "Alice" for r in results)
 
     def test_excludes_acknowledged_and_dismissed(self, conn, service):
-        yesterday = (date.today() - timedelta(days=1)).isoformat()
         _insert_action(conn, status="new", entity_id=1)
         _insert_action(conn, status="acknowledged", entity_id=2)
         _insert_action(conn, status="dismissed", entity_id=3)
