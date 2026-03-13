@@ -77,8 +77,6 @@ async function loadStats() {
             .textContent = stats.follow_up_count;
         document.getElementById('stat-at-risk').textContent =
             '$' + (stats.revenue_at_risk || 0).toLocaleString();
-        document.getElementById('stat-compliance').textContent =
-            (stats.touch_compliance || 0) + '%';
         if (stats.overdue_count > 0) {
             document.getElementById('stat-overdue')
                 .textContent = stats.overdue_count;
@@ -96,18 +94,28 @@ async function loadStats() {
 async function loadAccounts() {
     try {
         const qs = window.location.search;
-        const [acctResp, healthResp] = await Promise.all([
-            fetch('/api/ae/my-accounts' + qs),
-            fetch('/api/ae/my-accounts/health' + qs),
-        ]);
-        allAccounts = await acctResp.json();
-        const healthData = await healthResp.json();
+        const resp = await fetch('/api/ae/my-accounts' + qs);
+        allAccounts = await resp.json();
+        renderAccounts(allAccounts);
+
+        // Load health data in background — don't block table render
+        loadHealthData(qs);
+    } catch (err) {
+        console.error('Failed to load accounts:', err);
+    }
+}
+
+async function loadHealthData(qs) {
+    try {
+        const resp = await fetch('/api/ae/my-accounts/health' + qs);
+        const healthData = await resp.json();
 
         const healthMap = {};
         healthData.forEach(h => {
             healthMap[`${h.entity_type}:${h.entity_id}`] = h;
         });
 
+        let withinCadence = 0;
         allAccounts.forEach(a => {
             const h = healthMap[`${a.entity_type}:${a.entity_id}`];
             if (h) {
@@ -117,12 +125,19 @@ async function loadAccounts() {
                 a.tier_cadence_days = h.tier_cadence_days;
                 a.days_since_touch = h.days_since_touch;
                 a.touch_status = h.touch_status;
+                if (h.touch_status === 'green' || h.touch_status === 'yellow')
+                    withinCadence++;
             }
         });
 
         renderAccounts(allAccounts);
+
+        // Update touch compliance stat
+        const pct = allAccounts.length
+            ? Math.round(withinCadence / allAccounts.length * 100) : 0;
+        document.getElementById('stat-compliance').textContent = pct + '%';
     } catch (err) {
-        console.error('Failed to load accounts:', err);
+        console.error('Failed to load health data:', err);
     }
 }
 
