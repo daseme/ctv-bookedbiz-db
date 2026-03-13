@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Revenue Classification Manager - CTV Booked Biz{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-separator">></span>
+<span>Data Management</span>
+<span class="breadcrumb-separator">></span>
+<span class="breadcrumb-current">Revenue Classification Manager</span>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .rcm-wrap{max-width:1400px;margin:0 auto;padding:20px}
+  .rcm-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+  .rcm-card{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}
+  .rcm-card .value{font-size:28px;font-weight:700;color:#0f172a}
+  .rcm-card .label{font-size:13px;color:#64748b;margin-top:4px}
+  .rcm-card.regular .value{color:#2563eb}
+  .rcm-card.irregular .value{color:#d97706}
+  .rcm-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:24px;background:#fff;padding:16px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .rcm-controls select,.rcm-controls input{padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff}
+  .rcm-controls select:focus,.rcm-controls input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+  .rcm-chart-wrap{background:#fff;border-radius:10px;padding:20px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .rcm-chart-wrap canvas{max-height:350px}
+  .rcm-table-wrap{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .rcm-table{width:100%;border-collapse:collapse;font-size:13px}
+  .rcm-table th{padding:10px 12px;text-align:left;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;cursor:pointer;white-space:nowrap;user-select:none}
+  .rcm-table th:hover{color:#0f172a}
+  .rcm-table th .sort-arrow{margin-left:4px;opacity:.4}
+  .rcm-table th.sorted .sort-arrow{opacity:1}
+  .rcm-table td{padding:10px 12px;border-bottom:1px solid #f1f5f9}
+  .rcm-table tr:hover{background:#f8fafc}
+  .rcm-table .customer-link{color:#2563eb;text-decoration:none}
+  .rcm-table .customer-link:hover{text-decoration:underline}
+  .cls-toggle{padding:4px 14px;border-radius:20px;border:1px solid;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+  .cls-toggle.regular{background:#eff6ff;border-color:#93c5fd;color:#2563eb}
+  .cls-toggle.irregular{background:#fffbeb;border-color:#fcd34d;color:#d97706}
+  .cls-toggle:hover{filter:brightness(.95)}
+  .yoy-positive{color:#16a34a;font-weight:600}
+  .yoy-negative{color:#dc2626;font-weight:600}
+  .yoy-new{color:#64748b;font-style:italic}
+  .info-btn{width:28px;height:28px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .info-btn:hover{background:#f0f9ff;border-color:#0ea5e9;color:#0ea5e9}
+  .info-modal{background:#fff;border-radius:12px;width:100%;max-width:560px;box-shadow:0 20px 40px rgba(0,0,0,0.25)}
+  .info-modal .modal-header{padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff}
+  .info-modal .modal-header h3{margin:0;font-size:18px;color:#0369a1}
+  .info-modal .modal-body{padding:24px;max-height:70vh;overflow-y:auto}
+  .info-modal .info-section{margin-bottom:20px}
+  .info-modal .info-section:last-child{margin-bottom:0}
+  .info-modal .info-section h4{margin:0 0 6px;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .info-modal .info-section p{margin:0;font-size:13px;color:#475569;line-height:1.5}
+  .info-modal .info-section ul{margin:4px 0 0;padding-left:18px;font-size:13px;color:#475569;line-height:1.6}
+  #info-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:999}
+  #info-modal.active{display:flex}
+  .rcm-header-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .loading-msg{text-align:center;padding:40px;color:#94a3b8;font-size:14px}
+</style>
+{% endblock %}
+
+{% block header_title %}Revenue Classification Manager{% endblock %}
+{% block header_subtitle %}Analyze and manage regular vs irregular revenue for board reporting{% endblock %}
+
+{% block content %}
+<div class="rcm-wrap">
+  <div class="rcm-header-row">
+    <div></div>
+    <button class="info-btn" onclick="document.getElementById('info-modal').classList.add('active')" title="How to use this tool">?</button>
+  </div>
+
+  <div class="rcm-summary">
+    <div class="rcm-card regular">
+      <div class="value" id="regular-total">-</div>
+      <div class="label">Regular Revenue</div>
+    </div>
+    <div class="rcm-card irregular">
+      <div class="value" id="irregular-total">-</div>
+      <div class="label">Irregular Revenue</div>
+    </div>
+    <div class="rcm-card">
+      <div class="value" id="regular-pct">-</div>
+      <div class="label">Regular % of Total</div>
+    </div>
+    <div class="rcm-card">
+      <div class="value" id="unclassified-count">-</div>
+      <div class="label">Unclassified Customers</div>
+    </div>
+  </div>
+
+  <div class="rcm-controls">
+    <select id="year-select"><option>Loading...</option></select>
+    <select id="sector-filter"><option value="">All Sectors</option></select>
+    <select id="ae-filter"><option value="">All AEs</option></select>
+    <select id="class-filter">
+      <option value="">All Classifications</option>
+      <option value="regular">Regular</option>
+      <option value="irregular">Irregular</option>
+    </select>
+    <input type="text" id="search-input" placeholder="Search customers...">
+  </div>
+
+  <div class="rcm-chart-wrap">
+    <canvas id="revenue-chart"></canvas>
+  </div>
+
+  <div class="rcm-table-wrap">
+    <table class="rcm-table">
+      <thead>
+        <tr>
+          <th data-col="name">Customer <span class="sort-arrow">&#9650;</span></th>
+          <th data-col="sector_name">Sector <span class="sort-arrow">&#9650;</span></th>
+          <th data-col="revenue_class">Classification <span class="sort-arrow">&#9650;</span></th>
+          <th data-col="assigned_ae">AE <span class="sort-arrow">&#9650;</span></th>
+          <th data-col="current_year_revenue" id="th-current-year">2026 Revenue <span class="sort-arrow">&#9650;</span></th>
+          <th data-col="prior_year_revenue" id="th-prior-year">2025 Revenue <span class="sort-arrow">&#9650;</span></th>
+          <th data-col="yoy_dollar">YoY Change <span class="sort-arrow">&#9650;</span></th>
+        </tr>
+      </thead>
+      <tbody id="customer-tbody">
+        <tr><td colspan="7" class="loading-msg">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="info-modal">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>Revenue Classification Manager</h3>
+      <button onclick="document.getElementById('info-modal').classList.remove('active')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What is this?</h4>
+        <p>This tool helps you understand revenue in two buckets: <strong>Regular</strong> (recurring, predictable revenue like casinos, auto dealers, healthcare) and <strong>Irregular</strong> (cyclical or one-time like political campaigns or COVID-era government spending).</p>
+      </div>
+      <div class="info-section">
+        <h4>Why it matters</h4>
+        <p>The board needs to see the predictability story. Regular revenue is what we can count on year-over-year. Irregular revenue inflates totals during peak cycles but disappears in off-years. Separating them makes forecasting reliable.</p>
+      </div>
+      <div class="info-section">
+        <h4>Summary Cards</h4>
+        <ul>
+          <li><strong>Regular Revenue</strong> -- Total booked revenue from regular customers for the selected year</li>
+          <li><strong>Irregular Revenue</strong> -- Total booked revenue from irregular customers</li>
+          <li><strong>Regular %</strong> -- What portion of total revenue is predictable</li>
+          <li><strong>Unclassified</strong> -- Customers without a classification (should be zero)</li>
+        </ul>
+      </div>
+      <div class="info-section">
+        <h4>Monthly Chart</h4>
+        <p>Shows regular (blue) and irregular (amber) revenue side by side for each month. Includes forward-booked months, not just closed months.</p>
+      </div>
+      <div class="info-section">
+        <h4>Reclassifying Customers</h4>
+        <p>Click the <strong>Regular</strong> or <strong>Irregular</strong> button in the table to toggle a customer's classification. Changes save immediately and update all totals.</p>
+      </div>
+      <div class="info-section">
+        <h4>Filters</h4>
+        <p>Use the year selector, sector, AE, and classification dropdowns to focus on specific subsets. The search box filters by customer name.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/revenue_classification_manager.js') }}"></script>
+{% endblock %}
