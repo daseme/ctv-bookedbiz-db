@@ -252,6 +252,14 @@
     return d.innerHTML;
   }
 
+  function flashRow(el, type) {
+    const tr = el.closest('tr');
+    if (!tr) return;
+    tr.classList.remove('flash-saved', 'flash-error');
+    void tr.offsetWidth;
+    tr.classList.add(type === 'error' ? 'flash-error' : 'flash-saved');
+  }
+
   window._rcmToggle = async function (btn) {
     const id = btn.dataset.id;
     const oldCls = btn.dataset.cls;
@@ -271,6 +279,7 @@
         body: JSON.stringify({ revenue_class: newCls }),
       });
       if (!res.ok) throw new Error('Save failed');
+      flashRow(btn, 'saved');
 
       const [summaryRes] = await Promise.all([
         fetch('/api/revenue-classification/summary?' + filterParams()),
@@ -283,6 +292,7 @@
       btn.className = 'cls-toggle ' + oldCls;
       btn.dataset.cls = oldCls;
       if (cust) cust.revenue_class = oldCls;
+      flashRow(btn, 'error');
       console.error('Classification update failed:', e);
     }
   };
@@ -308,6 +318,7 @@
         body: JSON.stringify({ sector_id: newSectorId }),
       });
       if (!res.ok) throw new Error('Save failed');
+      flashRow(sel, 'saved');
     } catch (e) {
       sel.value = oldSectorId;
       if (cust) {
@@ -315,6 +326,7 @@
         const sec = allSectors.find((s) => s.sector_id === cust.sector_id);
         cust.sector_name = sec ? sec.sector_name : '';
       }
+      flashRow(sel, 'error');
       console.error('Sector update failed:', e);
     }
   };
