@@ -181,16 +181,6 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.error(f"Failed to register length analysis blueprint: {e}")
 
 
-    # Initialize decay system check (non-blocking) - FIXED for newer Flask
-    # REPLACE before_first_request with context processor (works in all Flask versions)
-    @app.context_processor
-    def inject_decay_status():
-        """Check decay system on first template render."""
-        if not hasattr(app, "_decay_system_checked"):
-            check_decay_system()
-            app._decay_system_checked = True
-        return {}
-
     # Register root route (redirect to reports)
     @app.route("/")
     def index():
