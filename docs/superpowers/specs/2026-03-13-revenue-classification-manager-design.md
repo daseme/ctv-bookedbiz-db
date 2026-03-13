@@ -72,7 +72,7 @@ Revenue queries:
 |---------|----------|
 | **Year selector** | Dropdown of available years (derived from distinct broadcast_month year suffixes in the spots table). Defaults to current year. Changes update all sections. Populated by the summary API which returns an `available_years` list. |
 | **Sector filter** | Dropdown of all sectors. Filters table and recalculates summary/chart for filtered subset. |
-| **AE filter** | Dropdown of assigned AEs. Same filtering behavior. |
+| **AE filter** | Dropdown of distinct `assigned_ae` values from the `customers` table (non-NULL, active customers only). Same filtering behavior as sector. |
 | **Classification filter** | All / Regular / Irregular. Filters table, summary adjusts to show filtered totals. |
 | **Search** | Text input, filters customer table by name. |
 
@@ -97,7 +97,7 @@ Columns:
 | Customer | `normalized_name`, links to address book entity detail | Yes (alpha) |
 | Sector | Primary sector name | Yes (alpha) |
 | Classification | Inline toggle button: Regular / Irregular. Click to switch, saves via API immediately. | Yes |
-| AE | `assigned_ae` | Yes (alpha) |
+| AE | `customers.assigned_ae` (TEXT column on the customers table, also exists on agencies but only the customer value is used here) | Yes (alpha) |
 | {Selected Year} Revenue | Total booked gross_rate for selected year | Yes (numeric) |
 | {Prior Year} Revenue | Total booked gross_rate for prior year | Yes (numeric) |
 | YoY Change | Dollar difference and percentage. Green if positive, red if negative. | Yes (numeric) |
