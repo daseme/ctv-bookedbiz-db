@@ -19,6 +19,7 @@
   const aeSel = $('#ae-filter');
   const classSel = $('#class-filter');
   const searchInput = $('#search-input');
+  const activeOnly = $('#active-only');
 
   function currentYear() {
     return parseInt(yearSel.value, 10);
@@ -185,6 +186,12 @@
   function renderTable() {
     const search = searchInput.value.toLowerCase();
     let filtered = allCustomers;
+
+    if (activeOnly.checked) {
+      filtered = filtered.filter(
+        (c) => c.current_year_revenue > 0 || c.prior_year_revenue > 0
+      );
+    }
 
     if (search) {
       filtered = filtered.filter((c) => c.name.toLowerCase().includes(search));
@@ -365,6 +372,7 @@
   sectorSel.addEventListener('change', loadData);
   aeSel.addEventListener('change', loadData);
   classSel.addEventListener('change', loadData);
+  activeOnly.addEventListener('change', renderTable);
   searchInput.addEventListener('input', renderTable);
 
   // Initial load
