@@ -392,6 +392,7 @@
             <table class="monthly-table" style="margin: 0;">
                 <thead style="position: sticky; top: 0; z-index: 1;">
                     <tr>
+                        <th class="numeric">Days</th>
                         <th>Customer</th>
                         {% if is_admin_or_management %}
                         <th>Sales Person</th>
@@ -406,6 +407,7 @@
                     {% set ns = namespace(total_gross=0, total_spots=0) %}
                     {% for row in waiting_for_copy %}
                     <tr{% if row.urgent %} style="background: #fef2f2; color: #991b1b;"{% endif %}>
+                        <td class="numeric">{% if row.days_until is not none %}{% if row.days_until < 0 %}<strong>{{ row.days_until }}d</strong>{% else %}{{ row.days_until }}d{% endif %}{% else %}&mdash;{% endif %}</td>
                         <td>{% if row.urgent %}<strong>{{ row.customer }}</strong>{% else %}{{ row.customer }}{% endif %}</td>
                         {% if is_admin_or_management %}
                         <td>{{ row.sales_person }}</td>
@@ -422,6 +424,7 @@
                 {% if waiting_for_copy | length > 1 %}
                 <tfoot style="position: sticky; bottom: 0; z-index: 1;">
                     <tr style="font-weight: bold; border-top: 2px solid #4c566a; background: #fffbeb;">
+                        <td></td>
                         <td>Total</td>
                         {% if is_admin_or_management %}
                         <td></td>
