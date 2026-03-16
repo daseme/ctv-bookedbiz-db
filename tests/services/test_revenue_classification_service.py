@@ -19,7 +19,7 @@ def rc_db():
             sector_id INTEGER,
             agency_id INTEGER,
             revenue_class TEXT DEFAULT 'regular'
-                CHECK (revenue_class IN ('regular', 'irregular')),
+                CHECK (revenue_class IN ('regular', 'irregular', 'political')),
             is_active INTEGER DEFAULT 1
         );
         CREATE TABLE sectors (
@@ -89,6 +89,9 @@ def rc_db():
         INSERT INTO customers VALUES
             (40, 'Inactive Corp', 'Alice', 1, NULL, 'regular', 0);
 
+        INSERT INTO customers VALUES
+            (50, 'Senate PAC', 'Bob', 2, NULL, 'political', 1);
+
         -- 2025 spots for Acme Auto (regular)
         INSERT INTO spots VALUES (1, 10, 'Jan-25', 5000.0, 'Cash', 1);
         INSERT INTO spots VALUES (2, 10, 'Feb-25', 3000.0, 'Cash', 1);
@@ -103,6 +106,10 @@ def rc_db():
 
         -- Unresolved spot (NULL customer_id, should be excluded)
         INSERT INTO spots VALUES (7, NULL, 'Jan-25', 9000.0, 'Cash', 1);
+
+        -- 2025 spots for Senate PAC (political)
+        INSERT INTO spots VALUES (11, 50, 'Jan-25', 10000.0, 'Cash', 0);
+        INSERT INTO spots VALUES (12, 50, 'Feb-25', 15000.0, 'Cash', 0);
 
         -- 2024 spots for YoY comparison
         INSERT INTO spots VALUES (8, 10, 'Jan-24', 4000.0, 'Cash', 1);
@@ -150,8 +157,12 @@ class TestGetSummary:
         )
         result = svc.get_summary(rc_db, 2025)
 
-        total = result["regular_total"] + result["irregular_total"]
-        assert total == 26000.0
+        total = (
+            result["regular_total"]
+            + result["irregular_total"]
+            + result["political_total"]
+        )
+        assert total == 51000.0
 
     def test_regular_percentage(self, rc_db):
         from src.services.revenue_classification_service import (
@@ -163,7 +174,7 @@ class TestGetSummary:
         )
         result = svc.get_summary(rc_db, 2025)
 
-        expected_pct = 12000.0 / 26000.0 * 100
+        expected_pct = 12000.0 / 51000.0 * 100
         assert abs(result["regular_pct"] - expected_pct) < 0.1
 
     def test_monthly_breakdown(self, rc_db):
@@ -207,7 +218,7 @@ class TestGetSummary:
         assert result["unclassified_count"] == 0
 
         rc_db.execute(
-            "INSERT INTO customers VALUES (50, 'New Co', 'Alice', 1, NULL, NULL, 1)"
+            "INSERT INTO customers VALUES (60, 'New Co', 'Alice', 1, NULL, NULL, 1)"
         )
         result = svc.get_summary(rc_db, 2025)
         assert result["unclassified_count"] == 1
@@ -239,6 +250,7 @@ class TestGetSummary:
 
         assert result["regular_total"] == 0
         assert result["irregular_total"] == 14000.0
+        assert result["political_total"] == 25000.0
 
 
 class TestGetCustomers:
@@ -383,6 +395,81 @@ class TestUpdateClassification:
         )
         with pytest.raises(ValueError):
             svc.update_classification(rc_db, 9999, "regular")
+
+    def test_update_to_political(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        svc.update_classification(rc_db, 10, "political")
+
+        row = rc_db.execute(
+            "SELECT revenue_class FROM customers WHERE customer_id = 10"
+        ).fetchone()
+        assert row["revenue_class"] == "political"
+
+    def test_update_from_political_to_regular(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        svc.update_classification(rc_db, 50, "regular")
+
+        row = rc_db.execute(
+            "SELECT revenue_class FROM customers WHERE customer_id = 50"
+        ).fetchone()
+        assert row["revenue_class"] == "regular"
+
+
+class TestSummaryWithPolitical:
+    def test_summary_includes_political_total(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        result = svc.get_summary(rc_db, 2025)
+
+        assert result["political_total"] == 25000.0
+
+    def test_summary_monthly_includes_political(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        result = svc.get_summary(rc_db, 2025)
+
+        monthly = {m["month"]: m for m in result["monthly"]}
+        assert monthly["Jan"]["political"] == 10000.0
+        assert monthly["Feb"]["political"] == 15000.0
+
+    def test_filter_by_political_classification(self, rc_db):
+        from src.services.revenue_classification_service import (
+            RevenueClassificationService,
+        )
+
+        svc = RevenueClassificationService.__new__(
+            RevenueClassificationService
+        )
+        result = svc.get_customers(
+            rc_db, 2025, filters={"classification": "political"}
+        )
+
+        names = [c["name"] for c in result]
+        assert "Senate PAC" in names
+        assert "Acme Auto" not in names
+        assert "Campaign Co" not in names
 
 
 class TestUpdateSector:

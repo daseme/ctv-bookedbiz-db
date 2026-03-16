@@ -12,12 +12,13 @@
 {% block extra_styles %}
 <style>
   .rcm-wrap{max-width:1400px;margin:0 auto;padding:20px}
-  .rcm-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+  .rcm-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
   .rcm-card{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}
   .rcm-card .value{font-size:28px;font-weight:700;color:#0f172a}
   .rcm-card .label{font-size:13px;color:#64748b;margin-top:4px}
   .rcm-card.regular .value{color:#2563eb}
   .rcm-card.irregular .value{color:#d97706}
+  .rcm-card.political .value{color:#9333ea}
   .rcm-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:24px;background:#fff;padding:16px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .rcm-controls select,.rcm-controls input{padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff}
   .rcm-controls select:focus,.rcm-controls input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
@@ -38,6 +39,7 @@
   .cls-toggle{padding:4px 14px;border-radius:20px;border:1px solid;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
   .cls-toggle.regular{background:#eff6ff;border-color:#93c5fd;color:#2563eb}
   .cls-toggle.irregular{background:#fffbeb;border-color:#fcd34d;color:#d97706}
+  .cls-toggle.political{background:#faf5ff;border-color:#c084fc;color:#9333ea}
   .cls-toggle:hover{filter:brightness(.95)}
   @keyframes row-saved{0%{background:rgba(34,197,94,.18)}100%{background:transparent}}
   @keyframes row-error{0%{background:rgba(239,68,68,.18)}100%{background:transparent}}
@@ -65,7 +67,7 @@
 {% endblock %}
 
 {% block header_title %}Revenue Classification Manager{% endblock %}
-{% block header_subtitle %}Analyze and manage regular vs irregular revenue for board reporting{% endblock %}
+{% block header_subtitle %}Analyze and manage revenue classifications for board reporting{% endblock %}
 
 {% block content %}
 <div class="rcm-wrap">
@@ -82,6 +84,10 @@
     <div class="rcm-card irregular">
       <div class="value" id="irregular-total">-</div>
       <div class="label">Irregular Revenue</div>
+    </div>
+    <div class="rcm-card political">
+      <div class="value" id="political-total">-</div>
+      <div class="label">Political Revenue</div>
     </div>
     <div class="rcm-card">
       <div class="value" id="regular-pct">-</div>
@@ -101,6 +107,7 @@
       <option value="">All Classifications</option>
       <option value="regular">Regular</option>
       <option value="irregular">Irregular</option>
+      <option value="political">Political</option>
     </select>
     <input type="text" id="search-input" placeholder="Search customers...">
   </div>
@@ -138,7 +145,7 @@
     <div class="modal-body">
       <div class="info-section">
         <h4>What is this?</h4>
-        <p>This tool helps you understand revenue in two buckets: <strong>Regular</strong> (recurring, predictable revenue like casinos, auto dealers, healthcare) and <strong>Irregular</strong> (cyclical or one-time like political campaigns or COVID-era government spending).</p>
+        <p>This tool helps you understand revenue in three buckets: <strong>Regular</strong> (recurring, predictable revenue like casinos, auto dealers, healthcare), <strong>Irregular</strong> (cyclical or one-time like COVID-era government spending), and <strong>Political</strong> (campaign and election-related spending that follows election cycles).</p>
       </div>
       <div class="info-section">
         <h4>Why it matters</h4>
@@ -149,17 +156,18 @@
         <ul>
           <li><strong>Regular Revenue</strong> -- Total booked revenue from regular customers for the selected year</li>
           <li><strong>Irregular Revenue</strong> -- Total booked revenue from irregular customers</li>
+          <li><strong>Political Revenue</strong> -- Total booked revenue from political customers</li>
           <li><strong>Regular %</strong> -- What portion of total revenue is predictable</li>
           <li><strong>Unclassified</strong> -- Customers without a classification (should be zero)</li>
         </ul>
       </div>
       <div class="info-section">
         <h4>Monthly Chart</h4>
-        <p>Shows regular (blue) and irregular (amber) revenue side by side for each month. Includes forward-booked months, not just closed months.</p>
+        <p>Shows regular (blue), irregular (amber), and political (purple) revenue side by side for each month. Includes forward-booked months, not just closed months.</p>
       </div>
       <div class="info-section">
         <h4>Reclassifying Customers</h4>
-        <p>Click the <strong>Regular</strong> or <strong>Irregular</strong> button in the table to toggle a customer's classification. Changes save immediately and update all totals.</p>
+        <p>Click the classification button in the table to cycle through <strong>Regular</strong>, <strong>Irregular</strong>, and <strong>Political</strong>. Changes save immediately and update all totals.</p>
       </div>
       <div class="info-section">
         <h4>Filters</h4>

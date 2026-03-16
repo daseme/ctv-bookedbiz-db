@@ -5,6 +5,8 @@
   const fmt = (n) => '$' + Math.round(n).toLocaleString();
 
   const WORLDLINK_ID = 5;
+  const CLASS_CYCLE = ['regular', 'irregular', 'political'];
+  const CLASS_LABELS = { regular: 'Regular', irregular: 'Irregular', political: 'Political' };
 
   let chart = null;
   let allCustomers = [];
@@ -51,6 +53,7 @@
   function renderSummary(s) {
     $('#regular-total').textContent = fmt(s.regular_total);
     $('#irregular-total').textContent = fmt(s.irregular_total);
+    $('#political-total').textContent = fmt(s.political_total);
     $('#regular-pct').textContent = s.regular_pct.toFixed(1) + '%';
     $('#unclassified-count').textContent = s.unclassified_count;
   }
@@ -149,6 +152,12 @@
             backgroundColor: '#f59e0b',
             borderRadius: 4,
           },
+          {
+            label: 'Political',
+            data: monthly.map((m) => m.political),
+            backgroundColor: '#9333ea',
+            borderRadius: 4,
+          },
         ],
       },
       options: {
@@ -220,7 +229,7 @@
             data-id="${c.customer_id}"
             data-cls="${c.revenue_class}"
             onclick="window._rcmToggle(this)">
-            ${c.revenue_class === 'regular' ? 'Regular' : 'Irregular'}
+            ${CLASS_LABELS[c.revenue_class] || c.revenue_class}
           </button>
         </td>
         <td>${esc(c.assigned_ae)}</td>
@@ -263,9 +272,10 @@
   window._rcmToggle = async function (btn) {
     const id = btn.dataset.id;
     const oldCls = btn.dataset.cls;
-    const newCls = oldCls === 'regular' ? 'irregular' : 'regular';
+    const idx = CLASS_CYCLE.indexOf(oldCls);
+    const newCls = CLASS_CYCLE[(idx + 1) % CLASS_CYCLE.length];
 
-    btn.textContent = newCls === 'regular' ? 'Regular' : 'Irregular';
+    btn.textContent = CLASS_LABELS[newCls];
     btn.className = 'cls-toggle ' + newCls;
     btn.dataset.cls = newCls;
 
@@ -281,14 +291,14 @@
       if (!res.ok) throw new Error('Save failed');
       flashRow(btn, 'saved');
 
-      const [summaryRes] = await Promise.all([
-        fetch('/api/revenue-classification/summary?' + filterParams()),
-      ]);
+      const summaryRes = await fetch(
+        '/api/revenue-classification/summary?' + filterParams()
+      );
       const summary = await summaryRes.json();
       renderSummary(summary);
       renderChart(summary.monthly);
     } catch (e) {
-      btn.textContent = oldCls === 'regular' ? 'Regular' : 'Irregular';
+      btn.textContent = CLASS_LABELS[oldCls];
       btn.className = 'cls-toggle ' + oldCls;
       btn.dataset.cls = oldCls;
       if (cust) cust.revenue_class = oldCls;
