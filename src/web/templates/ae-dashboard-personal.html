@@ -388,11 +388,12 @@
             </span>
         </h3>
         <div style="background: white; border: 1px solid #fde68a; border-radius: 6px; overflow: hidden;">
-            <div style="max-height: 210px; overflow-y: auto;">
+            <div style="max-height: 296px; overflow-y: auto;">
             <table class="monthly-table" style="margin: 0;">
                 <thead style="position: sticky; top: 0; z-index: 1;">
                     <tr>
                         <th class="numeric">Days</th>
+                        <th>First Air</th>
                         <th>Customer</th>
                         {% if is_admin_or_management %}
                         <th>Sales Person</th>
@@ -406,9 +407,31 @@
                 <tbody>
                     {% set ns = namespace(total_gross=0, total_spots=0) %}
                     {% for row in waiting_for_copy %}
-                    <tr{% if row.urgent %} style="background: #fef2f2; color: #991b1b;"{% endif %}>
-                        <td class="numeric">{% if row.days_until is not none %}{% if row.days_until < 0 %}<strong>{{ row.days_until }}d</strong>{% else %}{{ row.days_until }}d{% endif %}{% else %}&mdash;{% endif %}</td>
-                        <td>{% if row.urgent %}<strong>{{ row.customer }}</strong>{% else %}{{ row.customer }}{% endif %}</td>
+                    {% if row.days_until is not none and row.days_until <= 30 %}
+                        {% if row.days_until <= 0 %}
+                            {% set heat_bg = "#dc2626" %}
+                            {% set heat_fg = "#fff" %}
+                        {% elif row.days_until <= 7 %}
+                            {% set heat_bg = "#ef4444" %}
+                            {% set heat_fg = "#fff" %}
+                        {% elif row.days_until <= 14 %}
+                            {% set heat_bg = "#f87171" %}
+                            {% set heat_fg = "#fff" %}
+                        {% elif row.days_until <= 21 %}
+                            {% set heat_bg = "#fca5a5" %}
+                            {% set heat_fg = "#991b1b" %}
+                        {% else %}
+                            {% set heat_bg = "#fecaca" %}
+                            {% set heat_fg = "#991b1b" %}
+                        {% endif %}
+                    {% else %}
+                        {% set heat_bg = "" %}
+                        {% set heat_fg = "" %}
+                    {% endif %}
+                    <tr>
+                        <td class="numeric" style="{% if heat_bg %}background:{{ heat_bg }};color:{{ heat_fg }};font-weight:700;{% endif %}white-space:nowrap;">{% if row.days_until is not none %}{{ row.days_until }}d{% else %}&mdash;{% endif %}</td>
+                        <td style="white-space:nowrap;">{{ row.first_air_date or '—' }}</td>
+                        <td>{{ row.customer }}</td>
                         {% if is_admin_or_management %}
                         <td>{{ row.sales_person }}</td>
                         {% endif %}
@@ -424,6 +447,7 @@
                 {% if waiting_for_copy | length > 1 %}
                 <tfoot style="position: sticky; bottom: 0; z-index: 1;">
                     <tr style="font-weight: bold; border-top: 2px solid #4c566a; background: #fffbeb;">
+                        <td></td>
                         <td></td>
                         <td>Total</td>
                         {% if is_admin_or_management %}
