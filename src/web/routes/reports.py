@@ -673,7 +673,24 @@ def ae_dashboard_personal():
                     GROUP BY customer, s.sales_person
                     ORDER BY customer
                 """, wfc_params).fetchall()
-                waiting_for_copy = [dict(r) for r in rows]
+                today = date.today()
+                cur_ym = (today.year, today.month)
+
+                def _parse_bm(bm):
+                    try:
+                        dt = datetime.strptime(bm, "%b-%y")
+                        return (dt.year, dt.month)
+                    except (ValueError, TypeError):
+                        return None
+
+                wfc_list = []
+                for r in rows:
+                    d = dict(r)
+                    parsed = _parse_bm(d.get("first_month"))
+                    d["urgent"] = parsed is not None and parsed <= cur_ym
+                    wfc_list.append(d)
+                wfc_list.sort(key=lambda x: (not x["urgent"], x["customer"]))
+                waiting_for_copy = wfc_list
             finally:
                 conn.close()
         except Exception as e:
