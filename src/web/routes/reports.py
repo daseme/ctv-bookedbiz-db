@@ -663,7 +663,8 @@ def ae_dashboard_personal():
                         MAX(s.broadcast_month) AS last_month,
                         COUNT(DISTINCT s.broadcast_month) AS month_count,
                         COUNT(*) AS spot_count,
-                        COALESCE(SUM(s.gross_rate), 0) AS total_gross
+                        COALESCE(SUM(s.gross_rate), 0) AS total_gross,
+                        MIN(s.air_date) AS first_air_date
                     FROM spots s
                     LEFT JOIN customers c ON s.customer_id = c.customer_id
                     WHERE LOWER(s.media) LIKE '%need copy%'
@@ -674,22 +675,24 @@ def ae_dashboard_personal():
                     ORDER BY customer
                 """, wfc_params).fetchall()
                 today = date.today()
-                cur_ym = (today.year, today.month)
-
-                def _parse_bm(bm):
-                    try:
-                        dt = datetime.strptime(bm, "%b-%y")
-                        return (dt.year, dt.month)
-                    except (ValueError, TypeError):
-                        return None
 
                 wfc_list = []
                 for r in rows:
                     d = dict(r)
-                    parsed = _parse_bm(d.get("first_month"))
-                    d["urgent"] = parsed is not None and parsed <= cur_ym
+                    air = d.get("first_air_date")
+                    if air:
+                        try:
+                            air_dt = datetime.strptime(air, "%Y-%m-%d").date()
+                            d["days_until"] = (air_dt - today).days
+                        except (ValueError, TypeError):
+                            d["days_until"] = None
+                    else:
+                        d["days_until"] = None
+                    d["urgent"] = d["days_until"] is not None and d["days_until"] <= 30
                     wfc_list.append(d)
-                wfc_list.sort(key=lambda x: (not x["urgent"], x["customer"]))
+                wfc_list.sort(key=lambda x: (
+                    x["days_until"] if x["days_until"] is not None else 9999
+                ))
                 waiting_for_copy = wfc_list
             finally:
                 conn.close()
