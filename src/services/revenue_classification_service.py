@@ -24,7 +24,7 @@ def _bm_placeholders(year, prefix):
     params = dict(zip(keys, values))
     return f"s.broadcast_month IN ({sql})", params
 
-VALID_CLASSES = ("regular", "irregular")
+VALID_CLASSES = ("regular", "irregular", "political")
 
 WORLDLINK_AGENCY_ID = 5
 
@@ -106,7 +106,10 @@ class RevenueClassificationService(BaseService):
 
         regular_total = 0.0
         irregular_total = 0.0
+        political_total = 0.0
         monthly_data = {}
+
+        empty_month = {"regular": 0, "irregular": 0, "political": 0}
 
         for row in rows:
             abbr = row["month_abbr"]
@@ -115,14 +118,16 @@ class RevenueClassificationService(BaseService):
 
             if cls == "regular":
                 regular_total += amount
+            elif cls == "political":
+                political_total += amount
             else:
                 irregular_total += amount
 
             if abbr not in monthly_data:
-                monthly_data[abbr] = {"month": abbr, "regular": 0, "irregular": 0}
+                monthly_data[abbr] = {"month": abbr, **empty_month}
             monthly_data[abbr][cls] += amount
 
-        grand_total = regular_total + irregular_total
+        grand_total = regular_total + irregular_total + political_total
         regular_pct = (
             (regular_total / grand_total * 100) if grand_total > 0 else 0
         )
@@ -130,7 +135,7 @@ class RevenueClassificationService(BaseService):
         monthly = []
         for abbr in MONTH_ABBREVS:
             monthly.append(
-                monthly_data.get(abbr, {"month": abbr, "regular": 0, "irregular": 0})
+                monthly_data.get(abbr, {"month": abbr, **empty_month})
             )
 
         unclassified = conn.execute(
@@ -150,6 +155,7 @@ class RevenueClassificationService(BaseService):
         return {
             "regular_total": regular_total,
             "irregular_total": irregular_total,
+            "political_total": political_total,
             "regular_pct": round(regular_pct, 1),
             "unclassified_count": unclassified,
             "monthly": monthly,

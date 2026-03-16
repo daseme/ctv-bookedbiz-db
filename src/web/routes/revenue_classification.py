@@ -31,7 +31,7 @@ def _parse_filters():
     if ae:
         filters["ae"] = ae
     classification = request.args.get("classification", "").strip()
-    if classification in ("regular", "irregular"):
+    if classification in ("regular", "irregular", "political"):
         filters["classification"] = classification
     return filters or None
 
@@ -84,8 +84,8 @@ def api_update_classification(customer_id):
         try:
             if "revenue_class" in data:
                 revenue_class = data["revenue_class"].strip()
-                if revenue_class not in ("regular", "irregular"):
-                    return jsonify({"error": "revenue_class must be 'regular' or 'irregular'"}), 400
+                if revenue_class not in ("regular", "irregular", "political"):
+                    return jsonify({"error": "revenue_class must be 'regular', 'irregular', or 'political'"}), 400
                 svc.update_classification(conn, customer_id, revenue_class)
 
             if "sector_id" in data:
