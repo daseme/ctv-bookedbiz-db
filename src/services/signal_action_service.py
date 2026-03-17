@@ -13,7 +13,7 @@ class SignalActionService(BaseService):
     def __init__(self, db_connection):
         super().__init__(db_connection)
 
-    def get_queue(self, conn, ae_name):
+    def get_queue(self, conn, ae_name=None):
         """Get unworked signal actions for an AE.
 
         Returns signal_actions with status='new' plus expired snoozes,
@@ -22,7 +22,7 @@ class SignalActionService(BaseService):
 
         Args:
             conn: Database connection (writable — reverts expired snoozes).
-            ae_name: AE name to filter by.
+            ae_name: AE name to filter by. None returns all.
 
         Returns:
             List of action dicts with signal metadata.
@@ -35,7 +35,13 @@ class SignalActionService(BaseService):
               AND snooze_until < date('now')
         """)
 
-        rows = conn.execute("""
+        ae_filter = ""
+        params = []
+        if ae_name:
+            ae_filter = "AND sa.assigned_ae = ?"
+            params = [ae_name]
+
+        rows = conn.execute(f"""
             SELECT
                 sa.action_id,
                 sa.entity_type,
@@ -64,12 +70,12 @@ class SignalActionService(BaseService):
                 ON es.entity_type = sa.entity_type
                AND es.entity_id = sa.entity_id
                AND es.signal_type = sa.signal_type
-            WHERE sa.assigned_ae = ?
-              AND sa.status = 'new'
+            WHERE sa.status = 'new'
+              {ae_filter}
             ORDER BY
                 COALESCE(es.signal_priority, 99) ASC,
                 sa.created_date ASC
-        """, [ae_name]).fetchall()
+        """, params).fetchall()
 
         return [dict(r) for r in rows]
 

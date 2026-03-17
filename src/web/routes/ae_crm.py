@@ -98,8 +98,6 @@ def api_stats():
 def api_recent_activity():
     """Return recent activities across all AE's accounts."""
     ae_name, _, _, _ = _resolve_ae_name()
-    if not ae_name:
-        return jsonify([])
     activity_svc = _svc("activity_service")
     with _db().connection_ro() as conn:
         return jsonify(
@@ -114,8 +112,6 @@ def api_recent_activity():
 def api_signal_queue():
     """Return signal action queue for the current AE."""
     ae_name, _, _, _ = _resolve_ae_name()
-    if not ae_name:
-        return jsonify([])
     signal_svc = _svc("signal_action_service")
     with _db().connection() as conn:
         return jsonify(signal_svc.get_queue(conn, ae_name=ae_name))

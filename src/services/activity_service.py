@@ -214,13 +214,35 @@ class ActivityService(BaseService):
             results.append(d)
         return results
 
-    def get_recent_activity_for_ae(self, conn, ae_name, limit=15):
+    def get_recent_activity_for_ae(self, conn, ae_name=None, limit=15):
         """Get recent activities across all entities assigned to an AE.
+
+        Args:
+            conn: Database connection (read-only preferred).
+            ae_name: Filter to this AE. None returns all.
+            limit: Max results to return.
 
         Returns list of activity dicts with entity_name, ordered by
         activity_date descending.
         """
-        rows = conn.execute("""
+        ae_filter = ""
+        params = []
+        if ae_name:
+            ae_filter = """
+              AND (
+                  (ea.entity_type = 'customer' AND ea.entity_id IN (
+                      SELECT customer_id FROM customers
+                      WHERE assigned_ae = ?))
+                  OR
+                  (ea.entity_type = 'agency' AND ea.entity_id IN (
+                      SELECT agency_id FROM agencies
+                      WHERE assigned_ae = ?))
+              )
+            """
+            params = [ae_name, ae_name]
+
+        params.append(limit)
+        rows = conn.execute(f"""
             SELECT
                 ea.activity_id,
                 ea.entity_type,
@@ -240,18 +262,10 @@ class ActivityService(BaseService):
                         WHERE customer_id = ea.entity_id)
                 END AS entity_name
             FROM entity_activity ea
-            WHERE (
-                (ea.entity_type = 'customer' AND ea.entity_id IN (
-                    SELECT customer_id FROM customers
-                    WHERE assigned_ae = ?))
-                OR
-                (ea.entity_type = 'agency' AND ea.entity_id IN (
-                    SELECT agency_id FROM agencies
-                    WHERE assigned_ae = ?))
-            )
+            WHERE 1=1 {ae_filter}
             ORDER BY ea.activity_date DESC
             LIMIT ?
-        """, [ae_name, ae_name, limit]).fetchall()
+        """, params).fetchall()
         return [dict(r) for r in rows]
 
     def _classify_urgency(self, follow_up, today_iso):
