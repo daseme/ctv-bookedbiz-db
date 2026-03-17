@@ -459,7 +459,7 @@
             <span style="font-size: 0.85em; font-weight: normal; color: #718096;">
                 ({{ pending_orders_count }})
             </span>
-            <a href="file:///K:/Insertion Orders/{{ ae_name | urlencode }}" target="_blank" style="font-size: 12px; font-weight: 500; color: var(--nord10); text-decoration: none; padding: 2px 10px; border: 1px solid var(--nord10); border-radius: 4px;">Open Folder</a>
+            <a href="/reports/insertion-orders/{{ ae_name }}" style="font-size: 12px; font-weight: 500; color: var(--nord10); text-decoration: none; padding: 2px 10px; border: 1px solid var(--nord10); border-radius: 4px;">Open Folder</a>
             {% if pending_orders_scanned_at %}
             <span style="margin-left: auto; font-size: 0.75em; font-weight: normal; color: #a0aec0;">Last scanned: {{ pending_orders_scanned_at }}</span>
             {% endif %}
