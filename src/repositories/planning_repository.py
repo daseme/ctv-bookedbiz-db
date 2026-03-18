@@ -227,7 +227,8 @@ class PlanningRepository(BaseService):
             return {}
 
         with self.safe_connection() as conn:
-            placeholders = ",".join(["(?, ?)"] for _ in periods)
+            # Build "(?, ?), (?, ?), ..." for each requested period
+            placeholders = ",".join("(?, ?)" for _ in periods)
             params: List[Any] = []
             for p in periods:
                 params.extend([p.year, p.month])
