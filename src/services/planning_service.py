@@ -275,6 +275,32 @@ class PlanningService(BaseService):
 
         return changes
 
+    def bulk_update_new_business(
+        self,
+        updates: List[Dict[str, Any]],
+        updated_by: str,
+        session_notes: Optional[str] = None,
+    ) -> None:
+        """
+        Update new_accounts_forecast / new_dollars_forecast for multiple periods.
+
+        This does not change the forecast_amount values; it only upserts the
+        new-business fields on the forecast table.
+        """
+        for u in updates:
+            try:
+                self.repository.upsert_new_business(
+                    ae_name=u["ae_name"],
+                    year=u["year"],
+                    month=u["month"],
+                    new_accounts=u.get("new_accounts"),
+                    new_dollars=Decimal(str(u.get("new_dollars") or 0)),
+                    updated_by=updated_by,
+                )
+            except Exception as e:
+                logger.error(f"Failed to update new business for {u}: {e}")
+                raise
+
     def reset_forecast_to_budget(self, ae_name: str, year: int, month: int) -> bool:
         """Reset forecast to budget by removing the override."""
         period = PlanningPeriod(year=year, month=month)
@@ -655,8 +681,6 @@ class PlanningService(BaseService):
                     month=exp["month"],
                     expected_amount=Decimal(str(exp["amount"])),
                     notes=exp.get("notes"),
-                    new_accounts_forecast=exp.get("new_accounts_forecast") if exp.get("new_accounts_forecast") not in (None, "") else 0,
-                    new_dollars_forecast=Decimal(str(exp.get("new_dollars_forecast") or 0)),
                 )
             )
 
