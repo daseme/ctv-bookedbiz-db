@@ -276,6 +276,17 @@
 
         .data-card:hover { border-color: var(--nord15); }
 
+        .testing-card {
+            background: linear-gradient(135deg, #fef9ec 0%, #fdf6e3 100%);
+            border-color: rgba(235, 203, 139, 0.3);
+        }
+
+        .testing-card .card-icon {
+            background: linear-gradient(135deg, var(--nord13), var(--nord12));
+        }
+
+        .testing-card:hover { border-color: var(--nord13); }
+
         /* Inactive section styling */
         .inactive-section {
             margin-top: 28px;
@@ -645,6 +656,33 @@
                 </div>
             </div>
         </div>
+
+        {% if current_user.is_authenticated and current_user.role.value in ['AE', 'management', 'admin'] %}
+        <div class="category-section">
+            <div class="category-header">In Testing <span class="inactive-badge" style="background: var(--nord13); color: var(--nord0);">Beta</span></div>
+            <div class="report-grid">
+                <div class="report-card testing-card">
+                    <a href="/ae/my-accounts" class="card-link">
+                        <div class="card-header">
+                            <div class="card-icon">🧪</div>
+                            <h3>My Accounts</h3>
+                        </div>
+                        <p>CRM-style view of your book of business with health scores and activity tracking.</p>
+                    </a>
+                </div>
+
+                <div class="report-card testing-card">
+                    <a href="/manager/dashboard" class="card-link">
+                        <div class="card-header">
+                            <div class="card-icon">👥</div>
+                            <h3>Manager Dashboard</h3>
+                        </div>
+                        <p>Team performance and account oversight for sales management.</p>
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Inactive/Future Reports Section -->
         <div class="inactive-section">
