@@ -213,6 +213,63 @@ class PlanningRepository(BaseService):
                 "new_dollars_forecast": Decimal(str(row["new_dollars_forecast"])) if row["new_dollars_forecast"] is not None else None,
             }
 
+    def get_forecasts_for_periods(
+        self, ae_name: str, periods: List[PlanningPeriod]
+    ) -> Dict[PlanningPeriod, Dict[str, Any]]:
+        """
+        Get forecast metadata for multiple periods for a single AE.
+
+        Returns a dict keyed by PlanningPeriod with the same structure as
+        get_forecast_with_metadata: amount, updated_date, updated_by, notes,
+        new_accounts_forecast, new_dollars_forecast.
+        """
+        if not periods:
+            return {}
+
+        with self.safe_connection() as conn:
+            placeholders = ",".join(["(?, ?)"] for _ in periods)
+            params: List[Any] = []
+            for p in periods:
+                params.extend([p.year, p.month])
+
+            cursor = conn.execute(
+                f"""
+                SELECT 
+                    year,
+                    month,
+                    forecast_amount,
+                    updated_date,
+                    updated_by,
+                    notes,
+                    new_accounts_forecast,
+                    new_dollars_forecast
+                FROM forecast
+                WHERE ae_name = ?
+                  AND (year, month) IN ({placeholders})
+                """,
+                [ae_name] + params,
+            )
+
+            result: Dict[PlanningPeriod, Dict[str, Any]] = {}
+            for row in cursor.fetchall():
+                period = PlanningPeriod(year=row["year"], month=row["month"])
+                result[period] = {
+                    "amount": Decimal(str(row["forecast_amount"])),
+                    "updated_date": datetime.fromisoformat(row["updated_date"])
+                    if row["updated_date"]
+                    else None,
+                    "updated_by": row["updated_by"],
+                    "notes": row["notes"],
+                    "new_accounts_forecast": row["new_accounts_forecast"],
+                    "new_dollars_forecast": Decimal(
+                        str(row["new_dollars_forecast"])
+                    )
+                    if row["new_dollars_forecast"] is not None
+                    else None,
+                }
+
+            return result
+
     def upsert_new_business(
         self,
         ae_name: str,
