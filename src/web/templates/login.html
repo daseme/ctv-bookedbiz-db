@@ -159,8 +159,8 @@
         {% endwith %}
 
         <p style="color: var(--nord3); font-size: 14px; margin-bottom: 20px;">
-            Open this app using your <strong>Tailscale Serve</strong> URL (e.g. <code>https://your-machine.your-tailnet.ts.net</code>).
-            You will be signed in automatically with your Tailscale account. If you see this page, you are not using the Tailscale URL.
+            This application uses your current Tailscale identity to log you in automatically.
+            If login fails, make sure you are connected to Tailscale on this device, then try again.
         </p>
         <form method="POST" action="{{ url_for('user_management.login') }}">
             <button type="submit" class="btn btn-primary">Try again</button>

@@ -10,7 +10,8 @@ COPY requirements.txt .
 # use a venv so runtime doesn't depend on user home
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir -r requirements.txt uvicorn[standard] dropbox python-dotenv
+RUN pip install --no-cache-dir uv
+RUN uv pip install --no-cache-dir -r requirements.txt "uvicorn[standard]" dropbox python-dotenv
 
 # ---------- runtime ----------
 FROM python:3.11-slim
@@ -23,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl sqlite3 \
 # bring the venv from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir uv
 
 # copy app
 COPY . /app
