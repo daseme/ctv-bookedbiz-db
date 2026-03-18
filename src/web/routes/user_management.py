@@ -80,7 +80,12 @@ def login():
             logger.error(f"Localhost login error: {e}")
             flash("An error occurred during login. Please try again.", "error")
     elif request.method == "POST":
-        flash("Login requires Tailscale. Access the app via your Tailscale network.", "error")
+        # Tailscale lookup failed for a non-localhost request.
+        # Tell the user to sign into Tailscale and try again.
+        flash(
+            "login failed. please login to tailscale before trying again",
+            "error",
+        )
 
     return render_template("login.html")
 
