@@ -47,6 +47,7 @@ from src.web.routes.manager_dashboard import manager_bp
 from src.web.routes.revenue_classification import revenue_class_bp
 from src.web.routes.stale_customers import stale_customers_bp
 from src.web.routes.customer_merge import customer_merge_bp
+from src.web.routes.insertion_orders import insertion_orders_bp
 
 # Optional feature: customer sector API (do not break import if missing)
 try:
@@ -143,6 +144,9 @@ def register_blueprints(app: Flask) -> None:
 
         app.register_blueprint(revenue_class_bp)
         logger.info("Registered revenue classification blueprint")
+
+        app.register_blueprint(insertion_orders_bp)
+        logger.info("Registered insertion orders blueprint")
 
         register_template_filters(app)
         logger.info("Registered template filters")
