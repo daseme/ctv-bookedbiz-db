@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any, Tuple
 from decimal import Decimal
 from datetime import datetime
+from src.utils.query_builders import RevenueQueryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -188,16 +189,12 @@ class ManagementPerformanceService:
             cursor = conn.cursor()
 
             # 1. Load all booked revenue (current + prior year) by entity and quarter
+            quarter_case = RevenueQueryBuilder.build_quarter_number_case()
             cursor.execute(
-                """
-                SELECT 
+                f"""
+                SELECT
                     UPPER(TRIM(sales_person)) AS entity,
-                    CASE 
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jan', 'Feb', 'Mar') THEN 1
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Apr', 'May', 'Jun') THEN 2
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jul', 'Aug', 'Sep') THEN 3
-                        ELSE 4
-                    END AS quarter,
+                    {quarter_case} AS quarter,
                     CAST('20' || SUBSTR(broadcast_month, 5, 2) AS INTEGER) AS yr,
                     SUM(COALESCE(gross_rate, 0)) AS booked
                 FROM spots
@@ -262,15 +259,10 @@ class ManagementPerformanceService:
 
             # 4. Load quarterly customer counts (current + prior year)
             cursor.execute(
-                """
-                SELECT 
+                f"""
+                SELECT
                     UPPER(TRIM(sales_person)) AS entity,
-                    CASE 
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jan', 'Feb', 'Mar') THEN 1
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Apr', 'May', 'Jun') THEN 2
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jul', 'Aug', 'Sep') THEN 3
-                        ELSE 4
-                    END AS quarter,
+                    {quarter_case} AS quarter,
                     CAST('20' || SUBSTR(broadcast_month, 5, 2) AS INTEGER) AS yr,
                     COUNT(DISTINCT customer_id) AS customer_count
                 FROM spots

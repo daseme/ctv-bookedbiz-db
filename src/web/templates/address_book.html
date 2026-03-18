@@ -1,14 +1,12 @@
 {% extends "base.html" %}
+{% from "macros/breadcrumbs.html" import breadcrumb_trail %}
 
 {% block title %}Address Book - SpotOps{% endblock %}
 {% block header_title %}Address Book{% endblock %}
 {% block header_subtitle %}Unified directory of agencies and advertisers with contacts{% endblock %}
 
 {% block breadcrumb %}
-<span class="breadcrumb-separator">›</span>
-<span>Data Management</span>
-<span class="breadcrumb-separator">›</span>
-<span class="breadcrumb-current">Address Book</span>
+{{ breadcrumb_trail([("Data Management", "")], "Address Book") }}
 {% endblock %}
 
 {% block extra_styles %}
@@ -99,6 +97,18 @@
   .detail-modal .modal-header .type-badge{font-size:12px;padding:4px 10px;border-radius:12px;font-weight:500}
   .detail-modal .modal-header .type-badge.agency{background:#e0f2fe;color:#0369a1}
   .detail-modal .modal-header .type-badge.customer{background:#ede9fe;color:#6d28d9}
+  .btn-view-detail {
+      font-size: 13px;
+      padding: 4px 12px;
+      background: var(--nord8, #88c0d0);
+      color: white;
+      border-radius: 4px;
+      text-decoration: none;
+      white-space: nowrap;
+  }
+  .btn-view-detail:hover {
+      background: var(--nord9, #81a1c1);
+  }
   .modal-close{background:none;border:none;font-size:24px;color:#94a3b8;cursor:pointer;padding:4px 8px}
   .modal-close:hover{color:#334155}
   .detail-modal .modal-body{padding:24px}
@@ -408,6 +418,88 @@
   .signal-item .signal-name{font-weight:600;font-size:13px;color:#0f172a}
   .signal-item .signal-detail{font-size:12px;color:#475569;margin-top:2px}
   .signals-list{display:flex;flex-direction:column;gap:8px}
+
+  /* Group toggle */
+  #group-toggle.grouped {
+      background: var(--nord8, #88c0d0);
+      color: white;
+  }
+  #group-toggle:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+  }
+
+  /* Hierarchical card styles */
+  .agency-group {
+      margin-bottom: 16px;
+  }
+  .agency-group-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 14px;
+  }
+  .agency-group-header:hover {
+      background: #e2e8f0;
+  }
+  .agency-group-header .expand-icon {
+      transition: transform 0.2s;
+      font-size: 12px;
+  }
+  .agency-group-header.expanded .expand-icon {
+      transform: rotate(90deg);
+  }
+  .agency-group-header .client-count {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: normal;
+  }
+  .agency-group-header.muted {
+      opacity: 0.5;
+  }
+  .agency-group-clients {
+      display: none;
+      padding-left: 24px;
+      margin-top: 8px;
+  }
+  .agency-group-clients.expanded {
+      display: block;
+  }
+
+  /* Table hierarchy styles */
+  tr.agency-parent-row {
+      background: #f8fafc;
+      font-weight: 500;
+  }
+  tr.agency-parent-row td.name-cell {
+      cursor: pointer;
+  }
+  tr.agency-parent-row .expand-icon {
+      margin-right: 4px;
+      font-size: 11px;
+      display: inline-block;
+      transition: transform 0.2s;
+      cursor: pointer;
+      padding: 2px 4px;
+  }
+  tr.agency-parent-row.expanded .expand-icon {
+      transform: rotate(90deg);
+  }
+  tr.agency-child-row {
+      display: none;
+  }
+  tr.agency-child-row.visible {
+      display: table-row;
+  }
+  tr.agency-child-row td.name-cell {
+      padding-left: 32px;
+  }
 </style>
 {% endblock %}
 
@@ -477,6 +569,8 @@
   <div class="view-toggle">
     <button id="view-cards" class="active" title="Card View">Cards</button>
     <button id="view-table" title="Table View">Table</button>
+    <span style="margin:0 4px;color:#cbd5e1;">|</span>
+    <button id="group-toggle" title="Group by agency">⊞</button>
   </div>
   <span class="count" id="count"></span>
 </div>
@@ -515,7 +609,8 @@
 <div class="modal-overlay" id="detail-modal">
   <div class="detail-modal">
     <div class="modal-header">
-      <h2><span id="detail-name"></span> <span class="type-badge" id="detail-type-badge"></span> <a id="detail-page-link" href="#" target="_blank" title="Open detail page" style="font-size:14px;color:#0ea5e9;text-decoration:none;display:none">↗</a></h2>
+      <h2><span id="detail-name"></span> <span class="type-badge" id="detail-type-badge"></span></h2>
+      <a id="detail-page-link" href="#" title="View full customer detail page" class="btn btn-view-detail" style="display:none">View Full Detail →</a>
       <button class="modal-close">&times;</button>
     </div>
     <div class="modal-body">
@@ -562,9 +657,15 @@
       <!-- EDI Billing + Commission (agencies only) -->
       <div class="detail-section" id="edi-section" style="display:none">
         <h3><span class="icon">💰</span> Billing</h3>
-        <div class="edi-toggle">
-          <input type="checkbox" id="detail-edi-billing">
-          <label for="detail-edi-billing">EDI Billing</label>
+        <div class="billing-row" style="align-items:center">
+          <div class="edi-toggle">
+            <input type="checkbox" id="detail-edi-billing">
+            <label for="detail-edi-billing">EDI Billing</label>
+          </div>
+          <div class="form-field" style="max-width:160px">
+            <label>EDI Code</label>
+            <input type="text" id="detail-edi-code" maxlength="10" placeholder="e.g. ABC1234">
+          </div>
         </div>
         <div class="billing-row" style="margin-top:12px">
           <div class="form-field" style="max-width:180px">
@@ -1254,7 +1355,8 @@
         (r.notes || '').toLowerCase().includes(search) ||
         (r.sector_name || '').toLowerCase().includes(search) ||
         (r.sector_code || '').toLowerCase().includes(search) ||
-        (r.primary_contact || '').toLowerCase().includes(search)
+        (r.primary_contact || '').toLowerCase().includes(search) ||
+        (r.agency_name || '').toLowerCase().includes(search)
       );
     }
 
@@ -1265,21 +1367,29 @@
       filtered = filtered.filter(r => r.contact_count === 0);
     }
 
-    // Sector filter — match against sector_ids (comma-separated string of all assigned sector IDs)
+    // Sector filter — agencies now carry child customer sector_ids
     if (sectorFilter) {
       const sid = sectorFilter;
       filtered = filtered.filter(r => {
-        if (r.entity_type !== 'customer') return false;
         const ids = (r.sector_ids || '').split(',');
         return ids.includes(sid);
       });
     }
 
-    // Market filter
+    // Market filter — keep agencies that parent a matched customer
     if (marketFilter) {
-      filtered = filtered.filter(r => {
+      const marketMatched = filtered.filter(r => {
         const markets = (r.markets || '').split(',');
         return markets.includes(marketFilter);
+      });
+      const marketParentIds = new Set(
+        marketMatched.filter(r => r.entity_type === 'customer' && r.agency_id)
+          .map(c => c.agency_id)
+      );
+      filtered = filtered.filter(r => {
+        const markets = (r.markets || '').split(',');
+        if (markets.includes(marketFilter)) return true;
+        return r.entity_type === 'agency' && marketParentIds.has(r.entity_id);
       });
     }
 
@@ -1292,15 +1402,25 @@
       }
     }
 
-    // Signal filter
+    // Signal filter — keep agencies that parent a matched customer
     if (signalFilter) {
+      let signalMatched;
       if (signalFilter === 'attention') {
-        filtered = filtered.filter(r => r.signals?.some(s => NEGATIVE_SIGNALS.includes(s.signal_type)));
+        signalMatched = filtered.filter(r => r.signals?.some(s => NEGATIVE_SIGNALS.includes(s.signal_type)));
       } else if (signalFilter === 'clean') {
-        filtered = filtered.filter(r => !r.signals || r.signals.length === 0);
+        signalMatched = filtered.filter(r => !r.signals || r.signals.length === 0);
       } else {
-        filtered = filtered.filter(r => r.signals?.some(s => s.signal_type === signalFilter));
+        signalMatched = filtered.filter(r => r.signals?.some(s => s.signal_type === signalFilter));
       }
+      const signalParentIds = new Set(
+        signalMatched.filter(r => r.entity_type === 'customer' && r.agency_id)
+          .map(c => c.agency_id)
+      );
+      filtered = signalMatched.concat(
+        filtered.filter(r => r.entity_type === 'agency'
+          && !signalMatched.includes(r)
+          && signalParentIds.has(r.entity_id))
+      );
     }
 
     // Sort
@@ -1368,15 +1488,27 @@
 
   function updateStats() {
     const agencies = currentData.filter(d => d.entity_type === 'agency').length;
-    const customers = currentData.filter(d => d.entity_type === 'customer').length;
-    const withContacts = currentData.filter(d => d.contact_count > 0).length;
-    const needsAttention = currentData.filter(d => d.signals?.some(s => NEGATIVE_SIGNALS.includes(s.signal_type))).length;
+    const visibleCustomers = currentData.filter(d => d.entity_type === 'customer' && !d.agency_booked);
+    const customers = groupByAgency
+      ? currentData.filter(d => d.entity_type === 'customer').length
+      : visibleCustomers.length;
+    const statsBase = groupByAgency ? currentData : currentData.filter(d => !d.agency_booked);
+    const withContacts = statsBase.filter(d => d.contact_count > 0).length;
+    const needsAttention = statsBase.filter(d => d.signals?.some(s => NEGATIVE_SIGNALS.includes(s.signal_type))).length;
     document.getElementById('stats').innerHTML = `
       <div class="stat agencies"><div class="val">${agencies}</div><div class="lbl">Agencies</div></div>
       <div class="stat customers"><div class="val">${customers}</div><div class="lbl">Advertisers</div></div>
       <div class="stat"><div class="val">${withContacts}</div><div class="lbl">With Contacts</div></div>
       <div class="stat attention"><div class="val">${needsAttention}</div><div class="lbl">Needs Attention</div></div>`;
-    document.getElementById('count').textContent = `${currentData.length} entities`;
+    if (groupByAgency) {
+      const { groups } = buildHierarchy(currentData);
+      const agencyClients = currentData.filter(d => d.entity_type === 'customer' && d.agency_id).length;
+      document.getElementById('stats').innerHTML += `
+        <div class="stat"><div class="val">${groups.length}</div><div class="lbl">Agency Groups</div></div>
+        <div class="stat"><div class="val">${agencyClients}</div><div class="lbl">Agency Clients</div></div>`;
+    }
+    const countBase = groupByAgency ? currentData.length : statsBase.length + agencies;
+    document.getElementById('count').textContent = `${countBase} entities`;
   }
 
   function renderGrid() {
@@ -1391,7 +1523,40 @@
     }
 
     // Render card view
-    grid.innerHTML = currentData.map(renderCard).join('');
+    if (groupByAgency) {
+      const { groups, topLevel } = buildHierarchy(currentData);
+      let html = '';
+
+      for (const g of groups) {
+        const clientCount = g.clients.length;
+        const mutedClass = g.matched ? '' : ' muted';
+        html += `<div class="agency-group" data-agency-id="${g.agency.entity_id}">
+          <div class="agency-group-header${mutedClass}">
+            <span class="expand-icon">▶</span>
+            <span>${esc(g.agency.entity_name)}</span>
+            <span class="client-count">(${clientCount} client${clientCount !== 1 ? 's' : ''})</span>
+            ${g.agency.assigned_ae ? `<span class="ae-badge">${esc(g.agency.assigned_ae)}</span>` : ''}
+          </div>
+          <div class="agency-group-clients">
+            ${g.clients.map(renderCard).join('')}
+          </div>
+        </div>`;
+      }
+
+      html += topLevel.map(renderCard).join('');
+      grid.innerHTML = html;
+
+      // Attach expand/collapse handlers
+      document.querySelectorAll('.agency-group-header').forEach(header => {
+        header.addEventListener('click', () => {
+          header.classList.toggle('expanded');
+          header.nextElementSibling.classList.toggle('expanded');
+        });
+      });
+    } else {
+      grid.innerHTML = currentData.filter(e => !e.agency_booked).map(renderCard).join('');
+    }
+
     document.querySelectorAll('.entity-card').forEach(card => {
       card.addEventListener('click', () => openDetail(card.dataset.type, card.dataset.id));
     });
@@ -1403,39 +1568,107 @@
     applyViewMode();
   }
 
+  function renderTableRow(e, isChild) {
+    const key = `${e.entity_type}:${e.entity_id}`;
+    const isSelected = selectedEntities.has(key);
+    const revenue = e.total_revenue || 0;
+    const revenueStr = revenue >= 1000000 ? `$${(revenue/1000000).toFixed(1)}M` :
+                       revenue >= 1000 ? `$${(revenue/1000).toFixed(0)}K` :
+                       `$${revenue.toFixed(0)}`;
+    const lastActive = e.last_active ? formatDate(e.last_active) : '-';
+    const inactiveTag = e.is_active === 0 ? '<span class="badge-inactive">Inactive</span>' : '';
+    const childClass = isChild ? ' agency-child-row' : '';
+    const parentAttr = isChild && e.agency_id ? ` data-parent-agency="${e.agency_id}"` : '';
+    return `
+      <tr class="${isSelected ? 'selected' : ''}${childClass}" data-key="${key}"
+          data-type="${e.entity_type}" data-id="${e.entity_id}"${parentAttr}>
+        <td class="checkbox-cell"><input type="checkbox" class="row-select" ${isSelected ? 'checked' : ''}></td>
+        <td class="name-cell">${esc(e.entity_name)}${inactiveTag}</td>
+        <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Advertiser'}</span></td>
+        <td>${e.sector_name ? esc(e.sector_name) + ((e.sector_count || 0) > 1 ? ` <span class="extra-count">+${e.sector_count - 1}</span>` : '') : '-'}</td>
+        <td>${e.assigned_ae ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>` : '-'}</td>
+        <td>${e.signals?.length > 0 ? `<span class="signal-badge ${e.signals[0].signal_type}" title="${esc(e.signals[0].signal_label)}">${SIGNAL_NAMES[e.signals[0].signal_type]}</span>` : '-'}</td>
+        <td>${esc(e.primary_contact || '-')}</td>
+        <td>${lastActive}</td>
+        <td class="revenue-cell">${revenueStr}</td>
+      </tr>`;
+  }
+
   function renderTable() {
     const tbody = document.getElementById('table-body');
-    tbody.innerHTML = currentData.map(e => {
-      const key = `${e.entity_type}:${e.entity_id}`;
-      const isSelected = selectedEntities.has(key);
-      const revenue = e.total_revenue || 0;
-      const revenueStr = revenue >= 1000000 ? `$${(revenue/1000000).toFixed(1)}M` :
-                         revenue >= 1000 ? `$${(revenue/1000).toFixed(0)}K` :
-                         `$${revenue.toFixed(0)}`;
-      const lastActive = e.last_active ? formatDate(e.last_active) : '-';
-      const inactiveTag = e.is_active === 0 ? '<span class="badge-inactive">Inactive</span>' : '';
-      return `
-        <tr class="${isSelected ? 'selected' : ''}" data-key="${key}" data-type="${e.entity_type}" data-id="${e.entity_id}">
-          <td class="checkbox-cell"><input type="checkbox" class="row-select" ${isSelected ? 'checked' : ''}></td>
-          <td class="name-cell">${esc(e.entity_name)}${inactiveTag}</td>
-          <td class="type-cell"><span class="entity-type ${e.entity_type}">${e.entity_type === 'agency' ? 'Agency' : 'Advertiser'}</span></td>
-          <td>${e.sector_name ? esc(e.sector_name) + ((e.sector_count || 0) > 1 ? ` <span class="extra-count" title="${e.sector_count - 1} additional tag${e.sector_count - 1 > 1 ? 's' : ''}">+${e.sector_count - 1}</span>` : '') : '-'}</td>
-          <td>${e.assigned_ae ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>` : '-'}</td>
-          <td>${e.signals?.length > 0 ? `<span class="signal-badge ${e.signals[0].signal_type}" title="${esc(e.signals[0].signal_label)}">${SIGNAL_NAMES[e.signals[0].signal_type]}</span>` : '-'}</td>
-          <td>${esc(e.primary_contact || '-')}</td>
-          <td>${lastActive}</td>
-          <td class="revenue-cell">${revenueStr}</td>
-        </tr>`;
-    }).join('');
 
-    // Attach click handlers
-    tbody.querySelectorAll('.name-cell').forEach(cell => {
-      cell.addEventListener('click', (e) => {
+    if (groupByAgency) {
+      const { groups, topLevel } = buildHierarchy(currentData);
+      let html = '';
+
+      for (const g of groups) {
+        const a = g.agency;
+        const revenue = a.total_revenue || 0;
+        const revenueStr = revenue >= 1000000 ? `$${(revenue/1000000).toFixed(1)}M` :
+                           revenue >= 1000 ? `$${(revenue/1000).toFixed(0)}K` :
+                           `$${revenue.toFixed(0)}`;
+        const mutedStyle = g.matched ? '' : ' style="opacity:0.5"';
+        html += `
+          <tr class="agency-parent-row" data-agency-id="${a.entity_id}"
+              data-type="agency" data-id="${a.entity_id}"${mutedStyle}>
+            <td class="checkbox-cell"></td>
+            <td class="name-cell">
+              <span class="expand-icon">▶</span>
+              ${esc(a.entity_name)}
+              <span class="client-count">(${g.clients.length})</span>
+            </td>
+            <td class="type-cell"><span class="entity-type agency">Agency</span></td>
+            <td>-</td>
+            <td>${a.assigned_ae ? `<span class="ae-badge">${esc(a.assigned_ae)}</span>` : '-'}</td>
+            <td>${a.signals?.length > 0 ? `<span class="signal-badge ${a.signals[0].signal_type}">${SIGNAL_NAMES[a.signals[0].signal_type]}</span>` : '-'}</td>
+            <td>${esc(a.primary_contact || '-')}</td>
+            <td>${a.last_active ? formatDate(a.last_active) : '-'}</td>
+            <td class="revenue-cell">${revenueStr}</td>
+          </tr>`;
+
+        for (const c of g.clients) {
+          html += renderTableRow(c, true);
+        }
+      }
+
+      for (const e of topLevel) {
+        html += renderTableRow(e, false);
+      }
+
+      tbody.innerHTML = html;
+
+      // Agency row: expand icon toggles children, name text opens detail
+      tbody.querySelectorAll('.agency-parent-row').forEach(row => {
+        const expandIcon = row.querySelector('.expand-icon');
+        const nameCell = row.querySelector('.name-cell');
+
+        expandIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          row.classList.toggle('expanded');
+          const agencyId = row.dataset.agencyId;
+          tbody.querySelectorAll(
+            `.agency-child-row[data-parent-agency="${agencyId}"]`
+          ).forEach(child => child.classList.toggle('visible'));
+        });
+
+        nameCell.addEventListener('click', () => {
+          openDetail(row.dataset.type, row.dataset.id);
+        });
+      });
+
+    } else {
+      tbody.innerHTML = currentData.filter(e => !e.agency_booked).map(e => renderTableRow(e, false)).join('');
+    }
+
+    // Attach click handlers for non-agency-parent name cells
+    tbody.querySelectorAll('tr:not(.agency-parent-row) .name-cell').forEach(cell => {
+      cell.addEventListener('click', () => {
         const row = cell.closest('tr');
         openDetail(row.dataset.type, row.dataset.id);
       });
     });
 
+    // Checkbox handlers
     tbody.querySelectorAll('.row-select').forEach(cb => {
       cb.addEventListener('change', (e) => {
         e.stopPropagation();
@@ -1484,6 +1717,88 @@
     applyViewMode();
   });
 
+  // Group by agency toggle
+  let groupByAgency = localStorage.getItem('addressBookGroup') === 'true';
+  const groupBtn = document.getElementById('group-toggle');
+  if (groupByAgency) groupBtn.classList.add('grouped');
+
+  groupBtn.addEventListener('click', () => {
+    groupByAgency = !groupByAgency;
+    localStorage.setItem('addressBookGroup', groupByAgency);
+    groupBtn.classList.toggle('grouped', groupByAgency);
+    renderGrid();
+  });
+
+  function buildHierarchy(data) {
+    const agencyMap = {};
+    const topLevel = [];
+
+    for (const e of data) {
+      if (e.entity_type === 'agency') {
+        agencyMap[e.entity_id] = { agency: e, clients: [], matched: true };
+      }
+    }
+
+    for (const e of data) {
+      if (e.entity_type !== 'customer') continue;
+      if (e.agency_id && agencyMap[e.agency_id]) {
+        agencyMap[e.agency_id].clients.push(e);
+      } else if (e.agency_id) {
+        const parentAgency = allData.find(
+          a => a.entity_type === 'agency' && a.entity_id === e.agency_id
+        );
+        if (parentAgency) {
+          agencyMap[e.agency_id] = {
+            agency: parentAgency,
+            clients: [e],
+            matched: false,
+          };
+        } else {
+          topLevel.push(e);
+        }
+      } else {
+        topLevel.push(e);
+      }
+    }
+
+    const groups = [];
+    const agencyGroups = Object.values(agencyMap)
+      .filter(g => g.clients.length > 0)
+      .sort((a, b) =>
+        a.agency.entity_name.toLowerCase()
+          .localeCompare(b.agency.entity_name.toLowerCase())
+      );
+    for (const g of agencyGroups) {
+      groups.push({
+        type: 'agency-group',
+        agency: g.agency,
+        clients: g.clients,
+        matched: g.matched,
+      });
+    }
+
+    for (const e of data) {
+      if (e.entity_type === 'agency' && agencyMap[e.entity_id]
+          && agencyMap[e.entity_id].clients.length === 0) {
+        const agencyClients = allData.filter(
+          c => c.entity_type === 'customer' && c.agency_id === e.entity_id
+        );
+        if (agencyClients.length > 0) {
+          groups.push({
+            type: 'agency-group',
+            agency: e,
+            clients: agencyClients,
+            matched: true,
+          });
+        } else {
+          topLevel.push(e);
+        }
+      }
+    }
+
+    return { groups, topLevel };
+  }
+
   // Select all handler
   document.getElementById('select-all').addEventListener('change', function() {
     const checked = this.checked;
@@ -1510,6 +1825,15 @@
       toolbar.classList.add('active');
     } else {
       toolbar.classList.remove('active');
+    }
+    // Disable grouping when bulk selecting
+    const groupBtn = document.getElementById('group-toggle');
+    if (selectedEntities.size > 0) {
+      groupBtn.disabled = true;
+      groupBtn.title = 'Grouping disabled during bulk selection';
+    } else {
+      groupBtn.disabled = false;
+      groupBtn.title = 'Group by agency';
     }
   }
 
@@ -1564,9 +1888,9 @@
 
   function renderCard(e) {
     const extraSectors = (e.sector_count || 0) > 1 ? ` <span class="extra-count" title="${e.sector_count - 1} additional tag${e.sector_count - 1 > 1 ? 's' : ''}">+${e.sector_count - 1}</span>` : '';
-    const sectorBadge = e.entity_type === 'customer'
-      ? `<span class="sector-badge ${e.sector_name ? '' : 'none'}">${esc(e.sector_name || 'No sector')}${extraSectors}</span>`
-      : '';
+    const sectorBadge = e.sector_name
+      ? `<span class="sector-badge">${esc(e.sector_name)}${extraSectors}</span>`
+      : (e.entity_type === 'customer' ? '<span class="sector-badge none">No sector</span>' : '');
     const aeBadge = e.assigned_ae
       ? `<span class="ae-badge">${esc(e.assigned_ae)}</span>`
       : '';
@@ -1660,8 +1984,8 @@
     // Detail page link (customers only)
     const pageLink = document.getElementById('detail-page-link');
     if (type === 'customer') {
-      pageLink.href = `/reports/customer/${id}`;
-      pageLink.style.display = 'inline';
+      pageLink.href = `/reports/customer/${id}?from=address-book`;
+      pageLink.style.display = 'inline-block';
     } else {
       pageLink.style.display = 'none';
     }
@@ -1726,6 +2050,7 @@
       ediSection.style.display = 'block';
       poSection.style.display = 'none';
       document.getElementById('detail-edi-billing').checked = !!currentEntity.edi_billing;
+      document.getElementById('detail-edi-code').value = currentEntity.edi_code || '';
       document.getElementById('detail-commission-rate').value = currentEntity.commission_rate ?? '';
       document.getElementById('detail-order-rate-basis').value = currentEntity.order_rate_basis || '';
     } else {
@@ -1813,7 +2138,7 @@
     const trackChange = () => { hasUnsavedChanges = true; };
     ['detail-notes', 'detail-address', 'detail-city', 'detail-state', 'detail-zip',
      'detail-agency', 'detail-ae', 'detail-po-number', 'detail-commission-rate',
-     'detail-cust-commission-rate'].forEach(id => {
+     'detail-cust-commission-rate', 'detail-edi-code'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', trackChange, { once: true });
     });
@@ -1903,7 +2228,7 @@
       const isActive = !h.ended_date;
       const start = h.assigned_date ? formatDate(h.assigned_date.split('T')[0].split(' ')[0]) : '';
       const end = h.ended_date ? formatDate(h.ended_date.split('T')[0].split(' ')[0]) : 'Present';
-      const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : 'Manual assignment';
+      const source = h.created_by === 'backfill' ? 'Auto-assigned from spot data' : `Assigned by ${esc(h.created_by)}`;
       return `
         <div class="ae-history-item">
           <div class="ae-history-dot ${isActive ? 'active' : 'ended'}"></div>
@@ -1949,7 +2274,7 @@
             : `<span style="color:#94a3b8" title="Inherited from agency">${effectiveRate}%${basisSuffix}</span>`;
         }
         return `<tr>
-          <td><a href="/reports/customer/${c.customer_id}" target="_blank" style="color:#0ea5e9;text-decoration:none">${esc(c.customer_name)}</a></td>
+          <td><a href="/reports/customer/${c.customer_id}?from=address-book" style="color:#0ea5e9;text-decoration:none">${esc(c.customer_name)}</a></td>
           <td>${esc(c.sector_name || '-')}</td>
           <td><input class="po-input" data-customer-id="${c.customer_id}" value="${esc(c.po_number || '')}" placeholder="—"><span class="po-saved">✓</span></td>
           <td>${commStr}</td>
@@ -2664,7 +2989,7 @@
 
       // Save AE + billing in parallel
       const billingBody = currentEntity.entity_type === 'agency'
-        ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked, commission_rate: document.getElementById('detail-commission-rate').value || null, order_rate_basis: document.getElementById('detail-order-rate-basis').value || null }
+        ? { po_number: null, edi_billing: document.getElementById('detail-edi-billing').checked, edi_code: document.getElementById('detail-edi-code').value.trim() || null, commission_rate: document.getElementById('detail-commission-rate').value || null, order_rate_basis: document.getElementById('detail-order-rate-basis').value || null }
         : { po_number: document.getElementById('detail-po-number').value.trim() || null, edi_billing: false, affidavit_required: document.getElementById('detail-affidavit-required').checked, commission_rate: document.getElementById('detail-cust-commission-rate').value || null, order_rate_basis: document.getElementById('detail-cust-order-rate-basis').value || null };
 
       await Promise.all([

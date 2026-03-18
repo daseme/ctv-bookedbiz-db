@@ -26,6 +26,7 @@ from src.web.placement_confirmation_parser import (
     contracts_by_client_15_days,
 )
 from src.models.planning import PlanningPeriod
+from src.utils.query_builders import RevenueQueryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -486,10 +487,10 @@ def ae_dashboard_personal():
                     entity_filter = "WHERE 1=1"
                 elif ae_name == "WorldLink":
                     # WorldLink revenue is identified by bill_code prefix, not sales_person
-                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
+                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink%'"
                 elif ae_name == "House":
                     # House revenue excludes WorldLink bill_codes
-                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink:%'"
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink%'"
                     query_params.insert(0, ae_name)
                 else:
                     # Standard AE lookup by sales_person
@@ -570,9 +571,9 @@ def ae_dashboard_personal():
                     # Show all contracts - no entity filter
                     entity_filter = "WHERE 1=1"
                 elif ae_name == "WorldLink":
-                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink:%'"
+                    entity_filter = "WHERE s.bill_code LIKE 'WorldLink%'"
                 elif ae_name == "House":
-                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink:%'"
+                    entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?)) AND s.bill_code NOT LIKE 'WorldLink%'"
                     params.append(ae_name)
                 else:
                     entity_filter = "WHERE UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
@@ -643,6 +644,61 @@ def ae_dashboard_personal():
         except Exception as e:
             logger.warning(f"Could not get contracts highlight from placement files: {e}")
 
+        # Waiting for copy — spots with "NEED COPY" in media column
+        waiting_for_copy = []
+        try:
+            db_connection = container.get("database_connection")
+            conn = db_connection.connect()
+            try:
+                wfc_ae_clause = "" if show_all_revenue else "AND UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
+                wfc_params = [] if show_all_revenue else [ae_name]
+                rows = conn.execute(f"""
+                    SELECT
+                        COALESCE(c.normalized_name, s.bill_code) AS customer,
+                        s.sales_person,
+                        MIN(s.contract) AS first_contract,
+                        MAX(s.contract) AS last_contract,
+                        COUNT(DISTINCT s.contract) AS contract_count,
+                        MIN(s.broadcast_month) AS first_month,
+                        MAX(s.broadcast_month) AS last_month,
+                        COUNT(DISTINCT s.broadcast_month) AS month_count,
+                        COUNT(*) AS spot_count,
+                        COALESCE(SUM(s.gross_rate), 0) AS total_gross,
+                        MIN(s.air_date) AS first_air_date
+                    FROM spots s
+                    LEFT JOIN customers c ON s.customer_id = c.customer_id
+                    WHERE LOWER(s.media) LIKE '%need copy%'
+                      AND s.is_historical = 0
+                      AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+                      {wfc_ae_clause}
+                    GROUP BY customer, s.sales_person
+                    ORDER BY customer
+                """, wfc_params).fetchall()
+                today = date.today()
+
+                wfc_list = []
+                for r in rows:
+                    d = dict(r)
+                    air = d.get("first_air_date")
+                    if air:
+                        try:
+                            air_dt = datetime.strptime(air, "%Y-%m-%d").date()
+                            d["days_until"] = (air_dt - today).days
+                        except (ValueError, TypeError):
+                            d["days_until"] = None
+                    else:
+                        d["days_until"] = None
+                    d["urgent"] = d["days_until"] is not None and d["days_until"] <= 30
+                    wfc_list.append(d)
+                wfc_list.sort(key=lambda x: (
+                    x["days_until"] if x["days_until"] is not None else 9999
+                ))
+                waiting_for_copy = wfc_list
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Could not load waiting for copy: {e}")
+
         # Pending insertion orders
         pending_orders = []
         pending_orders_count = 0
@@ -704,6 +760,7 @@ def ae_dashboard_personal():
                 "account_end_date": account_end_date,
                 "contracts_highlight": contracts_highlight,
                 "today": date.today().isoformat(),
+                "waiting_for_copy": waiting_for_copy,
                 "pending_orders": pending_orders,
                 "pending_orders_count": pending_orders_count,
                 "pending_orders_scanned_at": pending_orders_scanned_at,
@@ -1005,29 +1062,20 @@ def monthly_revenue_summary():
             date_conditions = []
             params = []
 
+            month_num = RevenueQueryBuilder.build_month_number_case()
             if from_year and from_month:
-                date_conditions.append("""
-                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 + 
-                    CASE SUBSTR(broadcast_month, 1, 3)
-                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                    END) >= ?
+                date_conditions.append(f"""
+                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 +
+                    {month_num}) >= ?
                 """)
                 yy = int(from_year) - 2000
                 mm = int(from_month)
                 params.append(yy * 100 + mm)
 
             if to_year and to_month:
-                date_conditions.append("""
-                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 + 
-                    CASE SUBSTR(broadcast_month, 1, 3)
-                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                    END) <= ?
+                date_conditions.append(f"""
+                    (CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) * 100 +
+                    {month_num}) <= ?
                 """)
                 yy = int(to_year) - 2000
                 mm = int(to_month)
@@ -1075,14 +1123,9 @@ def monthly_revenue_summary():
                   AND gross_rate > 0
                   AND {where_clause}
                 GROUP BY broadcast_month
-                ORDER BY 
+                ORDER BY
                     CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER),
-                    CASE SUBSTR(broadcast_month, 1, 3)
-                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                    END
+                    {RevenueQueryBuilder.build_month_number_case()}
             """, params)
             
             # Get closed months
@@ -1102,14 +1145,9 @@ def monthly_revenue_summary():
                   AND gross_rate > 0
                   AND {where_clause}
                 GROUP BY broadcast_month
-                ORDER BY 
+                ORDER BY
                     CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER),
-                    CASE SUBSTR(broadcast_month, 1, 3)
-                        WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                        WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                        WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                        WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                    END
+                    {RevenueQueryBuilder.build_month_number_case()}
             """, params).fetchall()
             
             monthly_data = []
@@ -1145,12 +1183,7 @@ def monthly_revenue_summary():
             # Get quarterly data
             quarterly_rows = cursor.execute(f"""
                 SELECT 
-                    CASE 
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jan','Feb','Mar') THEN 'Q1'
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Apr','May','Jun') THEN 'Q2'
-                        WHEN SUBSTR(broadcast_month, 1, 3) IN ('Jul','Aug','Sep') THEN 'Q3'
-                        ELSE 'Q4'
-                    END as quarter,
+                    {RevenueQueryBuilder.build_quarter_case("broadcast_month")} as quarter,
                     2000 + CAST(SUBSTR(broadcast_month, 5, 2) AS INTEGER) as year,
                     COUNT(*) as spot_count,
                     SUM(gross_rate) as total_revenue,

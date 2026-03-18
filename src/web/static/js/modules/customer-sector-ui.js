@@ -129,7 +129,7 @@ class CustomerSectorUI {
                         <th>Assign Sector</th>
                         <th>Status</th>
                         <th>Revenue</th>
-                        <th>Last Updated</th>
+                        <th>Assigned By</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -150,7 +150,7 @@ class CustomerSectorUI {
                                ${isSelected ? 'checked' : ''}>
                     </td>
                     <td>
-                        <div class="customer-name" title="${customer.name}">${customer.name}</div>
+                        <div class="customer-name" title="${customer.name}"><a href="/reports/customer/${customer.id}" style="color: inherit; text-decoration: none; border-bottom: 1px dotted var(--nord3);">${customer.name}</a></div>
                     </td>
                     <td>
                         <span class="sector-badge ${customer.sector ? 'assigned' : 'unassigned'}">
@@ -173,8 +173,8 @@ class CustomerSectorUI {
                     <td style="color: var(--nord3); font-size: 14px; font-weight: 600;">
                         ${revenueFormatted}
                     </td>
-                    <td style="color: var(--nord3); font-size: 13px;">
-                        ${customer.lastUpdated}
+                    <td style="color: var(--nord3); font-size: 13px;" title="${customer.assignedDate || ''}">
+                        ${customer.assignedBy || '<span style="color:#94a3b8">—</span>'}
                     </td>
                 </tr>
             `;

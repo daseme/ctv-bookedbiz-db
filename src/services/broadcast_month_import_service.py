@@ -698,16 +698,8 @@ class BroadcastMonthImportService(BaseService):
                 # Complete batch record
                 self._complete_import_batch(context.batch_id, result, conn)
 
-                # Refresh materialized entity metrics for address book
-                from src.web.routes.address_book import refresh_entity_metrics, refresh_entity_signals
-                refresh_entity_metrics(conn)
-                tqdm.write("✅ Entity metrics cache refreshed")
-
-                refresh_entity_signals(conn)
-                tqdm.write("✅ Entity signals cache refreshed")
-
                 result.success = True
-                tqdm.write("✅ Import completed successfully")
+                tqdm.write("✅ Import committed successfully")
 
         except Exception as e:
             error_msg = f"Transaction failed: {str(e)}"
@@ -716,7 +708,28 @@ class BroadcastMonthImportService(BaseService):
             self._fail_import_batch(context.batch_id, str(e))
             raise BroadcastMonthImportError(error_msg)
 
+        # Refresh cache tables outside the import transaction.
+        # These are denormalized caches — a failure here must never
+        # roll back committed import data.
+        self._refresh_cache_tables()
+
         return result
+
+    def _refresh_cache_tables(self):
+        """Refresh denormalized cache tables in a separate transaction."""
+        from src.services.entity_metrics_service import EntityMetricsService
+
+        metrics_service = EntityMetricsService(self.db_connection)
+        try:
+            with self.safe_transaction() as conn:
+                metrics_service.refresh_metrics(conn)
+                tqdm.write("✅ Entity metrics cache refreshed")
+                metrics_service.refresh_signals(conn)
+                tqdm.write("✅ Entity signals cache refreshed")
+        except Exception as e:
+            tqdm.write(
+                f"⚠️ Cache refresh failed (import data is safe): {e}"
+            )
 
     def _delete_months_with_progress(
         self, months: List[str], conn: sqlite3.Connection

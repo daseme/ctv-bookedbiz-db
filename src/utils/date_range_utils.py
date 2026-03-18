@@ -49,28 +49,3 @@ class DateRangeUtils:
             year_suffixes = [year_input[-2:]]
         return full_years, year_suffixes
     
-    @staticmethod
-    def build_year_filter(year_suffixes: List[str]) -> Tuple[str, List[str]]:
-        """
-        Build SQL filter for multiple year suffixes.
-        
-        Args:
-            year_suffixes: List of 2-digit year suffixes like ["23", "24"]
-            
-        Returns:
-            Tuple of (sql_condition, parameters)
-            - sql_condition: SQL WHERE condition string
-            - parameters: List of parameter values for the condition
-            
-        Examples:
-            >>> DateRangeUtils.build_year_filter(["24"])
-            ("s.broadcast_month LIKE ?", ["%-24"])
-            >>> DateRangeUtils.build_year_filter(["23", "24"])
-            ("(s.broadcast_month LIKE ? OR s.broadcast_month LIKE ?)", ["%-23", "%-24"])
-        """
-        if len(year_suffixes) == 1:
-            return "s.broadcast_month LIKE ?", [f"%-{year_suffixes[0]}"]
-        else:
-            conditions = " OR ".join("s.broadcast_month LIKE ?" for _ in year_suffixes)
-            parameters = [f"%-{suffix}" for suffix in year_suffixes]
-            return f"({conditions})", parameters

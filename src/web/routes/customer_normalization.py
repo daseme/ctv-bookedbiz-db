@@ -1,50 +1,21 @@
 # src/web/routes/customer_normalization.py
 from __future__ import annotations
 from typing import List, Tuple, Dict, Any
-import sqlite3
 from flask import Blueprint, current_app, render_template, request, jsonify
+from src.services.container import get_container
 
 
 customer_norm_bp = Blueprint("customer_norm", __name__)
 
-# ---- DB helpers (pure-ish wrappers) ---------------------------------
+# ---- DB helpers ---------------------------------
 
 
-def _db_path():
-    return (
-        current_app.config.get("DB_PATH")
-        or current_app.config.get("DATABASE_PATH")
-        or "./data/database/production.db"
-    )
-
-
-def _get_db_ro() -> sqlite3.Connection:
-    # Read-only connection with busy timeout; safe for concurrent writers (WAL recommended)
-    uri = f"file:{_db_path()}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=5.0, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    # Query-only prevents accidental writes in GET endpoints
-    conn.execute("PRAGMA query_only = 1;")
-    conn.execute("PRAGMA busy_timeout = 5000;")
-    return conn
-
-
-def _retry(op, retries=3, delay=0.25):
-    for i in range(retries):
-        try:
-            return op()
-        except sqlite3.OperationalError as e:
-            # Retry only for lock-related issues
-            msg = str(e).lower()
-            if "database is locked" in msg or "busy" in msg:
-                if i < retries - 1:
-                    time.sleep(delay * (2**i))
-                    continue
-            raise
+def _get_db():
+    """Get DatabaseConnection from container."""
+    return get_container().get("database_connection")
 
 
 def _sqlite_safe_order(order_sql: str) -> str:
-    # SQLite doesn't support NULLS LAST; strip it if present
     return order_sql.replace(" NULLS LAST", "")
 
 
@@ -53,14 +24,6 @@ def _error_response(e, path):
     if current_app.config.get("DEBUG"):
         payload["details"] = str(e)
     return jsonify(payload), 500
-
-
-def _get_db() -> sqlite3.Connection:
-    # Adapt to your app; ensure row_factory for dict-ish rows
-    db_path = current_app.config.get("DATABASE_PATH", "./data/database/production.db")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def _build_filters(args: Dict[str, str]) -> Tuple[str, List[Any]]:
@@ -126,7 +89,6 @@ def page_customer_normalization():
 @customer_norm_bp.route("/api/customer-normalization")
 def api_customer_normalization():
     try:
-        # These helpers should already exist in your module
         clause, params = _build_filters(request.args)
         order = _sqlite_safe_order(_build_sort(request.args))
         page, size, offset = _paginate(request.args)
@@ -146,11 +108,9 @@ def api_customer_normalization():
           {clause};
         """
 
-        with _get_db_ro() as db:
-            total = _retry(lambda: db.execute(count_sql, params).fetchone()["cnt"])
-            rows = _retry(
-                lambda: db.execute(base_sql, [*params, size, offset]).fetchall()
-            )
+        with _get_db().connection_ro() as conn:
+            total = conn.execute(count_sql, params).fetchone()["cnt"]
+            rows = conn.execute(base_sql, [*params, size, offset]).fetchall()
 
         return jsonify(
             {
@@ -176,8 +136,8 @@ def api_customer_normalization_stats():
           (SELECT COUNT(*) FROM v_customer_normalization_audit WHERE revenue_types_seen LIKE '%Branded Content%') AS seen_branded_content
         ;
         """
-        with _get_db_ro() as db:
-            row = _retry(lambda: db.execute(stats_sql).fetchone())
+        with _get_db().connection_ro() as conn:
+            row = conn.execute(stats_sql).fetchone()
         return jsonify(
             {
                 "total": row["total"],

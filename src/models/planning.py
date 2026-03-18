@@ -289,9 +289,12 @@ class PlanningRow:
     @property
     def forecast(self) -> Money:
         """
-        Effective forecast: max of entered forecast and booked.
-        You can't expect less than what you already have.
+        Effective forecast:
+        - Past months: booked (month is closed, no more revenue coming)
+        - Current/future: max of entered forecast and booked
         """
+        if self.period.is_past:
+            return self.booked
         return Money(max(self.forecast_entered.amount, self.booked.amount))
 
     @property

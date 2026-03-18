@@ -1,0 +1,12 @@
+{# Breadcrumb navigation macro.
+   Usage: {% from "macros/breadcrumbs.html" import breadcrumb_trail %}
+          {{ breadcrumb_trail([("Data Management", "/address-book")], "Customer Detail") }}
+#}
+{% macro breadcrumb_trail(links, current) %}
+{% for label, url in links %}
+<span class="breadcrumb-separator">›</span>
+{% if url %}<a href="{{ url }}">{{ label }}</a>{% else %}<span>{{ label }}</span>{% endif %}
+{% endfor %}
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current">{{ current }}</span>
+{% endmacro %}

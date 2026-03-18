@@ -1,6 +1,7 @@
 # REPLACE YOUR ENTIRE src/web/routes/customer_sector_api.py file with this:
 
 from flask import Blueprint, request, jsonify
+from flask_login import current_user
 from src.services.container import get_container
 import logging
 from src.utils.query_builders import CustomerNormalizationQueryBuilder
@@ -14,7 +15,6 @@ logger = logging.getLogger(__name__)
 @customer_sector_bp.before_request
 def _require_admin_for_writes():
     if request.method in ('POST', 'PUT', 'DELETE'):
-        from flask_login import current_user
         if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
             return jsonify({"error": "Admin access required"}), 403
 
@@ -28,23 +28,30 @@ def get_customers():
         conn = db.connect()
         cursor = conn.cursor()
 
-        # Get all active customers, excluding WorldLink-related names
+        # Get all active customers, excluding WorldLink broker clients
         customer_query = """
-        SELECT 
+        SELECT
             c.customer_id,
             c.normalized_name,
             COALESCE(s.sector_name, 'Unassigned') AS sector,
-            c.updated_date
+            c.updated_date,
+            cs.assigned_by,
+            cs.assigned_date
         FROM customers c
         LEFT JOIN sectors s ON c.sector_id = s.sector_id
+        LEFT JOIN customer_sectors cs
+            ON c.customer_id = cs.customer_id AND cs.is_primary = 1
         WHERE c.is_active = 1
-          -- Filter out WorldLink clients by name patterns
+          AND c.customer_id NOT IN (
+              SELECT DISTINCT target_entity_id
+              FROM entity_aliases
+              WHERE entity_type = 'customer'
+                AND is_active = 1
+                AND (alias_name LIKE 'WorldLink%'
+                  OR alias_name LIKE 'Worldlink%')
+          )
           AND c.normalized_name NOT LIKE '%WorldLink%'
-          AND c.normalized_name NOT LIKE '%Worldlink%' 
-          AND c.normalized_name NOT LIKE 'Direct Donor%'
-          AND c.normalized_name NOT LIKE 'Marketing Architects%'
-          AND c.normalized_name NOT LIKE '%FinanceBuzz%'
-          AND c.normalized_name NOT LIKE '%Marketing Arch%'
+          AND c.normalized_name NOT LIKE '%Worldlink%'
         ORDER BY c.normalized_name
         """
 
@@ -74,13 +81,19 @@ def get_customers():
                 "spot_count": rev_row[2] if rev_row[2] else 0,
             }
 
-        # Build final customer list - include all customers (even $0 revenue)
+        # Build final customer list - exclude $0 revenue customers
         customers = []
         for row in customer_rows:
             customer_id = row[0]
             revenue_data = revenue_lookup.get(
                 customer_id, {"total_revenue": 0.0, "spot_count": 0}
             )
+
+            if revenue_data["total_revenue"] <= 0:
+                continue
+
+            assigned_by = row[4] or None
+            assigned_date = str(row[5])[:10] if row[5] else None
 
             customers.append(
                 {
@@ -90,6 +103,8 @@ def get_customers():
                     "lastUpdated": str(row[3])[:10] if row[3] else "2025-01-01",
                     "totalRevenue": revenue_data["total_revenue"],
                     "spotCount": revenue_data["spot_count"],
+                    "assignedBy": assigned_by,
+                    "assignedDate": assigned_date,
                     "resolutionStatus": "resolved",
                     "isUnresolved": False,
                 }
@@ -890,10 +905,10 @@ def update_customer_sector(customer_id):
         cursor.execute(
             """
             INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
-            VALUES (?, ?, 1, 'web_user')
+            VALUES (?, ?, 1, ?)
             ON CONFLICT(customer_id, sector_id) DO UPDATE SET is_primary = 1
             """,
-            (customer_id, sector_id),
+            (customer_id, sector_id, current_user.full_name),
         )
         # Also update timestamp on customer
         cursor.execute(
@@ -1077,10 +1092,10 @@ def bulk_update_sectors():
             cursor.execute(
                 """
                 INSERT INTO customer_sectors (customer_id, sector_id, is_primary, assigned_by)
-                VALUES (?, ?, 1, 'bulk_update')
+                VALUES (?, ?, 1, ?)
                 ON CONFLICT(customer_id, sector_id) DO UPDATE SET is_primary = 1
             """,
-                (customer_id, sector_id),
+                (customer_id, sector_id, current_user.full_name),
             )
             cursor.execute(
                 "UPDATE customers SET updated_date = CURRENT_TIMESTAMP WHERE customer_id = ?",

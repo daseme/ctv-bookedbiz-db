@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import os
 import time
-import sqlite3
 import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -43,8 +42,12 @@ from src.utils.template_formatters import register_template_filters
 from src.web.routes.entity_resolution import entity_resolution_bp
 from src.web.routes.contacts import contacts_bp
 from src.web.routes.address_book import address_book_bp
+from src.web.routes.ae_crm import ae_crm_bp
+from src.web.routes.manager_dashboard import manager_bp
+from src.web.routes.revenue_classification import revenue_class_bp
 from src.web.routes.stale_customers import stale_customers_bp
 from src.web.routes.customer_merge import customer_merge_bp
+from src.web.routes.insertion_orders import insertion_orders_bp
 
 # Optional feature: customer sector API (do not break import if missing)
 try:
@@ -132,6 +135,18 @@ def register_blueprints(app: Flask) -> None:
 
         app.register_blueprint(customer_merge_bp)
         logger.info("Registered customer merge blueprint")
+
+        app.register_blueprint(ae_crm_bp)
+        logger.info("Registered AE CRM blueprint")
+
+        app.register_blueprint(manager_bp)
+        logger.info("Registered manager dashboard blueprint")
+
+        app.register_blueprint(revenue_class_bp)
+        logger.info("Registered revenue classification blueprint")
+
+        app.register_blueprint(insertion_orders_bp)
+        logger.info("Registered insertion orders blueprint")
 
         register_template_filters(app)
         logger.info("Registered template filters")
@@ -411,27 +426,22 @@ def create_blueprint_context_processors(app: Flask) -> None:
         last_dt = None
         stale = False
         try:
-            db_path = app.config.get("DB_PATH", "")
-            if db_path:
-                uri = f"file:{db_path}?mode=ro"
-                conn = sqlite3.connect(uri, uri=True, timeout=3.0)
-                try:
-                    row = conn.execute(
-                        "SELECT import_date FROM import_batches "
-                        "WHERE status='COMPLETED' "
-                        "ORDER BY import_date DESC LIMIT 1"
-                    ).fetchone()
-                    if row and row[0]:
-                        parsed_utc = datetime.strptime(
-                            row[0], "%Y-%m-%d %H:%M:%S"
-                        ).replace(tzinfo=timezone.utc)
-                        pacific = parsed_utc.astimezone(ZoneInfo("America/Los_Angeles"))
-                        last_dt = pacific.strftime("%Y-%m-%d %I:%M %p %Z")
-                        stale = (
-                            datetime.now(timezone.utc) - parsed_utc
-                        ) > timedelta(hours=24)
-                finally:
-                    conn.close()
+            db = get_container().get("database_connection")
+            with db.connection_ro() as conn:
+                row = conn.execute(
+                    "SELECT import_date FROM import_batches "
+                    "WHERE status='COMPLETED' "
+                    "ORDER BY import_date DESC LIMIT 1"
+                ).fetchone()
+                if row and row[0]:
+                    parsed_utc = datetime.strptime(
+                        row[0], "%Y-%m-%d %H:%M:%S"
+                    ).replace(tzinfo=timezone.utc)
+                    pacific = parsed_utc.astimezone(ZoneInfo("America/Los_Angeles"))
+                    last_dt = pacific.strftime("%Y-%m-%d %I:%M %p %Z")
+                    stale = (
+                        datetime.now(timezone.utc) - parsed_utc
+                    ) > timedelta(hours=24)
         except Exception as e:
             logger.debug("Data freshness lookup failed: %s", e)
 

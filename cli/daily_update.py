@@ -166,7 +166,17 @@ class DailyUpdateConfig:
     verbose: bool = False
     unattended: bool = False
     log_file: Optional[Path] = None
-    db_path: Path = Path(os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH") or "data/database/production.db")
+    db_path: Optional[Path] = None
+
+    def __post_init__(self):
+        if self.db_path is None:
+            env_path = os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH")
+            if not env_path:
+                raise SystemExit(
+                    "❌ No database path specified. "
+                    "Set DB_PATH or DATABASE_PATH env var, or pass --db-path"
+                )
+            self.db_path = Path(env_path)
 
     @classmethod
     def from_args(cls, args) -> DailyUpdateConfig:
@@ -179,7 +189,7 @@ class DailyUpdateConfig:
             verbose=args.verbose,
             unattended=args.unattended,
             log_file=Path(args.log_file) if args.log_file else None,
-            db_path=Path(args.db_path),
+            db_path=Path(args.db_path) if args.db_path else None,
         )
 
 
@@ -1840,8 +1850,8 @@ Enhanced Multi-Sheet Features:
     )
     parser.add_argument(
         "--db-path",
-        default=os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH") or "data/database/production.db",
-        help="Database path (default: $DB_PATH or $DATABASE_PATH or data/database/production.db)",
+        default=os.environ.get("DB_PATH") or os.environ.get("DATABASE_PATH"),
+        help="Database path (default: $DB_PATH or $DATABASE_PATH env var)",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Preview import without making changes"

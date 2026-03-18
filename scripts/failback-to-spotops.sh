@@ -1,20 +1,20 @@
 #!/bin/bash
-# Pi2 Failback Script - Return control to pi-ctv when it comes back online
-# Location: /opt/apps/ctv-bookedbiz-db/scripts/failback-to-pi-ctv.sh
+# Pi2 Failback Script - Return control to spotops when it comes back online
+# Location: /opt/apps/ctv-bookedbiz-db/scripts/failback-to-spotops.sh
 
 set -e  # Exit on any error
 
 PROJECT_DIR="/opt/apps/ctv-bookedbiz-db"
 
-echo "🔄 INITIATING FAILBACK TO PI-CTV"
-echo "=================================="
+echo "🔄 INITIATING FAILBACK TO SPOTOPS"
+echo "==================================="
 
-echo "🔍 Step 1: Testing pi-ctv availability..."
-if curl -sf http://100.81.73.46:8000/api/system-stats >/dev/null; then
-    echo "✓ Pi-ctv is responding and healthy"
+echo "🔍 Step 1: Testing spotops availability..."
+if curl -sf http://100.99.11.55:8000/api/system-stats >/dev/null; then
+    echo "✓ Spotops is responding and healthy"
 else
-    echo "❌ ERROR: Pi-ctv is not responding"
-    echo "Cannot failback - pi-ctv must be healthy first"
+    echo "❌ ERROR: Spotops is not responding"
+    echo "Cannot failback - spotops must be healthy first"
     exit 1
 fi
 
@@ -51,23 +51,23 @@ echo "🛑 Step 3: Stopping Flask service on pi2..."
 sudo systemctl stop flaskapp
 echo "✓ Flask service stopped on pi2"
 
-echo "⏱️  Step 4: Final health check of pi-ctv..."
+echo "⏱️  Step 4: Final health check of spotops..."
 sleep 3
-if curl -sf http://100.81.73.46:8000/api/system-stats >/dev/null; then
-    echo "✓ Pi-ctv confirmed healthy and serving traffic"
+if curl -sf http://100.99.11.55:8000/api/system-stats >/dev/null; then
+    echo "✓ Spotops confirmed healthy and serving traffic"
 else
-    echo "⚠️  WARNING: Pi-ctv may not be fully healthy"
-    echo "Check pi-ctv status before considering failback complete"
+    echo "⚠️  WARNING: Spotops may not be fully healthy"
+    echo "Check spotops status before considering failback complete"
 fi
 
 echo ""
 echo "✅ FAILBACK COMPLETE!"
 echo "===================="
-echo "• Pi-ctv Flask service:  http://100.81.73.46:8000"  
+echo "• Spotops Flask service: http://100.99.11.55"  
 echo "• Pi2 Flask service:     STOPPED"
 echo "• Pi2 remains ready for future failover"
 echo ""
 echo "📊 Control Station Alpha Dashboard: http://100.96.96.109:5001"
 echo "🔧 Kuma Monitoring:               http://100.96.96.109:3001"
 echo ""
-echo "If pi-ctv fails again, run: ./scripts/failover-to-pi2.sh"
+echo "If spotops fails again, run: ./scripts/failover-to-pi2.sh"

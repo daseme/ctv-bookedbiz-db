@@ -117,24 +117,7 @@ class MarketAnalysisService:
 
     def _build_language_case_sql(self) -> str:
         """Build SQL CASE statement for language grouping."""
-        return """
-            CASE UPPER(TRIM(language_code))
-                WHEN 'M' THEN 'Chinese'
-                WHEN 'C' THEN 'Chinese'
-                WHEN 'M/C' THEN 'Chinese'
-                WHEN 'V' THEN 'Vietnamese'
-                WHEN 'T' THEN 'Filipino'
-                WHEN 'K' THEN 'Korean'
-                WHEN 'J' THEN 'Japanese'
-                WHEN 'SA' THEN 'South Asian'
-                WHEN 'P' THEN 'South Asian'
-                WHEN 'HM' THEN 'Hmong'
-                WHEN 'E' THEN 'English'
-                WHEN 'EN' THEN 'English'
-                WHEN 'ENG' THEN 'English'
-                ELSE 'Other'
-            END
-        """
+        return LanguageConstants.build_language_case_sql()
 
     def get_language_summary(self, year: str) -> List[Dict[str, Any]]:
         """Get language performance summary."""

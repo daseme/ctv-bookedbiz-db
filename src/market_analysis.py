@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import shared utilities
 from utils.date_range_utils import DateRangeUtils
 from utils.language_constants import LanguageConstants
+from utils.query_builders import BroadcastMonthQueryBuilder
 
 
 @dataclass
@@ -91,27 +92,10 @@ class MarketAnalysisEngine:
 
     def _build_language_group_case(self) -> str:
         """Build SQL CASE statement for language grouping."""
-        return """
-            CASE UPPER(TRIM(s.language_code))
-                WHEN 'M' THEN 'Chinese'
-                WHEN 'C' THEN 'Chinese'
-                WHEN 'M/C' THEN 'Chinese'
-                WHEN 'V' THEN 'Vietnamese'
-                WHEN 'T' THEN 'Filipino'
-                WHEN 'K' THEN 'Korean'
-                WHEN 'J' THEN 'Japanese'
-                WHEN 'SA' THEN 'South Asian'
-                WHEN 'HM' THEN 'Hmong'
-                WHEN 'E' THEN 'English'
-                WHEN 'EN' THEN 'English'
-                WHEN 'ENG' THEN 'English'
-                WHEN 'P' THEN 'Portuguese'
-                WHEN 'L' THEN 'Undetermined'
-                WHEN '' THEN 'Unknown'
-                WHEN NULL THEN 'Unknown'
-                ELSE 'Other: ' || COALESCE(UPPER(TRIM(s.language_code)), 'Unknown')
-            END
-        """
+        return LanguageConstants.build_language_case_sql(
+            table_alias="s",
+            else_label="Other",
+        )
 
     def _build_market_case(self) -> str:
         """Build SQL CASE statement for market consolidation (CHI+CMP+MSP -> CMP)."""
@@ -128,7 +112,7 @@ class MarketAnalysisEngine:
 
     def build_year_filter(self, year_suffixes: List[str]) -> Tuple[str, List[str]]:
         """Build year filter using shared utility."""
-        return DateRangeUtils.build_year_filter(year_suffixes)
+        return BroadcastMonthQueryBuilder.build_year_filter(year_suffixes)
 
     def get_language_performance_summary(
         self, year_input: str = "2024"

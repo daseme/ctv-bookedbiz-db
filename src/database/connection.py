@@ -72,6 +72,22 @@ class DatabaseConnection:
         finally:
             conn.close()
 
+    @contextmanager
+    def connection_ro(self):
+        """Context manager for read-only connection."""
+        uri = f"file:{self.db_path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA cache_size=10000")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA query_only = 1")
+        try:
+            yield conn
+        finally:
+            conn.close()
+
     def close(self):
         """Close database connection - handles already closed connections."""
         if self._connection:

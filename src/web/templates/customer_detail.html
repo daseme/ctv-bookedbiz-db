@@ -1,16 +1,22 @@
 {% extends "base.html" %}
+{% from "macros/breadcrumbs.html" import breadcrumb_trail %}
 
 {% block title %}{{ page_title }}{% endblock %}
 
 {% block breadcrumb %}
-<span class="breadcrumb-separator">›</span>
-<span>Reporting</span>
-<span class="breadcrumb-separator">›</span>
-<span class="breadcrumb-current">Customer Detail</span>
+{% if from_page == 'address-book' %}
+{{ breadcrumb_trail([("Data Management", ""), ("Address Book", "/address-book")], report.summary.normalized_name) }}
+{% elif from_page == 'ae-dashboard' %}
+{{ breadcrumb_trail([("Reporting", ""), ("AE Dashboard", "/ae-dashboard")], report.summary.normalized_name) }}
+{% elif from_page == 'customer-merge' %}
+{{ breadcrumb_trail([("Data Management", ""), ("Customer Merge", "/customer-merge")], report.summary.normalized_name) }}
+{% else %}
+{{ breadcrumb_trail([("Reporting", "/reports")], "Customer Detail") }}
+{% endif %}
 {% endblock %}
 
 {% block header_title %}{{ report.summary.normalized_name }}{% endblock %}
-{% block header_subtitle %}Customer Revenue Analysis and Performance Tracking{% endblock %}
+{% block header_subtitle %}Customer Revenue Analysis and Performance Tracking <button class="guide-btn" onclick="document.getElementById('help-modal').classList.add('active')" title="About this report">?</button>{% endblock %}
 
 {% block extra_styles %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
@@ -339,11 +345,280 @@
         color: white;
         margin-left: auto;
     }
+
+    .guide-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.15s;
+        margin-left: 8px;
+        vertical-align: middle;
+    }
+    .guide-btn:hover {
+        background: #e0f2fe;
+        color: #0284c7;
+        border-color: #0284c7;
+    }
+
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 40px 20px;
+        overflow-y: auto;
+    }
+    .modal-overlay.active { display: flex; }
+
+    .info-modal {
+        background: #fff;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 560px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+    }
+    .info-modal .modal-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f0f9ff;
+    }
+    .info-modal .modal-header h3 {
+        margin: 0;
+        font-size: 18px;
+        color: #0369a1;
+    }
+    .info-modal .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #64748b;
+        padding: 0 4px;
+    }
+    .info-modal .modal-close:hover { color: #0f172a; }
+    .info-modal .modal-body {
+        padding: 24px;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .info-modal .info-section {
+        margin-bottom: 20px;
+    }
+    .info-modal .info-section:last-child { margin-bottom: 0; }
+    .info-modal .info-section h4 {
+        margin: 0 0 6px;
+        font-size: 14px;
+        color: #0f172a;
+    }
+    .info-modal .info-section p {
+        margin: 0;
+        font-size: 13px;
+        color: #475569;
+        line-height: 1.5;
+    }
+
+    /* Contacts section */
+    .contacts-card {
+        margin-bottom: 24px;
+    }
+    .contacts-card .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .contacts-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .contact-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 14px 20px;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .contact-item:last-child { border-bottom: none; }
+    .contact-item:hover { background: #f8fafc; }
+    .contact-info { flex: 1; min-width: 0; }
+    .contact-name {
+        font-weight: 600;
+        color: var(--nord0);
+        font-size: 14px;
+    }
+    .contact-title {
+        font-size: 13px;
+        color: #718096;
+    }
+    .contact-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-top: 4px;
+        font-size: 13px;
+        color: #4a5568;
+    }
+    .contact-details a {
+        color: var(--nord10);
+        text-decoration: none;
+    }
+    .contact-details a:hover { text-decoration: underline; }
+    .badge-primary-contact {
+        background: var(--nord14);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .badge-role {
+        background: var(--nord5);
+        color: var(--nord0);
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    .contact-badges {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+    .btn-add-contact {
+        padding: 4px 12px;
+        border: 1px solid var(--nord10);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--nord10);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+    .btn-add-contact:hover {
+        background: var(--nord10);
+        color: white;
+    }
+    .contact-actions {
+        display: flex;
+        gap: 6px;
+        opacity: 0;
+        transition: opacity 0.15s;
+    }
+    .contact-item:hover .contact-actions { opacity: 1; }
+    .contact-actions button {
+        padding: 3px 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 3px;
+        background: white;
+        color: #64748b;
+        font-size: 11px;
+        cursor: pointer;
+    }
+    .contact-actions button:hover {
+        border-color: var(--nord10);
+        color: var(--nord10);
+    }
+    .contact-actions button.btn-delete:hover {
+        border-color: var(--nord11);
+        color: var(--nord11);
+    }
+    .contacts-empty {
+        padding: 20px;
+        color: #718096;
+        font-size: 14px;
+    }
+
+    /* Contact form modal */
+    .contact-form-modal .modal-body {
+        padding: 20px 24px;
+    }
+    .contact-form-modal .form-row {
+        margin-bottom: 14px;
+    }
+    .contact-form-modal label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .contact-form-modal input,
+    .contact-form-modal select,
+    .contact-form-modal textarea {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        font-size: 14px;
+        color: #1e293b;
+        box-sizing: border-box;
+    }
+    .contact-form-modal textarea { resize: vertical; min-height: 60px; }
+    .contact-form-modal .form-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 16px;
+    }
+    .contact-form-modal .btn-save {
+        padding: 8px 20px;
+        border: none;
+        border-radius: 4px;
+        background: var(--nord10);
+        color: white;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+    .contact-form-modal .btn-save:hover { background: var(--nord9); }
+    .contact-form-modal .btn-cancel {
+        padding: 8px 20px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: white;
+        color: #475569;
+        font-size: 14px;
+        cursor: pointer;
+    }
+    .contact-form-modal .btn-cancel:hover { background: #f1f5f9; }
+    .form-row-inline {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+{% if from_page == 'address-book' %}
+<a href="/address-book" class="back-link">← Back to Address Book</a>
+{% elif from_page == 'ae-dashboard' %}
+<a href="/ae-dashboard" class="back-link">← Back to AE Dashboard</a>
+{% elif from_page == 'customer-merge' %}
+<a href="/customer-merge" class="back-link">← Back to Customer Merge</a>
+{% else %}
 <a href="javascript:history.back()" class="back-link">← Back</a>
+{% endif %}
 
 <form method="GET" class="date-filter-bar">
     <label for="start_date">Start Date:</label>
@@ -392,6 +667,121 @@
         {% if report.summary.last_air_date %}
         <div>Last activity: {{ report.summary.last_air_date }}</div>
         {% endif %}
+    </div>
+</div>
+
+<!-- Contacts -->
+<div class="card contacts-card">
+    <div class="card-header">
+        <span>Contacts{% if report.contacts %} ({{ report.contacts|length }}){% endif %}</span>
+        <button class="btn-add-contact" onclick="openContactForm()">+ Add Contact</button>
+    </div>
+    {% if report.contacts %}
+    <ul class="contacts-list" id="contacts-list">
+        {% for c in report.contacts %}
+        <li class="contact-item" data-contact-id="{{ c.contact_id }}">
+            <div class="contact-info">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="contact-name">{{ c.contact_name }}</span>
+                    <div class="contact-badges">
+                        {% if c.is_primary %}
+                        <span class="badge-primary-contact">Primary</span>
+                        {% endif %}
+                        {% if c.contact_role %}
+                        <span class="badge-role">{{ c.contact_role | replace('_', ' ') | title }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if c.contact_title %}
+                <div class="contact-title">{{ c.contact_title }}</div>
+                {% endif %}
+                <div class="contact-details">
+                    {% if c.email %}
+                    <span><a href="mailto:{{ c.email }}">{{ c.email }}</a></span>
+                    {% endif %}
+                    {% if c.phone %}
+                    <span>{{ c.phone }}</span>
+                    {% endif %}
+                    {% if c.last_contacted %}
+                    <span style="color:#94a3b8;">Last contacted: {{ c.last_contacted[:10] }}</span>
+                    {% endif %}
+                </div>
+                {% if c.notes %}
+                <div style="margin-top:4px; font-size:12px; color:#94a3b8;">{{ c.notes }}</div>
+                {% endif %}
+            </div>
+            <div class="contact-actions">
+                <button onclick="editContact({{ c.contact_id }})">Edit</button>
+                {% if not c.is_primary %}
+                <button onclick="setPrimary({{ c.contact_id }})">Set Primary</button>
+                {% endif %}
+                <button class="btn-delete" onclick="deleteContact({{ c.contact_id }}, '{{ c.contact_name|e }}')">Delete</button>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="contacts-empty" id="contacts-empty">No contacts on file. Click "+ Add Contact" to add one.</div>
+    {% endif %}
+</div>
+
+<!-- Contact Form Modal -->
+<div class="modal-overlay contact-form-modal" id="contact-modal" onclick="if(event.target===this)closeContactForm()">
+    <div class="info-modal" style="max-width:480px;">
+        <div class="modal-header">
+            <h3 id="contact-modal-title">Add Contact</h3>
+            <button class="modal-close" onclick="closeContactForm()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="contact-form" onsubmit="saveContact(event)">
+                <input type="hidden" id="cf-contact-id" value="">
+                <div class="form-row">
+                    <label for="cf-name">Name *</label>
+                    <input type="text" id="cf-name" required>
+                </div>
+                <div class="form-row">
+                    <label for="cf-title">Title</label>
+                    <input type="text" id="cf-title" placeholder="e.g. Sales Manager">
+                </div>
+                <div class="form-row-inline">
+                    <div class="form-row">
+                        <label for="cf-email">Email</label>
+                        <input type="email" id="cf-email">
+                    </div>
+                    <div class="form-row">
+                        <label for="cf-phone">Phone</label>
+                        <input type="tel" id="cf-phone">
+                    </div>
+                </div>
+                <div class="form-row-inline">
+                    <div class="form-row">
+                        <label for="cf-role">Role</label>
+                        <select id="cf-role">
+                            <option value="">-- Select --</option>
+                            <option value="decision_maker">Decision Maker</option>
+                            <option value="account_manager">Account Manager</option>
+                            <option value="billing">Billing</option>
+                            <option value="technical">Technical</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-row" style="display:flex; align-items:flex-end; padding-bottom:14px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input type="checkbox" id="cf-primary" style="width:auto;">
+                            Primary Contact
+                        </label>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label for="cf-notes">Notes</label>
+                    <textarea id="cf-notes" rows="2"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-cancel" onclick="closeContactForm()">Cancel</button>
+                    <button type="submit" class="btn-save">Save Contact</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -524,6 +914,7 @@
         <table class="data-table">
             <thead>
                 <tr>
+                    <th>Bill Code</th>
                     <th>Air Date</th>
                     <th>Month</th>
                     <th>Time</th>
@@ -538,6 +929,7 @@
             <tbody>
                 {% for spot in report.recent_spots %}
                 <tr>
+                    <td style="font-family: monospace; font-size: 12px;">{{ spot.bill_code }}</td>
                     <td>{{ spot.air_date }}</td>
                     <td>{{ spot.broadcast_month }}</td>
                     <td style="font-family: monospace;">{{ spot.time_in or '-' }}</td>
@@ -567,6 +959,41 @@
     </div>
 </div>
 {% endif %}
+
+<div class="modal-overlay" id="help-modal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="info-modal">
+    <div class="modal-header">
+      <h3>Customer Detail Report</h3>
+      <button class="modal-close" onclick="document.getElementById('help-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>Monthly Revenue Chart</h4>
+        <p>Shows gross revenue by broadcast month for the most recent 24 months that have activity. Only months where this customer had spots appear &mdash; gaps between bars mean the customer had no spots that month.</p>
+      </div>
+      <div class="info-section">
+        <h4>KPI Cards</h4>
+        <p>Without a date filter: lifetime totals, current-year YTD with year-over-year change, prior full-year totals, and average spot rate across all time. With a date filter active: totals and averages are scoped to the filtered range and the YoY cards are hidden.</p>
+      </div>
+      <div class="info-section">
+        <h4>Date Filter</h4>
+        <p>Use the date picker bar at the top to narrow every section on this page &mdash; KPIs, chart, breakdowns, and recent activity &mdash; to a specific air-date range. Click Reset to return to the lifetime view.</p>
+      </div>
+      <div class="info-section">
+        <h4>Revenue Exclusions</h4>
+        <p>Trade revenue is excluded from all calculations on this page. Only cash spots contribute to gross and net figures.</p>
+      </div>
+      <div class="info-section">
+        <h4>Breakdowns</h4>
+        <p>Language, Account Executive, and Market sections show each category's share of total gross revenue. Percentages and bars are relative to the current view (lifetime or filtered range).</p>
+      </div>
+      <div class="info-section">
+        <h4>Bill Code Aliases</h4>
+        <p>The raw billing codes from traffic logs that resolve to this customer. When new spots arrive with one of these codes, they are automatically linked to this customer record.</p>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -616,5 +1043,196 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+</script>
+<script>
+(function() {
+    const CUSTOMER_ID = {{ report.summary.customer_id }};
+    const API_BASE = '/api/contacts/customer/' + CUSTOMER_ID;
+    const ROLE_LABELS = {
+        decision_maker: 'Decision Maker',
+        account_manager: 'Account Manager',
+        billing: 'Billing',
+        technical: 'Technical',
+        other: 'Other'
+    };
+
+    function esc(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    function renderContactItem(c) {
+        const badges = [];
+        if (c.is_primary) badges.push('<span class="badge-primary-contact">Primary</span>');
+        if (c.contact_role) badges.push('<span class="badge-role">' + esc(ROLE_LABELS[c.contact_role] || c.contact_role) + '</span>');
+
+        const details = [];
+        if (c.email) details.push('<span><a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a></span>');
+        if (c.phone) details.push('<span>' + esc(c.phone) + '</span>');
+        if (c.last_contacted) details.push('<span style="color:#94a3b8;">Last contacted: ' + esc(c.last_contacted.substring(0, 10)) + '</span>');
+
+        const primaryBtn = c.is_primary ? '' : '<button onclick="setPrimary(' + c.contact_id + ')">Set Primary</button>';
+
+        return '<li class="contact-item" data-contact-id="' + c.contact_id + '">' +
+            '<div class="contact-info">' +
+                '<div style="display:flex;align-items:center;gap:8px;">' +
+                    '<span class="contact-name">' + esc(c.contact_name) + '</span>' +
+                    '<div class="contact-badges">' + badges.join('') + '</div>' +
+                '</div>' +
+                (c.contact_title ? '<div class="contact-title">' + esc(c.contact_title) + '</div>' : '') +
+                '<div class="contact-details">' + details.join('') + '</div>' +
+                (c.notes ? '<div style="margin-top:4px;font-size:12px;color:#94a3b8;">' + esc(c.notes) + '</div>' : '') +
+            '</div>' +
+            '<div class="contact-actions">' +
+                '<button onclick="editContact(' + c.contact_id + ')">Edit</button>' +
+                primaryBtn +
+                '<button class="btn-delete" onclick="deleteContact(' + c.contact_id + ',\'' + esc(c.contact_name).replace(/'/g, "\\'") + '\')">Delete</button>' +
+            '</div>' +
+        '</li>';
+    }
+
+    async function refreshContacts() {
+        const res = await fetch(API_BASE);
+        const contacts = await res.json();
+        const card = document.querySelector('.contacts-card');
+        const header = card.querySelector('.card-header span');
+        header.textContent = 'Contacts' + (contacts.length ? ' (' + contacts.length + ')' : '');
+
+        let list = card.querySelector('.contacts-list');
+        const empty = card.querySelector('.contacts-empty');
+        if (contacts.length === 0) {
+            if (list) list.remove();
+            if (!empty) {
+                const d = document.createElement('div');
+                d.className = 'contacts-empty';
+                d.id = 'contacts-empty';
+                d.textContent = 'No contacts on file. Click "+ Add Contact" to add one.';
+                card.appendChild(d);
+            }
+            return;
+        }
+        if (empty) empty.remove();
+        if (!list) {
+            list = document.createElement('ul');
+            list.className = 'contacts-list';
+            list.id = 'contacts-list';
+            card.appendChild(list);
+        }
+        list.innerHTML = contacts.map(renderContactItem).join('');
+    }
+
+    window.openContactForm = function(contactData) {
+        const modal = document.getElementById('contact-modal');
+        const title = document.getElementById('contact-modal-title');
+        document.getElementById('cf-contact-id').value = '';
+        document.getElementById('cf-name').value = '';
+        document.getElementById('cf-title').value = '';
+        document.getElementById('cf-email').value = '';
+        document.getElementById('cf-phone').value = '';
+        document.getElementById('cf-role').value = '';
+        document.getElementById('cf-primary').checked = false;
+        document.getElementById('cf-notes').value = '';
+
+        if (contactData) {
+            title.textContent = 'Edit Contact';
+            document.getElementById('cf-contact-id').value = contactData.contact_id;
+            document.getElementById('cf-name').value = contactData.contact_name || '';
+            document.getElementById('cf-title').value = contactData.contact_title || '';
+            document.getElementById('cf-email').value = contactData.email || '';
+            document.getElementById('cf-phone').value = contactData.phone || '';
+            document.getElementById('cf-role').value = contactData.contact_role || '';
+            document.getElementById('cf-primary').checked = contactData.is_primary;
+            document.getElementById('cf-notes').value = contactData.notes || '';
+        } else {
+            title.textContent = 'Add Contact';
+        }
+        modal.classList.add('active');
+        document.getElementById('cf-name').focus();
+    };
+
+    window.closeContactForm = function() {
+        document.getElementById('contact-modal').classList.remove('active');
+    };
+
+    window.saveContact = async function(e) {
+        e.preventDefault();
+        const contactId = document.getElementById('cf-contact-id').value;
+        const data = {
+            contact_name: document.getElementById('cf-name').value.trim(),
+            contact_title: document.getElementById('cf-title').value.trim() || null,
+            email: document.getElementById('cf-email').value.trim() || null,
+            phone: document.getElementById('cf-phone').value.trim() || null,
+            contact_role: document.getElementById('cf-role').value || null,
+            is_primary: document.getElementById('cf-primary').checked,
+            notes: document.getElementById('cf-notes').value.trim() || null,
+        };
+
+        try {
+            let res;
+            if (contactId) {
+                res = await fetch('/api/contacts/' + contactId, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data),
+                });
+            } else {
+                res = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data),
+                });
+            }
+            const result = await res.json();
+            if (!res.ok || result.success === false) {
+                alert('Error: ' + (result.error || 'Save failed'));
+                return;
+            }
+            closeContactForm();
+            await refreshContacts();
+        } catch (err) {
+            alert('Error saving contact: ' + err.message);
+        }
+    };
+
+    window.editContact = async function(contactId) {
+        try {
+            const res = await fetch('/api/contacts/' + contactId);
+            if (!res.ok) { alert('Contact not found'); return; }
+            const data = await res.json();
+            openContactForm(data);
+        } catch (err) {
+            alert('Error loading contact: ' + err.message);
+        }
+    };
+
+    window.setPrimary = async function(contactId) {
+        try {
+            const res = await fetch('/api/contacts/' + contactId + '/primary', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+            });
+            if (!res.ok) { alert('Failed to set primary'); return; }
+            await refreshContacts();
+        } catch (err) {
+            alert('Error: ' + err.message);
+        }
+    };
+
+    window.deleteContact = async function(contactId, name) {
+        if (!confirm('Delete contact "' + name + '"?')) return;
+        try {
+            const res = await fetch('/api/contacts/' + contactId, {
+                method: 'DELETE',
+                headers: {'Content-Type': 'application/json'},
+            });
+            if (!res.ok) { alert('Delete failed'); return; }
+            await refreshContacts();
+        } catch (err) {
+            alert('Error: ' + err.message);
+        }
+    };
+})();
 </script>
 {% endblock %}

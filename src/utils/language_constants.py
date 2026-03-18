@@ -69,7 +69,36 @@ class LanguageConstants:
         """
         return set(cls.LANGUAGE_GROUPS.values())
     
-    @classmethod 
+    @classmethod
+    def build_language_case_sql(
+        cls,
+        column: str = "language_code",
+        table_alias: str = "",
+        else_label: str = "Other",
+    ) -> str:
+        """
+        Generate a SQL CASE statement for language grouping from LANGUAGE_GROUPS.
+
+        Args:
+            column: Column name containing language codes.
+            table_alias: Table alias prefix (e.g. "s"). Empty for no prefix.
+            else_label: Label for unmatched codes.
+
+        Returns:
+            SQL CASE expression string.
+        """
+        qualified = (
+            f"{table_alias}.{column}" if table_alias else column
+        )
+        expr = f"UPPER(TRIM({qualified}))"
+        lines = [f"CASE {expr}"]
+        for code, group in cls.LANGUAGE_GROUPS.items():
+            lines.append(f"    WHEN '{code}' THEN '{group}'")
+        lines.append(f"    ELSE '{else_label}'")
+        lines.append("END")
+        return "\n".join(lines)
+
+    @classmethod
     def get_codes_for_group(cls, group_name: str) -> List[str]:
         """
         Get all language codes that map to a specific group.

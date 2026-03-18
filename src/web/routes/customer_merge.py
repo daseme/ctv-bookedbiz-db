@@ -1,9 +1,8 @@
 # src/web/routes/customer_merge.py
 """Customer merge tool — link unresolved bill_codes and merge duplicates."""
 
-import sqlite3
-
-from flask import Blueprint, current_app, jsonify, request, render_template
+from flask import Blueprint, jsonify, request, render_template
+from src.services.container import get_container
 
 customer_merge_bp = Blueprint("customer_merge", __name__)
 
@@ -34,14 +33,8 @@ def unresolved_bill_codes():
     - unlinked: no alias exists yet, needs Link action
     - needs_backfill: alias exists but spots.customer_id still NULL
     """
-    db_path = (
-        current_app.config.get("DB_PATH")
-        or "./data/database/production.db"
-    )
-    uri = f"file:{db_path}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=5.0)
-    conn.row_factory = sqlite3.Row
-    try:
+    db = get_container().get("database_connection")
+    with db.connection_ro() as conn:
         rows = conn.execute("""
             SELECT
                 s.bill_code,
@@ -63,8 +56,6 @@ def unresolved_bill_codes():
             GROUP BY s.bill_code
             ORDER BY revenue DESC
         """).fetchall()
-    finally:
-        conn.close()
 
     unlinked = []
     needs_backfill = []
@@ -99,20 +90,13 @@ def backfill_spots():
             "error": "bill_code and customer_id required",
         }), 400
 
-    db_path = (
-        current_app.config.get("DB_PATH")
-        or "./data/database/production.db"
-    )
-    conn = sqlite3.connect(db_path, timeout=10.0)
-    try:
+    db = get_container().get("database_connection")
+    with db.transaction() as conn:
         spots_updated = conn.execute("""
             UPDATE spots
             SET customer_id = ?
             WHERE bill_code = ? AND customer_id IS NULL
         """, [customer_id, bill_code]).rowcount
-        conn.commit()
-    finally:
-        conn.close()
 
     return jsonify({
         "success": True,

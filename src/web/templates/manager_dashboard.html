@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% from "macros/breadcrumbs.html" import breadcrumb_trail %}
+
+{% block title %}Manager Dashboard{% endblock %}
+{% block header_title %}Manager Dashboard{% endblock %}
+{% block breadcrumb %}
+{{ breadcrumb_trail([], "Manager Dashboard") }}
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .mgr-container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+    .mgr-section {
+        background: #3b4252; border-radius: 8px;
+        padding: 1.25rem; margin-bottom: 1.25rem;
+        border: 1px solid #4c566a;
+    }
+    .mgr-section h2 {
+        color: #81a1c1; font-size: 1.1rem; margin: 0 0 1rem 0;
+        border-bottom: 1px solid #4c566a; padding-bottom: 0.5rem;
+    }
+    .scoreboard-table, .activity-table, .attention-table {
+        width: 100%; border-collapse: collapse;
+    }
+    .scoreboard-table th, .scoreboard-table td,
+    .activity-table th, .activity-table td,
+    .attention-table th, .attention-table td {
+        padding: 0.5rem 0.75rem; text-align: left;
+        border-bottom: 1px solid #4c566a;
+    }
+    .scoreboard-table th { color: #81a1c1; font-weight: 600; }
+    .scoreboard-table .metric-label { color: #d8dee9; font-weight: 500; }
+    .scoreboard-table .ae-value { color: #eceff4; text-align: center; }
+    .scoreboard-table th.ae-col { text-align: center; }
+    .attention-table th, .activity-table th {
+        color: #81a1c1; font-weight: 600;
+    }
+    .attention-table td, .activity-table td { color: #eceff4; }
+    .badge-signal {
+        display: inline-block; padding: 2px 8px; border-radius: 4px;
+        font-size: 0.8rem; font-weight: 600;
+    }
+    .badge-unworked { background: #bf616a33; color: #bf616a; }
+    .badge-renewal { background: #ebcb8b33; color: #ebcb8b; }
+    .badge-atier { background: #d0877033; color: #d08770; }
+    .text-red { color: #bf616a; }
+    .text-yellow { color: #ebcb8b; }
+    .text-green { color: #a3be8c; }
+    .text-muted { color: #d8dee9; }
+    .loading-placeholder { color: #d8dee9; font-style: italic; }
+    .entity-link {
+        color: #88c0d0; text-decoration: none;
+    }
+    .entity-link:hover { text-decoration: underline; }
+    .zero-state {
+        color: #d8dee9; text-align: center; padding: 2rem;
+        font-style: italic;
+    }
+    .guide-btn {
+        width: 28px; height: 28px; border-radius: 50%; display: inline-flex;
+        align-items: center; justify-content: center;
+        border: 1px solid #4c566a; background: #3b4252; color: #81a1c1;
+        font-size: 14px; font-weight: 700; cursor: pointer;
+        transition: all 0.15s; vertical-align: middle; margin-left: 10px;
+    }
+    .guide-btn:hover { background: #434c5e; color: #88c0d0; border-color: #81a1c1; }
+    .modal-overlay {
+        display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); z-index: 1100;
+        align-items: flex-start; justify-content: center;
+        padding: 40px 20px; overflow-y: auto;
+    }
+    .modal-overlay.active { display: flex; }
+    .guide-modal {
+        background: #fff; border-radius: 12px; width: 100%; max-width: 620px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+    }
+    .guide-modal .modal-header {
+        padding: 20px 24px; border-bottom: 1px solid #e2e8f0;
+        display: flex; justify-content: space-between; align-items: center;
+        background: #f0f9ff; border-radius: 12px 12px 0 0;
+    }
+    .guide-modal .modal-header h3 { margin: 0; font-size: 18px; color: #0369a1; }
+    .guide-modal .modal-close {
+        background: none; border: none; font-size: 24px; color: #94a3b8;
+        cursor: pointer; padding: 4px 8px;
+    }
+    .guide-modal .modal-close:hover { color: #334155; }
+    .guide-modal .modal-body { padding: 24px; max-height: 70vh; overflow-y: auto; }
+    .guide-modal .info-section { margin-bottom: 20px; }
+    .guide-modal .info-section:last-child { margin-bottom: 0; }
+    .guide-modal .info-section h4 {
+        margin: 0 0 6px; font-size: 14px; color: #0f172a;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .guide-modal .info-section p {
+        margin: 0; font-size: 13px; color: #475569; line-height: 1.6;
+    }
+    .guide-modal .info-section ul {
+        margin: 6px 0 0; padding-left: 20px; font-size: 13px;
+        color: #475569; line-height: 1.6;
+    }
+    .guide-modal .info-section ul li { margin-bottom: 4px; }
+    @media (max-width: 768px) {
+        .mgr-container { padding: 0.5rem; }
+        .scoreboard-table, .activity-table, .attention-table {
+            font-size: 0.85rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mgr-container">
+    <div style="display:flex; align-items:center; margin-bottom:1rem;">
+        <h1 style="color:#eceff4; margin:0;">Manager Dashboard</h1>
+        <button class="guide-btn" onclick="document.getElementById('guide-modal').classList.add('active')" title="How this page works">?</button>
+    </div>
+
+    <!-- Scoreboard -->
+    <div class="mgr-section">
+        <h2>AE Scoreboard</h2>
+        <div id="scoreboard-container">
+            <p class="loading-placeholder">Loading scoreboard...</p>
+        </div>
+    </div>
+
+    <!-- Attention Required -->
+    <div class="mgr-section">
+        <h2>Attention Required</h2>
+        <div id="attention-container">
+            <p class="loading-placeholder">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Weekly Activity -->
+    <div class="mgr-section">
+        <h2>Weekly Activity Summary (Last 7 Days)</h2>
+        <div id="activity-container">
+            <p class="loading-placeholder">Loading...</p>
+        </div>
+    </div>
+
+</div>
+
+<!-- Guide Modal -->
+<div class="modal-overlay" id="guide-modal">
+  <div class="guide-modal">
+    <div class="modal-header">
+      <h3>Manager Dashboard &mdash; Quick Guide</h3>
+      <button class="modal-close" onclick="document.getElementById('guide-modal').classList.remove('active')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-section">
+        <h4>What Is This Page?</h4>
+        <p>The Manager Dashboard gives you a single view of your entire sales team&rsquo;s performance. Instead of checking each AE&rsquo;s page individually, you can compare everyone side-by-side, spot accounts that need intervention, and track weekly activity levels.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>AE Scoreboard</h4>
+        <p>A comparison table with one column per AE and these metrics as rows:</p>
+        <ul>
+          <li><strong>Active Accounts</strong> &mdash; total customers and agencies assigned to each AE</li>
+          <li><strong>Revenue at Risk</strong> &mdash; trailing revenue from accounts with a renewal gap (booked revenue in the last 3 months but less than 25% booked for the next 3 months)</li>
+          <li><strong>Unworked Signals (&gt;7d)</strong> &mdash; system-generated alerts that an AE hasn&rsquo;t acted on within 7 days. Red means they&rsquo;re falling behind on outreach</li>
+          <li><strong>Open Follow-ups</strong> &mdash; total follow-up tasks the AE has scheduled but not completed</li>
+          <li><strong>Overdue Follow-ups</strong> &mdash; follow-ups past their due date. Red flags missed commitments</li>
+          <li><strong>Avg Health Score</strong> &mdash; average of all account health scores (0&ndash;100) for that AE. Factors in revenue trend, signal state, touch recency, and follow-up compliance</li>
+          <li><strong>Touch Compliance</strong> &mdash; percentage of accounts where the AE is meeting the expected contact cadence for each account&rsquo;s tier (A: weekly, B: biweekly, C: monthly)</li>
+        </ul>
+        <p>Health Score and Touch Compliance load separately since they require heavier computation &mdash; you&rsquo;ll see &ldquo;...&rdquo; placeholders until they arrive.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Attention Required</h4>
+        <p>A prioritized list of accounts that need your awareness, sorted by dollar impact. Three types of items can appear:</p>
+        <ul>
+          <li><strong>Unworked</strong> (red) &mdash; a signal has been sitting for more than 7 days without the AE logging any activity. The longer it ages, the more urgent it becomes</li>
+          <li><strong>Renewal Gap</strong> (yellow) &mdash; an account has significant trailing revenue but little or nothing booked forward, and the AE hasn&rsquo;t made contact in the last 14 days</li>
+          <li><strong>A-Tier Overdue</strong> (orange) &mdash; a top-tier account (by revenue) has gone past its expected touch cadence. These are your highest-value relationships going cold</li>
+        </ul>
+        <p>Click an account name to jump to the AE&rsquo;s My Accounts page filtered to that AE. Use this list in your 1-on-1s to drive specific conversations about at-risk revenue.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>Weekly Activity Summary</h4>
+        <p>A breakdown of what each AE has logged in the last 7 days:</p>
+        <ul>
+          <li><strong>Calls, Emails, Meetings, Notes</strong> &mdash; direct outreach and account documentation</li>
+          <li><strong>Follow-ups</strong> &mdash; only counts completed follow-ups (demonstrates follow-through, not just scheduling)</li>
+          <li><strong>Total</strong> &mdash; sum of all activity types. A zero total (shown in red) means no logged activity that week</li>
+        </ul>
+        <p>This is about patterns, not policing. Consistently low activity from an AE might indicate they need support, training, or workload rebalancing.</p>
+      </div>
+
+      <div class="info-section">
+        <h4>How to Use This Dashboard</h4>
+        <ul>
+          <li><strong>Weekly team review:</strong> Pull up the scoreboard and compare overdue follow-ups and unworked signals across AEs</li>
+          <li><strong>1-on-1 prep:</strong> Check the Attention Required list for specific accounts to discuss with each AE</li>
+          <li><strong>Revenue protection:</strong> Sort attention items by dollar amount to focus on the biggest risks first</li>
+          <li><strong>Coaching:</strong> Use the activity summary to spot AEs who might be struggling with outreach volume or follow-through</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const AE_LIST = {{ ae_list | tojson }};
+</script>
+<script src="/static/js/manager_dashboard.js"></script>
+{% endblock %}

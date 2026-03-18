@@ -378,7 +378,7 @@ class PlanningRepository(BaseService):
         """Get booked revenue for an AE/year/month from spots.
 
         Special handling:
-        - WorldLink: Match on bill_code LIKE 'WorldLink:%'
+        - WorldLink: Match on bill_code LIKE 'WorldLink%'
         - House: Exclude WorldLink bill_codes (they belong to WorldLink entity)
         """
         with self.safe_connection() as conn:
@@ -390,7 +390,7 @@ class PlanningRepository(BaseService):
                     """
                     SELECT COALESCE(SUM(gross_rate), 0) AS booked
                     FROM spots
-                    WHERE bill_code LIKE 'WorldLink:%'
+                    WHERE bill_code LIKE 'WorldLink%'
                       AND broadcast_month = ?
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                 """,
@@ -405,7 +405,7 @@ class PlanningRepository(BaseService):
                     WHERE sales_person = ?
                       AND broadcast_month = ?
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                      AND bill_code NOT LIKE 'WorldLink:%'
+                      AND bill_code NOT LIKE 'WorldLink%'
                 """,
                     (ae_name, period.broadcast_month),
                 )
@@ -444,7 +444,7 @@ class PlanningRepository(BaseService):
                     f"""
                     SELECT broadcast_month, COALESCE(SUM(gross_rate), 0) AS booked
                     FROM spots
-                    WHERE bill_code LIKE 'WorldLink:%'
+                    WHERE bill_code LIKE 'WorldLink%'
                       AND broadcast_month IN ({placeholders})
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                     GROUP BY broadcast_month
@@ -459,7 +459,7 @@ class PlanningRepository(BaseService):
                     WHERE sales_person = ?
                       AND broadcast_month IN ({placeholders})
                       AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                      AND bill_code NOT LIKE 'WorldLink:%'
+                      AND bill_code NOT LIKE 'WorldLink%'
                     GROUP BY broadcast_month
                 """,
                     [ae_name] + broadcast_months,
@@ -495,7 +495,7 @@ class PlanningRepository(BaseService):
         """Get booked revenue for all AEs across periods.
 
         This method handles the special cases:
-        - WorldLink: Aggregated from bill_code LIKE 'WorldLink:%'
+        - WorldLink: Aggregated from bill_code LIKE 'WorldLink%'
         - House: Excludes WorldLink bill_codes
         - All others: Standard sales_person matching
         """
@@ -543,7 +543,7 @@ class PlanningRepository(BaseService):
                 WHERE broadcast_month IN ({placeholders})
                   AND (revenue_type != 'Trade' OR revenue_type IS NULL)
                   AND sales_person = 'House'
-                  AND bill_code NOT LIKE 'WorldLink:%'
+                  AND bill_code NOT LIKE 'WorldLink%'
                 GROUP BY broadcast_month
             """,
                 broadcast_months,
@@ -564,7 +564,7 @@ class PlanningRepository(BaseService):
                 FROM spots
                 WHERE broadcast_month IN ({placeholders})
                   AND (revenue_type != 'Trade' OR revenue_type IS NULL)
-                  AND bill_code LIKE 'WorldLink:%'
+                  AND bill_code LIKE 'WorldLink%'
                 GROUP BY broadcast_month
             """,
                 broadcast_months,
@@ -592,12 +592,13 @@ class PlanningRepository(BaseService):
         """
         # Build WHERE clause based on entity type
         if entity.entity_type == EntityType.AGENCY and entity.entity_name == "WorldLink":
-            entity_filter = """
-                (s.bill_code LIKE 'WL:%' OR s.bill_code LIKE 'WORLDLINK:%')
-            """
+            entity_filter = "s.bill_code LIKE 'WorldLink%'"
             params = [period.broadcast_month, limit]
         elif entity.entity_type == EntityType.HOUSE:
-            entity_filter = "UPPER(TRIM(s.sales_person)) = 'HOUSE'"
+            entity_filter = (
+                "UPPER(TRIM(s.sales_person)) = 'HOUSE'"
+                " AND (s.bill_code NOT LIKE 'WorldLink%' OR s.bill_code IS NULL)"
+            )
             params = [period.broadcast_month, limit]
         else:
             entity_filter = "UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"
@@ -648,12 +649,13 @@ class PlanningRepository(BaseService):
         month_placeholders = ",".join(["?" for _ in broadcast_months])
 
         if entity.entity_type == EntityType.AGENCY and entity.entity_name == "WorldLink":
-            entity_filter = """
-                (s.bill_code LIKE 'WL:%' OR s.bill_code LIKE 'WORLDLINK:%')
-            """
+            entity_filter = "s.bill_code LIKE 'WorldLink%'"
             params = broadcast_months + [limit]
         elif entity.entity_type == EntityType.HOUSE:
-            entity_filter = "UPPER(TRIM(s.sales_person)) = 'HOUSE'"
+            entity_filter = (
+                "UPPER(TRIM(s.sales_person)) = 'HOUSE'"
+                " AND (s.bill_code NOT LIKE 'WorldLink%' OR s.bill_code IS NULL)"
+            )
             params = broadcast_months + [limit]
         else:
             entity_filter = "UPPER(TRIM(s.sales_person)) = UPPER(TRIM(?))"

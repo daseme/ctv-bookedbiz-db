@@ -17,6 +17,8 @@ from typing import Dict, List, Optional, Tuple, Protocol, Any
 from enum import Enum
 import sqlite3
 
+from src.utils.query_builders import BroadcastMonthQueryBuilder
+
 
 # ============================================================================
 # Domain Models
@@ -126,13 +128,8 @@ class QueryBuilder:
 
     @staticmethod
     def build_year_filter(suffixes: List[str]) -> Tuple[str, List[str]]:
-        """Build year filter SQL and parameters"""
-        if len(suffixes) == 1:
-            return "s.broadcast_month LIKE ?", [f"%-{suffixes[0]}"]
-
-        conditions = ["s.broadcast_month LIKE ?" for _ in suffixes]
-        params = [f"%-{suffix}" for suffix in suffixes]
-        return f"({' OR '.join(conditions)})", params
+        """Build year filter SQL and parameters."""
+        return BroadcastMonthQueryBuilder.build_year_filter(suffixes)
 
     @staticmethod
     def get_base_where_clause(year_filter: str) -> str:

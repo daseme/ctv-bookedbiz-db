@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 from decimal import Decimal
+from src.utils.query_builders import RevenueQueryBuilder
 
 
 @dataclass
@@ -89,6 +90,7 @@ class MarketBreakdown:
 class RecentSpot:
     """Recent spot activity record."""
     spot_id: int
+    bill_code: str
     air_date: str
     broadcast_month: str
     time_in: Optional[str]
@@ -110,6 +112,20 @@ class BillCodeAlias:
 
 
 @dataclass
+class ContactInfo:
+    """Contact record for a customer."""
+    contact_id: int
+    contact_name: str
+    contact_title: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    contact_role: Optional[str]
+    is_primary: bool
+    last_contacted: Optional[str]
+    notes: Optional[str]
+
+
+@dataclass
 class CustomerDetailReport:
     """Complete customer detail report."""
     summary: CustomerSummary
@@ -120,6 +136,7 @@ class CustomerDetailReport:
     market_breakdown: list[MarketBreakdown] = field(default_factory=list)
     recent_spots: list[RecentSpot] = field(default_factory=list)
     bill_code_aliases: list[BillCodeAlias] = field(default_factory=list)
+    contacts: list[ContactInfo] = field(default_factory=list)
     date_range_label: str = ""
     has_date_filter: bool = False
 
@@ -192,6 +209,7 @@ class CustomerDetailService:
             market_breakdown=self._get_market_breakdown(customer_id),
             recent_spots=self._get_recent_spots(customer_id),
             bill_code_aliases=self._get_aliases(customer_id),
+            contacts=self._get_contacts(customer_id),
             date_range_label=self._format_date_label(
                 start_date, end_date
             ) if has_filter else "",
@@ -334,12 +352,7 @@ class CustomerDetailService:
             GROUP BY broadcast_month
             ORDER BY
                 CAST('20' || SUBSTR(broadcast_month, 5, 2) AS INTEGER),
-                CASE SUBSTR(broadcast_month, 1, 3)
-                    WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
-                    WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
-                    WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
-                    WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-                END
+                {RevenueQueryBuilder.build_month_number_case()}
         """, [customer_id] + date_params)
         
         results = []
@@ -480,6 +493,7 @@ class CustomerDetailService:
         cursor.execute(f"""
             SELECT
                 s.spot_id,
+                s.bill_code,
                 s.air_date,
                 s.broadcast_month,
                 s.time_in,
@@ -503,16 +517,17 @@ class CustomerDetailService:
         for row in cursor.fetchall():
             results.append(RecentSpot(
                 spot_id=row[0],
-                air_date=row[1],
-                broadcast_month=row[2],
-                time_in=row[3],
-                length_seconds=row[4],
-                gross_rate=Decimal(str(row[5] or 0)),
-                station_net=Decimal(str(row[6] or 0)),
-                sales_person=row[7],
-                language_code=row[8],
-                market_code=row[9],
-                revenue_type=row[10]
+                bill_code=row[1],
+                air_date=row[2],
+                broadcast_month=row[3],
+                time_in=row[4],
+                length_seconds=row[5],
+                gross_rate=Decimal(str(row[6] or 0)),
+                station_net=Decimal(str(row[7] or 0)),
+                sales_person=row[8],
+                language_code=row[9],
+                market_code=row[10],
+                revenue_type=row[11]
             ))
         
         return results
@@ -539,5 +554,35 @@ class CustomerDetailService:
                 confidence_score=row[1] or 100,
                 created_date=row[2]
             ))
-        
+
         return results
+
+    def _get_contacts(self, customer_id: int) -> list[ContactInfo]:
+        """Get active contacts for this customer."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT
+                contact_id, contact_name, contact_title,
+                email, phone, contact_role, is_primary,
+                last_contacted, notes
+            FROM entity_contacts
+            WHERE entity_type = 'customer'
+                AND entity_id = ?
+                AND is_active = 1
+            ORDER BY is_primary DESC, contact_name ASC
+        """, [customer_id])
+
+        return [
+            ContactInfo(
+                contact_id=row[0],
+                contact_name=row[1],
+                contact_title=row[2],
+                email=row[3],
+                phone=row[4],
+                contact_role=row[5],
+                is_primary=bool(row[6]),
+                last_contacted=row[7],
+                notes=row[8],
+            )
+            for row in cursor.fetchall()
+        ]

@@ -10,6 +10,7 @@ import sqlite3
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 from decimal import Decimal
+from src.utils.query_builders import CustomerNormalizationQueryBuilder
 
 
 # ============================================================================
@@ -210,16 +211,15 @@ class SpotRepository:
             CustomerAlignmentValidation with any mismatches found
         """
         cursor = conn.execute(
-            """
-            SELECT 
+            f"""
+            SELECT
                 s.bill_code,
                 s.customer_id as spots_customer_id,
                 audit.customer_id as audit_customer_id,
                 COUNT(*) as spot_count,
                 SUM(COALESCE(s.gross_rate, 0)) as revenue_affected
             FROM spots s
-            LEFT JOIN v_customer_normalization_audit audit 
-                ON audit.raw_text = s.bill_code
+            {CustomerNormalizationQueryBuilder.build_customer_join()}
             WHERE s.import_batch_id = ?
                 AND (s.customer_id != audit.customer_id OR s.customer_id IS NULL)
                 AND audit.customer_id IS NOT NULL

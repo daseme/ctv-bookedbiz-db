@@ -522,12 +522,7 @@
         border-radius: 50%;
     }
     
-    /* Booked exceeds forecast entered - visual indicator */
-    .forecast-input.booked-exceeds {
-        background: #ecfdf5;
-        border-color: var(--nord14);
-    }
-    
+    /* Booked exceeds forecast entered - subtle corner indicator only */
     .booked-exceeds-indicator {
         position: absolute;
         top: 2px;
@@ -893,10 +888,10 @@
                 {% set row = ed.rows_by_period.get(period.key) %}
                 {% set is_active = period in active_periods %}
                 {% set is_past = period in past_periods %}
-                {% set booked_exceeds = row and row.is_booked_exceeds_forecast_entered %}
+                {% set booked_exceeds = row and row.is_booked_exceeds_forecast_entered and not is_past %}
                 <td class="number forecast-cell {% if period.month in [3, 6, 9, 12] %}q-end{% endif %} {% if is_active %}active-period{% endif %}">
                     <input type="text" 
-                           class="forecast-input {% if row and row.is_forecast_overridden %}modified{% endif %} {% if is_past %}past-month{% endif %} {% if booked_exceeds %}booked-exceeds{% endif %}"
+                           class="forecast-input {% if row and row.is_forecast_overridden %}modified{% endif %} {% if is_past %}past-month{% endif %}"
                            data-ae="{{ ed.entity.entity_name }}"
                            data-year="{{ period.year }}"
                            data-month="{{ period.month }}"
@@ -905,14 +900,14 @@
                            data-is-past="{{ 'true' if is_past else 'false' }}"
                            value="{{ "{:,.0f}".format(row.booked.amount if (row and is_past) else (row.forecast.amount if row else 0)) }}"
                            {% if is_past %}readonly title="Past month - showing actuals"{% endif %}
-                           {% if booked_exceeds %}title="Booked (${{ "{:,.0f}".format(row.booked.amount) }}) exceeds entered forecast. Consider updating."{% endif %}
+                           {% if booked_exceeds %}title="Forecast auto-raised from ${{ "{:,.0f}".format(row.forecast_entered.amount) }} to match booked"{% endif %}
                            onchange="markModified(this)"
                            onkeydown="handleKeydown(event, this)">
                     {% if row and row.is_forecast_overridden %}
                     <span class="override-indicator" title="Modified from budget"></span>
                     {% endif %}
                     {% if booked_exceeds %}
-                    <span class="booked-exceeds-indicator" title="Booked exceeds entered forecast"></span>
+                    <span class="booked-exceeds-indicator" title="Forecast auto-raised from ${{ "{:,.0f}".format(row.forecast_entered.amount) }} to match booked"></span>
                     {% endif %}
                 </td>
                 {% endfor %}
@@ -1015,7 +1010,7 @@
                 {% for period in all_periods %}
                 {% set p = company.periods_by_key.get(period.key) %}
                 <td class="number {% if period.month in [3, 6, 9, 12] %}q-end{% endif %}">
-                    ${{ "{:,.0f}".format(p.effective.amount if p else 0) }}
+                    ${{ "{:,.0f}".format(p.forecast.amount if p else 0) }}
                 </td>
                 {% endfor %}
                 <td class="number total-col">${{ "{:,.0f}".format(company.total_effective.amount) }}</td>
@@ -1043,13 +1038,12 @@
 <!-- Data Notes -->
 <div class="data-notes">
     <strong>Data Notes:</strong> 
-    Booked = gross_rate from spots table. 
-    Pipeline = Forecast minus Booked. 
+    Booked = gross_rate from spots table.
+    Pipeline = Forecast minus Booked.
     Forecast defaults to Budget until adjusted; auto-floors to Booked if Booked exceeds entered value.
-    Yellow highlight indicates modified forecasts.
-    Green highlight indicates Booked exceeds entered forecast.
-    Blue highlighted columns are the active planning window.
-    Grey inputs are closed months (read-only, showing actual booked revenue).
+    Yellow = modified forecast. Green triangle = Booked exceeds entered forecast.
+    Blue columns = active planning window.
+    Grey columns = closed months (read-only). Forecast and pipeline locked to actuals — no more revenue expected.
 </div>
 <!-- Booked Detail Modal -->
 <div class="modal-overlay" id="bookedDetailModal" onclick="closeModalOnOverlay(event)">
@@ -1121,12 +1115,8 @@ function markModified(input) {
     // Display the effective value
     input.value = formatNumber(effectiveValue);
     
-    // Track whether booked exceeds what user entered
-    if (bookedValue > enteredValue) {
-        input.classList.add('booked-exceeds');
-        input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
-    } else {
-        input.classList.remove('booked-exceeds');
+    // Reset title when user edits
+    if (bookedValue <= enteredValue) {
         input.title = '';
     }
     
@@ -1259,8 +1249,9 @@ function recalculateTotals() {
         inputs.forEach(input => {
             const displayedValue = parseNumber(input.value);
             const bookedValue = parseNumber(input.dataset.booked || '0');
-            totalForecast += Math.max(displayedValue, bookedValue);
-            
+            const isPast = input.dataset.isPast === 'true';
+            totalForecast += isPast ? bookedValue : Math.max(displayedValue, bookedValue);
+
             // Update variance for this cell
             const budgetCell = input.closest('tr').previousElementSibling.previousElementSibling.previousElementSibling;
             const periodIndex = Array.from(input.closest('td').parentNode.children).indexOf(input.closest('td'));
@@ -1274,7 +1265,7 @@ function recalculateTotals() {
                 
                 if (varianceCell && budgetCell) {
                     const budgetValue = parseNumber(budgetCell.textContent);
-                    const forecastValue = Math.max(displayedValue, bookedValue);
+                    const forecastValue = isPast ? bookedValue : Math.max(displayedValue, bookedValue);
                     const variance = forecastValue - budgetValue;
                     
                     // Update variance display
@@ -1296,7 +1287,8 @@ function recalculateTotals() {
     document.querySelectorAll('.forecast-input').forEach(input => {
         const displayedValue = parseNumber(input.value);
         const bookedValue = parseNumber(input.dataset.booked || '0');
-        grandTotal += Math.max(displayedValue, bookedValue);
+        const isPast = input.dataset.isPast === 'true';
+        grandTotal += isPast ? bookedValue : Math.max(displayedValue, bookedValue);
     });
 }
 
@@ -1313,14 +1305,7 @@ function resetChanges() {
             input.value = formatNumber(Math.max(original, bookedValue));
             input.classList.remove('modified');
             
-            // Re-check booked exceeds status
-            if (bookedValue > original) {
-                input.classList.add('booked-exceeds');
-                input.title = `Booked ($${formatNumber(bookedValue)}) exceeds entered forecast. Consider updating.`;
-            } else {
-                input.classList.remove('booked-exceeds');
-                input.title = '';
-            }
+            input.title = '';
         }
     });
     
@@ -1596,8 +1581,7 @@ function renderBookedDetail(data) {
     
     let currentSector = null;
     sortedCustomers.forEach(customer => {
-        console.log('customer_id:', customer.customer_id, 'name:', customer.customer_name);
-        const pct = data.total_revenue > 0 
+        const pct = data.total_revenue > 0
             ? (customer.revenue / data.total_revenue * 100).toFixed(1) 
             : 0;
         
@@ -1863,6 +1847,30 @@ function renderSectorError(entityName, message) {
     `;
 }
 
+
+async function loadSectorSummaries(year) {
+    try {
+        const response = await fetch(`/planning/api/sector-summary/${year}`);
+        const result = await response.json();
+        if (result.success && result.summaries) {
+            Object.entries(result.summaries).forEach(([entityName, summary]) => {
+                const header = document.querySelector(`.entity-header[data-entity="${entityName}"]`);
+                if (header) {
+                    const nameCell = header.querySelector('.entity-name-cell');
+                    if (nameCell && !nameCell.querySelector('.sector-summary')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'sector-summary';
+                        badge.style.cssText = 'font-size:11px;color:#718096;font-weight:400;margin-left:12px;';
+                        badge.textContent = summary;
+                        nameCell.appendChild(badge);
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        // Sector summaries are informational — don't block the page
+    }
+}
 
 // Call on page load
 document.addEventListener('DOMContentLoaded', function() {

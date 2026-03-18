@@ -1,7 +1,8 @@
 # src/web/routes/entity_resolution.py
 """Unified routes for advertiser + agency resolution and aliases."""
 
-from flask import Blueprint, current_app, jsonify, request, render_template, redirect
+from flask import Blueprint, jsonify, request, render_template, redirect
+from flask_login import current_user
 
 entity_resolution_bp = Blueprint("entity_resolution", __name__)
 
@@ -9,7 +10,6 @@ entity_resolution_bp = Blueprint("entity_resolution", __name__)
 @entity_resolution_bp.before_request
 def _require_admin_for_writes():
     if request.method in ('POST', 'PUT', 'DELETE'):
-        from flask_login import current_user
         if not hasattr(current_user, 'role') or current_user.role.value != 'admin':
             return jsonify({"error": "Admin access required"}), 403
 
@@ -61,14 +61,16 @@ def _get_cfg(tab=None):
 
 def _get_customer_service():
     from src.services.customer_resolution_service import CustomerResolutionService
-    db_path = current_app.config.get("DB_PATH") or "./data/database/production.db"
-    return CustomerResolutionService(db_path)
+    from src.services.container import get_container
+    db = get_container().get("database_connection")
+    return CustomerResolutionService(db)
 
 
 def _get_agency_service():
     from src.services.agency_resolution_service import AgencyResolutionService
-    db_path = current_app.config.get("DB_PATH") or "./data/database/production.db"
-    return AgencyResolutionService(db_path)
+    from src.services.container import get_container
+    db = get_container().get("database_connection")
+    return AgencyResolutionService(db)
 
 
 # ── Page routes ─────────────────────────────────────────────────────────
@@ -152,7 +154,7 @@ def customer_create():
     if not bill_code or not normalized_name:
         return jsonify({"success": False, "error": "bill_code and normalized_name required"}), 400
     result = _get_customer_service().create_customer_and_alias(
-        bill_code=bill_code, normalized_name=normalized_name, created_by="web_user"
+        bill_code=bill_code, normalized_name=normalized_name, created_by=current_user.full_name
     )
     return jsonify(result)
 
@@ -165,7 +167,7 @@ def customer_link():
     if not bill_code or not customer_id:
         return jsonify({"success": False, "error": "bill_code and customer_id required"}), 400
     result = _get_customer_service().link_to_existing(
-        bill_code=bill_code, customer_id=customer_id, created_by="web_user"
+        bill_code=bill_code, customer_id=customer_id, created_by=current_user.full_name
     )
     if not result["success"]:
         return jsonify(result), 400
@@ -190,7 +192,7 @@ def customer_merge():
     if not source_id or not target_id:
         return jsonify({"success": False, "error": "source_id and target_id required"}), 400
     result = _get_customer_service().merge_customers(
-        source_id=int(source_id), target_id=int(target_id), merged_by="web_user"
+        source_id=int(source_id), target_id=int(target_id), merged_by=current_user.full_name
     )
     if not result["success"]:
         return jsonify(result), 400
@@ -218,7 +220,7 @@ def customer_detail(customer_id: int):
 
 @entity_resolution_bp.route("/api/customer-aliases/<int:alias_id>", methods=["DELETE"])
 def customer_delete_alias(alias_id: int):
-    result = _get_customer_service().delete_alias(alias_id, deleted_by="web_user")
+    result = _get_customer_service().delete_alias(alias_id, deleted_by=current_user.full_name)
     if not result["success"]:
         return jsonify(result), 400
     return jsonify(result)
@@ -231,7 +233,7 @@ def customer_rename(customer_id: int):
     if not new_name:
         return jsonify({"success": False, "error": "new_name required"}), 400
     result = _get_customer_service().rename_customer(
-        customer_id=customer_id, new_name=new_name, renamed_by="web_user"
+        customer_id=customer_id, new_name=new_name, renamed_by=current_user.full_name
     )
     if not result["success"]:
         return jsonify(result), 400
@@ -247,7 +249,7 @@ def customer_address(customer_id: int):
         city=data.get("city"),
         state=data.get("state"),
         zip_code=data.get("zip"),
-        updated_by="web_user"
+        updated_by=current_user.full_name
     )
     if not result["success"]:
         return jsonify(result), 400
@@ -287,7 +289,7 @@ def agency_create():
     if not agency_raw or not agency_name:
         return jsonify({"success": False, "error": "agency_raw and agency_name required"}), 400
     result = _get_agency_service().create_agency_and_alias(
-        agency_raw=agency_raw, agency_name=agency_name, created_by="web_user"
+        agency_raw=agency_raw, agency_name=agency_name, created_by=current_user.full_name
     )
     return jsonify(result)
 
@@ -300,7 +302,7 @@ def agency_link():
     if not agency_raw or not agency_id:
         return jsonify({"success": False, "error": "agency_raw and agency_id required"}), 400
     result = _get_agency_service().link_to_existing(
-        agency_raw=agency_raw, agency_id=agency_id, created_by="web_user"
+        agency_raw=agency_raw, agency_id=agency_id, created_by=current_user.full_name
     )
     if not result["success"]:
         return jsonify(result), 400
@@ -325,7 +327,7 @@ def agency_merge():
     if not source_id or not target_id:
         return jsonify({"success": False, "error": "source_id and target_id required"}), 400
     result = _get_agency_service().merge_agencies(
-        source_id=int(source_id), target_id=int(target_id), merged_by="web_user"
+        source_id=int(source_id), target_id=int(target_id), merged_by=current_user.full_name
     )
     if not result["success"]:
         return jsonify(result), 400
@@ -353,7 +355,7 @@ def agency_detail(agency_id: int):
 
 @entity_resolution_bp.route("/api/agency-aliases/<int:alias_id>", methods=["DELETE"])
 def agency_delete_alias(alias_id: int):
-    result = _get_agency_service().delete_alias(alias_id, deleted_by="web_user")
+    result = _get_agency_service().delete_alias(alias_id, deleted_by=current_user.full_name)
     if not result["success"]:
         return jsonify(result), 400
     return jsonify(result)
@@ -366,7 +368,7 @@ def agency_rename(agency_id: int):
     if not new_name:
         return jsonify({"success": False, "error": "new_name required"}), 400
     result = _get_agency_service().rename_agency(
-        agency_id=agency_id, new_name=new_name, renamed_by="web_user"
+        agency_id=agency_id, new_name=new_name, renamed_by=current_user.full_name
     )
     if not result["success"]:
         return jsonify(result), 400
@@ -382,7 +384,7 @@ def agency_address(agency_id: int):
         city=data.get("city"),
         state=data.get("state"),
         zip_code=data.get("zip"),
-        updated_by="web_user"
+        updated_by=current_user.full_name
     )
     if not result["success"]:
         return jsonify(result), 400

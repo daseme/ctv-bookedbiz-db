@@ -9,8 +9,8 @@ This just creates customer records for normalized names that don't exist yet.
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
-import sqlite3
-from contextlib import contextmanager
+from src.database.connection import DatabaseConnection
+from src.utils.query_builders import CustomerNormalizationQueryBuilder
 
 try:
     from rapidfuzz import fuzz
@@ -51,35 +51,22 @@ class CustomerResolutionService:
     no duplicate normalization logic.
     """
     
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-    
-    @contextmanager
+    def __init__(self, db: DatabaseConnection):
+        self.db = db
+
     def _db_ro(self):
-        uri = f"file:{self.db_path}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-        finally:
-            conn.close()
-    
-    @contextmanager
+        return self.db.connection_ro()
+
     def _db_rw(self):
-        conn = sqlite3.connect(self.db_path, timeout=10.0)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-        finally:
-            conn.close()
+        return self.db.connection()
     
     def get_unresolved(self, min_revenue: float = 0, limit: int = 100) -> List[UnresolvedCustomer]:
         """
         Get bill_codes that don't resolve to a customer.
         Uses v_customer_normalization_audit for normalized names.
         """
-        sql = """
-        SELECT 
+        sql = f"""
+        SELECT
             s.bill_code,
             vcna.normalized_name,
             vcna.agency1,
@@ -90,12 +77,12 @@ class CustomerResolutionService:
             MAX(s.air_date) as last_seen
         FROM spots s
         LEFT JOIN customers c ON s.customer_id = c.customer_id
-        LEFT JOIN entity_aliases ea ON ea.alias_name = s.bill_code 
+        LEFT JOIN entity_aliases ea ON ea.alias_name = s.bill_code
             AND ea.entity_type = 'customer' AND ea.is_active = 1
-        LEFT JOIN v_customer_normalization_audit vcna ON vcna.raw_text = s.bill_code
-        WHERE s.bill_code IS NOT NULL 
+        {CustomerNormalizationQueryBuilder.build_customer_join(audit_alias="vcna")}
+        WHERE s.bill_code IS NOT NULL
             AND s.bill_code != ''
-            AND c.customer_id IS NULL 
+            AND c.customer_id IS NULL
             AND ea.alias_id IS NULL
             AND (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
         GROUP BY s.bill_code

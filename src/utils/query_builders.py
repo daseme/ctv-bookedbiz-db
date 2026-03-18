@@ -6,7 +6,7 @@ Consolidated query patterns used across multiple services and repositories.
 Eliminates duplicate SQL fragments and provides consistent query building.
 """
 
-from typing import Dict, List, Tuple, Optional
+from typing import List, Tuple
 
 
 class CustomerNormalizationQueryBuilder:
@@ -42,57 +42,6 @@ class CustomerNormalizationQueryBuilder:
         """
         return f"{join_type} v_customer_normalization_audit {audit_alias} ON {audit_alias}.raw_text = {spot_alias}.bill_code"
     
-    @staticmethod
-    def build_customer_select(
-        spot_alias: str = "s",
-        audit_alias: str = "audit",
-        include_original: bool = True
-    ) -> str:
-        """
-        Build standard customer normalization SELECT clause.
-        
-        Args:
-            spot_alias: Alias for the spots table (default: "s")
-            audit_alias: Alias for the audit table (default: "audit")
-            include_original: Whether to include original bill_code (default: True)
-            
-        Returns:
-            SQL SELECT clause for normalized customer data
-            
-        Examples:
-            >>> CustomerNormalizationQueryBuilder.build_customer_select()
-            "COALESCE(audit.normalized_name, s.bill_code, 'Unknown') AS customer, s.bill_code AS original_customer"
-        """
-        customer_clause = f"COALESCE({audit_alias}.normalized_name, {spot_alias}.bill_code, 'Unknown') AS customer"
-        
-        if include_original:
-            original_clause = f", {spot_alias}.bill_code AS original_customer"
-            return customer_clause + original_clause
-        else:
-            return customer_clause
-    
-    @staticmethod 
-    def build_customer_id_select(
-        spot_alias: str = "s",
-        audit_alias: str = "audit"
-    ) -> str:
-        """
-        Build customer ID selection with fallback to bill_code.
-        
-        Args:
-            spot_alias: Alias for the spots table (default: "s")
-            audit_alias: Alias for the audit table (default: "audit")
-            
-        Returns:
-            SQL SELECT clause for customer ID with fallback
-            
-        Examples:
-            >>> CustomerNormalizationQueryBuilder.build_customer_id_select()
-            "COALESCE(s.customer_id, s.bill_code) AS customer_id"
-        """
-        return f"COALESCE({spot_alias}.customer_id, {spot_alias}.bill_code) AS customer_id"
-
-
 class BroadcastMonthQueryBuilder:
     """
     Query builder for broadcast month filtering patterns.
@@ -163,3 +112,111 @@ class BroadcastMonthQueryBuilder:
         placeholders = ", ".join("?" for _ in month_values)
         
         return f"({full_column} IN ({placeholders}))", month_values
+
+
+class RevenueQueryBuilder:
+    """Reusable SQL query components for revenue reporting."""
+
+    @staticmethod
+    def build_broadcast_month_case(
+        expr: str = "s.broadcast_month",
+    ) -> str:
+        """CASE returning zero-padded month string ('01'..'12')."""
+        return f"""CASE
+                WHEN {expr} LIKE 'Jan-%' THEN '01'
+                WHEN {expr} LIKE 'Feb-%' THEN '02'
+                WHEN {expr} LIKE 'Mar-%' THEN '03'
+                WHEN {expr} LIKE 'Apr-%' THEN '04'
+                WHEN {expr} LIKE 'May-%' THEN '05'
+                WHEN {expr} LIKE 'Jun-%' THEN '06'
+                WHEN {expr} LIKE 'Jul-%' THEN '07'
+                WHEN {expr} LIKE 'Aug-%' THEN '08'
+                WHEN {expr} LIKE 'Sep-%' THEN '09'
+                WHEN {expr} LIKE 'Oct-%' THEN '10'
+                WHEN {expr} LIKE 'Nov-%' THEN '11'
+                WHEN {expr} LIKE 'Dec-%' THEN '12'
+            END""".strip()
+
+    @staticmethod
+    def build_month_number_case(
+        expr: str = "broadcast_month",
+    ) -> str:
+        """CASE returning integer month number (1..12) from broadcast_month."""
+        return f"""CASE SUBSTR({expr}, 1, 3)
+                WHEN 'Jan' THEN 1 WHEN 'Feb' THEN 2 WHEN 'Mar' THEN 3
+                WHEN 'Apr' THEN 4 WHEN 'May' THEN 5 WHEN 'Jun' THEN 6
+                WHEN 'Jul' THEN 7 WHEN 'Aug' THEN 8 WHEN 'Sep' THEN 9
+                WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+            END""".strip()
+
+    @staticmethod
+    def build_year_case(expr: str = "broadcast_month") -> str:
+        """CASE returning 4-digit year integer from broadcast_month."""
+        return f"""CASE
+                WHEN {expr} LIKE '%-21' THEN 2021
+                WHEN {expr} LIKE '%-22' THEN 2022
+                WHEN {expr} LIKE '%-23' THEN 2023
+                WHEN {expr} LIKE '%-24' THEN 2024
+                WHEN {expr} LIKE '%-25' THEN 2025
+                WHEN {expr} LIKE '%-26' THEN 2026
+                WHEN {expr} LIKE '%-27' THEN 2027
+                WHEN {expr} LIKE '%-28' THEN 2028
+                WHEN {expr} LIKE '%-29' THEN 2029
+                WHEN {expr} LIKE '%-30' THEN 2030
+            END""".strip()
+
+    @staticmethod
+    def build_quarter_case(expr: str = "s.broadcast_month") -> str:
+        """CASE returning quarter string ('Q1'..'Q4')."""
+        return f"""CASE
+              WHEN {expr} LIKE 'Jan-%' OR {expr} LIKE 'Feb-%' OR {expr} LIKE 'Mar-%' THEN 'Q1'
+              WHEN {expr} LIKE 'Apr-%' OR {expr} LIKE 'May-%' OR {expr} LIKE 'Jun-%' THEN 'Q2'
+              WHEN {expr} LIKE 'Jul-%' OR {expr} LIKE 'Aug-%' OR {expr} LIKE 'Sep-%' THEN 'Q3'
+              WHEN {expr} LIKE 'Oct-%' OR {expr} LIKE 'Nov-%' OR {expr} LIKE 'Dec-%' THEN 'Q4'
+            END""".strip()
+
+    @staticmethod
+    def build_quarter_number_case(
+        expr: str = "broadcast_month",
+    ) -> str:
+        """CASE returning integer quarter (1..4) from broadcast_month."""
+        return f"""CASE
+                WHEN SUBSTR({expr}, 1, 3) IN ('Jan', 'Feb', 'Mar') THEN 1
+                WHEN SUBSTR({expr}, 1, 3) IN ('Apr', 'May', 'Jun') THEN 2
+                WHEN SUBSTR({expr}, 1, 3) IN ('Jul', 'Aug', 'Sep') THEN 3
+                ELSE 4
+            END""".strip()
+
+    @staticmethod
+    def build_year_filter(
+        year_suffixes: List[str],
+        month_column: str = "s.broadcast_month",
+    ) -> Tuple[str, List[str]]:
+        """Build SQL filter for multiple year suffixes using shared utility."""
+        return BroadcastMonthQueryBuilder.build_year_filter(
+            year_suffixes, "broadcast_month", "s"
+        )
+
+    @staticmethod
+    def build_ae_normalization() -> str:
+        """AE normalization expression (NULL/blank → 'UNKNOWN')."""
+        return """CASE
+                WHEN s.sales_person IS NULL OR TRIM(s.sales_person) = '' THEN 'UNKNOWN'
+                ELSE UPPER(TRIM(s.sales_person))
+            END""".strip()
+
+    @staticmethod
+    def build_ae_display() -> str:
+        """AE display name expression (NULL/blank → 'Unknown')."""
+        return """CASE
+              WHEN s.sales_person IS NULL OR TRIM(s.sales_person) = '' THEN 'Unknown'
+              ELSE TRIM(s.sales_person)
+            END""".strip()
+
+    @staticmethod
+    def build_base_filters() -> str:
+        """Common WHERE filters for revenue queries."""
+        return """
+            (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+            AND (s.gross_rate IS NOT NULL OR s.station_net IS NOT NULL)
+        """

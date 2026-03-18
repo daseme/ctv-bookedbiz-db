@@ -3,10 +3,10 @@
 Application configuration management.
 Loads settings from environment variables with sensible defaults.
 
-Backward-compatible priorities for DB selection:
-1) DB_PATH (legacy) or DATABASE_PATH (legacy absolute path)
+DB selection priority:
+1) DB_PATH or DATABASE_PATH env var
 2) APP_ENV-aware: DEV_DB_PATH / PROD_DB_PATH
-3) Fallback to repo default: data/database/production.db (prod) or production_dev.db (dev/test)
+3) For dev/test only: repo default. Production requires explicit env var.
 """
 
 from __future__ import annotations
@@ -72,12 +72,16 @@ def _choose_db_path(env: str, root: Path) -> str:
         p = os.getenv("DEV_DB_PATH")
         if p:
             return str(Path(p).expanduser())
-    else:
-        p = os.getenv("PROD_DB_PATH")
-        if p:
-            return str(Path(p).expanduser())
+        return str(_default_db_path(env, root))
 
-    return str(_default_db_path(env, root))
+    p = os.getenv("PROD_DB_PATH")
+    if p:
+        return str(Path(p).expanduser())
+
+    raise RuntimeError(
+        "Production DB_PATH not set. "
+        "Set DB_PATH, DATABASE_PATH, or PROD_DB_PATH env var."
+    )
 
 
 def _bool(var: str, default: bool = False) -> bool:

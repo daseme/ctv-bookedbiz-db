@@ -181,39 +181,6 @@ def create_app(environment: Optional[str] = None) -> Flask:
         logger.error(f"Failed to register length analysis blueprint: {e}")
 
 
-    # Initialize decay system check (non-blocking) - FIXED for newer Flask
-    def check_decay_system():
-        """Check decay system availability."""
-        try:
-            from src.services.container import get_container
-
-            container = get_container()
-            pipeline_service = container.get("pipeline_service")
-
-            if (
-                hasattr(pipeline_service, "decay_engine")
-                and pipeline_service.decay_engine
-            ):
-                logger.info("✅ Pipeline decay system is active")
-            else:
-                logger.info(
-                    "ℹ️ Pipeline decay system not active (using basic pipeline management)"
-                )
-
-        except Exception as e:
-            logger.info(
-                f"ℹ️ Decay system check failed (continuing with basic features): {e}"
-            )
-
-    # REPLACE before_first_request with context processor (works in all Flask versions)
-    @app.context_processor
-    def inject_decay_status():
-        """Check decay system on first template render."""
-        if not hasattr(app, "_decay_system_checked"):
-            check_decay_system()
-            app._decay_system_checked = True
-        return {}
-
     # Register root route (redirect to reports)
     @app.route("/")
     def index():
@@ -246,9 +213,6 @@ def create_app(environment: Optional[str] = None) -> Flask:
                     "database_connected": container.has_service("database_connection"),
                     "report_service_available": container.has_service(
                         "report_data_service"
-                    ),
-                    "pipeline_service_available": container.has_service(
-                        "pipeline_service"
                     ),
                 }
             )

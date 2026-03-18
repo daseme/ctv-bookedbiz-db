@@ -183,6 +183,9 @@
         .nav-section.admin .nav-section-label {
             color: var(--nord11);
         }
+        .nav-section.testing .nav-section-label {
+            color: var(--nord13);
+        }
 
         .nav-section:hover .nav-section-label,
         .nav-section.active .nav-section-label {
@@ -205,6 +208,10 @@
         .nav-section.admin:hover .nav-section-label,
         .nav-section.admin.active .nav-section-label {
             border-bottom-color: var(--nord11);
+        }
+        .nav-section.testing:hover .nav-section-label,
+        .nav-section.testing.active .nav-section-label {
+            border-bottom-color: var(--nord13);
         }
         
         .nav-dropdown {
@@ -580,6 +587,12 @@
                         <div class="nav-dropdown-item-title">Management Performance</div>
                         <div class="nav-dropdown-item-desc">Quarterly performance with budget pacing and YoY</div>
                     </a>
+                    {% if current_user.is_authenticated and current_user.role.value in ('admin', 'management') %}
+                    <a href="/manager/dashboard" class="nav-dropdown-item featured">
+                        <div class="nav-dropdown-item-title">Manager Dashboard</div>
+                        <div class="nav-dropdown-item-desc">Cross-AE scoreboard, attention items, activity</div>
+                    </a>
+                    {% endif %}
                     <a href="/reports/monthly/revenue-summary" class="nav-dropdown-item featured">
                         <div class="nav-dropdown-item-title">Monthly Revenue Summary</div>
                         <div class="nav-dropdown-item-desc">Monthly revenue overview and trends</div>
@@ -638,6 +651,10 @@
                             <div class="nav-dropdown-item-title">Customer Sector Manager</div>
                             <div class="nav-dropdown-item-desc">Manage customer sector assignments</div>
                         </a>
+                        <a href="/reports/revenue-classification-manager" class="nav-dropdown-item">
+                            <div class="nav-dropdown-item-title">Revenue Classification</div>
+                            <div class="nav-dropdown-item-desc">Manage regular vs irregular revenue</div>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -656,6 +673,23 @@
                     </a>
                 </div>
             </div>
+
+            <!-- In Testing Section -->
+            {% if current_user.is_authenticated and current_user.role.value in ['AE', 'management', 'admin'] %}
+            <div class="nav-section testing">
+                <div class="nav-section-label">🧪 In Testing</div>
+                <div class="nav-dropdown">
+                    <a href="/ae/my-accounts" class="nav-dropdown-item featured" style="border-left-color: var(--nord13);">
+                        <div class="nav-dropdown-item-title">My Accounts</div>
+                        <div class="nav-dropdown-item-desc">CRM-style view of your book of business</div>
+                    </a>
+                    <a href="/manager/dashboard" class="nav-dropdown-item featured" style="border-left-color: var(--nord13);">
+                        <div class="nav-dropdown-item-title">Manager Dashboard</div>
+                        <div class="nav-dropdown-item-desc">Team performance and account oversight</div>
+                    </a>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Admin Section -->
             <div class="nav-section admin">
@@ -767,8 +801,11 @@
                 '/address-book': 'datamanagement',
                 '/stale-customers': 'datamanagement',
                 '/reports/customer-sector-manager': 'datamanagement',
+                '/reports/revenue-classification-manager': 'datamanagement',
                 '/planning/': 'budgeting',
                 '/planning/budget': 'budgeting',
+                '/ae/my-accounts': 'testing',
+                '/manager/dashboard': 'testing',
                 '/users/': 'admin',
                 '/health': 'admin'
             };
@@ -780,6 +817,7 @@
                     section.style.borderBottomColor = section.parentElement.classList.contains('reporting') ? 'var(--nord8)' :
                                                     section.parentElement.classList.contains('datamanagement') ? 'var(--nord15)' :
                                                     section.parentElement.classList.contains('budgeting') ? 'var(--nord14)' :
+                                                    section.parentElement.classList.contains('testing') ? 'var(--nord13)' :
                                                     section.parentElement.classList.contains('admin') ? 'var(--nord11)' : 'transparent';
                     section.style.fontWeight = '700';
                 }

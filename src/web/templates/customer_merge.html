@@ -4,9 +4,9 @@
 {% block header_title %}Customer Merge Tool{% endblock %}
 {% block header_subtitle %}Link unresolved bill codes and merge duplicate customers{% endblock %}
 
+{% from "macros/breadcrumbs.html" import breadcrumb_trail %}
 {% block breadcrumb %}
-<span class="breadcrumb-separator">›</span>
-<span class="breadcrumb-current">Customer Merge</span>
+{{ breadcrumb_trail([("Data Management", "/address-book")], "Customer Merge") }}
 {% endblock %}
 
 {% block extra_styles %}
@@ -462,9 +462,19 @@
                     encodeURIComponent(q)
                 );
                 const results = await r.json();
+                const billCode = document.getElementById('row-' + idx).dataset.bill;
+                const createBtn = `
+                    <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--nord5);">
+                        <button class="btn btn-confirm"
+                            onclick="createAndLink(${idx}, '${esc(billCode)}')">
+                            Create New Customer</button>
+                        <span style="font-size:12px; color:var(--nord3); margin-left:8px;">
+                            from bill code</span>
+                    </div>`;
                 if (!results.length) {
                     container.innerHTML =
-                        '<div class="empty-state">No customers found</div>';
+                        '<div class="empty-state">No customers found</div>' +
+                        createBtn;
                     return;
                 }
                 container.innerHTML = results.map(c => `
@@ -478,13 +488,26 @@
                             </div>
                         </div>
                     </div>
-                `).join('');
+                `).join('') + createBtn;
             } catch (e) {
                 container.innerHTML =
                     '<div class="empty-state">Search error</div>';
             }
         }, 200);
     };
+
+    function addResolvedLink(row, customerId, customerName) {
+        const links = document.createElement('div');
+        links.style.cssText = 'margin-top:6px;font-size:12px;';
+        links.innerHTML =
+            '<a href="/reports/customer/' + customerId +
+            '?from=customer-merge" ' +
+            'style="color:#0ea5e9;margin-right:12px;">View Detail →</a>' +
+            '<a href="/address-book?search=' +
+            encodeURIComponent(customerName || '') +
+            '" style="color:#6b7280;">View in Address Book</a>';
+        row.appendChild(links);
+    }
 
     window.confirmLink = async function(idx, customerId, customerName) {
         const row = document.getElementById('row-' + idx);
@@ -516,7 +539,47 @@
                 '" (' + result.spots_updated + ' spots updated)',
                 'success'
             );
+            addResolvedLink(row, customerId, customerName);
             refreshMetrics(customerId);
+            setTimeout(loadUnresolved, 1500);
+        } catch (e) {
+            row.style.opacity = '1';
+            toast('Error: ' + e.message, 'error');
+        }
+    };
+
+    window.createAndLink = async function(idx, billCode) {
+        const name = prompt(
+            'Create new customer for "' + billCode + '".\n\n' +
+            'Enter customer name (or leave as-is):',
+            billCode
+        );
+        if (!name) return;
+
+        const row = document.getElementById('row-' + idx);
+        row.style.opacity = '0.5';
+        closeLinkSearch(idx);
+        try {
+            const r = await fetch('/api/customer-resolution/create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    bill_code: billCode,
+                    normalized_name: name,
+                }),
+            });
+            const result = await r.json();
+            if (!r.ok || !result.success) {
+                throw new Error(result.error || 'Create failed');
+            }
+            row.classList.add('resolved');
+            toast(
+                'Created "' + name + '" and linked ' +
+                result.spots_updated + ' spots',
+                'success'
+            );
+            addResolvedLink(row, result.customer_id, name);
+            refreshMetrics(result.customer_id);
             setTimeout(loadUnresolved, 1500);
         } catch (e) {
             row.style.opacity = '1';
@@ -547,6 +610,7 @@
                 billCode + '"',
                 'success'
             );
+            addResolvedLink(row, customerId, billCode);
             refreshMetrics(customerId);
             setTimeout(loadUnresolved, 1500);
         } catch (e) {
