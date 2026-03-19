@@ -13,7 +13,7 @@ from src.services.base_service import BaseService
 logger = logging.getLogger(__name__)
 
 VALID_IMPORT_ROLES = [
-    "decision_maker", "account_manager", "billing", "technical", "other",
+    "decision_maker", "account_manager", "billing", "technical", "traffic", "other",
 ]
 
 
