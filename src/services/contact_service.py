@@ -22,7 +22,7 @@ class Contact:
     contact_title: Optional[str]
     email: Optional[str]
     phone: Optional[str]
-    contact_role: Optional[str]  # decision_maker, account_manager, billing, technical, other
+    contact_role: Optional[str]  # decision_maker, account_manager, billing, technical, traffic, other
     is_primary: bool
     is_active: bool
     created_by: str
@@ -137,7 +137,7 @@ class ContactService:
             "notes": row["notes"],
         }
 
-    VALID_ROLES = ['decision_maker', 'account_manager', 'billing', 'technical', 'other', None]
+    VALID_ROLES = ['decision_maker', 'account_manager', 'billing', 'technical', 'traffic', 'other', None]
 
     def create_contact(
         self,
@@ -156,7 +156,7 @@ class ContactService:
         Create a new contact for an entity.
 
         If is_primary=True, demotes any existing primary contact.
-        contact_role can be: decision_maker, account_manager, billing, technical, other
+        contact_role can be: decision_maker, account_manager, billing, technical, traffic, other
         """
         if entity_type not in ('customer', 'agency'):
             return {"success": False, "error": f"Invalid entity_type: {entity_type}"}
