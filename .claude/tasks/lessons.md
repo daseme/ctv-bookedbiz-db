@@ -481,4 +481,15 @@ Add to booked business, Pending. The import pipeline MUST read all of them.
   `_count_excel_records_by_month`, `_import_excel_data_with_progress`,
   `ensure_bill_codes_in_raw_inputs`
 
+### Diff-Based Import Edge Cases
+Contract column in Excel can be int (Worldlink sheets) or str (Commercials).
+Always `str(contract).strip()` and coerce `'0'` to `''` on both sides.
+- Float rounding: SUM then ROUND differs from ROUND-each-then-SUM. Use
+  per-row rounding in SQL: `SUM(CAST(ROUND(val*100,0) AS INTEGER))` and
+  10-cent tolerance in comparison
+- Trade rows: filter in fingerprinting, not just at INSERT time — avoids
+  persistent "1 added" noise every run
+- Excel fingerprints must be filtered to open months only before comparing
+  to DB fingerprints (which only query open months)
+
 **Last Updated**: 2026-03-24
