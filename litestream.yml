@@ -1,0 +1,12 @@
+dbs:
+  - path: /srv/spotops/db/production.db
+    replicas:
+      - type: s3
+        bucket: ctv-bookedbiz-wal
+        path: production
+        endpoint: https://s3.us-west-004.backblazeb2.com
+        access-key-id: ${B2_ACCESS_KEY_ID}
+        secret-access-key: ${B2_SECRET_ACCESS_KEY}
+        retention: 6h
+        retention-check-interval: 15m
+        snapshot-interval: 6h

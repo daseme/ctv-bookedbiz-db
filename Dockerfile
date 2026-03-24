@@ -39,8 +39,8 @@ RUN printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -euo pipefail' \
   'echo "🚂 Railway Startup Script Starting..."' \
-  'mkdir -p /app/data/database /app/data/processed' \
-  'export DB_PATH="${DB_PATH:-/app/data/database/production.db}"' \
+  'mkdir -p /app/data/database /var/lib/ctv-bookedbiz-db/processed' \
+  'export DB_PATH="${DB_PATH:-/var/lib/ctv-bookedbiz-db/production.db}"' \
   'export DATABASE_PATH="$DB_PATH"' \
   'python /app/railway_db_sync.py download || true' \
   'echo "🚀 Starting ASGI..."' \
@@ -51,9 +51,9 @@ RUN printf '%s\n' \
 # runtime env
 ENV FLASK_ENV=production \
     PROJECT_ROOT=/app \
-    DB_PATH=/app/data/database/production.db \
-    DATABASE_PATH=/app/data/database/production.db \
-    DATA_PATH=/app/data/processed \
+    DB_PATH=/var/lib/ctv-bookedbiz-db/production.db \
+    DATABASE_PATH=/var/lib/ctv-bookedbiz-db/production.db \
+    DATA_PATH=/var/lib/ctv-bookedbiz-db/processed \
     PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     WEB_CONCURRENCY=1
