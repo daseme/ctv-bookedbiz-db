@@ -58,27 +58,6 @@ def login():
         except Exception as e:
             logger.error(f"Login error: {e}")
             flash("An error occurred during login. Please try again.", "error")
-    # Fallback: allow localhost login by auto-signing in the first active user.
-    elif request.remote_addr in ("127.0.0.1", "::1"):
-        try:
-            container = get_container()
-            user_service = container.get("user_service")
-            users = user_service.get_all_users(include_inactive=False)
-            if users:
-                user = users[0]
-                login_user(user, remember=False)
-                flash(
-                    f"Signed in as {user.first_name} {user.last_name} "
-                    f"({user.role.display_name})",
-                    "info",
-                )
-                next_page = request.args.get("next") or "/reports/"
-                return redirect(next_page)
-            else:
-                flash("No user found for localhost login.", "error")
-        except Exception as e:
-            logger.error(f"Localhost login error: {e}")
-            flash("An error occurred during login. Please try again.", "error")
     elif request.method == "POST":
         # Tailscale lookup failed for a non-localhost request.
         # Tell the user to sign into Tailscale and try again.
