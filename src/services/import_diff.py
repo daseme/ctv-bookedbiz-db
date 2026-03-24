@@ -30,13 +30,13 @@ def build_db_fingerprints(
     sql = f"""
         SELECT
             bill_code,
-            COALESCE(contract, '') AS contract,
+            CASE WHEN contract IS NULL OR contract = '' OR contract = '0' THEN '' ELSE contract END AS contract,
             broadcast_month,
-            CAST(ROUND(SUM(COALESCE(spot_value, 0)) * 100, 0) AS INTEGER) AS sum_cents,
+            CAST(SUM(CAST(ROUND(COALESCE(spot_value, 0) * 100, 0) AS INTEGER)) AS INTEGER) AS sum_cents,
             COUNT(*) AS row_count
         FROM spots
         WHERE broadcast_month IN ({placeholders})
-        GROUP BY bill_code, COALESCE(contract, ''), broadcast_month
+        GROUP BY bill_code, CASE WHEN contract IS NULL OR contract = '' OR contract = '0' THEN '' ELSE contract END, broadcast_month
     """
     cursor = conn.execute(sql, months)
     return {
@@ -81,9 +81,11 @@ def build_excel_fingerprints(
         if not month:
             continue
 
-        bill_code = row[_COL_BILL_CODE] or ""
+        bill_code = str(row[_COL_BILL_CODE]).strip() if row[_COL_BILL_CODE] else ""
         contract = row[_COL_CONTRACT] if len(row) > _COL_CONTRACT else None
-        contract = contract or ""
+        contract = str(contract).strip() if contract else ""
+        if contract == "0":
+            contract = ""
 
         # Convert spot_value to integer cents
         raw_value = row[_COL_SPOT_VALUE] if len(row) > _COL_SPOT_VALUE else None
@@ -130,8 +132,14 @@ def compare_fingerprints(
     unchanged = set()
     changed = set()
 
+    # Tolerance: 10 cents ($0.10) — floating-point rounding between
+    # Python and SQLite can produce small differences that aren't real changes
+    CENTS_TOLERANCE = 10
+
     for key in common:
-        if excel_fps[key] == db_fps[key]:
+        excel_cents, excel_count = excel_fps[key]
+        db_cents, db_count = db_fps[key]
+        if excel_count == db_count and abs(excel_cents - db_cents) <= CENTS_TOLERANCE:
             unchanged.add(key)
         else:
             changed.add(key)

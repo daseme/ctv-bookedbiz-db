@@ -221,7 +221,7 @@ class TestCompareFingerprints:
 
         key = ("BC1", "C1", "Mar-26")
         excel = {key: (10000, 2)}
-        db = {key: (9999, 2)}  # different sum_cents
+        db = {key: (5000, 2)}  # $50 difference — clearly changed
         result = compare_fingerprints(excel, db)
 
         assert key in result.changed

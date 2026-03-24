@@ -776,11 +776,21 @@ class BroadcastMonthImportService(BaseService):
 
             tqdm.write(f"Read {len(all_rows):,} rows from Excel")
 
-            # Build Excel fingerprints
+            # Build Excel fingerprints — filter to open months only
             excel_fps, grouped_rows, months_found = build_excel_fingerprints(all_rows)
+
+            # Remove fingerprints for closed months (they're in Excel but shouldn't be compared)
+            open_months_set = set(context.months_to_process)
+            excel_fps = {
+                k: v for k, v in excel_fps.items() if k[2] in open_months_set
+            }
+            grouped_rows = {
+                k: v for k, v in grouped_rows.items() if k[2] in open_months_set
+            }
+
             tqdm.write(
                 f"Excel fingerprints: {len(excel_fps):,} contract groups "
-                f"across {len(months_found)} months"
+                f"for {len(open_months_set)} open months"
             )
 
             with self.safe_transaction() as conn:
@@ -891,6 +901,7 @@ class BroadcastMonthImportService(BaseService):
         unmatched_customers: Set[str] = set()
         unmatched_agencies: Set[str] = set()
         sheet_source_stats: Dict[str, int] = {}
+        skipped_rows = 0
 
         # Delete changed + removed groups
         groups_to_delete = diff.changed | diff.removed
@@ -962,18 +973,27 @@ class BroadcastMonthImportService(BaseService):
                             pbar.update(1)
                             continue
 
-                        fields = list(spot_data.keys())
-                        placeholders = ", ".join(["?"] * len(fields))
-                        field_names = ", ".join(fields)
-                        values = [spot_data[field] for field in fields]
+                        try:
+                            fields = list(spot_data.keys())
+                            placeholders = ", ".join(["?"] * len(fields))
+                            field_names = ", ".join(fields)
+                            values = [spot_data[field] for field in fields]
 
-                        conn.execute(
-                            f"INSERT INTO spots ({field_names}) VALUES ({placeholders})",
-                            values,
-                        )
-                        total_imported += 1
+                            conn.execute(
+                                f"INSERT INTO spots ({field_names}) VALUES ({placeholders})",
+                                values,
+                            )
+                            total_imported += 1
+                        except Exception as row_error:
+                            skipped_rows += 1
+                            if skipped_rows <= 5:
+                                tqdm.write(
+                                    f"Skipped row: {str(row_error)[:100]}"
+                                )
                         pbar.update(1)
 
+        if skipped_rows:
+            tqdm.write(f"Skipped: {skipped_rows:,} rows (constraint violations)")
         if unmatched_customers:
             tqdm.write(f"Unmatched customers: {len(unmatched_customers)}")
         if unmatched_agencies:
