@@ -196,3 +196,107 @@ class TestBuildExcelFingerprints:
         assert fps[("BC1", "C1", "Mar-26")] == (10000, 1)
         # grouped_rows should preserve the full raw row (with tag)
         assert len(grouped[("BC1", "C1", "Mar-26")][0]) == 31
+
+
+# ===========================================================================
+# Task 3 — compare_fingerprints
+# ===========================================================================
+
+class TestCompareFingerprints:
+
+    def test_unchanged_groups(self):
+        from src.services.import_diff import compare_fingerprints
+
+        excel = {("BC1", "C1", "Mar-26"): (10000, 2)}
+        db = {("BC1", "C1", "Mar-26"): (10000, 2)}
+        result = compare_fingerprints(excel, db)
+
+        assert ("BC1", "C1", "Mar-26") in result.unchanged
+        assert len(result.changed) == 0
+        assert len(result.added) == 0
+        assert len(result.removed) == 0
+
+    def test_changed_value(self):
+        from src.services.import_diff import compare_fingerprints
+
+        key = ("BC1", "C1", "Mar-26")
+        excel = {key: (10000, 2)}
+        db = {key: (9999, 2)}  # different sum_cents
+        result = compare_fingerprints(excel, db)
+
+        assert key in result.changed
+        assert key not in result.unchanged
+
+    def test_changed_count(self):
+        from src.services.import_diff import compare_fingerprints
+
+        key = ("BC1", "C1", "Mar-26")
+        excel = {key: (10000, 3)}
+        db = {key: (10000, 2)}  # different row_count
+        result = compare_fingerprints(excel, db)
+
+        assert key in result.changed
+
+    def test_new_group(self):
+        from src.services.import_diff import compare_fingerprints
+
+        key = ("BC1", "C1", "Mar-26")
+        excel = {key: (10000, 2)}
+        db = {}
+        result = compare_fingerprints(excel, db)
+
+        assert key in result.added
+        assert len(result.unchanged) == 0
+
+    def test_removed_group(self):
+        from src.services.import_diff import compare_fingerprints
+
+        key = ("BC1", "C1", "Mar-26")
+        excel = {}
+        db = {key: (10000, 2)}
+        result = compare_fingerprints(excel, db)
+
+        assert key in result.removed
+        assert len(result.unchanged) == 0
+
+    def test_fallback_threshold(self):
+        """When >80% of overlapping groups changed, should_fallback=True."""
+        from src.services.import_diff import compare_fingerprints
+
+        # 10 groups total in both sides; 9 changed, 1 unchanged → 90%
+        excel = {}
+        db = {}
+        for i in range(10):
+            key = (f"BC{i}", "C1", "Mar-26")
+            if i < 9:
+                excel[key] = (100, 1)
+                db[key] = (999, 1)  # different
+            else:
+                excel[key] = (100, 1)
+                db[key] = (100, 1)  # same
+
+        result = compare_fingerprints(excel, db)
+        assert result.should_fallback is True
+        assert len(result.changed) == 9
+        assert len(result.unchanged) == 1
+
+    def test_no_fallback_below_threshold(self):
+        """When <=80% of overlapping groups changed, should_fallback=False."""
+        from src.services.import_diff import compare_fingerprints
+
+        # 10 groups; 1 changed, 9 unchanged → 10%
+        excel = {}
+        db = {}
+        for i in range(10):
+            key = (f"BC{i}", "C1", "Mar-26")
+            if i < 1:
+                excel[key] = (100, 1)
+                db[key] = (999, 1)  # different
+            else:
+                excel[key] = (100, 1)
+                db[key] = (100, 1)  # same
+
+        result = compare_fingerprints(excel, db)
+        assert result.should_fallback is False
+        assert len(result.changed) == 1
+        assert len(result.unchanged) == 9

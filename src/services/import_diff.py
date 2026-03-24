@@ -97,3 +97,56 @@ def build_excel_fingerprints(
 
     fingerprints = {key: (sums[key], counts[key]) for key in sums}
     return dict(fingerprints), dict(grouped_rows), months_found
+
+
+@dataclass
+class DiffResult:
+    """Result of comparing Excel vs DB fingerprints."""
+
+    unchanged: set = field(default_factory=set)  # GroupKeys that match
+    changed: set = field(default_factory=set)     # Different fingerprint
+    added: set = field(default_factory=set)        # Only in Excel
+    removed: set = field(default_factory=set)      # Only in DB
+    should_fallback: bool = False                  # >threshold changed
+
+
+def compare_fingerprints(
+    excel_fps: Dict[GroupKey, Fingerprint],
+    db_fps: Dict[GroupKey, Fingerprint],
+    fallback_threshold: float = 0.80,
+) -> DiffResult:
+    """Compare Excel and DB fingerprints to find what changed.
+
+    The fallback_threshold is evaluated against groups present in BOTH
+    sides (unchanged + changed), not purely added/removed groups.
+    """
+    excel_keys = set(excel_fps.keys())
+    db_keys = set(db_fps.keys())
+
+    added = excel_keys - db_keys
+    removed = db_keys - excel_keys
+    common = excel_keys & db_keys
+
+    unchanged = set()
+    changed = set()
+
+    for key in common:
+        if excel_fps[key] == db_fps[key]:
+            unchanged.add(key)
+        else:
+            changed.add(key)
+
+    # Fallback: if most overlapping groups changed, something systemic happened
+    overlap_count = len(unchanged) + len(changed)
+    if overlap_count > 0 and len(changed) / overlap_count > fallback_threshold:
+        should_fallback = True
+    else:
+        should_fallback = False
+
+    return DiffResult(
+        unchanged=unchanged,
+        changed=changed,
+        added=added,
+        removed=removed,
+        should_fallback=should_fallback,
+    )
