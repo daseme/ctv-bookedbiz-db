@@ -36,6 +36,7 @@ from src.services.month_closure_service import (
 from src.services.import_integration_utilities import (
     extract_display_months_from_excel,
     get_excel_worksheet_flexible,
+    get_all_import_worksheets,
 )
 from src.utils.broadcast_month_utils import (
     BroadcastMonthParser,
@@ -383,14 +384,12 @@ class BroadcastMonthImportService(BaseService):
         )
 
     def _count_excel_records_by_month(self, excel_file: str) -> Dict[str, int]:
-        """Count records per broadcast month in the Excel file."""
+        """Count records per broadcast month across all importable sheets."""
         month_counts: Dict[str, int] = {}
 
         try:
             with suppress_verbose_logging(), suppress_stdout_stderr():
-                worksheet, sheet_name, workbook = get_excel_worksheet_flexible(
-                    excel_file
-                )
+                sheets, workbook = get_all_import_worksheets(excel_file)
 
             month_col_indices = [
                 k for k, v in EXCEL_COLUMN_POSITIONS.items() if v == "broadcast_month"
@@ -400,17 +399,18 @@ class BroadcastMonthImportService(BaseService):
                 return month_counts
             month_col = month_col_indices[0]
 
-            for row in worksheet.iter_rows(min_row=2, values_only=True):
-                if not any(row):
-                    continue
+            for worksheet, sheet_name in sheets:
+                for row in worksheet.iter_rows(min_row=2, values_only=True):
+                    if not any(row):
+                        continue
 
-                month_value = row[month_col] if month_col < len(row) else None
-                if not month_value:
-                    continue
+                    month_value = row[month_col] if month_col < len(row) else None
+                    if not month_value:
+                        continue
 
-                display_month = self._parse_month_value(month_value)
-                if display_month:
-                    month_counts[display_month] = month_counts.get(display_month, 0) + 1
+                    display_month = self._parse_month_value(month_value)
+                    if display_month:
+                        month_counts[display_month] = month_counts.get(display_month, 0) + 1
 
             workbook.close()
 
@@ -849,12 +849,12 @@ class BroadcastMonthImportService(BaseService):
 
         try:
             with suppress_verbose_logging(), suppress_stdout_stderr():
-                worksheet, sheet_name, workbook = get_excel_worksheet_flexible(
-                    excel_file
-                )
-                tqdm.write(f"Using sheet: {sheet_name}")
+                sheets, workbook = get_all_import_worksheets(excel_file)
 
-            total_records = worksheet.max_row - 1
+            sheet_names = [name for _, name in sheets]
+            tqdm.write(f"Importing from {len(sheets)} sheet(s): {sheet_names}")
+
+            total_records = sum((ws.max_row - 1) for ws, _ in sheets)
             imported_count = 0
             skipped_count = 0
             filtered_count = 0
@@ -862,164 +862,169 @@ class BroadcastMonthImportService(BaseService):
             unmatched_agencies: Set[str] = set()
             sheet_source_stats: Dict[str, int] = {}
 
+            month_col_index = [
+                k for k, v in EXCEL_COLUMN_POSITIONS.items()
+                if v == "broadcast_month"
+            ]
+
             with tqdm(
                 total=total_records, desc="Processing Excel rows", unit=" rows"
             ) as pbar:
-                for row_num, row in enumerate(
-                    worksheet.iter_rows(min_row=2, values_only=True), start=2
-                ):
-                    pbar.update(1)
+                for worksheet, current_sheet_name in sheets:
+                    for row_num, row in enumerate(
+                        worksheet.iter_rows(min_row=2, values_only=True), start=2
+                    ):
+                        pbar.update(1)
 
-                    try:
-                        if not any(row):
-                            continue
+                        try:
+                            if not any(row):
+                                continue
 
-                        # Get broadcast_month
-                        month_col_index = [
-                            k
-                            for k, v in EXCEL_COLUMN_POSITIONS.items()
-                            if v == "broadcast_month"
-                        ]
-                        if not month_col_index:
-                            skipped_count += 1
-                            continue
-                        month_value = row[month_col_index[0]]
+                            # Get broadcast_month
+                            if not month_col_index:
+                                skipped_count += 1
+                                continue
+                            month_value = row[month_col_index[0]]
 
-                        if not month_value:
-                            skipped_count += 1
-                            continue
+                            if not month_value:
+                                skipped_count += 1
+                                continue
 
-                        # Parse broadcast_month
-                        broadcast_month_display = self._parse_month_value(month_value)
-                        if not broadcast_month_display:
-                            skipped_count += 1
-                            continue
+                            # Parse broadcast_month
+                            broadcast_month_display = self._parse_month_value(month_value)
+                            if not broadcast_month_display:
+                                skipped_count += 1
+                                continue
 
-                        if broadcast_month_display not in allowed_months:
-                            filtered_count += 1
-                            continue
+                            if broadcast_month_display not in allowed_months:
+                                filtered_count += 1
+                                continue
 
-                        spot_data: Dict[str, Any] = {
-                            "import_batch_id": batch_id,
-                            "broadcast_month": broadcast_month_display,
-                        }
+                            spot_data: Dict[str, Any] = {
+                                "import_batch_id": batch_id,
+                                "broadcast_month": broadcast_month_display,
+                            }
 
-                        sheet_source: Optional[str] = None
+                            # Use sheet_source from column 29 if present,
+                            # otherwise use the actual sheet name
+                            sheet_source: Optional[str] = None
 
-                        for col_idx, field_name in EXCEL_COLUMN_POSITIONS.items():
-                            if field_name and col_idx < len(row):
-                                val = row[col_idx]
-                                if val is None or val == "":
-                                    continue
+                            for col_idx, field_name in EXCEL_COLUMN_POSITIONS.items():
+                                if field_name and col_idx < len(row):
+                                    val = row[col_idx]
+                                    if val is None or val == "":
+                                        continue
 
-                                if field_name == "sheet_source":
-                                    sheet_source = str(val).strip() if val else None
-                                    if sheet_source:
-                                        sheet_source_stats[sheet_source] = (
-                                            sheet_source_stats.get(sheet_source, 0) + 1
-                                        )
-                                    continue
+                                    if field_name == "sheet_source":
+                                        sheet_source = str(val).strip() if val else None
+                                        continue
 
-                                if field_name == "bill_code":
-                                    spot_data[field_name] = str(val).strip()
-
-                                elif field_name == "air_date":
-                                    if hasattr(val, "date"):
-                                        spot_data[field_name] = val.date().isoformat()
-                                    else:
+                                    if field_name == "bill_code":
                                         spot_data[field_name] = str(val).strip()
 
-                                elif field_name in [
-                                    "gross_rate",
-                                    "station_net",
-                                    "spot_value",
-                                    "broker_fees",
-                                ]:
-                                    try:
-                                        spot_data[field_name] = float(val)
-                                    except:
-                                        spot_data[field_name] = None
+                                    elif field_name == "air_date":
+                                        if hasattr(val, "date"):
+                                            spot_data[field_name] = val.date().isoformat()
+                                        else:
+                                            spot_data[field_name] = str(val).strip()
 
-                                elif field_name == "day_of_week":
-                                    try:
-                                        spot_data[field_name] = normalize_broadcast_day(
+                                    elif field_name in [
+                                        "gross_rate",
+                                        "station_net",
+                                        "spot_value",
+                                        "broker_fees",
+                                    ]:
+                                        try:
+                                            spot_data[field_name] = float(val)
+                                        except:
+                                            spot_data[field_name] = None
+
+                                    elif field_name == "day_of_week":
+                                        try:
+                                            spot_data[field_name] = normalize_broadcast_day(
+                                                str(val).strip()
+                                            )
+                                        except:
+                                            spot_data[field_name] = str(val).strip()
+
+                                    elif field_name == "revenue_type":
+                                        spot_data[field_name] = (
+                                            self._normalize_revenue_type(str(val).strip())
+                                        )
+
+                                    elif field_name == "spot_type":
+                                        spot_data[field_name] = self._normalize_spot_type(
                                             str(val).strip()
                                         )
-                                    except:
+
+                                    elif field_name != "broadcast_month":
                                         spot_data[field_name] = str(val).strip()
 
-                                elif field_name == "revenue_type":
-                                    spot_data[field_name] = (
-                                        self._normalize_revenue_type(str(val).strip())
-                                    )
-
-                                elif field_name == "spot_type":
-                                    spot_data[field_name] = self._normalize_spot_type(
-                                        str(val).strip()
-                                    )
-
-                                elif field_name != "broadcast_month":
-                                    spot_data[field_name] = str(val).strip()
-
-                        spot_data["source_file"] = (
-                            SourceFileFormatter.format_source_file(
-                                filename, sheet_source
+                            # Track by actual sheet name when column 29 is empty
+                            effective_source = sheet_source or current_sheet_name
+                            sheet_source_stats[effective_source] = (
+                                sheet_source_stats.get(effective_source, 0) + 1
                             )
-                        )
 
-                        if "market_name" in spot_data:
-                            market_id = self._lookup_market_id(
-                                spot_data["market_name"], conn
+                            spot_data["source_file"] = (
+                                SourceFileFormatter.format_source_file(
+                                    filename, effective_source
+                                )
                             )
-                            if market_id:
-                                spot_data["market_id"] = market_id
 
-                        if "bill_code" in spot_data:
-                            entity_result = self.batch_resolver.lookup_entities_cached(
-                                spot_data["bill_code"], conn
+                            if "market_name" in spot_data:
+                                market_id = self._lookup_market_id(
+                                    spot_data["market_name"], conn
+                                )
+                                if market_id:
+                                    spot_data["market_id"] = market_id
+
+                            if "bill_code" in spot_data:
+                                entity_result = self.batch_resolver.lookup_entities_cached(
+                                    spot_data["bill_code"], conn
+                                )
+                                if entity_result.customer_id:
+                                    spot_data["customer_id"] = entity_result.customer_id
+                                else:
+                                    unmatched_customers.add(spot_data["bill_code"])
+                                if entity_result.agency_id:
+                                    spot_data["agency_id"] = entity_result.agency_id
+                                else:
+                                    if ":" in spot_data["bill_code"]:
+                                        unmatched_agencies.add(
+                                            spot_data["bill_code"].split(":", 1)[0].strip()
+                                        )
+
+                            if "language_id" not in spot_data:
+                                spot_data["language_id"] = 1
+
+                            if not spot_data.get("bill_code") or not spot_data.get(
+                                "air_date"
+                            ):
+                                skipped_count += 1
+                                continue
+
+                            fields = list(spot_data.keys())
+                            placeholders = ", ".join(["?"] * len(fields))
+                            field_names = ", ".join(fields)
+                            values = [spot_data[field] for field in fields]
+
+                            conn.execute(
+                                f"INSERT INTO spots ({field_names}) VALUES ({placeholders})",
+                                values,
                             )
-                            if entity_result.customer_id:
-                                spot_data["customer_id"] = entity_result.customer_id
-                            else:
-                                unmatched_customers.add(spot_data["bill_code"])
-                            if entity_result.agency_id:
-                                spot_data["agency_id"] = entity_result.agency_id
-                            else:
-                                if ":" in spot_data["bill_code"]:
-                                    unmatched_agencies.add(
-                                        spot_data["bill_code"].split(":", 1)[0].strip()
-                                    )
+                            imported_count += 1
 
-                        if "language_id" not in spot_data:
-                            spot_data["language_id"] = 1
+                            if imported_count % 1000 == 0:
+                                pbar.set_description(f"Imported {imported_count:,} records")
 
-                        if not spot_data.get("bill_code") or not spot_data.get(
-                            "air_date"
-                        ):
+                        except Exception as row_error:
                             skipped_count += 1
+                            if skipped_count <= 5:
+                                tqdm.write(
+                                    f"Row {row_num} ({current_sheet_name}) error: {str(row_error)[:100]}..."
+                                )
                             continue
-
-                        fields = list(spot_data.keys())
-                        placeholders = ", ".join(["?"] * len(fields))
-                        field_names = ", ".join(fields)
-                        values = [spot_data[field] for field in fields]
-
-                        conn.execute(
-                            f"INSERT INTO spots ({field_names}) VALUES ({placeholders})",
-                            values,
-                        )
-                        imported_count += 1
-
-                        if imported_count % 1000 == 0:
-                            pbar.set_description(f"Imported {imported_count:,} records")
-
-                    except Exception as row_error:
-                        skipped_count += 1
-                        if skipped_count <= 5:
-                            tqdm.write(
-                                f"Row {row_num} error: {str(row_error)[:100]}..."
-                            )
-                        continue
 
             workbook.close()
 
