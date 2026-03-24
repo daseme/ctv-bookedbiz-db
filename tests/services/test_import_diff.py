@@ -132,3 +132,67 @@ class TestBuildDbFingerprints:
         finally:
             conn.close()
             os.unlink(path)
+
+
+# ===========================================================================
+# Task 2 — build_excel_fingerprints
+# ===========================================================================
+
+class TestBuildExcelFingerprints:
+
+    def test_groups_rows_and_computes_cents(self):
+        from src.services.import_diff import build_excel_fingerprints
+
+        rows = [
+            _make_row("Acme:Widget", "2026-03-01", 150.00, "Mar-26", "C100"),
+            _make_row("Acme:Widget", "2026-03-02", 50.00, "Mar-26", "C100"),
+            _make_row("Acme:Widget", "2026-03-03", 75.00, "Mar-26", "C200"),
+        ]
+
+        fps, grouped, months = build_excel_fingerprints(rows)
+
+        assert fps[("Acme:Widget", "C100", "Mar-26")] == (20000, 2)
+        assert fps[("Acme:Widget", "C200", "Mar-26")] == (7500, 1)
+        assert len(grouped[("Acme:Widget", "C100", "Mar-26")]) == 2
+        assert len(grouped[("Acme:Widget", "C200", "Mar-26")]) == 1
+        assert "Mar-26" in months
+
+    def test_null_spot_value_treated_as_zero(self):
+        from src.services.import_diff import build_excel_fingerprints
+
+        rows = [_make_row("BC1", "2026-03-01", None, "Mar-26", "C1")]
+        fps, _, _ = build_excel_fingerprints(rows)
+        assert fps[("BC1", "C1", "Mar-26")] == (0, 1)
+
+    def test_null_contract_coalesced(self):
+        from src.services.import_diff import build_excel_fingerprints
+
+        rows = [_make_row("BC1", "2026-03-01", 10.00, "Mar-26", None)]
+        fps, _, _ = build_excel_fingerprints(rows)
+        assert ("BC1", "", "Mar-26") in fps
+
+    def test_skips_rows_without_broadcast_month(self):
+        from src.services.import_diff import build_excel_fingerprints
+
+        rows = [
+            _make_row("BC1", "2026-03-01", 100.00, None, "C1"),
+            _make_row("BC1", "2026-03-01", 100.00, "", "C1"),
+            _make_row("BC1", "2026-03-01", 50.00, "Mar-26", "C1"),
+        ]
+        fps, grouped, months = build_excel_fingerprints(rows)
+        # Only the third row should be included
+        assert len(fps) == 1
+        assert fps[("BC1", "C1", "Mar-26")] == (5000, 1)
+
+    def test_handles_rows_with_sheet_tag(self):
+        """Rows with >30 columns (sheet-name tag) should be handled."""
+        from src.services.import_diff import build_excel_fingerprints
+
+        base = _make_row("BC1", "2026-03-01", 100.00, "Mar-26", "C1")
+        tagged_row = base + ("Commercials",)  # 31 elements
+        assert len(tagged_row) == 31
+
+        fps, grouped, _ = build_excel_fingerprints([tagged_row])
+        assert fps[("BC1", "C1", "Mar-26")] == (10000, 1)
+        # grouped_rows should preserve the full raw row (with tag)
+        assert len(grouped[("BC1", "C1", "Mar-26")][0]) == 31
