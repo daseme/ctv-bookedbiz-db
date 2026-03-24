@@ -49,6 +49,7 @@ def build_db_fingerprints(
 _COL_BILL_CODE = 0
 _COL_SPOT_VALUE = 17
 _COL_BROADCAST_MONTH = 18
+_COL_REVENUE_TYPE = 23
 _COL_CONTRACT = 27
 
 
@@ -79,6 +80,11 @@ def build_excel_fingerprints(
         month_val = row[_COL_BROADCAST_MONTH] if len(row) > _COL_BROADCAST_MONTH else None
         month = _parse_month_value(month_val)
         if not month:
+            continue
+
+        # Skip Trade rows — excluded by CHECK constraint on spots table
+        rev_type = row[_COL_REVENUE_TYPE] if len(row) > _COL_REVENUE_TYPE else None
+        if rev_type and str(rev_type).strip() == "Trade":
             continue
 
         bill_code = str(row[_COL_BILL_CODE]).strip() if row[_COL_BILL_CODE] else ""
