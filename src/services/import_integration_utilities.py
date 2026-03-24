@@ -97,130 +97,142 @@ def get_excel_worksheet_flexible(excel_file_path: str):
         raise Exception(f"Failed to process Excel file: {str(e)}")
 
 
+# Sheets that contain importable spot data in the commercial log
+IMPORT_SHEET_NAMES = [
+    "Commercials",
+    "Worldlink Lines",
+    "Add to booked business",
+    "Pending",
+]
+
+
+def get_all_import_worksheets(excel_file_path: str):
+    """
+    Return all importable worksheets from an Excel file.
+
+    Yields (worksheet, sheet_name) tuples for every sheet in
+    IMPORT_SHEET_NAMES that exists in the workbook. Falls back to
+    get_excel_worksheet_flexible() if none of the known sheets are found
+    (e.g. monthly "Data" sheet imports).
+
+    The caller is responsible for closing the returned workbook.
+
+    Returns:
+        tuple: (list_of_(worksheet, sheet_name), workbook)
+    """
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(excel_file_path, read_only=True, data_only=True)
+    available = workbook.sheetnames
+
+    sheets = []
+    for name in IMPORT_SHEET_NAMES:
+        if name in available:
+            sheets.append((workbook[name], name))
+
+    if sheets:
+        logger.info(
+            f"Found {len(sheets)} importable sheets in {Path(excel_file_path).name}: "
+            f"{[s[1] for s in sheets]}"
+        )
+        return sheets, workbook
+
+    # Fallback: not a multi-sheet commercial log (e.g. monthly import)
+    workbook.close()
+    worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file_path)
+    return [(worksheet, sheet_name)], workbook
+
+
 def extract_display_months_from_excel(excel_file: str) -> Generator[str, None, None]:
     """
-    ENHANCED: Extract broadcast months from Excel file with flexible sheet detection.
+    Extract broadcast months from all importable sheets in an Excel file.
 
-    Now supports both:
-    - Daily commercial log format (Commercials sheet)
-    - Monthly import format (Data sheet)
-
-    Args:
-        excel_file: Path to Excel file
+    Reads every sheet that contains spot data (Commercials, Worldlink Lines,
+    Add to booked business, Pending) so that month analysis covers the full
+    dataset — not just the first sheet found.
 
     Yields:
         str: Broadcast months in display format (e.g., 'Nov-24')
     """
     try:
-        worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
+        sheets, workbook = get_all_import_worksheets(excel_file)
 
-        # Find broadcast_month column (try different possible column names)
-        month_column_names = [
-            "broadcast_month",
-            "Month",
-            "month",
-            "Broadcast Month",
-            "Broadcast_Month",
-        ]
-
-        month_column_index = None
-        header_row = None
-
-        # Get header row
-        try:
-            header_row = next(
-                worksheet.iter_rows(min_row=1, max_row=1, values_only=True)
-            )
-            logger.debug(
-                f"Header row: {header_row[:10] if header_row else 'None'}..."
-            )  # Show first 10 columns
-        except Exception as e:
-            logger.warning(f"Could not read header row: {e}")
-
-        # Find month column by header name
-        if header_row:
-            for i, header in enumerate(header_row):
-                if header and str(header).strip() in month_column_names:
-                    month_column_index = i
-                    logger.debug(f"Found month column '{header}' at index {i}")
-                    break
-
-        # Fallback: use known column position (column 18 based on EXCEL_COLUMN_POSITIONS)
-        if month_column_index is None:
-            month_column_index = 18  # broadcast_month position from schema
-            logger.debug(f"Using fallback month column index: {month_column_index}")
-
-        # Extract unique months
         months = set()
-        row_count = 0
+        total_row_count = 0
 
-        for row in worksheet.iter_rows(min_row=2, values_only=True):
-            row_count += 1
+        for worksheet, sheet_name in sheets:
+            month_column_index = _find_month_column(worksheet)
 
-            if not row or len(row) <= month_column_index:
-                continue
+            row_count = 0
+            for row in worksheet.iter_rows(min_row=2, values_only=True):
+                row_count += 1
+                if not row or len(row) <= month_column_index:
+                    continue
 
-            month_value = row[month_column_index]
-            if not month_value:
-                continue
-
-            try:
-                # Handle different month value formats
-                if hasattr(month_value, "strftime"):
-                    # datetime object
-                    month_str = month_value.strftime("%b-%y")
-                elif isinstance(month_value, str) and "-" in month_value:
-                    # Already in format like 'Nov-24'
-                    month_str = month_value.strip()
-                elif isinstance(month_value, str):
-                    # Try parsing as date string
-                    try:
-                        date_obj = datetime.strptime(
-                            month_value.strip(), "%Y-%m-%d"
-                        ).date()
-                        month_str = date_obj.strftime("%b-%y")
-                    except ValueError:
-                        try:
-                            date_obj = datetime.strptime(
-                                month_value.strip(), "%m/%d/%Y"
-                            ).date()
-                            month_str = date_obj.strftime("%b-%y")
-                        except ValueError:
-                            continue
-                else:
-                    # Try converting to date
-                    try:
-                        if hasattr(month_value, "date"):
-                            date_obj = month_value.date()
-                        else:
-                            date_obj = datetime.strptime(
-                                str(month_value), "%Y-%m-%d"
-                            ).date()
-                        month_str = date_obj.strftime("%b-%y")
-                    except:
-                        continue
-
+                month_str = _parse_month_value(row[month_column_index])
                 if month_str:
                     months.add(month_str)
 
-            except Exception as e:
-                logger.debug(f"Could not parse month value '{month_value}': {e}")
-                continue
+            total_row_count += row_count
+            logger.debug(
+                f"Sheet '{sheet_name}': scanned {row_count:,} rows"
+            )
 
         workbook.close()
 
         logger.info(
-            f"Extracted {len(months)} unique months from {row_count:,} rows in sheet '{sheet_name}'"
+            f"Extracted {len(months)} unique months from {total_row_count:,} rows "
+            f"across {len(sheets)} sheet(s)"
         )
         logger.debug(f"Months found: {sorted(months)}")
 
-        # Yield months in sorted order
         for month in sorted(months):
             yield month
 
     except Exception as e:
         logger.error(f"Failed to extract months from {excel_file}: {e}")
         raise Exception(f"Failed to process Excel file: {str(e)}")
+
+
+def _find_month_column(worksheet) -> int:
+    """Find the broadcast_month column index in a worksheet."""
+    month_column_names = [
+        "broadcast_month", "Month", "month", "Broadcast Month", "Broadcast_Month",
+    ]
+    try:
+        header_row = next(
+            worksheet.iter_rows(min_row=1, max_row=1, values_only=True)
+        )
+        if header_row:
+            for i, header in enumerate(header_row):
+                if header and str(header).strip() in month_column_names:
+                    return i
+    except Exception:
+        pass
+    return 18  # fallback: known position from EXCEL_COLUMN_POSITIONS
+
+
+def _parse_month_value(month_value) -> str | None:
+    """Parse a month cell value into 'Mmm-YY' display format."""
+    if not month_value:
+        return None
+    try:
+        if hasattr(month_value, "strftime"):
+            return month_value.strftime("%b-%y")
+        if isinstance(month_value, str) and "-" in month_value:
+            return month_value.strip()
+        if isinstance(month_value, str):
+            for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+                try:
+                    return datetime.strptime(month_value.strip(), fmt).date().strftime("%b-%y")
+                except ValueError:
+                    continue
+            return None
+        if hasattr(month_value, "date"):
+            return month_value.date().strftime("%b-%y")
+        return datetime.strptime(str(month_value), "%Y-%m-%d").date().strftime("%b-%y")
+    except Exception:
+        return None
 
 
 def validate_excel_for_import(
@@ -333,9 +345,12 @@ def get_excel_import_summary(excel_file: str, db_path: str) -> Dict[str, Any]:
 
                 total_existing_spots = cursor.fetchone()[0]
 
-            # Get sheet info
-            worksheet, sheet_name, workbook = get_excel_worksheet_flexible(excel_file)
-            total_rows_in_excel = worksheet.max_row - 1  # Exclude header
+            # Get row count across all importable sheets
+            sheets, workbook = get_all_import_worksheets(excel_file)
+            total_rows_in_excel = sum(
+                (ws.max_row - 1) for ws, _ in sheets
+            )
+            sheets_used = [name for _, name in sheets]
             workbook.close()
 
             return {
@@ -344,7 +359,7 @@ def get_excel_import_summary(excel_file: str, db_path: str) -> Dict[str, Any]:
                 "total_rows_in_excel": total_rows_in_excel,
                 "open_months": sorted(open_months),
                 "closed_months": sorted(closed_months),
-                "sheet_used": sheet_name,
+                "sheet_used": ", ".join(sheets_used),
                 "validation_status": "success"
                 if len(months_in_excel) > 0
                 else "failed",

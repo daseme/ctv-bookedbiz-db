@@ -827,23 +827,36 @@ class ImportService:
         try:
             import pandas as pd
             
-            # Try to read the main data sheet - handle multiple possible sheet names
-            sheet_names_to_try = ["Commercials", "Commercial Lines", "Sheet1", 0]  # 0 = first sheet
-            df = None
-            sheet_used = None
-            
-            for sheet_name in sheet_names_to_try:
+            # Read bill codes from all importable sheets
+            from src.services.import_integration_utilities import IMPORT_SHEET_NAMES
+
+            dataframes = []
+            sheets_read = []
+            for sheet_name in IMPORT_SHEET_NAMES:
                 try:
-                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
-                    sheet_used = sheet_name
-                    self.progress_reporter.write(f"📄 Reading bill codes from sheet: {sheet_name}")
-                    break
+                    df_sheet = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    dataframes.append(df_sheet)
+                    sheets_read.append(sheet_name)
                 except Exception:
                     continue
-            
-            if df is None:
-                self.progress_reporter.write("⚠️ Warning: Could not read any sheet from Excel file")
+
+            # Fallback to first sheet if none of the known sheets found
+            if not dataframes:
+                for sheet_name in ["Commercial Lines", "Sheet1", 0]:
+                    try:
+                        dataframes.append(pd.read_excel(excel_file, sheet_name=sheet_name))
+                        sheets_read.append(str(sheet_name))
+                        break
+                    except Exception:
+                        continue
+
+            if not dataframes:
+                self.progress_reporter.write("Warning: Could not read any sheet from Excel file")
                 return
+
+            df = pd.concat(dataframes, ignore_index=True)
+            sheet_used = ", ".join(sheets_read)
+            self.progress_reporter.write(f"Reading bill codes from sheets: {sheet_used}")
 
             # Get unique bill codes - try multiple possible column names
             bill_code_columns = ['bill_code', 'Bill Code', 'Customer', 'Client', 'Advertiser', 'customer']

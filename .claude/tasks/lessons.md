@@ -464,3 +464,21 @@ All languages on this platform are Asian except English.
   consolidating or remapping any language constant
 
 **Last Updated**: 2026-03-10
+
+---
+
+## Import Pipeline
+
+### Multi-Sheet Excel Files Must Be Read Fully
+The commercial log Excel file has 4 sheets: Commercials, Worldlink Lines,
+Add to booked business, Pending. The import pipeline MUST read all of them.
+- `get_all_import_worksheets()` returns all importable sheets — use it instead
+  of `get_excel_worksheet_flexible()` for import operations
+- The old Pi setup pre-combined sheets via `commercial_log_importer.py`; the
+  Docker migration replaced that with a raw `cp`, exposing the single-sheet bug
+- Any function that analyzes or imports the Excel file must iterate all sheets
+- Affected functions: `extract_display_months_from_excel`,
+  `_count_excel_records_by_month`, `_import_excel_data_with_progress`,
+  `ensure_bill_codes_in_raw_inputs`
+
+**Last Updated**: 2026-03-24
