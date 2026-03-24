@@ -1,0 +1,134 @@
+"""Tests for import_diff module — contract-group fingerprint diffing."""
+
+import sqlite3
+import tempfile
+import os
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _create_test_db():
+    """Create a temp SQLite DB with the spots + month_closures schema."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE spots (
+            spot_id INTEGER PRIMARY KEY,
+            bill_code TEXT,
+            contract TEXT,
+            broadcast_month TEXT,
+            spot_value DECIMAL(12,2),
+            air_date DATE,
+            import_batch_id TEXT
+        );
+        CREATE TABLE month_closures (
+            broadcast_month TEXT PRIMARY KEY
+        );
+        """
+    )
+    conn.commit()
+    return conn, path
+
+
+def _make_row(bill_code="BC1", air_date="2026-03-01",
+              spot_value=100.00, broadcast_month="Mar-26",
+              contract="C100"):
+    """Build a 30-element tuple matching EXCEL_COLUMN_POSITIONS.
+
+    Index 0=bill_code, 1=air_date, 17=spot_value,
+    18=broadcast_month, 27=contract.
+    """
+    row = [None] * 30
+    row[0] = bill_code
+    row[1] = air_date
+    row[17] = spot_value
+    row[18] = broadcast_month
+    row[27] = contract
+    return tuple(row)
+
+
+# ===========================================================================
+# Task 1 — build_db_fingerprints
+# ===========================================================================
+
+class TestBuildDbFingerprints:
+
+    def test_groups_by_contract(self):
+        from src.services.import_diff import build_db_fingerprints
+
+        conn, path = _create_test_db()
+        try:
+            conn.executemany(
+                "INSERT INTO spots (bill_code, contract, broadcast_month, spot_value) VALUES (?,?,?,?)",
+                [
+                    ("Acme:Widget", "C100", "Mar-26", 150.00),
+                    ("Acme:Widget", "C100", "Mar-26", 50.00),
+                    ("Acme:Widget", "C200", "Mar-26", 75.00),
+                ],
+            )
+            conn.commit()
+
+            fps = build_db_fingerprints(["Mar-26"], conn)
+
+            assert fps[("Acme:Widget", "C100", "Mar-26")] == (20000, 2)
+            assert fps[("Acme:Widget", "C200", "Mar-26")] == (7500, 1)
+        finally:
+            conn.close()
+            os.unlink(path)
+
+    def test_coalesces_null_contract(self):
+        from src.services.import_diff import build_db_fingerprints
+
+        conn, path = _create_test_db()
+        try:
+            conn.execute(
+                "INSERT INTO spots (bill_code, contract, broadcast_month, spot_value) VALUES (?,?,?,?)",
+                ("BC1", None, "Mar-26", 10.00),
+            )
+            conn.commit()
+
+            fps = build_db_fingerprints(["Mar-26"], conn)
+            assert ("BC1", "", "Mar-26") in fps
+            assert fps[("BC1", "", "Mar-26")] == (1000, 1)
+        finally:
+            conn.close()
+            os.unlink(path)
+
+    def test_coalesces_null_spot_value(self):
+        from src.services.import_diff import build_db_fingerprints
+
+        conn, path = _create_test_db()
+        try:
+            conn.execute(
+                "INSERT INTO spots (bill_code, contract, broadcast_month, spot_value) VALUES (?,?,?,?)",
+                ("BC1", "C1", "Mar-26", None),
+            )
+            conn.commit()
+
+            fps = build_db_fingerprints(["Mar-26"], conn)
+            assert fps[("BC1", "C1", "Mar-26")] == (0, 1)
+        finally:
+            conn.close()
+            os.unlink(path)
+
+    def test_empty_months_returns_empty(self):
+        from src.services.import_diff import build_db_fingerprints
+
+        conn, path = _create_test_db()
+        try:
+            conn.execute(
+                "INSERT INTO spots (bill_code, contract, broadcast_month, spot_value) VALUES (?,?,?,?)",
+                ("BC1", "C1", "Mar-26", 100.00),
+            )
+            conn.commit()
+
+            fps = build_db_fingerprints([], conn)
+            assert fps == {}
+        finally:
+            conn.close()
+            os.unlink(path)
