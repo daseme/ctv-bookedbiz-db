@@ -32,7 +32,8 @@ def login():
     if current_user.is_authenticated:
         return redirect("/reports/")
 
-    identity = get_tailscale_identity(request.remote_addr)
+    remote_addr = request.headers.get("X-Real-IP") or request.remote_addr
+    identity = get_tailscale_identity(remote_addr)
     if identity:
         login_email, display_name = identity
         try:
