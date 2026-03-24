@@ -20,7 +20,7 @@ import io
 import sqlite3
 from pathlib import Path
 from datetime import datetime, date, timedelta
-from typing import List, Set, Optional, Dict, Any, Callable
+from typing import List, Set, Optional, Dict, Any, Callable, Tuple
 
 from tqdm import tqdm
 
@@ -55,6 +55,11 @@ from src.models.import_workflow import (
     PreservedMonth,
     ImportContext,
     ImportResult,
+)
+from src.services.import_diff import (
+    build_db_fingerprints,
+    build_excel_fingerprints,
+    compare_fingerprints,
 )
 
 logger = logging.getLogger(__name__)
@@ -289,6 +294,7 @@ class BroadcastMonthImportService(BaseService):
         import_mode: str,
         closed_by: Optional[str] = None,
         dry_run: bool = False,
+        import_strategy: str = "diff",
     ) -> ImportResult:
         """
         Orchestrates the complete import workflow.
@@ -318,6 +324,7 @@ class BroadcastMonthImportService(BaseService):
                 month_classification=month_classification,
                 closed_by=closed_by,
                 dry_run=dry_run,
+                import_strategy=import_strategy,
             )
 
             # Step 4: Determine which months to process based on mode
@@ -644,6 +651,10 @@ class BroadcastMonthImportService(BaseService):
         self, context: ImportContext, result: ImportResult
     ) -> ImportResult:
         """Execute the actual import within a transaction."""
+        if context.import_strategy == "diff":
+            return self._execute_diff_workflow(context, result)
+
+        # Full-flush path (legacy)
         # Build entity cache for performance
         tqdm.write("🚀 Phase 1: Building high-performance entity cache...")
         self.batch_resolver.build_entity_cache_from_excel(
@@ -714,6 +725,299 @@ class BroadcastMonthImportService(BaseService):
         self._refresh_cache_tables()
 
         return result
+
+    # ========================================================================
+    # Diff-Based Import Workflow
+    # ========================================================================
+
+    def _execute_diff_workflow(
+        self, context: ImportContext, result: ImportResult
+    ) -> ImportResult:
+        """Execute import using diff-based strategy.
+
+        Compares (bill_code, contract, broadcast_month) fingerprints between
+        Excel and DB to only write groups that actually changed.
+        Falls back to full-flush if >80% of overlapping groups changed.
+        """
+        # Build entity cache for performance
+        tqdm.write("Phase 1: Building high-performance entity cache...")
+        self.batch_resolver.build_entity_cache_from_excel(
+            context.excel_analysis.file_path
+        )
+        cache_stats = self.batch_resolver.get_performance_stats()
+        tqdm.write(
+            f"Cache ready: {cache_stats['cache_size']} entities "
+            f"pre-resolved ({cache_stats['batch_resolved']} found)"
+        )
+
+        # Create batch record
+        self._create_import_batch(
+            context.batch_id,
+            context.import_mode,
+            context.excel_analysis.file_path,
+            context.months_to_process,
+        )
+
+        try:
+            # Read ALL Excel sheets and tag each row with sheet name
+            tqdm.write("Phase 2: Reading Excel data for diff...")
+            with suppress_verbose_logging(), suppress_stdout_stderr():
+                sheets, workbook = get_all_import_worksheets(
+                    context.excel_analysis.file_path
+                )
+
+            all_rows: List[tuple] = []
+            for worksheet, sheet_name in sheets:
+                for row in worksheet.iter_rows(min_row=2, values_only=True):
+                    if any(row):
+                        # Tag with sheet name as extra element
+                        all_rows.append(tuple(row) + (sheet_name,))
+            workbook.close()
+
+            tqdm.write(f"Read {len(all_rows):,} rows from Excel")
+
+            # Build Excel fingerprints
+            excel_fps, grouped_rows, months_found = build_excel_fingerprints(all_rows)
+            tqdm.write(
+                f"Excel fingerprints: {len(excel_fps):,} contract groups "
+                f"across {len(months_found)} months"
+            )
+
+            with self.safe_transaction() as conn:
+                # Build DB fingerprints and compare
+                db_fps = build_db_fingerprints(context.months_to_process, conn)
+                diff = compare_fingerprints(excel_fps, db_fps)
+
+                tqdm.write(
+                    f"Diff result: {len(diff.unchanged)} unchanged, "
+                    f"{len(diff.changed)} changed, {len(diff.added)} added, "
+                    f"{len(diff.removed)} removed"
+                )
+
+                if diff.should_fallback:
+                    tqdm.write(
+                        "WARNING: >80% of overlapping groups changed — "
+                        "falling back to full flush"
+                    )
+                    self._send_fallback_alert(context)
+
+                    # Full-flush fallback
+                    result.records_deleted = self._delete_months_with_progress(
+                        context.months_to_process, conn
+                    )
+                    result.records_imported = self._import_excel_data_with_progress(
+                        context.excel_analysis.file_path,
+                        context.batch_id,
+                        conn,
+                        context.months_to_process,
+                    )
+                else:
+                    # Surgical diff-based changes
+                    total_deleted, total_imported = self._apply_diff(
+                        diff, grouped_rows, context, conn
+                    )
+                    result.records_deleted = total_deleted
+                    result.records_imported = total_imported
+
+                    # Log savings
+                    total_groups = (
+                        len(diff.unchanged) + len(diff.changed)
+                        + len(diff.added) + len(diff.removed)
+                    )
+                    writes_saved = len(diff.unchanged)
+                    tqdm.write(
+                        f"Diff summary: {writes_saved:,}/{total_groups:,} groups "
+                        f"unchanged — saved {writes_saved:,} group rewrites"
+                    )
+
+                # Log net change
+                if context.is_weekly_update_mode:
+                    tqdm.write(
+                        f"Import complete: {result.records_imported:,} imported, "
+                        f"{result.records_deleted:,} deleted "
+                        f"(net: {result.net_change:+,})"
+                    )
+
+                # Validate and correct customer alignment
+                self._validate_and_correct_customers(context.batch_id, conn)
+
+                # Close months for HISTORICAL mode
+                if context.is_historical_mode:
+                    result.closed_months = self._close_months(
+                        context.months_to_process, context.closed_by, conn
+                    )
+
+                # Complete batch record
+                self._complete_import_batch(context.batch_id, result, conn)
+
+                result.success = True
+                tqdm.write("Import committed successfully")
+
+        except Exception as e:
+            error_msg = f"Transaction failed: {str(e)}"
+            tqdm.write(f"ERROR: {error_msg}")
+            result.add_error(error_msg)
+            self._fail_import_batch(context.batch_id, str(e))
+            raise BroadcastMonthImportError(error_msg)
+
+        # Refresh cache tables outside the import transaction
+        self._refresh_cache_tables()
+
+        return result
+
+    def _apply_diff(
+        self,
+        diff,
+        grouped_rows: Dict,
+        context: ImportContext,
+        conn: sqlite3.Connection,
+    ) -> Tuple[int, int]:
+        """Apply surgical diff changes: delete changed/removed, insert changed/new.
+
+        Returns (total_deleted, total_imported).
+        """
+        total_deleted = 0
+        total_imported = 0
+
+        filename = SourceFileFormatter.extract_filename_from_path(
+            context.excel_analysis.file_path
+        )
+
+        month_col_index = [
+            k for k, v in EXCEL_COLUMN_POSITIONS.items()
+            if v == "broadcast_month"
+        ]
+
+        unmatched_customers: Set[str] = set()
+        unmatched_agencies: Set[str] = set()
+        sheet_source_stats: Dict[str, int] = {}
+
+        # Delete changed + removed groups
+        groups_to_delete = diff.changed | diff.removed
+        if groups_to_delete:
+            tqdm.write(f"Deleting {len(groups_to_delete)} changed/removed groups...")
+            with tqdm(
+                total=len(groups_to_delete),
+                desc="Deleting groups",
+                unit=" groups",
+            ) as pbar:
+                for bill_code, contract, broadcast_month in groups_to_delete:
+                    if not contract:
+                        # Handle NULL/empty contract
+                        cursor = conn.execute(
+                            "DELETE FROM spots WHERE bill_code = ? "
+                            "AND (contract IS NULL OR contract = '') "
+                            "AND broadcast_month = ?",
+                            (bill_code, broadcast_month),
+                        )
+                    else:
+                        cursor = conn.execute(
+                            "DELETE FROM spots WHERE bill_code = ? "
+                            "AND contract = ? AND broadcast_month = ?",
+                            (bill_code, contract, broadcast_month),
+                        )
+                    total_deleted += cursor.rowcount
+                    pbar.update(1)
+
+        # Insert changed + new groups
+        groups_to_insert = diff.changed | diff.added
+        if groups_to_insert:
+            tqdm.write(f"Inserting {len(groups_to_insert)} changed/new groups...")
+
+            # Count total rows to insert
+            total_rows = sum(
+                len(grouped_rows[key])
+                for key in groups_to_insert
+                if key in grouped_rows
+            )
+
+            with tqdm(
+                total=total_rows, desc="Inserting rows", unit=" rows"
+            ) as pbar:
+                for key in groups_to_insert:
+                    rows = grouped_rows.get(key, [])
+                    for raw_row in rows:
+                        # Extract sheet_name tag (last element if string)
+                        if raw_row and isinstance(raw_row[-1], str):
+                            sheet_name = raw_row[-1]
+                            row = raw_row[:-1]
+                        else:
+                            sheet_name = ""
+                            row = raw_row
+
+                        spot_data = self._process_single_row(
+                            row=row,
+                            current_sheet_name=sheet_name,
+                            filename=filename,
+                            batch_id=context.batch_id,
+                            allowed_months=context.months_to_process,
+                            month_col_index=month_col_index,
+                            conn=conn,
+                            unmatched_customers=unmatched_customers,
+                            unmatched_agencies=unmatched_agencies,
+                            sheet_source_stats=sheet_source_stats,
+                        )
+
+                        if spot_data is None:
+                            pbar.update(1)
+                            continue
+
+                        fields = list(spot_data.keys())
+                        placeholders = ", ".join(["?"] * len(fields))
+                        field_names = ", ".join(fields)
+                        values = [spot_data[field] for field in fields]
+
+                        conn.execute(
+                            f"INSERT INTO spots ({field_names}) VALUES ({placeholders})",
+                            values,
+                        )
+                        total_imported += 1
+                        pbar.update(1)
+
+        if unmatched_customers:
+            tqdm.write(f"Unmatched customers: {len(unmatched_customers)}")
+        if unmatched_agencies:
+            tqdm.write(f"Unmatched agencies: {len(unmatched_agencies)}")
+        if sheet_source_stats:
+            tqdm.write("Sheet breakdown:")
+            for sheet, count in sorted(sheet_source_stats.items()):
+                tqdm.write(f"   {sheet}: {count:,} records")
+
+        return total_deleted, total_imported
+
+    def _send_fallback_alert(self, context: ImportContext) -> None:
+        """Send ntfy notification when diff fallback triggers.
+
+        Best-effort — never fails the import if notification fails.
+        """
+        import os
+        import urllib.request
+
+        topic = os.environ.get("NTFY_TOPIC")
+        if not topic:
+            return
+
+        try:
+            message = (
+                f"SpotOps diff fallback triggered for batch {context.batch_id}. "
+                f"Months: {', '.join(context.months_to_process)}. "
+                f"Mode: {context.import_mode}. "
+                f"Falling back to full flush."
+            )
+            url = f"https://ntfy.sh/{topic}"
+            req = urllib.request.Request(
+                url,
+                data=message.encode("utf-8"),
+                headers={
+                    "Title": "SpotOps Import Fallback",
+                    "Priority": "high",
+                    "Tags": "warning",
+                },
+            )
+            urllib.request.urlopen(req, timeout=5)
+        except Exception:
+            # Never let notification failure affect the import
+            pass
 
     def _refresh_cache_tables(self):
         """Refresh denormalized cache tables in a separate transaction."""
