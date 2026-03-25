@@ -130,6 +130,7 @@ class ImportContext:
     filter_result: Optional[MonthFilterResult] = None
     closed_by: Optional[str] = None
     dry_run: bool = False
+    import_strategy: str = "diff"
 
     @property
     def months_to_process(self) -> List[str]:

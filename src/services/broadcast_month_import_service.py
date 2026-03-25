@@ -20,7 +20,7 @@ import io
 import sqlite3
 from pathlib import Path
 from datetime import datetime, date, timedelta
-from typing import List, Set, Optional, Dict, Any, Callable
+from typing import List, Set, Optional, Dict, Any, Callable, Tuple
 
 from tqdm import tqdm
 
@@ -55,6 +55,11 @@ from src.models.import_workflow import (
     PreservedMonth,
     ImportContext,
     ImportResult,
+)
+from src.services.import_diff import (
+    build_db_fingerprints,
+    build_excel_fingerprints,
+    compare_fingerprints,
 )
 
 logger = logging.getLogger(__name__)
@@ -289,6 +294,7 @@ class BroadcastMonthImportService(BaseService):
         import_mode: str,
         closed_by: Optional[str] = None,
         dry_run: bool = False,
+        import_strategy: str = "diff",
     ) -> ImportResult:
         """
         Orchestrates the complete import workflow.
@@ -318,6 +324,7 @@ class BroadcastMonthImportService(BaseService):
                 month_classification=month_classification,
                 closed_by=closed_by,
                 dry_run=dry_run,
+                import_strategy=import_strategy,
             )
 
             # Step 4: Determine which months to process based on mode
@@ -644,6 +651,10 @@ class BroadcastMonthImportService(BaseService):
         self, context: ImportContext, result: ImportResult
     ) -> ImportResult:
         """Execute the actual import within a transaction."""
+        if context.import_strategy == "diff":
+            return self._execute_diff_workflow(context, result)
+
+        # Full-flush path (legacy)
         # Build entity cache for performance
         tqdm.write("🚀 Phase 1: Building high-performance entity cache...")
         self.batch_resolver.build_entity_cache_from_excel(
@@ -714,6 +725,319 @@ class BroadcastMonthImportService(BaseService):
         self._refresh_cache_tables()
 
         return result
+
+    # ========================================================================
+    # Diff-Based Import Workflow
+    # ========================================================================
+
+    def _execute_diff_workflow(
+        self, context: ImportContext, result: ImportResult
+    ) -> ImportResult:
+        """Execute import using diff-based strategy.
+
+        Compares (bill_code, contract, broadcast_month) fingerprints between
+        Excel and DB to only write groups that actually changed.
+        Falls back to full-flush if >80% of overlapping groups changed.
+        """
+        # Build entity cache for performance
+        tqdm.write("Phase 1: Building high-performance entity cache...")
+        self.batch_resolver.build_entity_cache_from_excel(
+            context.excel_analysis.file_path
+        )
+        cache_stats = self.batch_resolver.get_performance_stats()
+        tqdm.write(
+            f"Cache ready: {cache_stats['cache_size']} entities "
+            f"pre-resolved ({cache_stats['batch_resolved']} found)"
+        )
+
+        # Create batch record
+        self._create_import_batch(
+            context.batch_id,
+            context.import_mode,
+            context.excel_analysis.file_path,
+            context.months_to_process,
+        )
+
+        try:
+            # Read ALL Excel sheets and tag each row with sheet name
+            tqdm.write("Phase 2: Reading Excel data for diff...")
+            with suppress_verbose_logging(), suppress_stdout_stderr():
+                sheets, workbook = get_all_import_worksheets(
+                    context.excel_analysis.file_path
+                )
+
+            all_rows: List[tuple] = []
+            for worksheet, sheet_name in sheets:
+                for row in worksheet.iter_rows(min_row=2, values_only=True):
+                    if any(row):
+                        # Tag with sheet name as extra element
+                        all_rows.append(tuple(row) + (sheet_name,))
+            workbook.close()
+
+            tqdm.write(f"Read {len(all_rows):,} rows from Excel")
+
+            # Build Excel fingerprints — filter to open months only
+            excel_fps, grouped_rows, months_found = build_excel_fingerprints(all_rows)
+
+            # Remove fingerprints for closed months (they're in Excel but shouldn't be compared)
+            open_months_set = set(context.months_to_process)
+            excel_fps = {
+                k: v for k, v in excel_fps.items() if k[2] in open_months_set
+            }
+            grouped_rows = {
+                k: v for k, v in grouped_rows.items() if k[2] in open_months_set
+            }
+
+            tqdm.write(
+                f"Excel fingerprints: {len(excel_fps):,} contract groups "
+                f"for {len(open_months_set)} open months"
+            )
+
+            with self.safe_transaction() as conn:
+                # Build DB fingerprints and compare
+                db_fps = build_db_fingerprints(context.months_to_process, conn)
+                diff = compare_fingerprints(excel_fps, db_fps)
+
+                tqdm.write(
+                    f"Diff result: {len(diff.unchanged)} unchanged, "
+                    f"{len(diff.changed)} changed, {len(diff.added)} added, "
+                    f"{len(diff.removed)} removed"
+                )
+
+                if diff.should_fallback:
+                    tqdm.write(
+                        "WARNING: >80% of overlapping groups changed — "
+                        "falling back to full flush"
+                    )
+                    self._send_fallback_alert(context)
+
+                    # Full-flush fallback
+                    result.records_deleted = self._delete_months_with_progress(
+                        context.months_to_process, conn
+                    )
+                    result.records_imported = self._import_excel_data_with_progress(
+                        context.excel_analysis.file_path,
+                        context.batch_id,
+                        conn,
+                        context.months_to_process,
+                    )
+                else:
+                    # Surgical diff-based changes
+                    total_deleted, total_imported = self._apply_diff(
+                        diff, grouped_rows, context, conn
+                    )
+                    result.records_deleted = total_deleted
+                    result.records_imported = total_imported
+
+                    # Log savings
+                    total_groups = (
+                        len(diff.unchanged) + len(diff.changed)
+                        + len(diff.added) + len(diff.removed)
+                    )
+                    writes_saved = len(diff.unchanged)
+                    tqdm.write(
+                        f"Diff summary: {writes_saved:,}/{total_groups:,} groups "
+                        f"unchanged — saved {writes_saved:,} group rewrites"
+                    )
+
+                # Log net change
+                if context.is_weekly_update_mode:
+                    tqdm.write(
+                        f"Import complete: {result.records_imported:,} imported, "
+                        f"{result.records_deleted:,} deleted "
+                        f"(net: {result.net_change:+,})"
+                    )
+
+                # Validate and correct customer alignment
+                self._validate_and_correct_customers(context.batch_id, conn)
+
+                # Close months for HISTORICAL mode
+                if context.is_historical_mode:
+                    result.closed_months = self._close_months(
+                        context.months_to_process, context.closed_by, conn
+                    )
+
+                # Complete batch record
+                self._complete_import_batch(context.batch_id, result, conn)
+
+                result.success = True
+                tqdm.write("Import committed successfully")
+
+        except Exception as e:
+            error_msg = f"Transaction failed: {str(e)}"
+            tqdm.write(f"ERROR: {error_msg}")
+            result.add_error(error_msg)
+            self._fail_import_batch(context.batch_id, str(e))
+            raise BroadcastMonthImportError(error_msg)
+
+        # Refresh cache tables outside the import transaction
+        self._refresh_cache_tables()
+
+        return result
+
+    def _apply_diff(
+        self,
+        diff,
+        grouped_rows: Dict,
+        context: ImportContext,
+        conn: sqlite3.Connection,
+    ) -> Tuple[int, int]:
+        """Apply surgical diff changes: delete changed/removed, insert changed/new.
+
+        Returns (total_deleted, total_imported).
+        """
+        total_deleted = 0
+        total_imported = 0
+
+        filename = SourceFileFormatter.extract_filename_from_path(
+            context.excel_analysis.file_path
+        )
+
+        month_col_index = [
+            k for k, v in EXCEL_COLUMN_POSITIONS.items()
+            if v == "broadcast_month"
+        ]
+
+        unmatched_customers: Set[str] = set()
+        unmatched_agencies: Set[str] = set()
+        sheet_source_stats: Dict[str, int] = {}
+        skipped_rows = 0
+
+        # Delete changed + removed groups
+        groups_to_delete = diff.changed | diff.removed
+        if groups_to_delete:
+            tqdm.write(f"Deleting {len(groups_to_delete)} changed/removed groups...")
+            with tqdm(
+                total=len(groups_to_delete),
+                desc="Deleting groups",
+                unit=" groups",
+            ) as pbar:
+                for bill_code, contract, broadcast_month in groups_to_delete:
+                    if not contract:
+                        # Handle NULL/empty contract
+                        cursor = conn.execute(
+                            "DELETE FROM spots WHERE bill_code = ? "
+                            "AND (contract IS NULL OR contract = '') "
+                            "AND broadcast_month = ?",
+                            (bill_code, broadcast_month),
+                        )
+                    else:
+                        cursor = conn.execute(
+                            "DELETE FROM spots WHERE bill_code = ? "
+                            "AND contract = ? AND broadcast_month = ?",
+                            (bill_code, contract, broadcast_month),
+                        )
+                    total_deleted += cursor.rowcount
+                    pbar.update(1)
+
+        # Insert changed + new groups
+        groups_to_insert = diff.changed | diff.added
+        if groups_to_insert:
+            tqdm.write(f"Inserting {len(groups_to_insert)} changed/new groups...")
+
+            # Count total rows to insert
+            total_rows = sum(
+                len(grouped_rows[key])
+                for key in groups_to_insert
+                if key in grouped_rows
+            )
+
+            with tqdm(
+                total=total_rows, desc="Inserting rows", unit=" rows"
+            ) as pbar:
+                for key in groups_to_insert:
+                    rows = grouped_rows.get(key, [])
+                    for raw_row in rows:
+                        # Extract sheet_name tag (last element if string)
+                        if raw_row and isinstance(raw_row[-1], str):
+                            sheet_name = raw_row[-1]
+                            row = raw_row[:-1]
+                        else:
+                            sheet_name = ""
+                            row = raw_row
+
+                        spot_data = self._process_single_row(
+                            row=row,
+                            current_sheet_name=sheet_name,
+                            filename=filename,
+                            batch_id=context.batch_id,
+                            allowed_months=context.months_to_process,
+                            month_col_index=month_col_index,
+                            conn=conn,
+                            unmatched_customers=unmatched_customers,
+                            unmatched_agencies=unmatched_agencies,
+                            sheet_source_stats=sheet_source_stats,
+                        )
+
+                        if spot_data is None:
+                            pbar.update(1)
+                            continue
+
+                        try:
+                            fields = list(spot_data.keys())
+                            placeholders = ", ".join(["?"] * len(fields))
+                            field_names = ", ".join(fields)
+                            values = [spot_data[field] for field in fields]
+
+                            conn.execute(
+                                f"INSERT INTO spots ({field_names}) VALUES ({placeholders})",
+                                values,
+                            )
+                            total_imported += 1
+                        except Exception as row_error:
+                            skipped_rows += 1
+                            if skipped_rows <= 5:
+                                tqdm.write(
+                                    f"Skipped row: {str(row_error)[:100]}"
+                                )
+                        pbar.update(1)
+
+        if skipped_rows:
+            tqdm.write(f"Skipped: {skipped_rows:,} rows (constraint violations)")
+        if unmatched_customers:
+            tqdm.write(f"Unmatched customers: {len(unmatched_customers)}")
+        if unmatched_agencies:
+            tqdm.write(f"Unmatched agencies: {len(unmatched_agencies)}")
+        if sheet_source_stats:
+            tqdm.write("Sheet breakdown:")
+            for sheet, count in sorted(sheet_source_stats.items()):
+                tqdm.write(f"   {sheet}: {count:,} records")
+
+        return total_deleted, total_imported
+
+    def _send_fallback_alert(self, context: ImportContext) -> None:
+        """Send ntfy notification when diff fallback triggers.
+
+        Best-effort — never fails the import if notification fails.
+        """
+        import os
+        import urllib.request
+
+        topic = os.environ.get("NTFY_TOPIC")
+        if not topic:
+            return
+
+        try:
+            message = (
+                f"SpotOps diff fallback triggered for batch {context.batch_id}. "
+                f"Months: {', '.join(context.months_to_process)}. "
+                f"Mode: {context.import_mode}. "
+                f"Falling back to full flush."
+            )
+            url = f"https://ntfy.sh/{topic}"
+            req = urllib.request.Request(
+                url,
+                data=message.encode("utf-8"),
+                headers={
+                    "Title": "SpotOps Import Fallback",
+                    "Priority": "high",
+                    "Tags": "warning",
+                },
+            )
+            urllib.request.urlopen(req, timeout=5)
+        except Exception:
+            # Never let notification failure affect the import
+            pass
 
     def _refresh_cache_tables(self):
         """Refresh denormalized cache tables in a separate transaction."""
@@ -822,8 +1146,151 @@ class BroadcastMonthImportService(BaseService):
         return closed
 
     # ========================================================================
-    # Row-by-Row Import (to be refactored in future iteration)
+    # Row-by-Row Import
     # ========================================================================
+
+    def _process_single_row(
+        self,
+        row: tuple,
+        current_sheet_name: str,
+        filename: str,
+        batch_id: str,
+        allowed_months: List[str],
+        month_col_index: List[int],
+        conn: sqlite3.Connection,
+        unmatched_customers: Set[str],
+        unmatched_agencies: Set[str],
+        sheet_source_stats: Dict[str, int],
+    ) -> Optional[Dict[str, Any]]:
+        """Process a single Excel row into a spot_data dict ready for INSERT.
+
+        Returns a dict of field→value if the row should be inserted,
+        or None if the row should be skipped (empty, filtered, invalid).
+
+        Side-effects: mutates unmatched_customers, unmatched_agencies,
+        and sheet_source_stats sets/dicts passed in.
+        """
+        if not any(row):
+            return None
+
+        # Get broadcast_month
+        if not month_col_index:
+            return None
+        month_value = row[month_col_index[0]]
+
+        if not month_value:
+            return None
+
+        # Parse broadcast_month
+        broadcast_month_display = self._parse_month_value(month_value)
+        if not broadcast_month_display:
+            return None
+
+        if broadcast_month_display not in allowed_months:
+            return None
+
+        spot_data: Dict[str, Any] = {
+            "import_batch_id": batch_id,
+            "broadcast_month": broadcast_month_display,
+        }
+
+        # Use sheet_source from column 29 if present,
+        # otherwise use the actual sheet name
+        sheet_source: Optional[str] = None
+
+        for col_idx, field_name in EXCEL_COLUMN_POSITIONS.items():
+            if field_name and col_idx < len(row):
+                val = row[col_idx]
+                if val is None or val == "":
+                    continue
+
+                if field_name == "sheet_source":
+                    sheet_source = str(val).strip() if val else None
+                    continue
+
+                if field_name == "bill_code":
+                    spot_data[field_name] = str(val).strip()
+
+                elif field_name == "air_date":
+                    if hasattr(val, "date"):
+                        spot_data[field_name] = val.date().isoformat()
+                    else:
+                        spot_data[field_name] = str(val).strip()
+
+                elif field_name in [
+                    "gross_rate",
+                    "station_net",
+                    "spot_value",
+                    "broker_fees",
+                ]:
+                    try:
+                        spot_data[field_name] = float(val)
+                    except:
+                        spot_data[field_name] = None
+
+                elif field_name == "day_of_week":
+                    try:
+                        spot_data[field_name] = normalize_broadcast_day(
+                            str(val).strip()
+                        )
+                    except:
+                        spot_data[field_name] = str(val).strip()
+
+                elif field_name == "revenue_type":
+                    spot_data[field_name] = (
+                        self._normalize_revenue_type(str(val).strip())
+                    )
+
+                elif field_name == "spot_type":
+                    spot_data[field_name] = self._normalize_spot_type(
+                        str(val).strip()
+                    )
+
+                elif field_name != "broadcast_month":
+                    spot_data[field_name] = str(val).strip()
+
+        # Track by actual sheet name when column 29 is empty
+        effective_source = sheet_source or current_sheet_name
+        sheet_source_stats[effective_source] = (
+            sheet_source_stats.get(effective_source, 0) + 1
+        )
+
+        spot_data["source_file"] = (
+            SourceFileFormatter.format_source_file(
+                filename, effective_source
+            )
+        )
+
+        if "market_name" in spot_data:
+            market_id = self._lookup_market_id(
+                spot_data["market_name"], conn
+            )
+            if market_id:
+                spot_data["market_id"] = market_id
+
+        if "bill_code" in spot_data:
+            entity_result = self.batch_resolver.lookup_entities_cached(
+                spot_data["bill_code"], conn
+            )
+            if entity_result.customer_id:
+                spot_data["customer_id"] = entity_result.customer_id
+            else:
+                unmatched_customers.add(spot_data["bill_code"])
+            if entity_result.agency_id:
+                spot_data["agency_id"] = entity_result.agency_id
+            else:
+                if ":" in spot_data["bill_code"]:
+                    unmatched_agencies.add(
+                        spot_data["bill_code"].split(":", 1)[0].strip()
+                    )
+
+        if "language_id" not in spot_data:
+            spot_data["language_id"] = 1
+
+        if not spot_data.get("bill_code") or not spot_data.get("air_date"):
+            return None
+
+        return spot_data
 
     def _import_excel_data_with_progress(
         self,
@@ -877,131 +1344,32 @@ class BroadcastMonthImportService(BaseService):
                         pbar.update(1)
 
                         try:
-                            if not any(row):
-                                continue
-
-                            # Get broadcast_month
-                            if not month_col_index:
-                                skipped_count += 1
-                                continue
-                            month_value = row[month_col_index[0]]
-
-                            if not month_value:
-                                skipped_count += 1
-                                continue
-
-                            # Parse broadcast_month
-                            broadcast_month_display = self._parse_month_value(month_value)
-                            if not broadcast_month_display:
-                                skipped_count += 1
-                                continue
-
-                            if broadcast_month_display not in allowed_months:
-                                filtered_count += 1
-                                continue
-
-                            spot_data: Dict[str, Any] = {
-                                "import_batch_id": batch_id,
-                                "broadcast_month": broadcast_month_display,
-                            }
-
-                            # Use sheet_source from column 29 if present,
-                            # otherwise use the actual sheet name
-                            sheet_source: Optional[str] = None
-
-                            for col_idx, field_name in EXCEL_COLUMN_POSITIONS.items():
-                                if field_name and col_idx < len(row):
-                                    val = row[col_idx]
-                                    if val is None or val == "":
-                                        continue
-
-                                    if field_name == "sheet_source":
-                                        sheet_source = str(val).strip() if val else None
-                                        continue
-
-                                    if field_name == "bill_code":
-                                        spot_data[field_name] = str(val).strip()
-
-                                    elif field_name == "air_date":
-                                        if hasattr(val, "date"):
-                                            spot_data[field_name] = val.date().isoformat()
-                                        else:
-                                            spot_data[field_name] = str(val).strip()
-
-                                    elif field_name in [
-                                        "gross_rate",
-                                        "station_net",
-                                        "spot_value",
-                                        "broker_fees",
-                                    ]:
-                                        try:
-                                            spot_data[field_name] = float(val)
-                                        except:
-                                            spot_data[field_name] = None
-
-                                    elif field_name == "day_of_week":
-                                        try:
-                                            spot_data[field_name] = normalize_broadcast_day(
-                                                str(val).strip()
-                                            )
-                                        except:
-                                            spot_data[field_name] = str(val).strip()
-
-                                    elif field_name == "revenue_type":
-                                        spot_data[field_name] = (
-                                            self._normalize_revenue_type(str(val).strip())
-                                        )
-
-                                    elif field_name == "spot_type":
-                                        spot_data[field_name] = self._normalize_spot_type(
-                                            str(val).strip()
-                                        )
-
-                                    elif field_name != "broadcast_month":
-                                        spot_data[field_name] = str(val).strip()
-
-                            # Track by actual sheet name when column 29 is empty
-                            effective_source = sheet_source or current_sheet_name
-                            sheet_source_stats[effective_source] = (
-                                sheet_source_stats.get(effective_source, 0) + 1
+                            spot_data = self._process_single_row(
+                                row=row,
+                                current_sheet_name=current_sheet_name,
+                                filename=filename,
+                                batch_id=batch_id,
+                                allowed_months=allowed_months,
+                                month_col_index=month_col_index,
+                                conn=conn,
+                                unmatched_customers=unmatched_customers,
+                                unmatched_agencies=unmatched_agencies,
+                                sheet_source_stats=sheet_source_stats,
                             )
 
-                            spot_data["source_file"] = (
-                                SourceFileFormatter.format_source_file(
-                                    filename, effective_source
-                                )
-                            )
-
-                            if "market_name" in spot_data:
-                                market_id = self._lookup_market_id(
-                                    spot_data["market_name"], conn
-                                )
-                                if market_id:
-                                    spot_data["market_id"] = market_id
-
-                            if "bill_code" in spot_data:
-                                entity_result = self.batch_resolver.lookup_entities_cached(
-                                    spot_data["bill_code"], conn
-                                )
-                                if entity_result.customer_id:
-                                    spot_data["customer_id"] = entity_result.customer_id
-                                else:
-                                    unmatched_customers.add(spot_data["bill_code"])
-                                if entity_result.agency_id:
-                                    spot_data["agency_id"] = entity_result.agency_id
-                                else:
-                                    if ":" in spot_data["bill_code"]:
-                                        unmatched_agencies.add(
-                                            spot_data["bill_code"].split(":", 1)[0].strip()
-                                        )
-
-                            if "language_id" not in spot_data:
-                                spot_data["language_id"] = 1
-
-                            if not spot_data.get("bill_code") or not spot_data.get(
-                                "air_date"
-                            ):
-                                skipped_count += 1
+                            if spot_data is None:
+                                # Row was skipped (empty, filtered, or invalid)
+                                # Count as skipped only if row had content
+                                if any(row):
+                                    # Check if it was filtered (month not in allowed)
+                                    if month_col_index:
+                                        mv = row[month_col_index[0]] if month_col_index[0] < len(row) else None
+                                        if mv:
+                                            parsed = self._parse_month_value(mv)
+                                            if parsed and parsed not in allowed_months:
+                                                filtered_count += 1
+                                                continue
+                                    skipped_count += 1
                                 continue
 
                             fields = list(spot_data.keys())
