@@ -492,4 +492,13 @@ Always `str(contract).strip()` and coerce `'0'` to `''` on both sides.
 - Excel fingerprints must be filtered to open months only before comparing
   to DB fingerprints (which only query open months)
 
-**Last Updated**: 2026-03-24
+### Rule 50: Rebuild Docker container after code changes
+Code changes on the host are NOT picked up by the daily update — it runs
+inside Docker. After modifying Python files, always:
+```bash
+docker compose build spotops && docker compose up -d spotops
+```
+before triggering or waiting for a daily update. Failure to do this led to
+a false "bug" where an AE fingerprint fix appeared not to work.
+
+**Last Updated**: 2026-04-03

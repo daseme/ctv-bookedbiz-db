@@ -24,7 +24,8 @@ def _create_test_db():
             broadcast_month TEXT,
             spot_value DECIMAL(12,2),
             air_date DATE,
-            import_batch_id TEXT
+            import_batch_id TEXT,
+            sales_person TEXT
         );
         CREATE TABLE month_closures (
             broadcast_month TEXT PRIMARY KEY
@@ -37,17 +38,18 @@ def _create_test_db():
 
 def _make_row(bill_code="BC1", air_date="2026-03-01",
               spot_value=100.00, broadcast_month="Mar-26",
-              contract="C100"):
+              contract="C100", sales_person=None):
     """Build a 30-element tuple matching EXCEL_COLUMN_POSITIONS.
 
     Index 0=bill_code, 1=air_date, 17=spot_value,
-    18=broadcast_month, 27=contract.
+    18=broadcast_month, 22=sales_person, 27=contract.
     """
     row = [None] * 30
     row[0] = bill_code
     row[1] = air_date
     row[17] = spot_value
     row[18] = broadcast_month
+    row[22] = sales_person
     row[27] = contract
     return tuple(row)
 
@@ -64,19 +66,19 @@ class TestBuildDbFingerprints:
         conn, path = _create_test_db()
         try:
             conn.executemany(
-                "INSERT INTO spots (bill_code, contract, broadcast_month, spot_value) VALUES (?,?,?,?)",
+                "INSERT INTO spots (bill_code, contract, broadcast_month, spot_value, sales_person) VALUES (?,?,?,?,?)",
                 [
-                    ("Acme:Widget", "C100", "Mar-26", 150.00),
-                    ("Acme:Widget", "C100", "Mar-26", 50.00),
-                    ("Acme:Widget", "C200", "Mar-26", 75.00),
+                    ("Acme:Widget", "C100", "Mar-26", 150.00, "Alice"),
+                    ("Acme:Widget", "C100", "Mar-26", 50.00, "Alice"),
+                    ("Acme:Widget", "C200", "Mar-26", 75.00, "Bob"),
                 ],
             )
             conn.commit()
 
             fps = build_db_fingerprints(["Mar-26"], conn)
 
-            assert fps[("Acme:Widget", "C100", "Mar-26")] == (20000, 2)
-            assert fps[("Acme:Widget", "C200", "Mar-26")] == (7500, 1)
+            assert fps[("Acme:Widget", "C100", "Mar-26")] == (20000, 2, "Alice")
+            assert fps[("Acme:Widget", "C200", "Mar-26")] == (7500, 1, "Bob")
         finally:
             conn.close()
             os.unlink(path)
@@ -94,7 +96,7 @@ class TestBuildDbFingerprints:
 
             fps = build_db_fingerprints(["Mar-26"], conn)
             assert ("BC1", "", "Mar-26") in fps
-            assert fps[("BC1", "", "Mar-26")] == (1000, 1)
+            assert fps[("BC1", "", "Mar-26")] == (1000, 1, "")
         finally:
             conn.close()
             os.unlink(path)
@@ -111,7 +113,7 @@ class TestBuildDbFingerprints:
             conn.commit()
 
             fps = build_db_fingerprints(["Mar-26"], conn)
-            assert fps[("BC1", "C1", "Mar-26")] == (0, 1)
+            assert fps[("BC1", "C1", "Mar-26")] == (0, 1, "")
         finally:
             conn.close()
             os.unlink(path)
@@ -144,15 +146,15 @@ class TestBuildExcelFingerprints:
         from src.services.import_diff import build_excel_fingerprints
 
         rows = [
-            _make_row("Acme:Widget", "2026-03-01", 150.00, "Mar-26", "C100"),
-            _make_row("Acme:Widget", "2026-03-02", 50.00, "Mar-26", "C100"),
-            _make_row("Acme:Widget", "2026-03-03", 75.00, "Mar-26", "C200"),
+            _make_row("Acme:Widget", "2026-03-01", 150.00, "Mar-26", "C100", "Alice"),
+            _make_row("Acme:Widget", "2026-03-02", 50.00, "Mar-26", "C100", "Alice"),
+            _make_row("Acme:Widget", "2026-03-03", 75.00, "Mar-26", "C200", "Bob"),
         ]
 
         fps, grouped, months = build_excel_fingerprints(rows)
 
-        assert fps[("Acme:Widget", "C100", "Mar-26")] == (20000, 2)
-        assert fps[("Acme:Widget", "C200", "Mar-26")] == (7500, 1)
+        assert fps[("Acme:Widget", "C100", "Mar-26")] == (20000, 2, "Alice")
+        assert fps[("Acme:Widget", "C200", "Mar-26")] == (7500, 1, "Bob")
         assert len(grouped[("Acme:Widget", "C100", "Mar-26")]) == 2
         assert len(grouped[("Acme:Widget", "C200", "Mar-26")]) == 1
         assert "Mar-26" in months
@@ -162,7 +164,7 @@ class TestBuildExcelFingerprints:
 
         rows = [_make_row("BC1", "2026-03-01", None, "Mar-26", "C1")]
         fps, _, _ = build_excel_fingerprints(rows)
-        assert fps[("BC1", "C1", "Mar-26")] == (0, 1)
+        assert fps[("BC1", "C1", "Mar-26")] == (0, 1, "")
 
     def test_null_contract_coalesced(self):
         from src.services.import_diff import build_excel_fingerprints
@@ -182,7 +184,7 @@ class TestBuildExcelFingerprints:
         fps, grouped, months = build_excel_fingerprints(rows)
         # Only the third row should be included
         assert len(fps) == 1
-        assert fps[("BC1", "C1", "Mar-26")] == (5000, 1)
+        assert fps[("BC1", "C1", "Mar-26")] == (5000, 1, "")
 
     def test_handles_rows_with_sheet_tag(self):
         """Rows with >30 columns (sheet-name tag) should be handled."""
@@ -193,7 +195,7 @@ class TestBuildExcelFingerprints:
         assert len(tagged_row) == 31
 
         fps, grouped, _ = build_excel_fingerprints([tagged_row])
-        assert fps[("BC1", "C1", "Mar-26")] == (10000, 1)
+        assert fps[("BC1", "C1", "Mar-26")] == (10000, 1, "")
         # grouped_rows should preserve the full raw row (with tag)
         assert len(grouped[("BC1", "C1", "Mar-26")][0]) == 31
 
@@ -207,8 +209,8 @@ class TestCompareFingerprints:
     def test_unchanged_groups(self):
         from src.services.import_diff import compare_fingerprints
 
-        excel = {("BC1", "C1", "Mar-26"): (10000, 2)}
-        db = {("BC1", "C1", "Mar-26"): (10000, 2)}
+        excel = {("BC1", "C1", "Mar-26"): (10000, 2, "Alice")}
+        db = {("BC1", "C1", "Mar-26"): (10000, 2, "Alice")}
         result = compare_fingerprints(excel, db)
 
         assert ("BC1", "C1", "Mar-26") in result.unchanged
@@ -220,8 +222,8 @@ class TestCompareFingerprints:
         from src.services.import_diff import compare_fingerprints
 
         key = ("BC1", "C1", "Mar-26")
-        excel = {key: (10000, 2)}
-        db = {key: (5000, 2)}  # $50 difference — clearly changed
+        excel = {key: (10000, 2, "Alice")}
+        db = {key: (5000, 2, "Alice")}  # $50 difference — clearly changed
         result = compare_fingerprints(excel, db)
 
         assert key in result.changed
@@ -231,8 +233,8 @@ class TestCompareFingerprints:
         from src.services.import_diff import compare_fingerprints
 
         key = ("BC1", "C1", "Mar-26")
-        excel = {key: (10000, 3)}
-        db = {key: (10000, 2)}  # different row_count
+        excel = {key: (10000, 3, "Alice")}
+        db = {key: (10000, 2, "Alice")}  # different row_count
         result = compare_fingerprints(excel, db)
 
         assert key in result.changed
@@ -241,7 +243,7 @@ class TestCompareFingerprints:
         from src.services.import_diff import compare_fingerprints
 
         key = ("BC1", "C1", "Mar-26")
-        excel = {key: (10000, 2)}
+        excel = {key: (10000, 2, "Alice")}
         db = {}
         result = compare_fingerprints(excel, db)
 
@@ -253,7 +255,7 @@ class TestCompareFingerprints:
 
         key = ("BC1", "C1", "Mar-26")
         excel = {}
-        db = {key: (10000, 2)}
+        db = {key: (10000, 2, "Alice")}
         result = compare_fingerprints(excel, db)
 
         assert key in result.removed
@@ -269,11 +271,11 @@ class TestCompareFingerprints:
         for i in range(10):
             key = (f"BC{i}", "C1", "Mar-26")
             if i < 9:
-                excel[key] = (100, 1)
-                db[key] = (999, 1)  # different
+                excel[key] = (100, 1, "Alice")
+                db[key] = (999, 1, "Alice")  # different
             else:
-                excel[key] = (100, 1)
-                db[key] = (100, 1)  # same
+                excel[key] = (100, 1, "Alice")
+                db[key] = (100, 1, "Alice")  # same
 
         result = compare_fingerprints(excel, db)
         assert result.should_fallback is True
@@ -290,13 +292,106 @@ class TestCompareFingerprints:
         for i in range(10):
             key = (f"BC{i}", "C1", "Mar-26")
             if i < 1:
-                excel[key] = (100, 1)
-                db[key] = (999, 1)  # different
+                excel[key] = (100, 1, "Alice")
+                db[key] = (999, 1, "Alice")  # different
             else:
-                excel[key] = (100, 1)
-                db[key] = (100, 1)  # same
+                excel[key] = (100, 1, "Alice")
+                db[key] = (100, 1, "Alice")  # same
 
         result = compare_fingerprints(excel, db)
         assert result.should_fallback is False
         assert len(result.changed) == 1
         assert len(result.unchanged) == 9
+
+    def test_ae_change_detected(self):
+        """Same dollars and count but different AE → group marked changed."""
+        from src.services.import_diff import compare_fingerprints
+
+        key = ("BC1", "C1", "Mar-26")
+        excel = {key: (10000, 2, "Bob")}
+        db = {key: (10000, 2, "Alice")}
+        result = compare_fingerprints(excel, db)
+
+        assert key in result.changed
+        assert key not in result.unchanged
+
+    def test_ae_unchanged(self):
+        """Same dollars, count, and AE → group unchanged."""
+        from src.services.import_diff import compare_fingerprints
+
+        key = ("BC1", "C1", "Mar-26")
+        excel = {key: (10000, 2, "Alice")}
+        db = {key: (10000, 2, "Alice")}
+        result = compare_fingerprints(excel, db)
+
+        assert key in result.unchanged
+        assert key not in result.changed
+
+
+# ===========================================================================
+# Task 4 — AE fingerprint integration (Excel + DB round-trip)
+# ===========================================================================
+
+class TestAeFingerprinting:
+
+    def test_excel_captures_sales_person(self):
+        """Excel fingerprints include sales_person in ae_key."""
+        from src.services.import_diff import build_excel_fingerprints
+
+        rows = [
+            _make_row("BC1", "2026-03-01", 100.00, "Mar-26", "C1", "Alice"),
+            _make_row("BC1", "2026-03-02", 200.00, "Mar-26", "C1", "Alice"),
+        ]
+        fps, _, _ = build_excel_fingerprints(rows)
+        assert fps[("BC1", "C1", "Mar-26")] == (30000, 2, "Alice")
+
+    def test_excel_multiple_aes_sorted(self):
+        """Multiple AEs in one group produce a sorted, comma-joined key."""
+        from src.services.import_diff import build_excel_fingerprints
+
+        rows = [
+            _make_row("BC1", "2026-03-01", 100.00, "Mar-26", "C1", "Zara"),
+            _make_row("BC1", "2026-03-02", 100.00, "Mar-26", "C1", "Alice"),
+        ]
+        fps, _, _ = build_excel_fingerprints(rows)
+        assert fps[("BC1", "C1", "Mar-26")] == (20000, 2, "Alice,Zara")
+
+    def test_db_captures_sales_person(self):
+        """DB fingerprints include sales_person in ae_key."""
+        from src.services.import_diff import build_db_fingerprints
+
+        conn, path = _create_test_db()
+        try:
+            conn.executemany(
+                "INSERT INTO spots (bill_code, contract, broadcast_month, spot_value, sales_person) VALUES (?,?,?,?,?)",
+                [
+                    ("BC1", "C1", "Mar-26", 100.00, "Alice"),
+                    ("BC1", "C1", "Mar-26", 200.00, "Alice"),
+                ],
+            )
+            conn.commit()
+            fps = build_db_fingerprints(["Mar-26"], conn)
+            assert fps[("BC1", "C1", "Mar-26")] == (30000, 2, "Alice")
+        finally:
+            conn.close()
+            os.unlink(path)
+
+    def test_db_multiple_aes_sorted(self):
+        """Multiple AEs in DB group produce a sorted, comma-joined key."""
+        from src.services.import_diff import build_db_fingerprints
+
+        conn, path = _create_test_db()
+        try:
+            conn.executemany(
+                "INSERT INTO spots (bill_code, contract, broadcast_month, spot_value, sales_person) VALUES (?,?,?,?,?)",
+                [
+                    ("BC1", "C1", "Mar-26", 100.00, "Zara"),
+                    ("BC1", "C1", "Mar-26", 100.00, "Alice"),
+                ],
+            )
+            conn.commit()
+            fps = build_db_fingerprints(["Mar-26"], conn)
+            assert fps[("BC1", "C1", "Mar-26")] == (20000, 2, "Alice,Zara")
+        finally:
+            conn.close()
+            os.unlink(path)
