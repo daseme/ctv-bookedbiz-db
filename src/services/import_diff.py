@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 
 # Type aliases
 GroupKey = Tuple[str, str, str]  # (bill_code, contract, broadcast_month)
-Fingerprint = Tuple[int, int]   # (sum_cents, row_count)
+Fingerprint = Tuple[int, int, str]  # (sum_cents, row_count, ae_key)
 
 
 def build_db_fingerprints(
@@ -33,16 +33,19 @@ def build_db_fingerprints(
             CASE WHEN contract IS NULL OR contract = '' OR contract = '0' THEN '' ELSE contract END AS contract,
             broadcast_month,
             CAST(SUM(CAST(ROUND(COALESCE(spot_value, 0) * 100, 0) AS INTEGER)) AS INTEGER) AS sum_cents,
-            COUNT(*) AS row_count
+            COUNT(*) AS row_count,
+            GROUP_CONCAT(DISTINCT COALESCE(sales_person, '')) AS ae_raw
         FROM spots
         WHERE broadcast_month IN ({placeholders})
         GROUP BY bill_code, CASE WHEN contract IS NULL OR contract = '' OR contract = '0' THEN '' ELSE contract END, broadcast_month
     """
     cursor = conn.execute(sql, months)
-    return {
-        (row[0], row[1], row[2]): (row[3], row[4])
-        for row in cursor.fetchall()
-    }
+    result = {}
+    for row in cursor.fetchall():
+        ae_raw = row[5] or ""
+        ae_key = ",".join(sorted(ae_raw.split(",")))
+        result[(row[0], row[1], row[2])] = (row[3], row[4], ae_key)
+    return result
 
 
 # Column indices matching EXCEL_COLUMN_POSITIONS
@@ -50,6 +53,7 @@ _COL_BILL_CODE = 0
 _COL_SPOT_VALUE = 17
 _COL_BROADCAST_MONTH = 18
 _COL_REVENUE_TYPE = 23
+_COL_SALES_PERSON = 22
 _COL_CONTRACT = 27
 
 
@@ -70,6 +74,7 @@ def build_excel_fingerprints(
     grouped_rows: Dict[GroupKey, List[Tuple]] = defaultdict(list)
     sums: Dict[GroupKey, int] = defaultdict(int)
     counts: Dict[GroupKey, int] = defaultdict(int)
+    ae_sets: Dict[GroupKey, set] = defaultdict(set)
     months_found: set = set()
 
     for raw_row in rows:
@@ -97,13 +102,20 @@ def build_excel_fingerprints(
         raw_value = row[_COL_SPOT_VALUE] if len(row) > _COL_SPOT_VALUE else None
         cents = round(float(raw_value) * 100) if raw_value is not None else 0
 
+        sales_person = row[_COL_SALES_PERSON] if len(row) > _COL_SALES_PERSON else None
+        sales_person = str(sales_person).strip() if sales_person else ""
+
         key: GroupKey = (bill_code, contract, month)
         grouped_rows[key].append(raw_row)
         sums[key] += cents
         counts[key] += 1
+        ae_sets[key].add(sales_person)
         months_found.add(month)
 
-    fingerprints = {key: (sums[key], counts[key]) for key in sums}
+    fingerprints = {
+        key: (sums[key], counts[key], ",".join(sorted(ae_sets[key])))
+        for key in sums
+    }
     return dict(fingerprints), dict(grouped_rows), months_found
 
 
@@ -143,9 +155,11 @@ def compare_fingerprints(
     CENTS_TOLERANCE = 10
 
     for key in common:
-        excel_cents, excel_count = excel_fps[key]
-        db_cents, db_count = db_fps[key]
-        if excel_count == db_count and abs(excel_cents - db_cents) <= CENTS_TOLERANCE:
+        excel_cents, excel_count, excel_ae = excel_fps[key]
+        db_cents, db_count, db_ae = db_fps[key]
+        if (excel_count == db_count
+                and abs(excel_cents - db_cents) <= CENTS_TOLERANCE
+                and excel_ae == db_ae):
             unchanged.add(key)
         else:
             changed.add(key)
