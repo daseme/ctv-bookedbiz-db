@@ -31,8 +31,8 @@ Goal: replace the manual transcription step with a Power Query refresh, while pr
 These were settled during brainstorming. Implementers should not re-litigate them without talking to Kurt.
 
 1. **Forecast survival (sparse overlay).** A cell in a non-closed month that has a forecast but no DB data keeps the forecast. DB data wins over forecasts for any cell where both exist.
-2. **New row handling.** New `(customer, market, revenue_class, ae1, broker_*, agency_*, sector)` tuples appearing in the DB auto-add to the sheet with metadata populated from the DB.
-3. **Metadata drift.** When DB metadata changes for an existing customer/market/revenue_class (e.g. AE reassignment), a **new row** is created; the old row is preserved intact. The DB naturally supports this because `spots.sales_person` is captured per spot at import time, so historical revenue stays attached to the old AE.
+2. **New row handling.** New `(customer, market, revenue_class, ae1, agency_flag, sector)` tuples appearing in the DB auto-add to the sheet with metadata populated from the DB. **(Tuple finalized post-audit — see §5 resolution. Broker status and agency percent are display attributes, not identity.)**
+3. **Metadata drift.** When DB metadata changes for an existing customer/market/revenue_class (AE reassignment, agency prefix change, or sector re-classification), a **new row** is created; the old row is preserved intact. The DB naturally supports this because `spots.sales_person` and `spots.agency_flag` are captured per spot at import time, so historical revenue stays attached to its original metadata. Broker status (`spots.broker_fees > 0`) and effective agency percent (`1 - station_net/gross_rate`) change with each spot and do NOT create new rows — they're aggregated for display only.
 4. **Flagging.** New and drifted tuples appear on a `New Rows` tab for review. Acknowledged tuples are stored as hashes in a hidden `Known Rows` table.
 5. **Closed months.** Rebuilt each refresh from the DB. Closed-month DB values are immutable by design, so this is idempotent. One-time consequence: any closed-month hand-typed value in the current sheet that differs from the DB will be "corrected" to the DB value on first refresh. Accepted.
 6. **Active column.** Always `Y` in PQ output. (Sheet doesn't track churn in this workbook context.)
@@ -98,18 +98,26 @@ These were settled during brainstorming. Implementers should not re-litigate the
       "market":          "SFO",
       "revenue_class":   "Internal Ad Sales",
       "ae1":             "Charmaine",
-      "broker_flag":     "N",
-      "broker_name":     null,
-      "broker_percent":  null,
       "agency_flag":     "Y",
-      "agency_percent":  15,
       "sector":          "Outreach",
       "broadcast_month": "2025-01-01",
-      "gross_rate":      4690.00
+      "gross_rate":      4690.00,
+      "station_net":     3986.50,
+      "broker_fees":     0.00
     }
   ]
 }
 ```
+
+**Design choice (finalized post-audit):** the API emits raw per-spot-sum amounts (`gross_rate`, `station_net`, `broker_fees`). PQ derives every display percentage from those three numbers plus `agency_flag`:
+
+- `AgencyPercent` = `1 - SUM(station_net) / SUM(gross_rate)` across the row's months (zero-safe).
+- `Broker` (Y/N) = `"Y" if SUM(broker_fees) > 0 else "N"`.
+- `BrokerPercent` = `SUM(broker_fees) / SUM(gross_rate)` (zero-safe).
+- `BrokerName` = blank in v1 (not in DB; Kurt OK with this — v2 Excel override if ever wanted).
+- `GrossCommission` = lookup in `tblCommissionByAE` keyed by `ae1` (unchanged).
+
+This is strictly more accurate than emitting a pre-computed percent — it reflects actual booked amounts rather than a stored audit-field rate (`customers.commission_rate` / `agencies.commission_rate` are entity-level audit fields, not per-spot transactional rates; see the schema audit doc for details).
 
 **Date format rule:** query params use `Mmm-YY` (matches how `broadcast_month` is stored in the DB); response `broadcast_month` values are ISO `YYYY-MM-DD` (first-of-month). PQ reformats display headers anyway, and ISO is parse-safe across locales. The endpoint performs the `Mmm-YY` → ISO conversion server-side via the canonical CASE/WHEN pattern from `v_planning_data`.
 
@@ -117,43 +125,43 @@ One object per unique metadata tuple × broadcast_month. Values with `SUM(gross_
 
 ### Query logic
 
-Conceptual SQL, to be implemented via the container + `spots_reporting` view (or direct from `spots` joined to dimension tables if `spots_reporting` lacks needed columns — verify in implementation):
+Implemented via the container. `spots_reporting` doesn't expose `agency_flag`, so the query builds directly from `spots` with the necessary joins (see schema audit doc, Schema Surprise #1). Trade exclusion is applied explicitly.
 
 ```sql
 SELECT
-  bill_code               AS customer,
-  market_code             AS market,
-  revenue_type            AS revenue_class,
-  sales_person            AS ae1,
-  broker_flag,            broker_name,   broker_percent,
-  agency_flag,            agency_percent,
-  sector_name             AS sector,
-  broadcast_month,
-  SUM(gross_rate)         AS gross_rate
-FROM spots_reporting
--- spots_reporting already excludes revenue_type = 'Trade'.
+  s.bill_code                                                           AS customer,
+  m.market_code                                                         AS market,
+  s.revenue_type                                                        AS revenue_class,
+  s.sales_person                                                        AS ae1,
+  CASE WHEN s.agency_flag = 'Agency' THEN 'Y' ELSE 'N' END              AS agency_flag,
+  sect.sector_name                                                      AS sector,
+  s.broadcast_month                                                     AS broadcast_month_raw,
+  SUM(s.gross_rate)                                                     AS gross_rate,
+  SUM(s.station_net)                                                    AS station_net,
+  SUM(s.broker_fees)                                                    AS broker_fees
+FROM spots s
+LEFT JOIN customers c ON s.customer_id = c.customer_id
+LEFT JOIN sectors   sect ON c.sector_id = sect.sector_id
+LEFT JOIN markets   m ON s.market_id = m.market_id
+WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
 -- is_historical = 1 is INCLUDED (forward bookings are the main point).
-GROUP BY 1,2,3,4,5,6,7,8,9,10,broadcast_month
-HAVING SUM(gross_rate) <> 0
-ORDER BY 1,2,3,4,5,6,7,8,9,10,
-  CASE SUBSTR(broadcast_month,1,3)
+GROUP BY 1,2,3,4,5,6,7
+HAVING SUM(s.gross_rate) <> 0 OR SUM(s.station_net) <> 0 OR SUM(s.broker_fees) <> 0
+ORDER BY 1,2,3,4,5,6,
+  CASE SUBSTR(s.broadcast_month,1,3)
     WHEN 'Jan' THEN 1  WHEN 'Feb' THEN 2  WHEN 'Mar' THEN 3
     WHEN 'Apr' THEN 4  WHEN 'May' THEN 5  WHEN 'Jun' THEN 6
     WHEN 'Jul' THEN 7  WHEN 'Aug' THEN 8  WHEN 'Sep' THEN 9
     WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
   END,
-  SUBSTR(broadcast_month,5,2);
+  SUBSTR(s.broadcast_month,5,2);
 ```
 
-### Fields to verify during implementation
+Server-side: convert `broadcast_month_raw` (`Mmm-YY`) → ISO `YYYY-MM-DD` on the way out. `HAVING` suppresses groupings where all three amounts are zero (full zero rows are noise).
 
-The following columns exist on the sheet but need confirmation in the DB before finalizing the query. For any that don't exist, the spec falls back to: emit `null` from the API, require manual entry in a v2 overrides table.
+`agency_flag` note: read from `spots.agency_flag` (TEXT; values `'Agency'` or `'Non-agency'`) and convert to `Y`/`N` in the SQL. **Not derived from `bill_code`** — the stored value is written by the Etere importer and is authoritative.
 
-- `broker_flag`, `broker_name`, `broker_percent` — may live on `customers`, a `brokers` table, or the `revenue_entity` resolution. Implementer should grep schema and confirm.
-- `agency_flag`, `agency_percent` — `agency_flag` is `Y`/`N` based on whether `bill_code` has an agency prefix; that's derivable. `agency_percent` is almost certainly per-customer configuration — verify.
-- `GrossCommission` — appears to be a function of `AE1` (Charmaine = 10%, House = 0%). If confirmed, **do not hard-code the lookup in API code or PQ**. Stash it as a two-column Excel Table `tblCommissionByAE` on the `Config` tab (`ae`, `commission_pct`). `qDataPivot` joins against it. Kurt updates the table when a commission rate changes — no deploy required. The endpoint does not return `GrossCommission` in the response; PQ computes it from `ae1`.
-
-If any of these prove DB-absent, update this spec and add them to the v2 manual-override list rather than fabricating the design around them.
+`GrossCommission` is **not returned by the API**. PQ computes it via a join against `tblCommissionByAE` on the `Config` tab (`ae`, `commission_pct`). Kurt edits the table when a commission rate changes — no deploy required.
 
 ### Performance budget
 
@@ -168,7 +176,7 @@ All queries live in the `Revenue Master.xlsx` workbook.
 - Source: `Web.Contents(base_url & "/api/revenue/sheet-export", [Headers = [#"X-SpotOps-Token" = token]])`
 - `base_url` and `token` come from the `Config` sheet (named ranges).
 - Parse `rows` → table. Type `broadcast_month` as Date (server emits ISO `YYYY-MM-DD`), rename to `month_date` for internal use.
-- Normalize metadata fields to match the hash spec (§6.6): trim whitespace on `customer`, `market`, `revenue_class`, `ae1`, `broker_name`, `sector`; lowercase **only** for hashing — the display value stays as returned by the API.
+- Normalize metadata fields to match the hash spec (§6.6): trim whitespace on `customer`, `market`, `revenue_class`, `ae1`, `sector`; lowercase **only** for hashing — the display value stays as returned by the API.
 
 ### `qForecasts` (staging, loads nowhere)
 
@@ -197,12 +205,12 @@ Full outer join `qRevenueActuals` with the Phase-1-resolved forecasts on the ful
 ### `qDataPivot` → loads to `Data` sheet
 
 - **Load target is `Data!A3`** — rows 1–2 are reserved for the read-only banner (§7). The query is loaded to an existing-worksheet destination, not "new worksheet."
-- Group by the full metadata tuple: `customer, market, revenue_class, ae1, broker_flag, broker_name, broker_percent, agency_flag, agency_percent, sector`.
+- Group by the full metadata tuple: `customer, market, revenue_class, ae1, agency_flag, sector`. Sum `gross_rate`, `station_net`, and `broker_fees` across the tuple's months (for per-row display derivations like `AgencyPercent`, `Broker`, `BrokerPercent`).
 - **Pivot on the `month_date` Date column** (not on a text label — pivoting on text sorts `10/1/2025` before `2/1/2025` because lexicographic). After pivoting, rename the resulting column headers to `MM/DD/YYYY` format to match Kurt's existing sheet. Column order is chronological by the underlying date.
 - Insert `Active` column = `"Y"`.
 - Left-join `tblCommissionByAE` on `ae1` to populate `GrossCommission`. Any row where the join yields null (AE is in DB output but not in `tblCommissionByAE`) is emitted to `New Rows` with `Reason = "Unknown AE for commission"` so Kurt sees the gap and can add the rate.
 - Final column order matches Kurt's existing sheet: `Customer, Active, Market, Revenue Class, AE1, GrossCommission, Broker, BrokerName, BrokerPercent, Agency, AgencyPercent, Sector, <month columns>`. (The `2022 & 2023` / `2023 & 2024` aggregates are dropped.)
-- **Row sort — deterministic, hard constraint.** Sort key is the full hash-input tuple in order: `Customer, Market, Revenue Class, AE1, BrokerFlag, BrokerName, BrokerPercent, AgencyFlag, AgencyPercent, Sector`. The first three match Kurt's visual expectation; the rest are tiebreakers that matter under drift (§3.3 lets multiple rows share Customer/Market/Revenue Class). A shorter sort key would let PQ reorder drift-siblings arbitrarily across refreshes and silently corrupt any downstream cell-address reference.
+- **Row sort — deterministic, hard constraint.** Sort key is the full hash-input tuple in order: `Customer, Market, Revenue Class, AE1, AgencyFlag, Sector`. The first three match Kurt's visual expectation; the rest are tiebreakers that matter under drift (§3.3 lets multiple rows share Customer/Market/Revenue Class when AE / agency / sector differs). A shorter sort key would let PQ reorder drift-siblings arbitrarily across refreshes and silently corrupt any downstream cell-address reference.
 
 ### `qNewRows` → loads to `New Rows` sheet
 
@@ -233,58 +241,44 @@ Ambiguity here causes two unrelated workbooks to produce different hashes for th
   2. `market`
   3. `revenue_class`
   4. `ae1`
-  5. `broker_flag`
-  6. `broker_name`
-  7. `broker_percent` (stringified; `null` → empty)
-  8. `agency_flag`
-  9. `agency_percent` (stringified; `null` → empty)
-  10. `sector`
+  5. `agency_flag`
+  6. `sector`
 - **Nulls** → empty string `""`. Never the string `"null"`.
 - **Whitespace** — trimmed on both sides, no interior collapse. On the PQ side: `Text.Trim(x)`.
 - **Case** — lowercased for hashing only. Display values retain their original case. **Invariant culture required** (don't let the machine's locale change the result — the Turkish dotted-I problem is real). On the PQ side: `Text.Lower(x, "en-US")`. On the server side: `str.lower()` in Python is already invariant.
-- **Numeric stringification** — pin the rule so both sides agree:
-  - The API emits `broker_percent` / `agency_percent` as JSON numbers (e.g. `15`, `null`).
-  - Both sides stringify via: integer if the value is whole, else fixed-point with trailing zeros trimmed. So `15` → `"15"`, `15.00` → `"15"`, `15.50` → `"15.5"`, `null` → `""`.
-  - PQ implementation: `if Value.Is(x, type number) and Number.Mod(x, 1) = 0 then Number.ToText(x, "G", "en-US") else Text.TrimEnd(Number.ToText(x, "F", "en-US"), "0")` (then trim a trailing `.` if present). Package this as a small M function `StringifyNum` so the rule lives in exactly one place.
 - **Encoding** — UTF-8 before SHA1.
+
+All six hash inputs are TEXT. No numeric stringification needed in v1 — the numeric fields the original spec had (`broker_percent`, `agency_percent`) are no longer part of the tuple. If a future hash version re-introduces numeric inputs, the prior stringification rule (integer when whole, else fixed-point with trailing zeros trimmed, invariant culture) is the intended recipe.
 
 **Hash version.** Stored in `Config` as `hash_version = "v1"`. The API also emits `"hash_version": "v1"` in its response metadata. PQ asserts the two match; mismatch → refresh errors loudly. Bumping to `v2` forces Kurt to empty `tblKnownRows` and re-acknowledge — which is the intended migration path if the formula ever needs to change.
 
-**Test vectors** (both must be pinned in server-side and PQ-side unit tests — a divergence between the two is the bug class this spec is trying to prevent). Vector 1 covers a typical tuple; Vector 2 covers numeric edge cases.
+**Test vectors** (both must be pinned in server-side and PQ-side unit tests — a divergence between the two is the bug class this spec is trying to prevent). Vector 1 covers a typical tuple; Vector 2 covers whitespace and case edge cases.
 
 **Vector 1 — typical:**
 ```
-customer:         "Admerasia:McDonalds"
-market:           "SFO"
-revenue_class:    "Internal Ad Sales"
-ae1:              "Charmaine"
-broker_flag:      "N"
-broker_name:      null
-broker_percent:   null
-agency_flag:      "Y"
-agency_percent:   15
-sector:           "Outreach"
+customer:      "Admerasia:McDonalds"
+market:        "SFO"
+revenue_class: "Internal Ad Sales"
+ae1:           "Charmaine"
+agency_flag:   "Y"
+sector:        "Outreach"
 
-joined:           "admerasia:mcdonalds␟sfo␟internal ad sales␟charmaine␟n␟␟␟y␟15␟outreach"
-SHA1 (hex):       [compute during implementation; pin in tests]
+joined:        "admerasia:mcdonalds␟sfo␟internal ad sales␟charmaine␟y␟outreach"
+SHA1 (hex):    [compute during implementation; pin in tests]
 ```
 
-**Vector 2 — numeric edge cases:**
+**Vector 2 — whitespace & case edge cases:**
 ```
-customer:         "  Blue 449:Denny's Co-op  "   # leading/trailing whitespace
-market:           "SFO"
-revenue_class:    "Branded Content"
-ae1:              "Charmaine"
-broker_flag:      "N"
-broker_name:      null
-broker_percent:   null
-agency_flag:      "Y"
-agency_percent:   15.00                           # DECIMAL(5,2) from DB
-sector:           "Restaurant"
+customer:      "  Blue 449:Denny's Co-op  "   # leading/trailing whitespace
+market:        "sfo"                           # lowercase input
+revenue_class: "Branded Content"
+ae1:           "CHARMAINE"                     # all-caps input
+agency_flag:   "Y"
+sector:        "Restaurant"
 
-joined:           "blue 449:denny's co-op␟sfo␟branded content␟charmaine␟n␟␟␟y␟15␟restaurant"
-                                                  # note: 15.00 stringified as "15", whitespace trimmed
-SHA1 (hex):       [compute during implementation; pin in tests]
+joined:        "blue 449:denny's co-op␟sfo␟branded content␟charmaine␟y␟restaurant"
+                                               # whitespace trimmed, case folded
+SHA1 (hex):    [compute during implementation; pin in tests]
 ```
 
 ## 7. Sheet layout
@@ -433,14 +427,14 @@ If Dropbox is mid-sync when the workbook is open, PQ refresh may race with the s
 
 ## 13. Risks and open items
 
-- **Broker/percent/commission field sources** (§5) — must be resolved during Step 1 of implementation. Block further work on §6–§7 until confirmed.
+- ~~**Broker/percent/commission field sources**~~ — **Resolved by schema audit.** Broker fields not in DB (emit null / derive in PQ from `broker_fees`); agency percent derived in PQ from gross/net; commission from `tblCommissionByAE`.
 - **Downstream sheet compatibility** — the current sheet's exact column order and customer sort order must be preserved. Any deviation breaks Admin/CTV/Consolidated references. Implementer must snapshot the current column order as the first implementation step.
 - **One-time forecast migration** (§8) — on the critical path. Without a clean reconciliation + Kurt sign-off, the new workbook can't replace the old one.
-- **`agency_percent` as per-customer vs. per-agency** — if it's per-customer, the DB likely has it; if it's a manual policy the business applies, it's not DB-derivable. Resolve with Kurt during Step 1.
+- ~~**`agency_percent` as per-customer vs. per-agency**~~ — **Resolved by schema audit.** Per-spot percent is implied by `gross_rate` - `station_net` - `broker_fees`. API emits the three raw amounts; PQ derives percent. No per-customer lookup needed.
 
 ## 14. Implementation sequencing (high-level — detailed plan to follow)
 
-1. **DB schema audit** — confirm broker / agency_percent / gross_commission field sources. Resolve any gaps with Kurt before writing code.
+1. ~~**DB schema audit**~~ — **Complete** (see `2026-04-20-db-schema-audit.md`). Broker fields absent from DB; per-spot percent derivable from gross/net/broker_fees; `agency_flag` stored on `spots`, not derived.
 2. **Flask endpoint + tests** — add the endpoint, repository, service. Wire auth. Confirm output shape against `spots_reporting` hand-pivot.
 3. **Power Query workbook v0** — one-off scratch file to validate the PQ structure end-to-end against the real API.
 4. **Reconciliation + forecast seed** (§8) — run the diff script, produce the reconciliation CSV, Kurt reviews and signs off, emit `tblForecasts` seed.
