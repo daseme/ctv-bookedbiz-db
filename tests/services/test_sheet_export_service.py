@@ -123,3 +123,20 @@ def test_single_spot_produces_one_row(db):
     assert row["gross_rate"] == 4690.00
     assert row["station_net"] == 3986.50
     assert row["broker_fees"] == 0.00
+
+
+def test_trade_rows_excluded(db):
+    """revenue_type = 'Trade' rows are filtered out."""
+    with db.connection() as conn:
+        _seed_dims(conn)
+        _insert_spot(conn, revenue_type="Internal Ad Sales", gross_rate=100.0)
+        _insert_spot(conn, revenue_type="Trade", gross_rate=500.0)
+        conn.commit()
+
+    service = SheetExportService(db)
+    result = service.get_rows()
+
+    # Only the non-Trade row should be present.
+    assert result["metadata"]["row_count"] == 1
+    assert result["rows"][0]["revenue_class"] == "Internal Ad Sales"
+    assert result["rows"][0]["gross_rate"] == 100.0
