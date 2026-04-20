@@ -157,3 +157,29 @@ def test_historical_forward_bookings_included(db):
     assert result["metadata"]["row_count"] == 2
     months = {r["broadcast_month"] for r in result["rows"]}
     assert months == {"2025-01-01", "2026-07-01"}
+
+
+def test_zero_sum_groupings_are_suppressed(db):
+    """If all three amounts sum to zero for a (tuple, month), skip the row."""
+    with db.connection() as conn:
+        _seed_dims(conn)
+        # Two spots that exactly cancel each other (refund scenario).
+        _insert_spot(conn, gross_rate=500.0, station_net=425.0, broker_fees=0.0)
+        _insert_spot(conn, gross_rate=-500.0, station_net=-425.0, broker_fees=0.0)
+        # And one real non-zero row.
+        _insert_spot(
+            conn,
+            broadcast_month="Feb-25",
+            gross_rate=100.0,
+            station_net=85.0,
+            broker_fees=0.0,
+        )
+        conn.commit()
+
+    service = SheetExportService(db)
+    result = service.get_rows()
+
+    # The Jan-25 pair cancels out and is suppressed. Only Feb-25 survives.
+    assert result["metadata"]["row_count"] == 1
+    assert result["rows"][0]["broadcast_month"] == "2025-02-01"
+    assert result["rows"][0]["gross_rate"] == 100.0
