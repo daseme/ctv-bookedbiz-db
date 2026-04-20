@@ -5,7 +5,7 @@ Provides JSON responses for AJAX calls and data export.
 """
 
 import logging
-from flask import Blueprint
+from flask import Blueprint, request
 from datetime import date, datetime, timedelta
 
 from src.services.container import get_container
@@ -19,6 +19,7 @@ from src.web.utils.request_helpers import (
     handle_request_errors,
     get_export_format,
     create_csv_response,
+    create_json_response,
 )
 from src.web.utils.auth import require_sheet_export_token
 
@@ -97,11 +98,31 @@ def get_revenue_summary():
 
 @api_bp.route("/revenue/sheet-export")
 @require_sheet_export_token
+@log_requests
+@handle_request_errors
 def get_sheet_export():
-    """Revenue export for the Excel Power Query workbook. See
-    docs/superpowers/specs/2026-04-20-revenue-sheet-export-design.md §5.
     """
-    return create_success_response({"rows": [], "metadata": {}})
+    Revenue export for the Excel Power Query workbook.
+
+    Long-format: one row per (customer, market, revenue_class, ae1,
+    agency_flag, sector, broadcast_month). Amounts summed across spots
+    for that tuple + month. See:
+      docs/superpowers/specs/2026-04-20-revenue-sheet-export-design.md §5
+    """
+    container = get_container()
+    service = safe_get_service(container, "sheet_export_service")
+
+    start_month = request.args.get("start_month") or None
+    end_month = request.args.get("end_month") or None
+
+    try:
+        payload = service.get_rows(start_month=start_month, end_month=end_month)
+    except Exception as e:
+        return handle_service_error(e, "generating sheet export")
+
+    # Return the raw payload (NOT wrapped by create_success_response) —
+    # the Excel-side agent expects the shape from spec §5 directly.
+    return create_json_response(payload)
 
 
 @api_bp.route("/ae/performance")
