@@ -38,7 +38,7 @@ These were settled during brainstorming. Implementers should not re-litigate the
 6. **Active column.** Always `Y` in PQ output. (Sheet doesn't track churn in this workbook context.)
 7. **Obsolete columns.** `2022 & 2023` and `2023 & 2024` aggregation columns are dropped in v1.
 8. **Forward bookings.** Include `is_historical = 1` spots so booked-but-not-aired future revenue shows in the sheet, matching current commercial-log-based workflow.
-9. **Forecast join key on drift.** `tblForecasts` keys on `(customer, market, revenue_class, month)` — *no AE*. After a metadata drift event the DB has two tuples with the same `(customer, market, revenue_class)` and different metadata; a single forecast row would otherwise fan out to both. Rule: the forecast attaches **only to the newest tuple** (the one whose hash isn't yet in `tblKnownRows`, or — if all are acknowledged — the one whose most recent DB-side `broadcast_month` is latest). The attachment decision is recorded on `New Rows` as `Reason = "Forecast reattached to new tuple"` so Kurt sees it happened. If none of that feels right after drift, Kurt can delete or re-key the forecast row manually.
+9. **Forecast join key on drift.** `tblForecasts` keys on `(customer, market, revenue_class, month)` — *no AE*. After a metadata drift event the DB has multiple tuples with the same `(customer, market, revenue_class)` and different metadata; a single forecast row would otherwise fan out to all of them. **Attachment rule (single, deterministic, covers all cardinalities):** attach the forecast to the **unacknowledged tuple with the latest DB-side `broadcast_month`**. If no unacknowledged tuples exist for that `(customer, market, revenue_class)`, attach to the **acknowledged tuple with the latest DB-side `broadcast_month`**. Ties broken by a stable ordering of the hash. The attachment is recorded on `New Rows` as `Reason = "Forecast reattached to new tuple"` so Kurt sees it happened. If none of that feels right after drift, Kurt can delete or re-key the forecast row manually.
 10. **Forecast vs. DB collision — "DB wins" mental model.** For any cell where both a DB value and a forecast exist, the DB value wins. Concretely: a Jun-26 forecast of $10k that later sees $3k of bookings will render as $3k on the Data sheet; the $10k forecast disappears from view (but stays in `tblForecasts`). This is **forecast-as-floor-for-empty-cells**, not forecast-as-target-with-variance. If Kurt wants variance tracking later, that's a separate column, not a mode change. This rule is surfaced in the `Forecasts` tab header row as a visible reminder so it doesn't feel like magic six months from now.
 
 ## 4. Architecture
@@ -181,23 +181,28 @@ All queries live in the `Revenue Master.xlsx` workbook.
 Merging proceeds in two phases to handle metadata drift (§3.9) deterministically:
 
 **Phase 1 — resolve each forecast row to exactly one tuple.**
-For each `(customer, market, revenue_class, month_date)` in `qForecasts`, find DB tuples from `qRevenueActuals` that match on `(customer, market, revenue_class)`. Then:
+For each `(customer, market, revenue_class, month_date)` in `qForecasts`, find DB tuples from `qRevenueActuals` that match on `(customer, market, revenue_class)`. Apply §3.9's single attachment rule:
 
-- **Zero matches** (forecast for a combo DB has never seen): forecast is kept as a forecast-only row with blank metadata. Flagged on `New Rows` as `Data Quality = "Forecast without DB match"`.
-- **One match** (the common case): forecast attaches to that tuple's metadata.
-- **Multiple matches** (drift case): forecast attaches to the **unacknowledged tuple** (hash not in `tblKnownRows`). If all candidates are acknowledged or all are unacknowledged, fall back to the tuple with the latest DB-side `broadcast_month`. Record `Reason = "Forecast reattached to new tuple"` on `New Rows` for the chosen tuple.
+1. Among those matches, take the subset whose hash is **not** in `tblKnownRows` (unacknowledged tuples).
+2. If that subset is non-empty, attach to the one with the latest DB-side `broadcast_month`.
+3. Otherwise, attach to the acknowledged tuple with the latest DB-side `broadcast_month`.
+4. Ties on `broadcast_month` broken by ascending `hash` (deterministic across refreshes).
+5. **Zero matches at all** (forecast for a combo DB has never seen): forecast is kept as a forecast-only row with blank metadata. Flagged on `New Rows` as `Data Quality = "Forecast without DB match"`.
+
+When the chosen tuple is unacknowledged, emit `Reason = "Forecast reattached to new tuple"` on `New Rows`.
 
 **Phase 2 — combine.**
 Full outer join `qRevenueActuals` with the Phase-1-resolved forecasts on the full tuple + `month_date`. Compute `value = if gross_rate <> null then gross_rate else forecast`. Metadata columns come from the DB side when present, else from the resolved-forecast side for forecast-only rows.
 
 ### `qDataPivot` → loads to `Data` sheet
 
+- **Load target is `Data!A3`** — rows 1–2 are reserved for the read-only banner (§7). The query is loaded to an existing-worksheet destination, not "new worksheet."
 - Group by the full metadata tuple: `customer, market, revenue_class, ae1, broker_flag, broker_name, broker_percent, agency_flag, agency_percent, sector`.
 - **Pivot on the `month_date` Date column** (not on a text label — pivoting on text sorts `10/1/2025` before `2/1/2025` because lexicographic). After pivoting, rename the resulting column headers to `MM/DD/YYYY` format to match Kurt's existing sheet. Column order is chronological by the underlying date.
 - Insert `Active` column = `"Y"`.
-- Join `tblCommissionByAE` on `ae1` to populate `GrossCommission`.
+- Left-join `tblCommissionByAE` on `ae1` to populate `GrossCommission`. Any row where the join yields null (AE is in DB output but not in `tblCommissionByAE`) is emitted to `New Rows` with `Reason = "Unknown AE for commission"` so Kurt sees the gap and can add the rate.
 - Final column order matches Kurt's existing sheet: `Customer, Active, Market, Revenue Class, AE1, GrossCommission, Broker, BrokerName, BrokerPercent, Agency, AgencyPercent, Sector, <month columns>`. (The `2022 & 2023` / `2023 & 2024` aggregates are dropped.)
-- Sort rows alphabetically by `Customer`, `Market`, `Revenue Class`.
+- **Row sort — deterministic, hard constraint.** Sort key is the full hash-input tuple in order: `Customer, Market, Revenue Class, AE1, BrokerFlag, BrokerName, BrokerPercent, AgencyFlag, AgencyPercent, Sector`. The first three match Kurt's visual expectation; the rest are tiebreakers that matter under drift (§3.3 lets multiple rows share Customer/Market/Revenue Class). A shorter sort key would let PQ reorder drift-siblings arbitrarily across refreshes and silently corrupt any downstream cell-address reference.
 
 ### `qNewRows` → loads to `New Rows` sheet
 
@@ -235,13 +240,19 @@ Ambiguity here causes two unrelated workbooks to produce different hashes for th
   9. `agency_percent` (stringified; `null` → empty)
   10. `sector`
 - **Nulls** → empty string `""`. Never the string `"null"`.
-- **Whitespace** — trimmed on both sides (`TRIM`), no interior collapse.
-- **Case** — lowercased for hashing only. Display values retain their original case.
+- **Whitespace** — trimmed on both sides, no interior collapse. On the PQ side: `Text.Trim(x)`.
+- **Case** — lowercased for hashing only. Display values retain their original case. **Invariant culture required** (don't let the machine's locale change the result — the Turkish dotted-I problem is real). On the PQ side: `Text.Lower(x, "en-US")`. On the server side: `str.lower()` in Python is already invariant.
+- **Numeric stringification** — pin the rule so both sides agree:
+  - The API emits `broker_percent` / `agency_percent` as JSON numbers (e.g. `15`, `null`).
+  - Both sides stringify via: integer if the value is whole, else fixed-point with trailing zeros trimmed. So `15` → `"15"`, `15.00` → `"15"`, `15.50` → `"15.5"`, `null` → `""`.
+  - PQ implementation: `if Value.Is(x, type number) and Number.Mod(x, 1) = 0 then Number.ToText(x, "G", "en-US") else Text.TrimEnd(Number.ToText(x, "F", "en-US"), "0")` (then trim a trailing `.` if present). Package this as a small M function `StringifyNum` so the rule lives in exactly one place.
 - **Encoding** — UTF-8 before SHA1.
 
 **Hash version.** Stored in `Config` as `hash_version = "v1"`. The API also emits `"hash_version": "v1"` in its response metadata. PQ asserts the two match; mismatch → refresh errors loudly. Bumping to `v2` forces Kurt to empty `tblKnownRows` and re-acknowledge — which is the intended migration path if the formula ever needs to change.
 
-**Test vector** (for implementer's unit test — both server side, if the API ever computes hashes, and PQ side):
+**Test vectors** (both must be pinned in server-side and PQ-side unit tests — a divergence between the two is the bug class this spec is trying to prevent). Vector 1 covers a typical tuple; Vector 2 covers numeric edge cases.
+
+**Vector 1 — typical:**
 ```
 customer:         "Admerasia:McDonalds"
 market:           "SFO"
@@ -255,7 +266,25 @@ agency_percent:   15
 sector:           "Outreach"
 
 joined:           "admerasia:mcdonalds␟sfo␟internal ad sales␟charmaine␟n␟␟␟y␟15␟outreach"
-SHA1 (hex):       [compute and pin in tests]
+SHA1 (hex):       [compute during implementation; pin in tests]
+```
+
+**Vector 2 — numeric edge cases:**
+```
+customer:         "  Blue 449:Denny's Co-op  "   # leading/trailing whitespace
+market:           "SFO"
+revenue_class:    "Branded Content"
+ae1:              "Charmaine"
+broker_flag:      "N"
+broker_name:      null
+broker_percent:   null
+agency_flag:      "Y"
+agency_percent:   15.00                           # DECIMAL(5,2) from DB
+sector:           "Restaurant"
+
+joined:           "blue 449:denny's co-op␟sfo␟branded content␟charmaine␟n␟␟␟y␟15␟restaurant"
+                                                  # note: 15.00 stringified as "15", whitespace trimmed
+SHA1 (hex):       [compute during implementation; pin in tests]
 ```
 
 ## 7. Sheet layout
@@ -311,7 +340,7 @@ Treat this as a cell-by-cell diff between the **old sheet** and a **full-history
 |---|---|---|
 | **A. Closed-month actuals drift** | Month is closed. Old-sheet value ≠ API value. | Accept the API as authoritative. Kurt reviews the diff report but no forecast migration. |
 | **B. Open-month forecast candidate** | Month is not closed. Old-sheet value > 0. API value is 0 or absent. | Seed into `tblForecasts` as `Customer, Market, Revenue Class, Month, Forecast = old-sheet value`. |
-| **C. Open-month collision** | Month is not closed. Both old-sheet > 0 and API > 0. | Human judgment. Likely: old-sheet value was a forecast that has since been partially realized. Default action: seed `tblForecasts` with the **old-sheet value** (preserves Kurt's intent); DB-wins rule will then render the API value on Data. But flag each one for Kurt to confirm. |
+| **C. Open-month collision** | Month is not closed. Both old-sheet > 0 and API > 0. | Human judgment. Likely: old-sheet value was a forecast that has since been partially realized. Default action: seed `tblForecasts` with the **old-sheet value** (preserves Kurt's intent); DB-wins rule will then render the API value on Data. But flag each one for Kurt to confirm. **Why seed a forecast that will currently be hidden under DB-wins?** Because forecasts act as a *floor* for empty cells (§3.10) — if the booked revenue is later cancelled or never airs, the DB value drops and the seeded forecast re-emerges as the displayed value. Without seeding, a cancelled booking silently zeroes that cell and Kurt loses the forward plan. |
 
 ### Deliverable: reconciliation report
 
@@ -324,7 +353,7 @@ B,      Admerasia:McDonalds, SFO, Internal Ad Sales, 2026-07-01, 5500.00,     0.
 C,      Borough of Manhattan CC, NYC, Internal Ad Sales, 2026-07-01, 4050.00, 4050.00, "Confirm: seed as forecast?"
 ```
 
-Kurt reviews. Any row in bucket C that Kurt rejects is simply omitted from the seed. Any bucket A he disputes triggers a deeper DB investigation before proceeding. Once he signs off, a second script consumes the (possibly edited) CSV and emits the final `tblForecasts` seed.
+Kurt reviews. Any row in bucket C that Kurt rejects is simply omitted from the seed. **Bucket A disputes don't block the migration** — Kurt's going to accept the API value on the Data sheet regardless (DB is authoritative for closed months), so the seed can proceed. Investigation of any disputed closed-month value runs in parallel and may retroactively adjust DB state; the seed itself is unaffected. Once Kurt signs off on bucket B and C choices, a second script consumes the (possibly edited) CSV and emits the final `tblForecasts` seed.
 
 ### Safety rails
 
@@ -352,7 +381,7 @@ Until this migration runs cleanly, the new workbook isn't usable by Kurt — he'
 | API returns `401` | PQ refresh fails; user checks Config token. |
 | API returns unexpected schema | PQ errors at the parse step; user sees error in refresh dialog. |
 | API returns `"hash_version"` that doesn't match `Config!HashVersion` | PQ refresh errors loudly. Do not proceed; acknowledgements would silently break. |
-| API returns empty `rows` array | PQ refresh **errors** rather than blanking the Data sheet. An empty response is technically valid but in practice means something is wrong (wrong env, token scoped to nothing, migration in progress). Preferable to scare the user than to silently nuke the grid. Override available via a `Config!AllowEmptyResponse = TRUE` flag for legitimate empty-window cases. |
+| API returns empty `rows` array | PQ refresh **errors** rather than blanking the Data sheet. An empty response is technically valid but in practice means something is wrong (wrong env, token scoped to nothing, migration in progress). Preferable to scare the user than to silently nuke the grid. Override available via a `Config!AllowEmptyResponse = TRUE` flag for legitimate empty-window cases. **While the flag is TRUE, a red banner on the `Config` tab** (conditional formatting on the cell, plus an adjacent `"⚠ Empty-response safety disabled — a silent outage will wipe the grid"` label) makes it visually obvious that the safety is off. Kurt flips it back when the legitimate empty case is resolved. |
 | API returns a row with `null` `broadcast_month` or `null` required metadata field | PQ errors at normalization. Treated as malformed, not dropped silently. |
 | `tblForecasts` row has invalid Month (not first-of-month, or blank) | Row is excluded from merge; surfaces on `New Rows` with `Data Quality = "Invalid forecast month"`. |
 | `tblForecasts` row has Customer the DB has never seen | Row is included; metadata columns blank on `Data`; `New Rows` flags the tuple as `"Forecast without DB match"`. |
