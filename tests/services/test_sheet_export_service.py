@@ -183,3 +183,24 @@ def test_zero_sum_groupings_are_suppressed(db):
     assert result["metadata"]["row_count"] == 1
     assert result["rows"][0]["broadcast_month"] == "2025-02-01"
     assert result["rows"][0]["gross_rate"] == 100.0
+
+
+def test_agency_flag_converted_from_text_to_y_n(db):
+    """spots.agency_flag is TEXT ('Agency' / 'Non-agency'); emit 'Y' / 'N'."""
+    with db.connection() as conn:
+        _seed_dims(conn)
+        _insert_spot(conn, agency_flag="Agency", broadcast_month="Jan-25")
+        _insert_spot(
+            conn,
+            bill_code="Direct Customer",  # no agency prefix
+            agency_flag="Non-agency",
+            broadcast_month="Jan-25",
+        )
+        conn.commit()
+
+    service = SheetExportService(db)
+    result = service.get_rows()
+
+    flags = {r["customer"]: r["agency_flag"] for r in result["rows"]}
+    assert flags["Admerasia:McDonalds"] == "Y"
+    assert flags["Direct Customer"] == "N"
