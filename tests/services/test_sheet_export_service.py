@@ -204,3 +204,19 @@ def test_agency_flag_converted_from_text_to_y_n(db):
     flags = {r["customer"]: r["agency_flag"] for r in result["rows"]}
     assert flags["Admerasia:McDonalds"] == "Y"
     assert flags["Direct Customer"] == "N"
+
+
+def test_metadata_contains_hash_version_v1(db):
+    """Response metadata.hash_version is 'v1' — PQ asserts match on refresh."""
+    with db.connection() as conn:
+        _seed_dims(conn)
+        _insert_spot(conn)
+        conn.commit()
+
+    service = SheetExportService(db)
+    result = service.get_rows()
+
+    assert result["metadata"]["hash_version"] == "v1"
+    assert "generated_at" in result["metadata"]
+    # ISO-8601 UTC with trailing Z (per spec §5).
+    assert result["metadata"]["generated_at"].endswith("Z")
