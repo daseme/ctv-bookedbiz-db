@@ -26,13 +26,21 @@ _MONTH_MAP = {
 
 
 def _broadcast_month_to_iso(bm: str) -> str:
-    """Convert 'Jan-25' to '2025-01-01'. Raises on malformed input."""
+    """Convert 'Jan-25' to '2025-01-01'. Raises ValueError on any malformed input.
+
+    All corruption paths (wrong length, unknown month name, non-numeric year)
+    converge to a single ValueError with a consistent message so callers can
+    catch one exception type.
+    """
     if not bm or len(bm) != 6 or bm[3] != "-":
         raise ValueError(f"Malformed broadcast_month: {bm!r}")
     month_name, year_suffix = bm[:3], bm[4:]
-    month_num = _MONTH_MAP[month_name]
-    # 2-digit years: assume 2000s (earliest data is 2022 per design doc §5).
-    year = 2000 + int(year_suffix)
+    try:
+        month_num = _MONTH_MAP[month_name]
+        # 2-digit years: assume 2000s (earliest data is 2022 per design doc §5).
+        year = 2000 + int(year_suffix)
+    except (KeyError, ValueError) as e:
+        raise ValueError(f"Malformed broadcast_month: {bm!r}") from e
     return f"{year:04d}-{month_num:02d}-01"
 
 
