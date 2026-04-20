@@ -147,3 +147,91 @@ Agreed to emit `null` from the API and defer to a v2 Excel override? No push for
 - Integration test pivoting against `spots_reporting` — need to know the full target shape before I can hand-compute a comparison slice.
 
 **Once Q1–Q4 are answered and design doc §5 is updated**, endpoint work is straightforward. Plan to use implementation approach A from Schema Surprise #1 unless Kurt prefers B.
+
+---
+
+## Resolution (2026-04-20, post-audit)
+
+Kurt's feedback after seeing the audit:
+
+> The percent exists for each line in the commercial log. If you prefer we can directly use the commercial log for this project. I need broker fee amount but ok not to have broker name. We can retrieve both gross and net if that is easier instead of deriving the percentage. Remember that we ignore Trade spots.
+
+Key realization: `customers.commission_rate` and `agencies.commission_rate` are **entity-level audit fields**, not per-spot transactional rates. The per-line commission rate from the commercial log lives on `spots` implicitly — it's the gap between `gross_rate` and `station_net` (minus `broker_fees`). Emitting the raw amounts and letting PQ do arithmetic is strictly better than me picking the wrong source column.
+
+**Data source confirmed: stay in the DB.** The `basic_import_service` already ingests every commercial-log line into `spots`. `spots.gross_rate`, `spots.station_net`, `spots.broker_fees` are all per-spot columns. No need for a second data source.
+
+### Revised API response shape
+
+The endpoint emits amounts; PQ computes display percentages.
+
+```json
+{
+  "customer":        "Admerasia:McDonalds",
+  "market":          "SFO",
+  "revenue_class":   "Internal Ad Sales",
+  "ae1":             "Charmaine",
+  "agency_flag":     "Y",
+  "sector":          "Outreach",
+  "broadcast_month": "2025-01-01",
+  "gross_rate":      4690.00,
+  "station_net":     3986.50,
+  "broker_fees":     0.00
+}
+```
+
+**Dropped from the response (vs. original design doc §5):** `broker_flag`, `broker_name`, `broker_percent`, `agency_percent`. All derivable in PQ from the three amount fields plus `agency_flag`.
+
+**PQ-side derivations** (Excel-side agent owns these):
+
+- `Agency` column (Y/N) ← `agency_flag` (pass-through).
+- `AgencyPercent` ← `1 - SUM(station_net) / SUM(gross_rate)` over all months for the row. Zero-divide safe — if `gross_rate = 0` the cell is `null`.
+- `Broker` column (Y/N) ← `"Y" if SUM(broker_fees) > 0 else "N"`.
+- `BrokerName` ← always blank in v1 (Kurt OK with this; v2 Excel-side override if ever wanted).
+- `BrokerPercent` ← `SUM(broker_fees) / SUM(gross_rate)` over all months for the row. Same zero-divide handling.
+- `GrossCommission` ← lookup in `tblCommissionByAE` keyed by `ae1` (unchanged from design doc §5).
+
+### Hash tuple simplified
+
+Row identity (hash inputs) shrinks from 10 fields to 6:
+
+| Position | Field |
+|---|---|
+| 1 | `customer` |
+| 2 | `market` |
+| 3 | `revenue_class` |
+| 4 | `ae1` |
+| 5 | `agency_flag` |
+| 6 | `sector` |
+
+**Dropped from hash:** `broker_flag`, `broker_name`, `broker_percent`, `agency_percent`.
+
+**Drift semantics unchanged.** Drift still fires on AE reassignment (most important case), agency prefix change, or sector change. A customer going from brokered to non-brokered no longer triggers a new row — broker status is now a display attribute, not an identity attribute. Treat that as a feature: one row per customer/market/revclass/AE, with broker totals summed across all history.
+
+No `hash_v1` → `hash_v2` bump needed — we're still pre-implementation, so the v1 definition just updates in place.
+
+### Answers to Q1–Q4
+
+- **Q1 (per-revenue-class agency_percent):** Dissolved. Percent isn't emitted by the API; PQ derives it from per-tuple gross/net. Per-revenue-class differences fall out naturally because revenue_class is part of the tuple identity.
+- **Q2 (`customers.commission_rate` semantics):** Moot. Not used by this endpoint anymore. Still an open semantic question for other consumers but not blocking this work.
+- **Q3 (broker fields):** Resolved. Emit `broker_fees` amount (per Kurt's requirement), skip `broker_name` in v1, derive `broker_flag` and `broker_percent` in PQ.
+- **Q4 (§5 patch for agency_flag):** Still needed. `agency_flag` comes from `spots.agency_flag` (TEXT → Y/N conversion), not from `bill_code` parsing. Part of the design-doc patch below.
+
+### Trade exclusion — explicit reminder
+
+`WHERE s.revenue_type != 'Trade' OR s.revenue_type IS NULL` applied manually when the endpoint query builds from `spots` directly (approach A from Schema Surprise #1). `spots_reporting` already excludes Trade in its own WHERE clause — but since this endpoint bypasses the view, the filter is explicit in the service layer.
+
+### Design doc patches needed
+
+Before endpoint work starts, design doc (`2026-04-20-revenue-sheet-export-design.md`) needs these edits, which Kurt can propagate to the Excel-side agent:
+
+1. **§5 response schema** — replace the 10-field row shape with the 7-field shape above (`broadcast_month` as ISO, amounts in place of derived fields). Drop `broker_flag`, `broker_name`, `broker_percent`, `agency_percent` from the sample JSON and query logic.
+2. **§5 "Fields to verify"** — delete. This audit resolved it.
+3. **§6 qRevenueActuals** — note the three new amount columns and the PQ-side derivations listed above (`Agency`, `AgencyPercent`, `Broker`, `BrokerPercent`).
+4. **§6.6 hash specification** — reduce the tuple to 6 fields in the order above. Test vectors regenerated.
+5. **§3.3 metadata drift** — update the tuple description: drift fires on AE / agency_flag / sector change. Broker status changes do NOT create new rows.
+
+I'll prepare the design-doc patch as a PR if Kurt greenlights this revised shape.
+
+### Unblocked
+
+Endpoint implementation can start as soon as Kurt confirms the revised shape. The query is now simpler than the original design anticipated, which is the good kind of surprise.
