@@ -140,3 +140,20 @@ def test_trade_rows_excluded(db):
     assert result["metadata"]["row_count"] == 1
     assert result["rows"][0]["revenue_class"] == "Internal Ad Sales"
     assert result["rows"][0]["gross_rate"] == 100.0
+
+
+def test_historical_forward_bookings_included(db):
+    """is_historical=1 spots are INCLUDED (forward bookings — design §3.8)."""
+    with db.connection() as conn:
+        _seed_dims(conn)
+        _insert_spot(conn, is_historical=0, broadcast_month="Jan-25", gross_rate=100.0)
+        _insert_spot(conn, is_historical=1, broadcast_month="Jul-26", gross_rate=250.0)
+        conn.commit()
+
+    service = SheetExportService(db)
+    result = service.get_rows()
+
+    # Two rows (same tuple, different months).
+    assert result["metadata"]["row_count"] == 2
+    months = {r["broadcast_month"] for r in result["rows"]}
+    assert months == {"2025-01-01", "2026-07-01"}
