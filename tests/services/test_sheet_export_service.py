@@ -220,3 +220,21 @@ def test_metadata_contains_hash_version_v1(db):
     assert "generated_at" in result["metadata"]
     # ISO-8601 UTC with trailing Z (per spec §5).
     assert result["metadata"]["generated_at"].endswith("Z")
+
+
+def test_malformed_broadcast_month_raises(db):
+    """A spot with an invalid broadcast_month format surfaces a clear error.
+
+    The importer's triggers should prevent this in production (see
+    data-reference.md §2), but the service shouldn't silently emit bad ISO.
+    """
+    with db.connection() as conn:
+        _seed_dims(conn)
+        # Bypass triggers by using a fresh table insertion path: the in-memory
+        # fixture has no triggers, so we can insert the malformed value directly.
+        _insert_spot(conn, broadcast_month="BADMON")
+        conn.commit()
+
+    service = SheetExportService(db)
+    with pytest.raises(ValueError, match="Malformed broadcast_month"):
+        service.get_rows()
