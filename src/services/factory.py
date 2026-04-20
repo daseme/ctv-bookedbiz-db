@@ -143,6 +143,9 @@ def initialize_services():
         "revenue_classification_service",
         create_revenue_classification_service,
     )
+    container.register_singleton(
+        "sheet_export_service", create_sheet_export_service
+    )
 
     logger.info(
         f"Registered {len(container.list_services())} services"
@@ -367,6 +370,15 @@ def create_revenue_classification_service():
     container = get_container()
     db_connection = container.get("database_connection")
     return RevenueClassificationService(db_connection)
+
+
+def create_sheet_export_service():
+    """Factory: SheetExportService wired to the singleton DB connection."""
+    from .sheet_export_service import SheetExportService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return SheetExportService(db_connection)
 
 
 # ---------------------------------------------------------------------------
