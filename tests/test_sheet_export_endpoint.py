@@ -1,6 +1,5 @@
 """Route-level tests for GET /api/revenue/sheet-export."""
 
-import os
 import pytest
 
 
@@ -12,7 +11,11 @@ def sheet_token(monkeypatch):
 
 
 def test_missing_token_returns_401(client, sheet_token):
-    """No X-SpotOps-Token header → 401."""
+    """No X-SpotOps-Token header → 401.
+
+    sheet_token fixture sets the env var so we exercise the
+    "missing header" branch, not the "missing env var" branch.
+    """
     resp = client.get("/api/revenue/sheet-export")
     assert resp.status_code == 401
     assert resp.get_json()["error"] == "Authentication required"
