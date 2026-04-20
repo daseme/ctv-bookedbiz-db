@@ -20,6 +20,7 @@ from src.web.utils.request_helpers import (
     get_export_format,
     create_csv_response,
 )
+from src.web.utils.auth import require_sheet_export_token
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,15 @@ def get_revenue_summary():
 
     except Exception as e:
         return handle_service_error(e, "getting revenue summary")
+
+
+@api_bp.route("/revenue/sheet-export")
+@require_sheet_export_token
+def get_sheet_export():
+    """Revenue export for the Excel Power Query workbook. See
+    docs/superpowers/specs/2026-04-20-revenue-sheet-export-design.md §5.
+    """
+    return create_success_response({"rows": [], "metadata": {}})
 
 
 @api_bp.route("/ae/performance")
