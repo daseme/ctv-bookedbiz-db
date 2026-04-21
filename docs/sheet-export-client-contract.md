@@ -77,12 +77,41 @@ are the main point).
 
 Compute client-side:
 
-- `AgencyPercent` = `1 - SUM(station_net) / SUM(gross_rate)` across the row's months, zero-safe.
-- `Broker` = `"Y" if SUM(broker_fees) > 0 else "N"`.
-- `BrokerPercent` = `SUM(broker_fees) / SUM(gross_rate)`, zero-safe.
-- `BrokerName` = blank in v1.
 - `GrossCommission` = lookup in `tblCommissionByAE` keyed by `ae1`. Unknown AE → emit to `New Rows` with `Reason = "Unknown AE for commission"`.
+- `BrokerName` = blank in v1 (not in DB).
 - `Active` = `"Y"` (no churn tracking in this workbook).
+
+### Deferred until endpoint v1.1 — `AgencyPercent`, `BrokerPercent`, `Broker (Y/N)`
+
+These three are **per-contract** display attributes. The rule is absolute:
+
+> Agency rate is per contract number. Never an average. Always the rate NOW
+> for the current contract, not historical.
+
+The endpoint currently emits `gross_rate`, `station_net`, and `broker_fees`
+summed across the row's months, but **does not emit a contract identifier**,
+so PQ cannot isolate a single contract to represent the tuple. Computing the
+three derivations from the row-level sums would produce a weighted average
+across months and across any contracts that coexist in the tuple — which
+the business rule forbids.
+
+**PQ v0 therefore ships these three columns blank / null.** Every other
+column in Kurt's historical format (Customer, Active, Market, Revenue Class,
+AE1, GrossCommission, BrokerName, Sector, and all month columns) is fully
+populated in v0.
+
+Endpoint v1.1 must emit `contract` (exact field name TBD in that spec)
+alongside the three amounts. PQ v1.1 then selects the current-contract row
+per tuple (selection rule — e.g. latest-broadcast_month — settles in the
+v1.1 design) and derives the percents and flag from that single contract's
+amounts, zero-safe:
+
+- `AgencyPercent` = `1 - station_net / gross_rate` on the selected contract.
+- `BrokerPercent` = `broker_fees / gross_rate` on the selected contract.
+- `Broker` = `"Y" if broker_fees > 0 else "N"` on the selected contract.
+
+**Do not implement the SUM-across-months formula** that appears in earlier
+drafts of this doc and in spec §5. That formula is rejected.
 
 ## 4. Hash contract (critical)
 
@@ -148,21 +177,34 @@ next refresh. Two mitigations, both applied:
 These are real today. Don't design the workbook assuming they'll be fixed
 before your v0.
 
-1. **`start_month` / `end_month` query params are accepted but not applied.**
+1. **Endpoint does not emit `contract`.** Required before `AgencyPercent`,
+   `BrokerPercent`, and `Broker (Y/N)` can be correctly computed (see §3).
+   Workbook v1 leaves those three columns blank/null until endpoint v1.1
+   lands. v1.1 design needs to settle:
+   - exact field name / DB source for the contract identifier
+   - whether `contract` is a non-identity column (hash stays `v1`, PQ picks
+     one contract per existing tuple for display) or a new **identity**
+     field in the tuple (hash bumps to `v2`, `tblKnownRows` is invalidated,
+     tuple grain narrows). The former is lower-blast-radius; the latter
+     matches "drift creates a new row" semantics (§3.3) if contract changes
+     should surface as new rows.
+   - selection rule when one tuple has multiple contracts (default
+     candidate: latest-`broadcast_month`).
+2. **`start_month` / `end_month` query params are accepted but not applied.**
    The service signature takes them, echoes them into `metadata`, but
    `_query()` does not bind them into the SQL WHERE clause. Passing
    `?start_month=Jan-25&end_month=Feb-25` today returns the full dataset
    (5346 rows including months outside that window). **Workbook v1 does not
    send query params** per spec §6, so this doesn't block you — but don't
    add them.
-2. **`include_closed` query param in spec §5 is not implemented at all.**
+3. **`include_closed` query param in spec §5 is not implemented at all.**
    Same call: don't depend on it.
-3. **Hash SHA1 test-vector values not yet pinned.** Spec §6.6 defines the
+4. **Hash SHA1 test-vector values not yet pinned.** Spec §6.6 defines the
    algorithm and two test vectors but leaves the hex digests as
    `[compute during implementation]`. When you implement the PQ hash,
    compute both vectors and post the hex to the server-side test author so
    they pin the same values.
-4. **`/api/health` returns 401** because the app-wide `_require_login`
+5. **`/api/health` returns 401** because the app-wide `_require_login`
    before_request hook allow-lists `/health` but not `/api/health`.
    Unrelated to export, but affects any liveness probe you might want to
    hit from the workbook or monitoring.
