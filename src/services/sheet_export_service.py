@@ -6,10 +6,12 @@ Emits long-format revenue rows grouped by the display tuple
 
 See docs/superpowers/specs/2026-04-20-revenue-sheet-export-design.md §5
 for the spec and §6.6 for the hash version compatibility contract.
+See docs/sheet-export-client-contract.md for the v1.1 client contract.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -17,12 +19,42 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 HASH_VERSION = "v1"
+SCHEMA_VERSION = "1.1"
 
-# Mmm -> month number, for Mmm-YY -> ISO conversion.
+# Contract values that indicate "no contract" and must be excluded from the
+# representative-spot selection. See client contract §5.
+_SENTINEL_CONTRACTS = (None, "", "N")
+
+# Mmm -> month number, for Mmm-YY -> ISO conversion and for ORDER BY chronological.
 _MONTH_MAP = {
     "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
     "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
 }
+
+_UNIT_SEPARATOR = "\x1f"
+
+
+def row_hash(
+    customer: Any,
+    market: Any,
+    revenue_class: Any,
+    ae1: Any,
+    agency_flag: Any,
+    sector: Any,
+) -> str:
+    """Compute the v1 row identity hash.
+
+    Must match the client-side Power Query implementation in fnRowHash.pq.
+    See client contract §3 for the full algorithm and §4 for pinned vectors.
+    """
+
+    def norm(x: Any) -> str:
+        return "" if x is None else str(x).strip().lower()
+
+    joined = _UNIT_SEPARATOR.join(
+        norm(f) for f in (customer, market, revenue_class, ae1, agency_flag, sector)
+    )
+    return hashlib.sha1(joined.encode("utf-8")).hexdigest()
 
 
 def _broadcast_month_to_iso(bm: str) -> str:
@@ -55,7 +87,7 @@ class SheetExportService:
         start_month: Optional[str] = None,
         end_month: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Return {"metadata": {...}, "rows": [...]}. See spec §5."""
+        """Return {"metadata": {...}, "rows": [...]}. See client contract §2/§6."""
         rows = self._query(start_month, end_month)
         return {
             "metadata": {
@@ -65,6 +97,8 @@ class SheetExportService:
                 "start_month": start_month,
                 "end_month": end_month,
                 "hash_version": HASH_VERSION,
+                "schema_version": SCHEMA_VERSION,
+                "row_hash_source": "server",
                 "row_count": len(rows),
             },
             "rows": rows,
@@ -79,41 +113,110 @@ class SheetExportService:
 
         Bypasses spots_reporting view because it doesn't expose agency_flag
         (see 2026-04-20-db-schema-audit.md, Schema Surprise #1).
+
+        For v1.1, also selects one "representative spot" per 6-field tuple —
+        the non-sentinel-contract spot with the latest broadcast_month
+        (tiebreak spot_id DESC) — and carries its broker_fees / gross_rate
+        onto every monthly row of the tuple. Tuples with only sentinel
+        contracts emit null broker fields. See client contract §5.
         """
         sql = """
+            WITH base AS (
+                SELECT
+                    s.spot_id                                                  AS spot_id,
+                    s.bill_code                                                AS customer,
+                    m.market_code                                              AS market,
+                    s.revenue_type                                             AS revenue_class,
+                    s.sales_person                                             AS ae1,
+                    CASE WHEN s.agency_flag = 'Agency' THEN 'Y' ELSE 'N' END   AS agency_flag,
+                    sect.sector_name                                           AS sector,
+                    s.broadcast_month                                          AS broadcast_month_raw,
+                    s.contract                                                 AS contract,
+                    s.gross_rate                                               AS gross_rate,
+                    s.station_net                                              AS station_net,
+                    s.broker_fees                                              AS broker_fees
+                FROM spots s
+                LEFT JOIN customers c    ON s.customer_id = c.customer_id
+                LEFT JOIN sectors   sect ON c.sector_id = sect.sector_id
+                LEFT JOIN markets   m    ON s.market_id = m.market_id
+                WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
+            ),
+            representative AS (
+                SELECT
+                    customer, market, revenue_class, ae1, agency_flag, sector,
+                    broker_fees AS rep_broker_fees,
+                    gross_rate  AS rep_gross_rate
+                FROM (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY customer, market, revenue_class,
+                                         ae1, agency_flag, sector
+                            ORDER BY
+                                SUBSTR(broadcast_month_raw, 5, 2) DESC,
+                                CASE SUBSTR(broadcast_month_raw, 1, 3)
+                                    WHEN 'Jan' THEN  1 WHEN 'Feb' THEN  2
+                                    WHEN 'Mar' THEN  3 WHEN 'Apr' THEN  4
+                                    WHEN 'May' THEN  5 WHEN 'Jun' THEN  6
+                                    WHEN 'Jul' THEN  7 WHEN 'Aug' THEN  8
+                                    WHEN 'Sep' THEN  9 WHEN 'Oct' THEN 10
+                                    WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+                                END DESC,
+                                spot_id DESC
+                        ) AS rn
+                    FROM base
+                    WHERE contract IS NOT NULL
+                      AND contract != ''
+                      AND contract != 'N'
+                )
+                WHERE rn = 1
+            ),
+            aggregated AS (
+                SELECT
+                    customer, market, revenue_class, ae1, agency_flag, sector,
+                    broadcast_month_raw,
+                    SUM(gross_rate)  AS gross_rate,
+                    SUM(station_net) AS station_net,
+                    SUM(broker_fees) AS broker_fees
+                FROM base
+                GROUP BY 1, 2, 3, 4, 5, 6, 7
+                HAVING COALESCE(SUM(gross_rate), 0)  <> 0
+                    OR COALESCE(SUM(station_net), 0) <> 0
+                    OR COALESCE(SUM(broker_fees), 0) <> 0
+            )
             SELECT
-              s.bill_code                                                AS customer,
-              m.market_code                                              AS market,
-              s.revenue_type                                             AS revenue_class,
-              s.sales_person                                             AS ae1,
-              CASE WHEN s.agency_flag = 'Agency' THEN 'Y' ELSE 'N' END   AS agency_flag,
-              sect.sector_name                                           AS sector,
-              s.broadcast_month                                          AS broadcast_month_raw,
-              SUM(s.gross_rate)                                          AS gross_rate,
-              SUM(s.station_net)                                         AS station_net,
-              SUM(s.broker_fees)                                         AS broker_fees
-            FROM spots s
-            LEFT JOIN customers c   ON s.customer_id = c.customer_id
-            LEFT JOIN sectors   sect ON c.sector_id = sect.sector_id
-            LEFT JOIN markets   m   ON s.market_id = m.market_id
-            WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
-            GROUP BY 1, 2, 3, 4, 5, 6, 7
-            HAVING COALESCE(SUM(s.gross_rate),0) <> 0
-                OR COALESCE(SUM(s.station_net),0) <> 0
-                OR COALESCE(SUM(s.broker_fees),0) <> 0
-            ORDER BY 1, 2, 3, 4, 5, 6,
-              CASE SUBSTR(s.broadcast_month, 1, 3)
-                WHEN 'Jan' THEN 1  WHEN 'Feb' THEN 2  WHEN 'Mar' THEN 3
-                WHEN 'Apr' THEN 4  WHEN 'May' THEN 5  WHEN 'Jun' THEN 6
-                WHEN 'Jul' THEN 7  WHEN 'Aug' THEN 8  WHEN 'Sep' THEN 9
-                WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
-              END,
-              SUBSTR(s.broadcast_month, 5, 2)
+                a.customer, a.market, a.revenue_class, a.ae1, a.agency_flag, a.sector,
+                a.broadcast_month_raw,
+                a.gross_rate, a.station_net, a.broker_fees,
+                r.rep_broker_fees, r.rep_gross_rate
+            FROM aggregated a
+            LEFT JOIN representative r
+              USING (customer, market, revenue_class, ae1, agency_flag, sector)
+            ORDER BY a.customer, a.market, a.revenue_class, a.ae1, a.agency_flag, a.sector,
+                CASE SUBSTR(a.broadcast_month_raw, 1, 3)
+                    WHEN 'Jan' THEN  1 WHEN 'Feb' THEN  2 WHEN 'Mar' THEN  3
+                    WHEN 'Apr' THEN  4 WHEN 'May' THEN  5 WHEN 'Jun' THEN  6
+                    WHEN 'Jul' THEN  7 WHEN 'Aug' THEN  8 WHEN 'Sep' THEN  9
+                    WHEN 'Oct' THEN 10 WHEN 'Nov' THEN 11 WHEN 'Dec' THEN 12
+                END,
+                SUBSTR(a.broadcast_month_raw, 5, 2)
         """
         with self._db.connection() as conn:
             cursor = conn.execute(sql)
             out: List[Dict[str, Any]] = []
             for r in cursor.fetchall():
+                rep_broker_fees = r["rep_broker_fees"]
+                rep_gross_rate = r["rep_gross_rate"]
+                if rep_broker_fees is None:
+                    # Tuple has only sentinel contracts — no attributable broker data.
+                    broker_yn: Optional[str] = None
+                    broker_pct: Optional[float] = None
+                else:
+                    broker_yn = "Y" if rep_broker_fees > 0 else "N"
+                    if rep_gross_rate and rep_gross_rate > 0:
+                        broker_pct = float(rep_broker_fees) / float(rep_gross_rate)
+                    else:
+                        broker_pct = None
                 out.append({
                     "customer":        r["customer"],
                     "market":          r["market"],
@@ -127,5 +230,11 @@ class SheetExportService:
                     "gross_rate":      float(r["gross_rate"] or 0),
                     "station_net":     float(r["station_net"] or 0),
                     "broker_fees":     float(r["broker_fees"] or 0),
+                    "broker_yn":       broker_yn,
+                    "broker_pct":      broker_pct,
+                    "row_hash": row_hash(
+                        r["customer"], r["market"], r["revenue_class"],
+                        r["ae1"], r["agency_flag"], r["sector"],
+                    ),
                 })
             return out
