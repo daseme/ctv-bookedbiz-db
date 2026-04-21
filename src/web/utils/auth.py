@@ -7,8 +7,9 @@ Provides:
 - Helper functions for checking permissions
 """
 
+import os
 from functools import wraps
-from flask import redirect, url_for, flash, request, abort
+from flask import redirect, url_for, flash, request, abort, jsonify
 from flask_login import LoginManager, current_user
 from typing import Callable, Optional
 
@@ -175,3 +176,30 @@ def role_required(required_role: UserRole) -> Callable:
         return decorated_function
 
     return decorator
+
+
+def require_sheet_export_token(f: Callable) -> Callable:
+    """
+    Require a matching X-SpotOps-Token header.
+
+    - Missing env var SHEET_EXPORT_TOKEN → 503 (misconfigured server).
+    - Missing or wrong header → 401.
+
+    Used only on /api/revenue/sheet-export for v1.
+    """
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        expected = os.environ.get("SHEET_EXPORT_TOKEN")
+        if not expected:
+            return jsonify(
+                {"error": "Sheet export endpoint is misconfigured (no token set)"}
+            ), 503
+
+        provided = request.headers.get("X-SpotOps-Token")
+        if provided != expected:
+            return jsonify({"error": "Authentication required"}), 401
+
+        return f(*args, **kwargs)
+
+    return decorated_function
