@@ -88,12 +88,13 @@ These three are **per-contract** display attributes. The rule is absolute:
 > Agency rate is per contract number. Never an average. Always the rate NOW
 > for the current contract, not historical.
 
-The endpoint currently emits `gross_rate`, `station_net`, and `broker_fees`
-summed across the row's months, but **does not emit a contract identifier**,
-so PQ cannot isolate a single contract to represent the tuple. Computing the
-three derivations from the row-level sums would produce a weighted average
-across months and across any contracts that coexist in the tuple — which
-the business rule forbids.
+The endpoint currently emits per-month sums of `gross_rate`, `station_net`,
+and `broker_fees` at the six-field tuple grain, but **does not emit a
+contract identifier**. PQ cannot isolate a single contract to represent the
+tuple, so computing the three derivations client-side would require summing
+those per-month amounts across the row's months — a weighted average that
+the business rule forbids, especially when multiple contracts coexist
+within the tuple.
 
 **PQ v0 therefore ships these three columns blank / null.** Every other
 column in Kurt's historical format (Customer, Active, Market, Revenue Class,
