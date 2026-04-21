@@ -70,7 +70,8 @@ def create_app(environment: Optional[str] = None) -> Flask:
                 or (path.startswith('/health') and request.method == 'GET')
                 or path == '/info'
                 or path == '/api/system-stats'
-                or path == '/api/revenue/sheet-export'):
+                or path == '/api/revenue/sheet-export'
+                or path == '/api/revenue/planning-export'):
             return None
 
         if not current_user.is_authenticated:

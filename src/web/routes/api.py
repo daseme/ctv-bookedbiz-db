@@ -125,6 +125,44 @@ def get_sheet_export():
     return create_json_response(payload)
 
 
+@api_bp.route("/revenue/planning-export")
+@require_sheet_export_token
+@log_requests
+@handle_request_errors
+def get_planning_export():
+    """
+    Per-AE budget / forecast / booked rollup for the workbook's planning view.
+
+    One row per (ae1, broadcast_month) for the requested year, carrying
+    budget, forecast, booked, new_accts, new_dollars plus the derived
+    fields (expected, pipeline, vs_budget). See
+    docs/planning-export-client-contract.md §2 for the full shape.
+    """
+    container = get_container()
+    service = safe_get_service(container, "planning_export_service")
+
+    year_raw = request.args.get("year") or None
+    year: int | None
+    if year_raw is None:
+        year = None
+    else:
+        try:
+            year = int(year_raw)
+        except ValueError:
+            return create_error_response(
+                f"Invalid year: {year_raw!r}",
+                status_code=400,
+                error_code="INVALID_YEAR",
+            )
+
+    try:
+        payload = service.get_rows(year=year)
+    except Exception as e:
+        return handle_service_error(e, "generating planning export")
+
+    return create_json_response(payload)
+
+
 @api_bp.route("/ae/performance")
 @log_requests
 @handle_request_errors

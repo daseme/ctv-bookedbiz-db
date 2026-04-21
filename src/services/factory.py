@@ -146,6 +146,9 @@ def initialize_services():
     container.register_singleton(
         "sheet_export_service", create_sheet_export_service
     )
+    container.register_singleton(
+        "planning_export_service", create_planning_export_service
+    )
 
     logger.info(
         f"Registered {len(container.list_services())} services"
@@ -379,6 +382,15 @@ def create_sheet_export_service():
     container = get_container()
     db_connection = container.get("database_connection")
     return SheetExportService(db_connection)
+
+
+def create_planning_export_service():
+    """Factory: PlanningExportService wired to the singleton DB connection."""
+    from .planning_export_service import PlanningExportService
+
+    container = get_container()
+    db_connection = container.get("database_connection")
+    return PlanningExportService(db_connection)
 
 
 # ---------------------------------------------------------------------------

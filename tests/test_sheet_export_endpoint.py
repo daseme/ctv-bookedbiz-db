@@ -1,6 +1,42 @@
-"""Route-level tests for GET /api/revenue/sheet-export."""
+"""Route-level tests for GET /api/revenue/sheet-export.
+
+These tests need the real spots schema (including `contract`), so the
+`client` fixture below overrides the session-scoped one from conftest
+to point at production.db per CLAUDE.md guidance.
+"""
+
+import os
 
 import pytest
+
+
+@pytest.fixture(scope="module")
+def client():
+    """Sheet-export tests exercise real SQL against the production schema.
+
+    The repo-wide conftest points at `.data/dev.db`, a 12-column skeleton
+    that lacks `spots.contract` (and most other columns). Per CLAUDE.md,
+    tests that call `app.test_client()` must override DB_PATH to a real DB.
+    """
+    prev = os.environ.get("DB_PATH")
+    os.environ["DB_PATH"] = "/srv/spotops/db/production.db"
+    try:
+        # Drop any cached container built during the session `app` fixture
+        # so the new DB_PATH actually takes effect.
+        import src.services.container as _container_mod
+        _container_mod._container = None  # type: ignore[attr-defined]
+
+        from src.web.app import create_app
+        app = create_app()
+        app.config["TESTING"] = True
+        app.config["LOGIN_DISABLED"] = True
+        app.config["DB_PATH"] = "/srv/spotops/db/production.db"
+        yield app.test_client()
+    finally:
+        if prev is None:
+            os.environ.pop("DB_PATH", None)
+        else:
+            os.environ["DB_PATH"] = prev
 
 
 @pytest.fixture
