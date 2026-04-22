@@ -120,38 +120,69 @@ class SheetExportService:
         onto every monthly row of the tuple. Tuples with only sentinel
         contracts emit null broker fields. See client contract §5.
         """
+        # Group/partition on NORMALIZED identity keys (lower+trim, matching
+        # the row_hash function) so case or whitespace drift in the source
+        # data (e.g., "iGRAPHIX" vs "iGraphix", "Riley Van Patten" vs
+        # "Riley van Patten") collapses to one emitted row. Display casing
+        # is resolved deterministically at the tuple level in tuple_display
+        # so it stays consistent across months of the same row_hash.
         sql = """
             WITH base AS (
                 SELECT
                     s.spot_id                                                  AS spot_id,
-                    s.bill_code                                                AS customer,
-                    m.market_code                                              AS market,
-                    s.revenue_type                                             AS revenue_class,
-                    s.sales_person                                             AS ae1,
+                    s.bill_code                                                AS bill_code,
+                    m.market_code                                              AS market_code,
+                    s.revenue_type                                             AS revenue_type,
+                    s.sales_person                                             AS sales_person,
                     CASE WHEN s.agency_flag = 'Agency' THEN 'Y' ELSE 'N' END   AS agency_flag,
-                    sect.sector_name                                           AS sector,
+                    sect.sector_name                                           AS sector_name,
                     s.broadcast_month                                          AS broadcast_month_raw,
                     s.contract                                                 AS contract,
                     s.gross_rate                                               AS gross_rate,
                     s.station_net                                              AS station_net,
-                    s.broker_fees                                              AS broker_fees
+                    s.broker_fees                                              AS broker_fees,
+                    -- Normalized keys. Null → '' to match the Python
+                    -- row_hash rule (see row_hash() above).
+                    COALESCE(LOWER(TRIM(s.bill_code)), '')                     AS customer_key,
+                    COALESCE(LOWER(TRIM(m.market_code)), '')                   AS market_key,
+                    COALESCE(LOWER(TRIM(s.revenue_type)), '')                  AS revenue_class_key,
+                    COALESCE(LOWER(TRIM(s.sales_person)), '')                  AS ae1_key,
+                    COALESCE(LOWER(TRIM(sect.sector_name)), '')                AS sector_key
                 FROM spots s
                 LEFT JOIN customers c    ON s.customer_id = c.customer_id
                 LEFT JOIN sectors   sect ON c.sector_id = sect.sector_id
                 LEFT JOIN markets   m    ON s.market_id = m.market_id
                 WHERE (s.revenue_type != 'Trade' OR s.revenue_type IS NULL)
             ),
+            tuple_display AS (
+                -- One canonical display casing per normalized tuple.
+                -- MIN() is deterministic across refreshes. In ASCII,
+                -- uppercase sorts before lowercase, so "iGRAPHIX" wins
+                -- over "iGraphix" when both appear for the same tuple.
+                SELECT
+                    customer_key, market_key, revenue_class_key,
+                    ae1_key, agency_flag, sector_key,
+                    MIN(bill_code)     AS customer,
+                    MIN(market_code)   AS market,
+                    MIN(revenue_type)  AS revenue_class,
+                    MIN(sales_person)  AS ae1,
+                    MIN(sector_name)   AS sector
+                FROM base
+                GROUP BY customer_key, market_key, revenue_class_key,
+                         ae1_key, agency_flag, sector_key
+            ),
             representative AS (
                 SELECT
-                    customer, market, revenue_class, ae1, agency_flag, sector,
+                    customer_key, market_key, revenue_class_key,
+                    ae1_key, agency_flag, sector_key,
                     broker_fees AS rep_broker_fees,
                     gross_rate  AS rep_gross_rate
                 FROM (
                     SELECT
                         *,
                         ROW_NUMBER() OVER (
-                            PARTITION BY customer, market, revenue_class,
-                                         ae1, agency_flag, sector
+                            PARTITION BY customer_key, market_key, revenue_class_key,
+                                         ae1_key, agency_flag, sector_key
                             ORDER BY
                                 SUBSTR(broadcast_month_raw, 5, 2) DESC,
                                 CASE SUBSTR(broadcast_month_raw, 1, 3)
@@ -173,26 +204,35 @@ class SheetExportService:
             ),
             aggregated AS (
                 SELECT
-                    customer, market, revenue_class, ae1, agency_flag, sector,
+                    customer_key, market_key, revenue_class_key,
+                    ae1_key, agency_flag, sector_key,
                     broadcast_month_raw,
                     SUM(gross_rate)  AS gross_rate,
                     SUM(station_net) AS station_net,
                     SUM(broker_fees) AS broker_fees
                 FROM base
-                GROUP BY 1, 2, 3, 4, 5, 6, 7
+                GROUP BY customer_key, market_key, revenue_class_key,
+                         ae1_key, agency_flag, sector_key,
+                         broadcast_month_raw
                 HAVING COALESCE(SUM(gross_rate), 0)  <> 0
                     OR COALESCE(SUM(station_net), 0) <> 0
                     OR COALESCE(SUM(broker_fees), 0) <> 0
             )
             SELECT
-                a.customer, a.market, a.revenue_class, a.ae1, a.agency_flag, a.sector,
+                d.customer, d.market, d.revenue_class, d.ae1,
+                a.agency_flag, d.sector,
                 a.broadcast_month_raw,
                 a.gross_rate, a.station_net, a.broker_fees,
                 r.rep_broker_fees, r.rep_gross_rate
             FROM aggregated a
+            JOIN tuple_display d
+              USING (customer_key, market_key, revenue_class_key,
+                     ae1_key, agency_flag, sector_key)
             LEFT JOIN representative r
-              USING (customer, market, revenue_class, ae1, agency_flag, sector)
-            ORDER BY a.customer, a.market, a.revenue_class, a.ae1, a.agency_flag, a.sector,
+              USING (customer_key, market_key, revenue_class_key,
+                     ae1_key, agency_flag, sector_key)
+            ORDER BY d.customer, d.market, d.revenue_class, d.ae1,
+                a.agency_flag, d.sector,
                 CASE SUBSTR(a.broadcast_month_raw, 1, 3)
                     WHEN 'Jan' THEN  1 WHEN 'Feb' THEN  2 WHEN 'Mar' THEN  3
                     WHEN 'Apr' THEN  4 WHEN 'May' THEN  5 WHEN 'Jun' THEN  6

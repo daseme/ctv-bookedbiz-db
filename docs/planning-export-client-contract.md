@@ -211,6 +211,29 @@ this endpoint's formulas for the dashboard's (losing Kurt's preferred
 semantics), or have the dashboard adopt the workbook's (requires Kurt
 sign-off). Until then: two views, two conventions, documented here.
 
+## 8a. Coverage vs sheet-export — expected mismatch
+
+Sheet-export is **all-history** (no year filter); planning-export is
+**year-scoped**. Don't expect their AE lists to match:
+
+- **AEs in sheet-export but not in planning-export for year Y:** AEs
+  whose bookings fall outside year Y. Historical-only AEs (e.g. someone
+  who left the company) appear on the Data tab with their old spots but
+  don't appear on the Planning tab for the current year. This is
+  correct.
+- **AEs in planning-export but not in sheet-export for year Y:** AEs
+  with a budget row for year Y but no bookings yet (e.g. new hires,
+  placeholder AEs like `ZTBD`). Also correct.
+- **Virtual AEs:** `"WorldLink"` in planning-export aggregates spots
+  matching `bill_code LIKE 'WorldLink%'`, regardless of their
+  `sales_person`. On the Data tab those same spots appear under
+  whatever `sales_person` was stored (typically `"House"`). This is
+  how the in-app dashboard behaves; don't try to reconcile by summing
+  Data-tab rows keyed on `ae1 = "WorldLink"`.
+
+Reconciliation to the Data tab is reliable only for regular AEs (not
+WorldLink, not House), and only within the scope of the requested year.
+
 ## 9. Out of scope for v1.0
 
 - **Write-back.** This endpoint is read-only. The dashboard

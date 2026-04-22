@@ -438,6 +438,104 @@ def test_multi_contract_tiebreak_on_spot_id_desc(db):
     assert row["broker_pct"] == pytest.approx(0.2)
 
 
+def test_customer_casing_drift_collapses_to_one_row(db):
+    """Two bill_code casings (iGRAPHIX / iGraphix) share a row_hash — they
+    must emit as ONE aggregated row, not two.
+
+    Regression test for the casing-drift bug: the SQL used to GROUP BY raw
+    case-sensitive bill_code, producing two rows with the same row_hash
+    but split amounts and independently-selected representative spots
+    (different broker_yn / broker_pct). Fix: normalize GROUP BY to
+    LOWER(TRIM(...)), same as the hash.
+    """
+    with db.connection() as conn:
+        _seed_dims(conn)
+        # Real contract (non-sentinel) on the UPPERCASE variant.
+        _insert_spot(
+            conn, bill_code="iGRAPHIX:Pechanga",
+            contract="1500", broadcast_month="Jul-25",
+            gross_rate=500.0, station_net=400.0, broker_fees=100.0,
+        )
+        # Sentinel contract on the Mixed-case variant — has broker_fees but
+        # shouldn't drive broker attribution because contract='N' is a sentinel.
+        _insert_spot(
+            conn, bill_code="iGraphix:Pechanga",
+            contract="N", broadcast_month="Jul-25",
+            gross_rate=200.0, station_net=170.0, broker_fees=50.0,
+        )
+        conn.commit()
+
+    service = SheetExportService(db)
+    result = service.get_rows()
+
+    # Expect ONE row (drift-collapsed), not two.
+    assert result["metadata"]["row_count"] == 1
+    row = result["rows"][0]
+
+    # Amounts aggregated across both casings.
+    assert row["gross_rate"] == pytest.approx(700.0)
+    assert row["station_net"] == pytest.approx(570.0)
+    assert row["broker_fees"] == pytest.approx(150.0)
+
+    # Broker attribution from the NON-sentinel contract's representative spot.
+    assert row["broker_yn"] == "Y"
+    assert row["broker_pct"] == pytest.approx(0.2)  # 100/500 on contract 1500
+
+    # Display casing is deterministic (MIN picks alphabetical-first: capitals
+    # before lowercase in ASCII → "iGRAPHIX..." wins over "iGraphix...").
+    assert row["customer"] == "iGRAPHIX:Pechanga"
+
+
+def test_ae1_casing_drift_collapses_to_one_row(db):
+    """Two sales_person casings ("Riley Van Patten" / "Riley van Patten")
+    share a row_hash — must emit as ONE row.
+    """
+    with db.connection() as conn:
+        _seed_dims(conn)
+        _insert_spot(
+            conn, sales_person="Riley Van Patten",
+            contract="1234", broadcast_month="Jul-25",
+            gross_rate=300.0, station_net=255.0, broker_fees=0.0,
+        )
+        _insert_spot(
+            conn, sales_person="Riley van Patten",
+            contract="1234", broadcast_month="Jul-25",
+            gross_rate=400.0, station_net=340.0, broker_fees=0.0,
+        )
+        conn.commit()
+
+    service = SheetExportService(db)
+    result = service.get_rows()
+
+    assert result["metadata"]["row_count"] == 1
+    row = result["rows"][0]
+    assert row["gross_rate"] == pytest.approx(700.0)
+    # MIN display casing: "Riley Van Patten" (capital V sorts before lowercase v).
+    assert row["ae1"] == "Riley Van Patten"
+
+
+def test_trailing_whitespace_in_identity_fields_collapses(db):
+    """Whitespace drift in identity fields collapses to one row."""
+    with db.connection() as conn:
+        _seed_dims(conn)
+        _insert_spot(
+            conn, bill_code="Admerasia:McDonalds",
+            contract="1234", broadcast_month="Jul-25",
+            gross_rate=100.0, station_net=85.0, broker_fees=0.0,
+        )
+        _insert_spot(
+            conn, bill_code="  Admerasia:McDonalds  ",  # whitespace variant
+            contract="1234", broadcast_month="Jul-25",
+            gross_rate=200.0, station_net=170.0, broker_fees=0.0,
+        )
+        conn.commit()
+
+    service = SheetExportService(db)
+    result = service.get_rows()
+    assert result["metadata"]["row_count"] == 1
+    assert result["rows"][0]["gross_rate"] == pytest.approx(300.0)
+
+
 def test_sentinel_contract_coexists_with_real_contract(db):
     """When a tuple has both sentinel and real contracts, the real one wins.
 
