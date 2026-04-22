@@ -132,6 +132,16 @@ authoritative; summary:
 - **Case** — lowercase for hashing only; display keeps original case.
   **Invariant culture required** (Turkish dotted-I). PQ: `Text.Lower(x, "en-US")`.
 - **Encoding** — UTF-8 before SHA1.
+
+**Server-side grouping matches the hash normalization.** The endpoint's
+SQL `GROUP BY` and representative-spot `PARTITION BY` use `LOWER(TRIM(...))`
+on the six identity columns, so casing / whitespace drift in the source
+data (e.g. `"iGRAPHIX"` vs `"iGraphix"`; `"Riley Van Patten"` vs
+`"Riley van Patten"`) collapses to a single emitted row with one
+representative broker attribution. Display casing is resolved
+deterministically at the tuple level (`MIN()` over the source strings —
+capitals sort before lowercase in ASCII) so it stays consistent across
+months of the same row_hash.
 - **Hash version** — `Config!HashVersion` must match `metadata.hash_version`.
   PQ **must assert equality and error loudly** on mismatch.
 
