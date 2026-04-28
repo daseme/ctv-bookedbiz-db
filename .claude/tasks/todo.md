@@ -57,6 +57,8 @@ Options to explore:
 
 # Completed
 
+- **Diff-Based Import** — Replaced delete-and-reinsert with contract-group fingerprint diff. 4x daily imports now produce zero writes when nothing changed (was ~33K writes/import). Reduces Backblaze WAL bloat and stabilizes spot_ids. PR merged 2026-03-24.
+- **Fix Worldlink Dollars Missing** — Docker migration dropped the multi-sheet combiner; import only read "Commercials" sheet. Fixed to read all 4 sheets (Worldlink Lines, Pending, Add to booked business). PR #253 (2026-03-24)
 - **Eliminate hardcoded DB path fallbacks** — Removed all silent fallback DB paths; production code requires explicit env var (2026-03)
 - **Fix Dropbox Backup Path** — Fixed `DATABASE_PATH` in sync env, added systemd sandbox path, rewrote failover guide. PR #187 (2026-03-02)
 - **Phase 2 Step 1: Shared Utilities** — Consolidated language CASE, date range utils, added 15 tests (2026-03-05)
