@@ -48,15 +48,20 @@
 
 ## Project-Specific Context
 
+### Runtime
+- App runs in Docker, not systemd. Container: `spotops-spotops-1` (compose service name: `spotops`).
+- Restart after code change: `docker compose up -d --build spotops` (rebuild is required for Python changes — `restart` alone won't pick them up). `docker compose restart spotops` only when config/env changed.
+- Logs: `docker compose logs -f spotops`. Exec into container: `docker exec -it spotops-spotops-1 bash`.
+
 ### Database
-- **Dev database**: `.data/dev.db` (1.4GB, the real data)
-- `create_app()` sets `DB_PATH` to `data/database/production.db` (4KB empty skeleton) — this is WRONG for dev testing
-- When testing via `app.test_client()`, ALWAYS override: `app.config['DB_PATH'] = '.data/dev.db'`
-- The `_get_db_path()` fallback `or "./.data/dev.db"` does NOT work because config IS set (to the wrong path)
-- The running `spotops-dev.service` sets the correct path via its environment
-- DB access pattern: `db = container.get("database_connection")` then `with db.connection() as conn:`
-- All revenue queries exclude Trade: `WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)`
-- Broadcast month format: 'mmm-yy' (e.g., 'Jan-25')
+- **Live database**: `/srv/spotops/db/production.db` (~1.4GB, the real data). Mounted into the container at the same path; container reads it via `DATABASE_PATH=/srv/spotops/db/production.db`.
+- `.data/dev.db` on the host is a small empty skeleton — do NOT point tests or scripts at it expecting real data.
+- `create_app()` sets `DB_PATH` to `data/database/production.db` (empty skeleton) by default — this is WRONG for dev testing.
+- When testing via `app.test_client()`, ALWAYS override: `app.config['DB_PATH'] = '/srv/spotops/db/production.db'` (or whatever path holds real data for the test).
+- The `_get_db_path()` fallback `or "./.data/dev.db"` does NOT fire because config IS set (to the wrong path).
+- DB access pattern: `db = container.get("database_connection")` then `with db.connection() as conn:`.
+- All revenue queries exclude Trade: `WHERE (revenue_type != 'Trade' OR revenue_type IS NULL)`.
+- Broadcast month format: 'mmm-yy' (e.g., 'Jan-25').
 
 ### Architecture
 - Follow clean architecture: routes → services → repositories

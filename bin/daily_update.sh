@@ -1,135 +1,33 @@
 #!/bin/bash
 set -euo pipefail
 
-# Configuration
-PROJECT_ROOT="/opt/apps/ctv-bookedbiz-db"
-LOCK_FILE="/tmp/ctv-daily-update.lock"
 LOG_DIR="/var/log/ctv-daily-update"
-LOG_FILE="${LOG_DIR}/update.log"
-DAILY_UPDATE_SCRIPT="${PROJECT_ROOT}/cli/daily_update.py"
+LOG_FILE="$LOG_DIR/update.log"
+LOCK_FILE="/tmp/ctv-daily-update.lock"
+DATED_FILE="/app/data/raw/daily/Commercial Log $(date +%y%m%d).xlsx"
+NTFY_TOPIC="${NTFY_TOPIC:-ctv-import-2a11ef7e7a84}"
 
-# Source environment variables if available
-if [[ -f "/etc/ctv-daily-update.env" ]]; then
-    set -a
-    source /etc/ctv-daily-update.env
-    set +a
+mkdir -p "$LOG_DIR"
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"; }
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || { log "ERROR: Already running"; exit 1; }
+
+log "INFO: Daily update starting — $DATED_FILE"
+
+if docker compose -f /opt/spotops/docker-compose.yml exec -T spotops \
+    uv run python cli/daily_update.py "$DATED_FILE" \
+    --auto-setup --unattended --log-file "$LOG_FILE" \
+    --verbose >> "$LOG_FILE" 2>&1; then
+    log "INFO: Daily update completed successfully"
+    curl -fsS -H "Title: CTV Daily Update" -H "Tags: white_check_mark" \
+        -d "Daily update completed successfully" \
+        "https://ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 || true
+else
+    log "ERROR: Daily update failed"
+    curl -fsS -H "Title: CTV Daily Update" -H "Priority: 5" -H "Tags: rotating_light" \
+        -d "Daily update FAILED — check logs on spotops-bee" \
+        "https://ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 || true
+    exit 1
 fi
-
-# Allow PYTHON_VENV override from env file; default to project .venv
-PYTHON_VENV="${PYTHON_VENV:-${PROJECT_ROOT}/.venv/bin/python}"
-
-# Default data file path
-DATA_FILE="${DAILY_UPDATE_DATA_FILE:-${PROJECT_ROOT}/data/raw/daily/Commercial Log $(date +%y%m%d).xlsx}"
-
-# Create log directory
-mkdir -p "${LOG_DIR}"
-
-# Function to send notifications
-send_notification() {
-    local level="$1"
-    local message="$2"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-
-    echo "${timestamp} - ${level} - ${message}" >> "${LOG_FILE}"
-
-    if [[ -n "${NTFY_TOPIC:-}" ]]; then
-        local priority="3"   # default
-        local tags="package"
-        case "${level}" in
-            SUCCESS) priority="3"; tags="white_check_mark" ;;
-            ERROR)   priority="5"; tags="rotating_light"   ;;
-            INFO)    priority="2"; tags="information_source" ;;
-        esac
-        curl -fsS \
-            -H "Title: CTV Daily Update ${level}" \
-            -H "Priority: ${priority}" \
-            -H "Tags: ${tags}" \
-            -d "${message}" \
-            "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1 || true
-    fi
-
-    if [[ -n "${SLACK_WEBHOOK_URL:-}" ]]; then
-        curl -s -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"${level}: CTV Daily Update - ${message}\"}" \
-            "${SLACK_WEBHOOK_URL}" >/dev/null 2>&1 || true
-    fi
-}
-
-# Function to check prerequisites
-check_prerequisites() {
-    if [[ ! -r "${DATA_FILE}" ]]; then
-        send_notification "ERROR" "Data file not found or not readable: ${DATA_FILE}"
-        return 1
-    fi
-    
-    if [[ ! -x "${PYTHON_VENV}" ]]; then
-        send_notification "ERROR" "Python virtual environment not found: ${PYTHON_VENV}"
-        return 1
-    fi
-    
-    if [[ ! -f "${DAILY_UPDATE_SCRIPT}" ]]; then
-        send_notification "ERROR" "Daily update script not found: ${DAILY_UPDATE_SCRIPT}"
-        return 1
-    fi
-    
-    if [[ -z "${DATABASE_PATH:-}" ]]; then
-        send_notification "ERROR" "DATABASE_PATH env var not set"
-        return 1
-    fi
-    local db_path="${DATABASE_PATH}"
-    if [[ ! -f "${db_path}" ]]; then
-        send_notification "ERROR" "Database not found: ${db_path}"
-        return 1
-    fi
-    
-    return 0
-}
-
-# Main execution with flock protection
-main() {
-    local start_time=$(date)
-    local exit_code=0
-    
-    send_notification "INFO" "Daily update started"
-    
-    cd "${PROJECT_ROOT}"
-    
-    if ! check_prerequisites; then
-        exit 1
-    fi
-    
-    "${PYTHON_VENV}" "${DAILY_UPDATE_SCRIPT}" \
-        "${DATA_FILE}" \
-        --auto-setup \
-        --unattended \
-        --log-file "${LOG_FILE}" \
-        ${DAILY_UPDATE_EXTRA_ARGS:-} \
-        || exit_code=$?
-    
-    local end_time=$(date)
-    if [[ ${exit_code} -eq 0 ]]; then
-        send_notification "SUCCESS" "Daily update completed successfully (started: ${start_time}, ended: ${end_time})"
-    else
-        local error_context=""
-        if [[ -f "${LOG_FILE}" ]]; then
-            error_context=$(tail -5 "${LOG_FILE}" 2>/dev/null || true)
-        fi
-        send_notification "ERROR" "Daily update failed with exit code ${exit_code} (started: ${start_time}, ended: ${end_time})
---- last 5 log lines ---
-${error_context}"
-    fi
-    
-    return ${exit_code}
-}
-
-# Use flock to prevent concurrent runs
-(
-    flock -n 200 || {
-        echo "ERROR: Another daily update process is already running" >&2
-        send_notification "ERROR" "Daily update skipped - another process already running"
-        exit 1
-    }
-    
-    main "$@"
-    
-) 200>"${LOCK_FILE}"
