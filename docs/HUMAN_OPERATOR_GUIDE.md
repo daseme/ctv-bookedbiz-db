@@ -93,9 +93,9 @@ After accounting completes month-end close (timing varies — usually within the
 
 4. **Run the importer** to load the recap and **close** every month in the file:
    ```
-   uv run python cli/import_closed_data.py data/raw/2026.xlsx --year 2026 --closed-by "<your name>"
+   uv run python cli/import_closed_data.py data/raw/2026.xlsx --year 2026 --closed-by "<your name>" --db-path /srv/spotops/db/production.db
    ```
-   Substitute the year and your name. **Do not pass `--skip-closed`** — that flag is for the optional mid-cycle refresh in the next section. A typical import is a few minutes.
+   Substitute the year and your name. The `--db-path` argument points at the live database — it's required because your shell doesn't inherit the container's env. **Do not pass `--skip-closed`** — that flag is for the optional mid-cycle refresh in the next section. A typical import is a few minutes.
 
 5. **Optional immediate backup** (the nightly Dropbox snapshot covers this within 24 h, but if you want to lock in the close right away):
    ```
@@ -113,6 +113,7 @@ After accounting completes month-end close (timing varies — usually within the
 
 - **"K drive not accessible at /mnt/k-drive"** (from the recap-copy step). The server lost the K-drive share. Run `sudo mount /mnt/k-drive` then re-run step 3.
 - **"Source file not found"** (from the recap-copy step). The recap on K: drive isn't named what the script expects, or accounting saved it to a different folder. Check K: drive directly.
+- **"No database path specified. Set DB_PATH or DATABASE_PATH env var, or pass --db-path"** (from the importer step). The command is missing `--db-path /srv/spotops/db/production.db`. Add it and re-run.
 - **🟡 yellow (OPEN) instead of 🟢 green (CLOSED) after a successful import.** This means the close-month flag wasn't applied. The most common cause is the `--skip-closed` flag was used on `cli/import_closed_data.py` (which is for refreshes, not closing). Re-run step 4 without that flag.
 
 ### What NOT to do
@@ -151,9 +152,9 @@ Same first two steps as Monthly Close, then a **different** importer invocation 
    ```
 3. Run the importer in **refresh mode** with `--skip-closed`:
    ```
-   uv run python cli/import_closed_data.py data/raw/2026.xlsx --year 2026 --closed-by "<your name>" --skip-closed
+   uv run python cli/import_closed_data.py data/raw/2026.xlsx --year 2026 --closed-by "<your name>" --db-path /srv/spotops/db/production.db --skip-closed
    ```
-   The `--skip-closed` flag is the difference between refresh and close. With it, only currently-open months are touched.
+   The `--skip-closed` flag is the difference between refresh and close. With it, only currently-open months are touched. `--db-path` points at the live database (same as Monthly Close).
 
 ### Validation checklist
 
