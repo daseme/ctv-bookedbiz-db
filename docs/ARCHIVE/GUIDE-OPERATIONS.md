@@ -1,10 +1,11 @@
 # GUIDE-OPERATIONS.md
 # Critical Operational Procedures & System Management
 
-**Version:** 2.0  
-**Last Updated:** 2025-07-15  
-**Target Audience:** LLMs, Operations Teams, System Administrators  
+**Last Updated:** 2026-04-30
+**Target Audience:** Operators and LLMs maintaining the live system
 **Status:** Production-Critical Reference
+
+> **Runtime context:** App runs in Docker (container `spotops-spotops-1`, compose service `spotops`) on `/opt/spotops`. The live SQLite DB is `/srv/spotops/db/production.db`, mounted into the container at the same path. All DB commands below assume that path.
 
 ---
 
@@ -283,14 +284,18 @@ SELECT COUNT(*) FROM spot_language_blocks WHERE block_id IS NULL;
 
 ### **Rollback Procedures**
 ```bash
-# Backup current state
-cp production.db production_backup_$(date +%Y%m%d_%H%M%S).db
+DB=/srv/spotops/db/production.db
 
-# Restore from backup
-cp production_backup_YYYYMMDD_HHMMSS.db production.db
+# Backup current state
+cp "$DB" "/srv/spotops/db/production_backup_$(date +%Y%m%d_%H%M%S).db"
+
+# Restore from backup (stop the container first so SQLite isn't open for writes)
+docker compose -f /opt/spotops/docker-compose.yml stop spotops
+cp /srv/spotops/db/production_backup_YYYYMMDD_HHMMSS.db "$DB"
+docker compose -f /opt/spotops/docker-compose.yml start spotops
 
 # Verify restoration
-sqlite3 production.db "SELECT COUNT(*) FROM spots;"
+sqlite3 "$DB" "SELECT COUNT(*) FROM spots;"
 ```
 
 ---
@@ -299,14 +304,16 @@ sqlite3 production.db "SELECT COUNT(*) FROM spots;"
 
 ### **Database Health Check**
 ```bash
+DB=/srv/spotops/db/production.db
+
 # Database file integrity
-sqlite3 production.db "PRAGMA integrity_check;"
+sqlite3 "$DB" "PRAGMA integrity_check;"
 
 # Table structure verification
-sqlite3 production.db ".schema spots"
+sqlite3 "$DB" ".schema spots"
 
 # Index usage analysis
-sqlite3 production.db ".indexes"
+sqlite3 "$DB" ".indexes"
 ```
 
 ### **Process Monitoring**

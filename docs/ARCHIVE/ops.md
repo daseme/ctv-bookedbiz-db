@@ -4,6 +4,8 @@
 
 # CTV BookedBiz DB — Production Architecture & Changes (Feb 2026)
 
+> **Historical snapshot.** This file documents the systemd-on-Pi architecture that was in place in Feb 2026, before the move to Docker on `/opt/spotops`. Current runtime details live in `docs/GUIDE_DEV_WORKFLOW.md` and `docs/docker-setup.md`. Path references below (`/opt/apps/ctv-bookedbiz-db`, `/var/lib/ctv-bookedbiz-db`, `ctv-bookedbiz-db.service`) are intentionally preserved as a record of that era; don't follow them as runbook.
+
 ## 1. High-level outcome
 
 * The application is now served **only** by a single, explicit production service:

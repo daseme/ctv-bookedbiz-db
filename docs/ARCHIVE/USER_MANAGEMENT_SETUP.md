@@ -11,11 +11,11 @@ This document provides instructions for setting up user management in the CTV Bo
 
 2. **Run Database Migration**
    ```bash
-   sqlite3 data/database/production.db < sql/user_management_tables.sql
+   sqlite3 /srv/spotops/db/production.db < sql/user_management_tables.sql
    ```
    Or if you already have a `users` table with `password_hash` (legacy):
    ```bash
-   sqlite3 /path/to/your/database.db < sql/migrations/020_tailscale_auth_remove_passwords.sql
+   sqlite3 /srv/spotops/db/production.db < sql/migrations/020_tailscale_auth_remove_passwords.sql
    ```
 
 ## Creating the Initial Admin User
@@ -31,7 +31,7 @@ The script will prompt for First name, Last name, and Email. The user is created
 ### Method 2: Using SQLite Directly
 
 ```bash
-sqlite3 data/database/production.db
+sqlite3 /srv/spotops/db/production.db
 ```
 
 ```sql
@@ -49,8 +49,8 @@ VALUES ('YourFirstName', 'YourLastName', 'your.email@example.com', 'admin');
 
 ## Accessing the Application
 
-1. Start the web application (typically via systemd / uvicorn on port 8000). See `docs/GUIDE-RaspberryWorkflow.md` for Pi service details.
-2. Connect to the app **over Tailscale** (e.g. `http://spotops:8000/` or the Pi’s Tailscale IP). You will be signed in automatically if your Tailscale email exists in the `users` table.
+1. Start the web application (Docker container `spotops-spotops-1`). See `docs/GUIDE_DEV_WORKFLOW.md` for container lifecycle commands.
+2. Connect to the app **over Tailscale** using the host's Tailscale name/IP. You will be signed in automatically if your Tailscale email exists in the `users` table.
 
 ## User Management Features (Admin)
 
@@ -66,7 +66,7 @@ VALUES ('YourFirstName', 'YourLastName', 'your.email@example.com', 'admin');
 
 ## Security Notes
 
-- Authentication is via the Tailscale Local API (`whois`) only. The app must be reachable only over networks you control (typically your private Pi + Tailscale), not the public internet.
+- Authentication is via the Tailscale Local API (`whois`) only. The app must be reachable only over the tailnet, not the public internet.
 - Email in `users` must match the Tailscale login (email) for that person to sign in.
 - Admins cannot delete their own accounts.
 
@@ -76,10 +76,10 @@ VALUES ('YourFirstName', 'YourLastName', 'your.email@example.com', 'admin');
 - No user row exists for your Tailscale email. An admin must add you via User Management with that exact email.
 
 ### "Login requires Tailscale"
-- You are not reaching the app over Tailscale. Make sure your client is connected to the same tailnet and use the Pi’s Tailscale address (see [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md)).
+- You are not reaching the app over Tailscale. Make sure your client is connected to the same tailnet and reach the host via its Tailscale name/IP (see [TAILSCALE_AUTH.md](TAILSCALE_AUTH.md)).
 
 ### "Users table not found"
-- Run: `sqlite3 data/database/production.db < sql/user_management_tables.sql`
+- Run: `sqlite3 /srv/spotops/db/production.db < sql/user_management_tables.sql`
 
 ### "Email already registered"
 - That email already has a user. Use a different email or check: `SELECT * FROM users;`
