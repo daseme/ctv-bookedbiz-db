@@ -85,26 +85,35 @@ After accounting completes month-end close (timing varies — usually within the
    cd /opt/spotops
    ```
 
-3. **Run the yearly-recap update for the current year**, e.g. for 2026:
+3. **Copy the recap from K: drive** for the year you're closing, e.g. 2026:
    ```
    ./scripts/update_yearly_recap.sh 2026
    ```
-   This script copies the recap from K: drive, imports it, and **closes** every month it finds in the file. It will print progress as it runs; let it finish.
+   This only copies the file (`K:/.../<YEAR> Cash Revenue Recap.xlsx` → `data/raw/2026.xlsx`). It does **not** import yet.
 
-4. **Wait for it to finish.** A typical run is a few minutes. The script reports success or failure at the end.
+4. **Run the importer** to load the recap and **close** every month in the file:
+   ```
+   uv run python cli/import_closed_data.py data/raw/2026.xlsx --year 2026 --closed-by "<your name>"
+   ```
+   Substitute the year and your name. **Do not pass `--skip-closed`** — that flag is for the optional mid-cycle refresh in the next section. A typical import is a few minutes.
+
+5. **Optional immediate backup** (the nightly Dropbox snapshot covers this within 24 h, but if you want to lock in the close right away):
+   ```
+   uv run python cli_db_sync.py backup
+   ```
 
 ### Validation checklist
 
-- [ ] Script output ends with success (no `ERROR:` lines, no "Import failed")
+- [ ] Importer output ends with success (no `ERROR:` lines, no "Import failed")
 - [ ] Open the dashboard. The month you just closed shows **🟢 CLOSED** (green), not 🟡 OPEN (yellow)
 - [ ] Spot counts for the closed month look right (not zero, not orders of magnitude off from prior months)
 - [ ] A nightly database snapshot lands in Dropbox under `/database.db` within ~24 hours
 
 ### Common failures
 
-- **"K drive not mounted."** The server lost the K-drive share. Run `sudo mount /mnt/k-drive` then re-run the script.
-- **"File not found: 2026.xlsx."** The recap on K: drive isn't named what the script expects, or accounting saved it to a different folder. Check K: drive directly.
-- **🟡 yellow (OPEN) instead of 🟢 green (CLOSED) after a successful run.** This means the close-month flag wasn't applied. The most common cause is the `--skip-closed` flag was used (which is for refreshes, not closing). Re-run without that flag.
+- **"K drive not accessible at /mnt/k-drive"** (from the recap-copy step). The server lost the K-drive share. Run `sudo mount /mnt/k-drive` then re-run step 3.
+- **"Source file not found"** (from the recap-copy step). The recap on K: drive isn't named what the script expects, or accounting saved it to a different folder. Check K: drive directly.
+- **🟡 yellow (OPEN) instead of 🟢 green (CLOSED) after a successful import.** This means the close-month flag wasn't applied. The most common cause is the `--skip-closed` flag was used on `cli/import_closed_data.py` (which is for refreshes, not closing). Re-run step 4 without that flag.
 
 ### What NOT to do
 
@@ -114,7 +123,7 @@ After accounting completes month-end close (timing varies — usually within the
 
 ### Escalate if
 
-- The script fails after the K-drive copy but before the import finishes — the database may be partway updated
+- The importer fails partway through — the database may be partway updated
 - Spot counts for *prior* (already-closed) months changed unexpectedly after running
 - The dashboard month-status indicator stays 🟡 yellow even after a clean re-run
 
@@ -133,11 +142,18 @@ Occasionally, when you want the current year's actuals refreshed from the latest
 
 ### Step-by-step procedure
 
-Talk to a developer first. The script supports both modes (close vs refresh), but the right invocation depends on whether accounting wants months touched.
+Same first two steps as Monthly Close, then a **different** importer invocation that uses `--skip-closed` so already-closed months are left alone.
 
-If you've confirmed you want a **refresh only** (no month closures):
 1. SSH in, `cd /opt/spotops`.
-2. Run the script with the explicit refresh flag (a developer will give you the exact command for the current state of the script — the flag and behavior have changed before).
+2. Copy the recap:
+   ```
+   ./scripts/update_yearly_recap.sh 2026
+   ```
+3. Run the importer in **refresh mode** with `--skip-closed`:
+   ```
+   uv run python cli/import_closed_data.py data/raw/2026.xlsx --year 2026 --closed-by "<your name>" --skip-closed
+   ```
+   The `--skip-closed` flag is the difference between refresh and close. With it, only currently-open months are touched.
 
 ### Validation checklist
 
