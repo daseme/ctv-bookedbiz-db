@@ -285,7 +285,7 @@ If you ran `restart` and your change "didn't take effect," this is why.
 
 ### Footgun 3: `--skip-closed` during monthly close
 
-`cli/import_closed_data.py` (and `update_yearly_recap.sh`) takes `--skip-closed`. Passing it during the **monthly close** procedure imports the data but does **not** close the months — dashboard stays 🟡 yellow. The flag is intended for mid-month refreshes only.
+`cli/import_closed_data.py` takes `--skip-closed`. Passing it during the **monthly close** procedure imports the data but does **not** close the months — dashboard stays 🟡 yellow. The flag is intended for mid-month refreshes only. Note: `scripts/update_yearly_recap.sh` is just a `cp` wrapper from K: drive into `data/raw/`; it does not invoke the importer and does not accept `--skip-closed`.
 
 | Scenario | Pass `--skip-closed`? |
 |---|---|
