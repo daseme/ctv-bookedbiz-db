@@ -9,5 +9,6 @@ services:
       - /srv/spotops/processed:/srv/spotops/processed
       - /srv/spotops/data:/app/data
       - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock
+      - /home/jellee26/scripts/comDiff:/home/jellee26/scripts/comDiff:ro
     env_file:
       - .env

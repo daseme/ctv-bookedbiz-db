@@ -9,7 +9,7 @@ from datetime import datetime, date, timedelta
 from typing import List, Dict, Tuple, Optional
 
 # Default path to comDiff repo (placement_confirmation_YYYYMMDD.txt files)
-DEFAULT_PLACEMENT_DIR = os.environ.get("PLACEMENT_CONFIRMATION_DIR", "/home/jellee26/comDiff")
+DEFAULT_PLACEMENT_DIR = os.environ.get("PLACEMENT_CONFIRMATION_DIR", "/home/jellee26/scripts/comDiff")
 
 
 def _parse_amount(s: str) -> float:
