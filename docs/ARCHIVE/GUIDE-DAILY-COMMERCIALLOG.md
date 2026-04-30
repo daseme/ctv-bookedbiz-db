@@ -9,22 +9,22 @@ Automated daily pipeline for multi-sheet Commercial Log data processing, consist
 - **Source**: `/mnt/k-drive/Traffic/Media library/Commercial Log.xlsx` ⚠️ Note: "Media library" (lowercase 'l')
 - **Network Share**: `//100.102.206.113/K Drive` ⚠️ Note: "K Drive" (with space)
 - **Processing**: Multi-sheet processing - Commercials + Worldlink Lines sheets
-- **Destination**: `/opt/apps/ctv-bookedbiz-db/data/raw/daily/Commercial Log YYMMDD.xlsx`
-- **Python Script**: `/opt/apps/ctv-bookedbiz-db/src/importers/commercial_log_importer.py`
-- **Wrapper Script**: `/opt/apps/ctv-bookedbiz-db/bin/commercial_import.sh`
+- **Destination**: `/opt/spotops/data/raw/daily/Commercial Log YYMMDD.xlsx`
+- **Python Script**: `/opt/spotops/src/importers/commercial_log_importer.py`
+- **Wrapper Script**: `/opt/spotops/bin/commercial_import.sh`
 - **Environment File**: `/etc/ctv-commercial-import.env`
 
 ### Daily Update Processing (Stage 2)
 - **Source**: Multi-sheet commercial log files from Stage 1
-- **Destination**: `/opt/apps/ctv-bookedbiz-db/data/database/production.db`
-- **Python Script**: `/opt/apps/ctv-bookedbiz-db/cli/daily_update.py`
-- **Wrapper Script**: `/opt/apps/ctv-bookedbiz-db/bin/daily_update.sh`
+- **Destination**: `/srv/spotops/db/production.db`
+- **Python Script**: `/opt/spotops/cli/daily_update.py`
+- **Wrapper Script**: `/opt/spotops/bin/daily_update.sh`
 - **Environment File**: `/etc/ctv-daily-update.env`
 - **Log Directory**: `/var/log/ctv-daily-update/`
 
 ### Storage Management
-- **Rotation Script**: `/opt/apps/ctv-bookedbiz-db/bin/rotate_commercial_logs.sh` ⚠️ Known Issue: Fails with filenames containing spaces
-- **Archive Directory**: `/opt/apps/ctv-bookedbiz-db/data/raw/archive/`
+- **Rotation Script**: `/opt/spotops/bin/rotate_commercial_logs.sh` ⚠️ Known Issue: Fails with filenames containing spaces
+- **Archive Directory**: `/opt/spotops/data/raw/archive/`
 
 ### Network Access and Mounting
 - **K Drive Credentials**: `/etc/cifs-credentials` (secured with 600 permissions)
@@ -204,7 +204,7 @@ uv run python -c "
 from src.database.connection import DatabaseConnection
 from src.repositories.spot_repository import SpotRepository
 
-db = DatabaseConnection('data/database/production.db')
+db = DatabaseConnection('/srv/spotops/db/production.db')
 repo = SpotRepository()
 
 with db.connection() as conn:
@@ -264,8 +264,8 @@ The import system integrates with the customer normalization system:
 - **Automatic Cleanup**: Files older than retention periods automatically deleted
 
 ### Storage Locations
-- **Active Files**: `/opt/apps/ctv-bookedbiz-db/data/raw/daily/`
-- **Archives**: `/opt/apps/ctv-bookedbiz-db/data/raw/archive/`
+- **Active Files**: `/opt/spotops/data/raw/daily/`
+- **Archives**: `/opt/spotops/data/raw/archive/`
 - **Logs**: `/var/log/ctv-commercial-import/` and `/var/log/ctv-daily-update/`
 
 ## Processing Pipeline
@@ -366,7 +366,7 @@ else:
 "
 
 # Check storage status (rotation currently failing)
-/opt/apps/ctv-bookedbiz-db/bin/rotate_commercial_logs.sh status
+/opt/spotops/bin/rotate_commercial_logs.sh status
 ```
 
 ### Daily Update Processing Operations
@@ -380,7 +380,7 @@ sudo systemctl status ctv-daily-update.service
 # Check database source tracking
 uv run python -c "
 import sqlite3
-conn = sqlite3.connect('data/database/production.db')
+conn = sqlite3.connect('/srv/spotops/db/production.db')
 cursor = conn.execute('''
     SELECT source_file, COUNT(*) as spots 
     FROM spots 
@@ -561,7 +561,7 @@ ls -la /mnt/k-drive/Traffic/
 # Should show "Media library" directory
 
 # 3. Fix import script if needed
-grep -n "Media Library" /opt/apps/ctv-bookedbiz-db/src/importers/commercial_log_importer.py
+grep -n "Media Library" /opt/spotops/src/importers/commercial_log_importer.py
 # Change any "Media Library" to "Media library"
 ```
 
@@ -587,7 +587,7 @@ sudo nano /etc/ctv-daily-update.env
 sudo systemctl daemon-reload
 
 # 4. Test the fix
-sudo -u daseme /opt/apps/ctv-bookedbiz-db/bin/daily_update.sh
+sudo -u daseme /opt/spotops/bin/daily_update.sh
 ```
 
 ### Network Mount Issues
@@ -627,10 +627,10 @@ The rotation script improperly handles filenames with spaces. Filenames like "Co
 **Workaround**:
 ```bash
 # Manual cleanup of old files (if disk space becomes an issue)
-find /opt/apps/ctv-bookedbiz-db/data/raw/daily/ -name "Commercial Log *.xlsx" -mtime +7 -exec ls -la {} \;
+find /opt/spotops/data/raw/daily/ -name "Commercial Log *.xlsx" -mtime +7 -exec ls -la {} \;
 
 # Manual archive creation (if needed)
-cd /opt/apps/ctv-bookedbiz-db/data/raw/daily/
+cd /opt/spotops/data/raw/daily/
 zip "../archive/manual-archive-$(date +%Y%m).zip" Commercial\ Log\ *.xlsx
 ```
 
@@ -656,8 +656,8 @@ wb.close()
 "
 
 # Check disk space usage
-du -sh /opt/apps/ctv-bookedbiz-db/data/raw/daily/
-du -sh /opt/apps/ctv-bookedbiz-db/data/raw/archive/
+du -sh /opt/spotops/data/raw/daily/
+du -sh /opt/spotops/data/raw/archive/
 ```
 
 ### Daily Update Processing Issues
@@ -666,16 +666,16 @@ du -sh /opt/apps/ctv-bookedbiz-db/data/raw/archive/
 sudo journalctl -u ctv-daily-update.service -n 20
 
 # Check database accessibility
-ls -la /opt/apps/ctv-bookedbiz-db/data/database/production.db
+ls -la /srv/spotops/db/production.db
 
 # Test update script manually
-cd /opt/apps/ctv-bookedbiz-db
+cd /opt/spotops
 sudo -u daseme bin/daily_update.sh
 
 # Verify multi-sheet data in database
 uv run python -c "
 import sqlite3
-conn = sqlite3.connect('data/database/production.db')
+conn = sqlite3.connect('/srv/spotops/db/production.db')
 cursor = conn.execute('''
     SELECT 
         CASE WHEN source_file LIKE '%:Worldlink Lines' THEN 'WorldLink' ELSE 'Commercial' END as source,
@@ -705,7 +705,7 @@ grep "File:" /var/log/ctv-daily-update/update.log | tail -5
 # Check if Worldlink data is being imported
 uv run python -c "
 import sqlite3
-conn = sqlite3.connect('data/database/production.db')
+conn = sqlite3.connect('/srv/spotops/db/production.db')
 cursor = conn.execute('SELECT COUNT(*) FROM spots WHERE source_file LIKE \"%Worldlink%\" AND DATE(load_date) = DATE(\"now\")')
 worldlink_count = cursor.fetchone()[0]
 print(f'Worldlink records today: {worldlink_count}')
@@ -735,7 +735,7 @@ grep -E "PRESERVATION|PRESERVED|NO DATA in Excel" /var/log/ctv-daily-update/upda
 # Query for potentially preserved months
 uv run python -c "
 import sqlite3
-conn = sqlite3.connect('data/database/production.db')
+conn = sqlite3.connect('/srv/spotops/db/production.db')
 
 # Get open months not updated today
 cursor = conn.execute('''
@@ -813,12 +813,12 @@ grep -E "ERROR|WorldLink" /var/log/ctv-daily-update/update.log | tail -10
 grep -E "ERROR|WorldLink" /var/log/ctv-commercial-import/import.log | tail -10
 
 # Monitor storage usage trends
-du -sh /opt/apps/ctv-bookedbiz-db/data/raw/daily/ /opt/apps/ctv-bookedbiz-db/data/raw/archive/
+du -sh /opt/spotops/data/raw/daily/ /opt/spotops/data/raw/archive/
 
 # Check database source tracking health
 uv run python -c "
 import sqlite3
-conn = sqlite3.connect('data/database/production.db')
+conn = sqlite3.connect('/srv/spotops/db/production.db')
 cursor = conn.execute('''
     SELECT 
         COUNT(*) as total_spots,

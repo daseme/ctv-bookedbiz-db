@@ -5,6 +5,8 @@ This guide runs the app with a Backblaze/Litestream-backed startup flow and two 
 - `replica_readonly` (recommended default; writes blocked in the web app)
 - `failover_primary` (writes allowed for emergency takeover)
 
+> **Heads up:** the current production deploy uses `docker compose` (compose service `spotops`, container `spotops-spotops-1`, env file `/opt/spotops/.env`) — see `docker-compose.yml` and `docs/GUIDE_DEV_WORKFLOW.md`. The `docker run --name bookedbiz-db` examples below describe the original bare-`docker run` flow used during the Backblaze/Litestream migration; mode semantics (`APP_MODE`, restore behavior) and Litestream restore/replicate steps still apply.
+
 Secrets (B2 keys, Flask `SECRET_KEY`) should **not** be passed on the command line. Use **`/etc/ctv-litestream.env`** (same file as Litestream on the host) and `docker run --env-file /etc/ctv-litestream.env`.
 
 ---
@@ -12,12 +14,12 @@ Secrets (B2 keys, Flask `SECRET_KEY`) should **not** be passed on the command li
 ## 1. Prerequisites
 
 - Docker installed and running.
-- Project root: `/opt/apps/ctv-bookedbiz-db`.
+- Project root: `/opt/spotops`.
 - Host directories for SQLite and processed data (defaults in this setup).
 - `/etc/ctv-litestream.env` on the Docker host (B2 credentials and app env); optional host copy of `litestream.yml` is not required for the image (config is baked in at `/etc/litestream.yml` inside the container).
 
 ```bash
-cd /opt/apps/ctv-bookedbiz-db
+cd /opt/spotops
 sudo mkdir -p /srv/spotops/db /srv/spotops/processed
 ```
 
@@ -53,7 +55,7 @@ Container startup uses `backblaze_startup.sh` (Docker `ENTRYPOINT`).
 ## 4. Build the image
 
 ```bash
-cd /opt/apps/ctv-bookedbiz-db
+cd /opt/spotops
 sudo docker build --no-cache -t bookedbiz-db .
 ```
 

@@ -6,8 +6,10 @@
 
 ## The Two Branches
 
-**`dev`** = Testing branch (runs on Pi at `:5100` with test database)  
+**`dev`** = Testing branch
 **`main`** = Production branch (protected, requires PR to update)
+
+Production is the Docker container `spotops-spotops-1` on `/opt/spotops`, reading the live DB at `/srv/spotops/db/production.db`.
 
 ---
 
@@ -30,20 +32,21 @@ git commit -m "Brief description of what you changed"
 git push origin dev
 ```
 
-### 4. Test on Pi
+### 4. Test on the box
 ```bash
-# Restart dev service to pick up changes
-systemctl --user restart ctv-dev.service
+cd /opt/spotops
 
-# Restart production service
-sudo systemctl restart flaskapp
+# Rebuild + restart container to pick up Python changes
+docker compose up -d --build spotops
 
-# watch logs if needed
-sudo journalctl -u flaskapp -f
+# Watch logs
+docker compose logs -f spotops
 
-# Check if it's working
-curl -sf http://spotops:5100/health/ && echo "DEV_OK"
+# Check it's serving
+curl -sf http://localhost/health/ && echo "OK"
 ```
+
+> Use `docker compose restart spotops` only when you've changed config/env, not code — `restart` won't pick up new Python.
 
 ### 5. When ready for production
 1. Go to GitHub
@@ -53,10 +56,10 @@ curl -sf http://spotops:5100/health/ && echo "DEV_OK"
 
 ### 6. Deploy to production
 ```bash
-# On production server (not Pi)
+cd /opt/spotops
 git switch main
 git pull --ff-only
-# Restart production service
+docker compose up -d --build spotops
 ```
 
 ---
@@ -72,36 +75,34 @@ git pull --ff-only
 
 ## Quick Reference
 
-| What | Where | Database | Port |
-|------|-------|----------|------|
-| Development/Testing | Pi | `production_dev.db` | :5100 |
-| Production | Prod Server | `production.db` | Standard |
+| What | Where | Database |
+|------|-------|----------|
+| Production | `/opt/spotops`, container `spotops-spotops-1` | `/srv/spotops/db/production.db` |
 
 ---
 
 ## When Things Go Wrong
 
-**Dev service won't start?**
+**Container won't start?**
 ```bash
-systemctl --user status ctv-dev.service
-journalctl --user -u ctv-dev.service -f
+docker compose -f /opt/spotops/docker-compose.yml ps
+docker compose -f /opt/spotops/docker-compose.yml logs --tail=200 spotops
 ```
 
-**Can't push to main?**  
+**Can't push to main?**
 Good! That's the protection working. Use a PR instead.
 
-**Need to sync dev database from production?**
+**Need a fresh DB snapshot?**
+The live DB is `/srv/spotops/db/production.db`. For a safe copy while the container is up, use SQLite's online backup:
 ```bash
-systemctl --user stop ctv-dev.service
-sqlite3 data/database/production.db ".backup 'data/database/production_dev.db'"
-systemctl --user start ctv-dev.service
+sqlite3 /srv/spotops/db/production.db ".backup '/srv/spotops/db/snap-$(date +%F_%H%M).sqlite3'"
 ```
 
 ---
 
 ## That's It!
 
-**Normal day:** Work on `dev` → test on `:5100` → commit → push  
+**Normal day:** Work on `dev` → commit → push
 **Ready for production:** PR `dev` → `main` → squash merge → deploy
 
 The protection rules prevent accidents and keep production stable.

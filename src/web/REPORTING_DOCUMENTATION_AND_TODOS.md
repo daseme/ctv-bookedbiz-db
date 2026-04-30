@@ -1,5 +1,7 @@
 # CTV Reporting System - Architecture Documentation
 
+> **Historical context:** This doc captures the architecture mid-refactor on a WSL2 dev box. The runtime is now Docker on `/opt/spotops` reading `/srv/spotops/db/production.db`. The architectural concepts (service container, repositories, blueprints) are still accurate; the WSL paths and "Quick Start" sections are not.
+
 ## Overview
 
 This is a Flask-based reporting system for CTV (Crossings TV) that manages advertising revenue data, customer relationships, and sales performance tracking. The system has been refactored from a monolithic architecture to a clean, service-oriented architecture with proper dependency injection.
@@ -46,7 +48,7 @@ def my_function(db, config):
 
 ### 2. Database Schema & Data Model
 
-**Database:** SQLite (`data/database/production.db`)
+**Database:** SQLite (`/srv/spotops/db/production.db`)
 
 **Key Tables:**
 - `spots` - Individual advertising spots/transactions (750K+ records)
@@ -112,7 +114,7 @@ Database -> Repository -> Service -> Controller -> Template -> User
 
 **Key Paths:**
 - Project Root: `~/wsldev/ctv-bookedbiz-db/`
-- Database: `data/database/production.db`
+- Database: `/srv/spotops/db/production.db`
 - Processed Data: `data/processed/`
 - Source Code: `src/`
 - Tests: `tests/`
@@ -201,7 +203,7 @@ src/web/templates/                 # Jinja2 templates
 
 ### Configuration & Data
 ```
-data/database/production.db        # SQLite database (454.7 MB)
+/srv/spotops/db/production.db        # SQLite database (454.7 MB)
 data/processed/                    # JSON files for services
 ae_config.json                     # AE configuration
 real_budget_data.json              # Budget data

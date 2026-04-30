@@ -94,18 +94,18 @@ ORDER BY gross_revenue DESC;
 
 ### CLI Analysis Tool
 ```bash
-python -m src.cli.customer_names --db-path data/database/production.db \
+python -m src.cli.customer_names --db-path /srv/spotops/db/production.db \
   --export-unmatched --suggest-aliases
 ```
 
 ### Review Queue Management
 ```bash
-python scripts/load_review_queue.py --db data/database/production.db --auto-approve
+python scripts/load_review_queue.py --db /srv/spotops/db/production.db --auto-approve
 ```
 
 ### Review UI
 ```bash
-export DB_PATH=data/database/production.db
+export DB_PATH=/srv/spotops/db/production.db
 export APP_PIN=1234
 python -m src.web.review_ui.app --host 0.0.0.0 --port 5088
 ```

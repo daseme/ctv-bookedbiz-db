@@ -1,6 +1,6 @@
 # 📊 Flask Reporting App — Environment Summary
 
-This file summarizes the current development environment. Use this when asking for help building reporting views, templates, or APIs.
+> **Historical:** Describes a WSL2-on-Windows dev setup with a Dropbox bind-mount that is no longer in use. The live runtime is Docker on `/opt/spotops`; see `docs/GUIDE_DEV_WORKFLOW.md`. Kept only as a reference for the WSL workflow.
 
 ---
 
@@ -37,7 +37,7 @@ This file summarizes the current development environment. Use this when asking f
 
     Key Subdirectories:
 
-        data/database/production.db — SQLite DB used by services
+        data/database/production.db — SQLite DB used by services (current runtime: `/srv/spotops/db/production.db` mounted into the Docker container)
 
         data/processed/ — JSON files used by PipelineService
 

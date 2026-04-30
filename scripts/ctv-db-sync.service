@@ -1,0 +1,12 @@
+[Unit]
+Description=CTV Database Sync to Dropbox
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=daseme
+WorkingDirectory=/opt/spotops
+EnvironmentFile=/opt/spotops/.env
+ExecStart=/opt/spotops/bin/db_sync.sh
+TimeoutStartSec=1800

@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "context-mode@context-mode": true
+    "context-mode@context-mode": true,
+    "superpowers@claude-plugins-official": true
   }
 }

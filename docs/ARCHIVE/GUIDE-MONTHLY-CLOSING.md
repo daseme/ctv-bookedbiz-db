@@ -22,11 +22,10 @@ sudo mount /mnt/k-drive
 
 ### 2. Retrieve Updated Annual Recap
 ```bash
-cd /opt/apps/ctv-bookedbiz-db
-source .venv/bin/activate
+cd /opt/spotops
 
 # Copy current year's cash revenue recap - use current year
-./scripts/update_yearly_recap.sh 2026 
+./scripts/update_yearly_recap.sh 2026
 ```
 
 ### 3. Import Closed Data (IMPORTANT: No --skip-closed flag)
@@ -45,7 +44,7 @@ echo "Import completed. Check logs to confirm months were closed."
 # Quick sanity check - verify new data loaded
 python -c "
 import sqlite3
-conn = sqlite3.connect('data/database/production.db')
+conn = sqlite3.connect('/srv/spotops/db/production.db')
 cursor = conn.execute('''
     SELECT broadcast_month, COUNT(*) as spots, ROUND(SUM(station_net), 2) as revenue
     FROM spots 
@@ -63,7 +62,7 @@ conn.close()
 # Verify month closure status (should show green in dashboard)
 python -c "
 import sqlite3
-conn = sqlite3.connect('data/database/production.db')
+conn = sqlite3.connect('/srv/spotops/db/production.db')
 cursor = conn.execute('''
     SELECT broadcast_month, status, closed_at, closed_by
     FROM broadcast_month_closures 

@@ -2,6 +2,8 @@
 
 A Flask-based web application for generating and viewing revenue reports from the CTV Booked Biz database.
 
+> **Note:** This README pre-dates the move to Docker. The runtime is now the `spotops` container on `/opt/spotops` reading `/srv/spotops/db/production.db`. The startup commands below are kept for ad-hoc local runs only — for the canonical lifecycle, see `docs/GUIDE_DEV_WORKFLOW.md`.
+
 ## Overview
 
 This web application provides four main reporting views:
@@ -23,7 +25,7 @@ This web application provides four main reporting views:
 
 - Python 3.10+
 - Flask 2.3.0+
-- SQLite database at `data/database/test.db`
+- SQLite database at `/srv/spotops/db/production.db`
 - Existing repository layer in `src/repositories/`
 
 ## Installation
@@ -37,7 +39,7 @@ This web application provides four main reporting views:
 
 2. **Verify database exists**:
    ```bash
-   ls -la data/database/test.db
+   ls -la /srv/spotops/db/production.db
    ```
 
 3. **Ensure repository layer is available**:
@@ -189,12 +191,12 @@ tests/web/
 
 - `FLASK_ENV`: Set to `development` for debug mode
 - `FLASK_APP`: Should be `app.py`
-- `DB_PATH`: Database path (defaults to `../../data/database/test.db`)
+- `DB_PATH`: Database path (must be set explicitly; live path is `/srv/spotops/db/production.db`)
 
 ### Database Configuration
 
 The application expects:
-- SQLite database at `data/database/test.db` (relative to project root)
+- SQLite database at `/srv/spotops/db/production.db` (relative to project root)
 - Tables: `spots`, `customers`, `sectors` with proper relationships
 - Repository layer in `src/repositories/sqlite_repositories.py`
 
@@ -208,7 +210,7 @@ The application expects:
    ```
 
 2. **Database connection error**
-   - Verify database exists: `ls -la data/database/test.db`
+   - Verify database exists: `ls -la /srv/spotops/db/production.db`
    - Check database permissions
    - Ensure path is correct relative to `src/web/`
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily CTV Database Sync to Dropbox
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
